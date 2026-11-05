@@ -15,7 +15,7 @@
 #define COR_BOTAO      0xE2E6EA
 #define COR_BOTAO_APERTADO 0xC4CBD2
 #define COR_DESTAQUE   0x0B7A3E   /* verde do SaguiOS */
-#define COR_SELECAO    0x2A6FD8
+#define COR_SELECAO    0x0B7A3E
 #define COR_BRANCO     0xFFFFFF
 
 typedef struct {
@@ -26,6 +26,10 @@ typedef struct {
 
 /* ---- janela e desenho ---- */
 jan_t *jan_abrir(const char *titulo, int largura, int altura);
+/* Como jan_abrir, com o botão de maximizar: o programa trata EV_TAMANHO. */
+jan_t *jan_abrir_redimensionavel(const char *titulo, int largura, int altura);
+void   jan_tamanho(jan_t *j, const evento_t *e);                /* aplica um EV_TAMANHO */
+void   jan_menu(jan_t *j, int x, int y, const char *itens);     /* "A|B||C"; a escolha chega em EV_MENU */
 void   jan_fechar(jan_t *j);
 void   jan_mostrar(jan_t *j);                                   /* a janela toda */
 void   jan_mostrar_area(jan_t *j, int x, int y, int l, int a);

@@ -9,7 +9,7 @@
 /* Área de trabalho (area_trabalho.c) */
 bool area_iniciar(void);
 void area_fundo(superficie_t *s);          /* copia o fundo pronto para o recorte de s */
-void area_barra(superficie_t *s);          /* barra superior com o relógio */
+void area_barra(superficie_t *s, bool frase);   /* barra superior com o relógio */
 bool area_relogio_mudou(void);
 int  area_icone_em(int x, int y);          /* índice do ícone sob o ponto, ou -1 */
 void area_icone_abrir(int i);
@@ -17,6 +17,10 @@ int  area_qtd_icones(void);
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a);
 void area_icone_direito(int i);
 bool area_pendrive(bool presente, const char *rotulo);
+#define QTD_FUNDOS 3
+const char *area_fundo_nome(int i);
+int  area_fundo_atual(void);
+void area_fundo_escolher(int i);           /* troca o papel de parede */
 
 /* Gerenciador de janelas (janelas.c) */
 bool gui_iniciar(void);                    /* liga a área de trabalho e o gerenciador */

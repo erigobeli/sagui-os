@@ -6,9 +6,11 @@
 #include "sagui.h"
 #include "gui.h"
 
-#define LARG 720
+#define LARG_INICIO 720
+#define LARG (j->larg)
 #define LATERAL 140   /* lateral com "SaguiOS" e "Pendrive" (H34) */
-#define ALT  440
+#define ALT_INICIO  440
+#define ALT  (j->alt)
 #define MAX_ITENS 128
 
 static jan_t *j;
@@ -214,22 +216,47 @@ static void apagar_item(void)
     carregar();
 }
 
-int principal(int argc, char **argv)
+static botao_t bt[3] = {
+    { 8, 7, 90, 26, "Voltar", false }, { 106, 7, 110, 26, "Nova pasta", false }, { 224, 7, 90, 26, "Apagar", false },
+};
+
+static void desenhar_tudo(void)
 {
-    if (argc > 1) copia_texto(pasta, argv[1], sizeof pasta);
-    j = jan_abrir("Arquivos", LARG, ALT);
-    if (!j) return 1;
-    botao_t bt[3] = {
-        { 8, 7, 90, 26, "Voltar", false }, { 106, 7, 110, 26, "Nova pasta", false }, { 224, 7, 90, 26, "Apagar", false },
-    };
+    g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
     g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
     g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
     for (int i = 0; i < 3; i++) botao_desenhar(j, &bt[i]);
-    lista = (lista_t){ LATERAL + 6, 70, LARG - LATERAL - 14, ALT - 70 - 30, nomes, 0, -1, 0, icone };
-    atualizar_pendrive();
+    lista.l = LARG - LATERAL - 14;
+    lista.a = ALT - 70 - 30;
     desenhar_lateral();
     carregar();
     jan_mostrar(j);
+}
+
+/* Menu do botão direito na lista. */
+static bool menu_em_item;
+
+static void abrir_menu(const evento_t *e)
+{
+    int i = lista.topo + (e->y - lista.y - 2) / LISTA_ALTURA_ITEM;
+    menu_em_item = e->y >= lista.y && i >= 0 && i < lista.qtd;
+    if (menu_em_item) {
+        lista.sel = i;
+        lista_desenhar(j, &lista);
+        jan_menu(j, e->x, e->y, "Abrir|Apagar||Nova pasta");
+    } else {
+        jan_menu(j, e->x, e->y, "Nova pasta");
+    }
+}
+
+int principal(int argc, char **argv)
+{
+    if (argc > 1) copia_texto(pasta, argv[1], sizeof pasta);
+    j = jan_abrir_redimensionavel("Arquivos", LARG_INICIO, ALT_INICIO);
+    if (!j) return 1;
+    lista = (lista_t){ LATERAL + 6, 70, LARG - LATERAL - 14, ALT - 70 - 30, nomes, 0, -1, 0, icone };
+    atualizar_pendrive();
+    desenhar_tudo();
     registrar("arquivos: pronto");
 
     evento_t e;
@@ -251,6 +278,15 @@ int principal(int argc, char **argv)
         int c;
         while (recolher(&c) > 0) ;   /* programas abertos daqui que já terminaram */
         if (e.tipo == EV_FECHAR) break;
+        if (e.tipo == EV_TAMANHO) { jan_tamanho(j, &e); desenhar_tudo(); continue; }
+        if (e.tipo == EV_CLIQUE && (e.botoes & 2) && e.x >= LATERAL) { abrir_menu(&e); continue; }
+        if (e.tipo == EV_MENU) {
+            if (!menu_em_item) nova_pasta();
+            else if (e.tecla == 0) abrir_item(lista.sel);
+            else if (e.tecla == 1) apagar_item();
+            else nova_pasta();
+            continue;
+        }
         if (botao_tratar(j, &bt_lado_raiz, &e)) { copia_texto(pasta, "/", sizeof pasta); carregar(); }
         if (tem_pendrive && botao_tratar(j, &bt_lado_pen, &e)) {
             int r = pendrive.montado ? 0 : montar(pendrive.nome);

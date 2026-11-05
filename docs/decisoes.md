@@ -904,3 +904,38 @@ e depois ele volta a caçar. Ninguém se machuca.
   paredes; o escurecimento vai para o verde da mata, não para o preto.
 - Nenhum código, tutorial ou repositório de jogo foi consultado: as contas
   partiram da geometria descrita acima.
+
+## D031. Visual novo, menus de contexto e janelas maximizáveis (contribuição externa)
+
+Contribuição feita fora do roteiro de histórias do PRD. A identidade foi
+mantida: verde, amarelo e azul, o mascote em pixel art, a fonte 8x16 e a
+geometria das janelas (barra de título de 24 pixels, borda de 2).
+
+**Ícones.** `tools/mkarte.py` descreve cada ícone com formas simples e gera
+vetores ARGB 64x64 no build, em Python puro. Nenhuma imagem pronta entra.
+
+**Papel de parede em imagem.** O kernel lê `/arte/fundo.sgi`, formato próprio
+com paleta de 256 cores e RLE, descrito em `tools/mkfundo.py`. Se o arquivo
+faltar ou estiver errado, usa o fundo desenhado por código. A imagem atual foi
+gerada pelo modelo Z-Image Turbo. **Isto contraria a leitura estrita do PRD**
+("qualquer desenho [...] como dados no código") e muda o degradê pedido na H20.
+Para voltar ao fundo por código, basta apagar `rootfs/arte/fundo.sgi` e
+ajustar a H20.
+
+**Janelas.** Minimizar e a barra de tarefas ficam no gerenciador. Maximizar
+precisa do programa, porque só ele sabe reorganizar o conteúdo: quem abre com
+`jan_abrir_redimensionavel` ganha memória para a tela inteira e passa a
+receber `EV_TAMANHO`. Terminal, Editor e Arquivos fazem isso. Nos demais, o
+botão fica cinza.
+
+**Menus.** O kernel desenha os menus por cima de tudo. `SIS_MENU_JANELA` deixa
+um programa abrir um menu próprio, e a escolha chega em `EV_MENU`.
+
+**Mouse.** O mouse passa a 200 pacotes por segundo. O CMOS é lido uma vez por
+segundo, a composição pula janelas fora do retângulo sujo e o log do relógio só
+sai quando o minuto muda. A composição continua com as interrupções desligadas.
+Não houve medição de fluidez.
+
+**Testes.** H35 é novo. H20 compara pixels com o `fundo.sgi`. H34 aceita uma
+faixa de cor no ícone. H23 espera a linha da serial em vez de ler na hora,
+porque havia uma corrida.

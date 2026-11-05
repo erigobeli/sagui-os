@@ -54,6 +54,7 @@ int32_t sis_fechar_janela(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_atualizar_janela(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_proximo_evento(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_titulo_janela(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+int32_t sis_menu_janela(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_listar_discos(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_montar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_desmontar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
