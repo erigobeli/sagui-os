@@ -17,6 +17,7 @@ int  area_qtd_icones(void);
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a);
 void area_icone_direito(int i);
 bool area_pendrive(bool presente, const char *rotulo);
+bool area_desligar_clicado(int x, int y);
 
 /* Gerenciador de janelas (janelas.c) */
 bool gui_iniciar(void);                    /* liga a área de trabalho e o gerenciador */

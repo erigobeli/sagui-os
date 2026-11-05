@@ -325,7 +325,11 @@ class Maquina:
                 break
             time.sleep(0.1)
         time.sleep(0.2)
-        subprocess.run(["convert", ppm, destino], check=True)
+        try:
+            subprocess.run(["convert", ppm, destino], check=True)
+        except Exception:
+            from PIL import Image
+            Image.open(ppm).save(destino)
         os.remove(ppm)
         return destino
 

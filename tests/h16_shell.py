@@ -29,7 +29,7 @@ def main():
         out = m.comando("ajuda")
         for c in ("ls/listar", "cd/entrar", "pwd/onde", "cat/ver", "echo/eco", "cp/copiar", "mv/mover", "rm/apagar",
                   "mkdir/criar-pasta", "rmdir/remover-pasta", "wc/conta", "ps/processos", "kill/matar", "clear/limpar",
-                  "ajuda", "mem", "data", "sobre", "ola", "contador", "falha", "reiniciar", "sair"):
+                  "ajuda", "mem", "data", "sobre", "ola", "contador", "falha", "reiniciar", "desligar/poweroff", "sair"):
             verificar(c in out, f"ajuda lista {c}")
         m.captura("H16-ajuda")
         out = m.comando("ajuda conta")

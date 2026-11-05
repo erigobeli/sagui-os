@@ -238,6 +238,15 @@ static void tratar_mouse(evento_mouse_t *m)
     if (apertou) {
         int k = janela_em(m->x, m->y);
         if (k < 0) {
+            if (m->y < BARRA_SUPERIOR) {
+                if (area_desligar_clicado(m->x, m->y) && (m->mudaram & BOTAO_ESQUERDO)) {
+                    char *argv[] = { "desligar", NULL };
+                    int pid = processo_executar("/bin/desligar", 1, argv, NULL);
+                    klog("[GUI] botao Desligar clicado -> /bin/desligar (pid %d)\n", pid);
+                }
+                captura = -1;
+                return;
+            }
             /* Na área de trabalho: duplo clique num ícone abre o programa. */
             int ic = area_icone_em(m->x, m->y);
             uint32_t agora = relogio_tiques();

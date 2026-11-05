@@ -30,6 +30,7 @@ int32_t sis_data(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_info_sistema(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_aumentar_memoria(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_reiniciar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+int32_t sis_desligar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_registrar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_abrir(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_ler(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
