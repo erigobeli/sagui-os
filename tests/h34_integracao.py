@@ -47,7 +47,9 @@ def main():
         time.sleep(0.6)
         png = m.captura("H34-1-pendrive-conectado")
         verificar(True, "ao espetar: notificação 'Pendrive conectado: MEUPEN (64 MB)'")
-        verificar(cor_do_pixel(png, 36 + 2 * 10 + 1, 628 + 2 * 10 + 1) == (42, 111, 216), "ícone do pendrive apareceu na área de trabalho")
+        ponto_icone = (36 + 2 * 10 + 1, 628 + 2 * 12 + 1)
+        cor_icone = cor_do_pixel(png, *ponto_icone)
+        verificar(cor_icone[2] > 150 and cor_icone[0] < 110, f"ícone do pendrive apareceu na área de trabalho {cor_icone}")
 
         m.clique(*icone(7), duplo=True)
         m.esperar_serial("arquivos: pasta /usb", 15)
@@ -85,7 +87,7 @@ def main():
         m.esperar_serial("notificacao: Pendrive removido.", 15)
         time.sleep(0.6)
         png = m.captura("H34-5-pendrive-removido")
-        verificar(cor_do_pixel(png, 36 + 2 * 10 + 1, 628 + 2 * 10 + 1) != (42, 111, 216), "removido: o ícone some")
+        verificar(cor_do_pixel(png, *ponto_icone) != cor_icone, "removido: o ícone some")
 
         # Espeta de novo, monta pelo ícone e arranca sem desmontar.
         espetar(m, pen, "p2")

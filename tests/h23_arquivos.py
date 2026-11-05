@@ -84,7 +84,8 @@ def main():
         time.sleep(0.3)
         m.digitar("teste\n", 0.05)
         m.esperar_serial("arquivos: pasta criada /tmp/teste", 10)
-        verificar("arquivos: pasta /tmp (2 itens)" in m.serial(), "pasta /tmp/teste criada e aparece na lista")
+        m.esperar_serial("arquivos: pasta /tmp (2 itens)", 5)
+        verificar(True, "pasta /tmp/teste criada e aparece na lista")
         m.clique(*item(a, 0))                                      # seleciona teste/
         m.clique(a["x"] + 224 + 45, a["y"] + 7 + 13)              # Apagar
         m.esperar_serial('"Apagar"', 10)

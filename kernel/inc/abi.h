@@ -48,6 +48,7 @@
 #define SIS_ATUALIZAR_JANELA 52 /* (id, &retangulo ou 0 = tudo) */
 #define SIS_PROXIMO_EVENTO 53   /* (id ou 0 = qualquer janela minha, &evento, esperar) -> 1 se houve */
 #define SIS_TITULO_JANELA  54   /* (id, titulo) */
+#define SIS_MENU_JANELA    60   /* (id, x | y << 16, "Item|Item|Item") -> abre um menu; a escolha chega em EV_MENU */
 /* Dispositivos (fase 6) */
 #define SIS_LISTAR_DISCOS  55   /* (indice, &info_disco) -> 1 achou, 0 fim */
 #define SIS_MONTAR         56   /* (nome, ex.: "usb0") -> monta em /usb */
@@ -201,6 +202,8 @@ typedef struct {
 #define EV_MOVER     3   /* movimento sobre a janela */
 #define EV_TECLA     4   /* "tecla": caractere Latin-1, ou 0x100+ para setas etc. */
 #define EV_FECHAR    5   /* clicaram no X da moldura */
+#define EV_TAMANHO   6   /* a janela mudou de tamanho: x = largura, y = altura; redesenhe tudo */
+#define EV_MENU      7   /* item escolhido no menu aberto por SIS_MENU_JANELA: tecla = índice */
 
 /* Teclas especiais nos eventos de janela. São os mesmos valores do enum do
  * kernel (teclado.h), que por isso não precisa destas definições. */
@@ -220,6 +223,7 @@ typedef struct {
 
 #define JANELA_LARG_MAX 1000
 #define JANELA_ALT_MAX  700
+#define JANELA_REDIMENSIONAVEL 0x8000   /* somado à altura em SIS_CRIAR_JANELA: o programa trata EV_TAMANHO */
 
 typedef struct {
     unsigned int tipo;

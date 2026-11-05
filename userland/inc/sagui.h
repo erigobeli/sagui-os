@@ -73,6 +73,7 @@ int  fechar_janela(int id);
 int  atualizar_janela(int id, const retangulo_t *r);   /* r = NULL: a janela toda */
 int  proximo_evento(int id, evento_t *e, bool esperar); /* 1 = veio um evento */
 int  titulo_janela(int id, const char *titulo);
+int  menu_janela(int id, int x, int y, const char *itens);
 
 /* ---- dispositivos (fase 6) ---- */
 int  listar_discos(int indice, info_disco_t *d);   /* 1 = achou, 0 = acabou */

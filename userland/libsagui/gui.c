@@ -23,6 +23,26 @@ jan_t *jan_abrir(const char *titulo, int largura, int altura)
     return j;
 }
 
+jan_t *jan_abrir_redimensionavel(const char *titulo, int largura, int altura)
+{
+    jan_t *j = aloca(sizeof(jan_t));
+    if (!j) return NULL;
+    j->id = criar_janela(titulo, largura, altura | JANELA_REDIMENSIONAVEL, &j->px);
+    if (j->id < 0) { libera(j); return NULL; }
+    j->larg = largura;
+    j->alt = altura;
+    g_retangulo(j, 0, 0, largura, altura, COR_FUNDO);
+    return j;
+}
+
+void jan_tamanho(jan_t *j, const evento_t *e)
+{
+    j->larg = e->x;
+    j->alt = e->y;
+}
+
+void jan_menu(jan_t *j, int x, int y, const char *itens) { menu_janela(j->id, x, y, itens); }
+
 void jan_fechar(jan_t *j)
 {
     if (!j) return;
@@ -65,6 +85,31 @@ static inline void ponto(jan_t *j, int x, int y, uint32_t cor)
         j->px[y * j->larg + x] = cor;
 }
 
+static uint32_t mistura(uint32_t a, uint32_t b, int num, int den)
+{
+    uint32_t r = 0;
+    for (int s = 0; s <= 16; s += 8) {
+        int ca = (int)((a >> s) & 255), cb = (int)((b >> s) & 255);
+        r |= (uint32_t)(ca + (cb - ca) * num / den) << s;
+    }
+    return r;
+}
+
+/* Suaviza a escada das diagonais, como o kernel faz nos títulos. */
+static inline bool aceso(const unsigned char *g, int i, int l)
+{
+    return i >= 0 && i < 8 && l >= 0 && l < 16 && (g[l] & (0x80 >> i));
+}
+
+static inline void quina(jan_t *j, const unsigned char *g, int x, int y, int i, int l, uint32_t cor)
+{
+    bool e = aceso(g, i - 1, l), d = aceso(g, i + 1, l), c = aceso(g, i, l - 1), b = aceso(g, i, l + 1);
+    if (e != d && c != b && (unsigned)x < (unsigned)j->larg && (unsigned)y < (unsigned)j->alt) {
+        uint32_t *p = &j->px[y * j->larg + x];
+        *p = mistura(*p, cor, 1, 3);
+    }
+}
+
 void g_linha(jan_t *j, int x0, int y0, int x1, int y1, uint32_t cor)
 {
     int dx = x1 > x0 ? x1 - x0 : x0 - x1, sx = x0 < x1 ? 1 : -1;
@@ -85,6 +130,7 @@ void g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor)
         for (int lin = 0; lin < 16; lin++)
             for (int col = 0; col < 8; col++)
                 if (g[lin] & (0x80 >> col)) ponto(j, x + col, y + lin, cor);
+                else quina(j, g, x + col, y + lin, col, lin, cor);
     }
 }
 
@@ -134,9 +180,19 @@ void rotulo(jan_t *j, int x, int y, const char *texto, uint32_t cor)
 
 void botao_desenhar(jan_t *j, botao_t *b)
 {
-    g_retangulo(j, b->x, b->y, b->l, b->a, b->apertado ? COR_BOTAO_APERTADO : COR_BOTAO);
-    g_relevo(j, b->x, b->y, b->l, b->a, b->apertado);
-    g_moldura(j, b->x - 1, b->y - 1, b->l + 2, b->a + 2, 0x5A6470);
+    /* Degradê com cantos cortados. Os pixels dos cantos ficam como estavam,
+     * então o botão serve sobre qualquer fundo. */
+    uint32_t topo = b->apertado ? COR_BOTAO_APERTADO : 0xFBFCFD, base = b->apertado ? 0xD6DBE0 : 0xD8DDE2;
+    for (int k = 0; k < b->a; k++)
+        g_retangulo(j, b->x, b->y + k, b->l, 1, mistura(topo, base, k, b->a > 1 ? b->a - 1 : 1));
+    g_retangulo(j, b->x + 1, b->y - 1, b->l - 2, 1, COR_BORDA);
+    g_retangulo(j, b->x + 1, b->y + b->a, b->l - 2, 1, 0x6E7780);
+    g_retangulo(j, b->x - 1, b->y + 1, 1, b->a - 2, COR_BORDA);
+    g_retangulo(j, b->x + b->l, b->y + 1, 1, b->a - 2, COR_BORDA);
+    ponto(j, b->x, b->y, COR_BORDA);
+    ponto(j, b->x + b->l - 1, b->y, COR_BORDA);
+    ponto(j, b->x, b->y + b->a - 1, COR_BORDA);
+    ponto(j, b->x + b->l - 1, b->y + b->a - 1, COR_BORDA);
     int tx = b->x + (b->l - g_largura_texto(b->texto)) / 2 + (b->apertado ? 1 : 0);
     int ty = b->y + (b->a - LETRA_A) / 2 + (b->apertado ? 1 : 0);
     g_texto(j, tx, ty, b->texto, COR_TEXTO);
@@ -313,12 +369,12 @@ void area_desenhar(jan_t *j, area_t *a)
     }
     /* Barra de rolagem: o "polegar" mostra que parte do texto está à vista. */
     int bx = a->x + a->l - BARRA_ROLAGEM, total = total_linhas(a);
-    g_retangulo(j, bx, a->y + 1, BARRA_ROLAGEM - 1, a->a - 2, 0xE4E7EA);
+    g_retangulo(j, bx, a->y + 1, BARRA_ROLAGEM - 1, a->a - 2, 0xEEF0F2);
     int trilho = a->a - 4;
     int pol_a = total <= vis ? trilho : trilho * vis / total;
     if (pol_a < 12) pol_a = 12;
     int pol_y = total <= vis ? 0 : (trilho - pol_a) * a->topo / (total - vis > 0 ? total - vis : 1);
-    g_retangulo(j, bx + 2, a->y + 2 + pol_y, BARRA_ROLAGEM - 5, pol_a, 0x9AA3AC);
+    g_retangulo(j, bx + 2, a->y + 2 + pol_y, BARRA_ROLAGEM - 5, pol_a, 0xB0B8C0);
     jan_mostrar_area(j, a->x, a->y, a->l, a->a);
 }
 
@@ -419,7 +475,7 @@ void lista_desenhar(jan_t *j, lista_t *l)
     if (l->qtd > vis) {   /* indicador simples de que há mais itens */
         int total = l->qtd, trilho = l->a - 4;
         int pol_a = trilho * vis / total, pol_y = (trilho - pol_a) * l->topo / (total - vis);
-        g_retangulo(j, l->x + l->l - 6, l->y + 2 + pol_y, 4, pol_a, 0x9AA3AC);
+        g_retangulo(j, l->x + l->l - 6, l->y + 2 + pol_y, 4, pol_a, 0xB0B8C0);
     }
     jan_mostrar_area(j, l->x, l->y, l->l, l->a);
 }
