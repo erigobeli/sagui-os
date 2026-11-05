@@ -156,6 +156,9 @@ const char *nome_erro(int e)
     case ERRO_FORMATO: return "não é um programa válido";
     case ERRO_ACESSO: return "operação não permitida";
     case ERRO_OCUPADO: return "em uso";
+    case ERRO_TEMPO: return "sem resposta (tempo esgotado)";
+    case ERRO_SEM_REDE: return "sem rede (placa ou endereço IP)";
+    case ERRO_RECUSADA: return "conexão recusada";
     default: return "erro desconhecido";
     }
 }

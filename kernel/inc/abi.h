@@ -56,6 +56,10 @@
 #define SIS_BIP            58   /* (&notas, quantidade, modo) -> volta na hora; o tique do relógio toca */
 /* Jogos (bônus B4) */
 #define SIS_TECLAS_SEGURADAS 59 /* (&mapa[32]) -> 1 se a janela do processo está em foco */
+/* Rede (D032) */
+#define SIS_PING           61   /* (ip, prazo_ms) -> milissegundos até a resposta */
+#define SIS_RESOLVER       62   /* (nome, &ip) -> 0; pergunta ao DNS */
+#define SIS_CONECTAR       63   /* (ip, porta) -> descritor de uma conexão TCP (ler/escrever/fechar) */
 #define SIS_MAX            64
 
 /* Erros (sempre negativos) */
@@ -74,6 +78,9 @@
 #define ERRO_FORMATO      -13   /* não é um executável ELF válido */
 #define ERRO_ACESSO       -14   /* operação não permitida */
 #define ERRO_OCUPADO      -15
+#define ERRO_TEMPO        -16   /* a rede não respondeu a tempo */
+#define ERRO_SEM_REDE     -17   /* sem placa de rede ou ainda sem endereço IP */
+#define ERRO_RECUSADA     -18   /* o outro computador recusou ou cortou a conexão */
 
 /* Modos de abrir */
 #define ABRIR_LER       1
@@ -125,6 +132,7 @@ typedef struct {
 #define INFO_PROCESSOS 2
 #define INFO_VERSAO    3
 #define INFO_USB       4   /* relatório em texto: controladores, portas e dispositivos */
+#define INFO_REDE      5   /* relatório em texto: placa, endereços e pacotes */
 
 typedef struct {
     unsigned int ram_total_kb;

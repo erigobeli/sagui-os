@@ -48,6 +48,33 @@ int  bip(int freq, int ms)
     nota_t n = { (uint16_t)freq, (uint16_t)ms };
     return tocar(&n, 1, BIP_SUBSTITUIR);
 }
+int  ping(uint32_t ip, unsigned ms)   { return chamar(SIS_PING, ip, ms, 0); }
+int  conectar(uint32_t ip, int porta) { return chamar(SIS_CONECTAR, ip, (unsigned)porta, 0); }
+int  resolver(const char *nome, uint32_t *ip)
+{
+    if (texto_para_ip(nome, ip)) return 0;
+    return chamar(SIS_RESOLVER, (unsigned)nome, (unsigned)ip, 0);
+}
+
+bool texto_para_ip(const char *s, uint32_t *ip)
+{
+    uint32_t r = 0;
+    for (int parte = 0; parte < 4; parte++) {
+        if (*s < '0' || *s > '9') return false;
+        uint32_t v = 0;
+        for (int d = 0; *s >= '0' && *s <= '9'; d++, s++) {
+            if (d == 3) return false;
+            v = v * 10 + (uint32_t)(*s - '0');
+        }
+        if (v > 255) return false;
+        r = r << 8 | v;
+        if (parte < 3 && *s++ != '.') return false;
+    }
+    if (*s) return false;
+    *ip = r;
+    return true;
+}
+
 int  teclas_seguradas(unsigned char mapa[32]) { return chamar(SIS_TECLAS_SEGURADAS, (unsigned)mapa, 0, 0); }
 void silenciar(void)                  { chamar(SIS_BIP, 0, 0, 0); }
 int  criar_janela(const char *t, int l, int a, uint32_t **px)

@@ -73,6 +73,22 @@ coluna com uma "fresta" que estreita a cada passagem, perspectiva sem olho de pe
 arquivos de texto, com texturas e personagens desenhados no próprio código. Explicação completa
 na seção "Sagui 3D" de [`docs/decisoes.md`](docs/decisoes.md).
 
+## Rede e o Cipó
+
+Por enquanto testados no QEMU (falta o driver da placa de rede do G470):
+
+- **Rede** ([D032](docs/decisoes.md)): driver da placa Intel PRO/1000 (a do QEMU
+  e a do VirtualBox), ARP, IPv4, ping, DHCP, DNS e TCP. Comandos `rede`,
+  `ping` e `baixar` (HTTP).
+- **Cipó** ([D033](docs/decisoes.md)), o navegador (comando `cipo`): o sagui pula
+  de cipó em cipó, o navegador de link em link. Mostra páginas HTML como texto
+  organizado (títulos, links clicáveis, listas, formulários de busca), sem
+  HTTPS, imagens ou JavaScript.
+
+<div align="center">
+<img src="docs/capturas/H37-cipo-68k-news.png" width="49%" alt="O Cipó mostrando o 68k.news">
+</div>
+
 ## Números
 
 | | |
