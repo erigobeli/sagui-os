@@ -43,6 +43,10 @@
 #define E_PRE     16
 #define E_CAMPO   32
 #define E_LINHA   64   /* linha horizontal (<hr>) */
+#define E_IMAGEM  128  /* "n" é o índice em imagens[] */
+#define MAX_IMAGENS 12
+#define IMAGEM_ALT_MAX 420
+#define IMAGEM_BYTES_MAX (6 * 1024 * 1024)
 
 typedef struct {
     int     linha;
@@ -55,6 +59,11 @@ typedef struct {
 enum { A_LINK = 1, A_CAMPO };
 typedef struct { int tipo; int url; int form; int nome; } alvo_t;
 typedef struct { int acao; char fixa[300]; int campo; } form_t;   /* campo = nome do 1º campo de texto */
+
+typedef struct { uint32_t *px; int l, a; } imagem_t;
+static imagem_t imagens[MAX_IMAGENS];
+static int qtd_imagens;
+static bool pagina_segura;
 
 static seg_t  *segs;   static int qtd_segs, cap_segs;
 static alvo_t *alvos;  static int qtd_alvos, cap_alvos;
@@ -222,10 +231,10 @@ static bool juntar_url(const char *base, const char *rel, char *saida, int max)
         copia_texto(saida, rel, (size_t)max);
         return true;
     }
-    if (comeca_com(rel, "//")) { formatar_texto(saida, (size_t)max, "http:%s", rel); return true; }
-    if (!comeca_com(base, "http://")) return false;
+    if (comeca_com(rel, "//")) { formatar_texto(saida, (size_t)max, "%s:%s", url_https(base) ? "https" : "http", rel); return true; }
+    if (!comeca_com(base, "http://") && !url_https(base)) return false;
     /* Raiz do site: "http://host[:porta]". */
-    int raiz = 7;
+    int raiz = url_https(base) ? 8 : 7;
     while (base[raiz] && base[raiz] != '/' && base[raiz] != '?' && base[raiz] != '#') raiz++;
     int fim = raiz, ultima = -1;   /* fim do caminho (sem consulta) e a última barra dele */
     while (base[fim] && base[fim] != '?' && base[fim] != '#') { if (base[fim] == '/') ultima = fim; fim++; }
@@ -385,6 +394,91 @@ static bool paragrafo_tag(const char *t)
 static int pilha_lista[8], niveis;   /* contador de cada lista aberta (0 = com marcador) */
 static int negrito_n, italico_n, pre_n, form_atual = -1;
 static bool em_titulo;
+static void rodape(const char *t);
+
+/* Baixa uma imagem inteira, seguindo redirecionamentos. */
+static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
+{
+    static char cab[8192];
+    char url[URL_MAX];
+    copia_texto(url, pedido, sizeof url);
+    for (int r = 0; r < 4; r++) {
+        char host[128], caminho[512], destino[URL_MAX];
+        int porta, extra;
+        if (!url_separar(url, host, sizeof host, &porta, caminho, sizeof caminho)) return NULL;
+        int fd = http_pedir_seguro(host, porta, caminho, url_https(url));
+        if (fd < 0) return NULL;
+        int c = http_cabecalho(fd, cab, sizeof cab, &extra);
+        if (c < 0) { http_fechar(fd); return NULL; }
+        int codigo = http_codigo(cab);
+        if (codigo >= 300 && codigo < 400 && http_campo(cab, "Location", destino, sizeof destino)) {
+            http_fechar(fd);
+            char nova[URL_MAX];
+            if (!juntar_url(url, destino, nova, sizeof nova)) return NULL;
+            copia_texto(url, nova, sizeof url);
+            continue;
+        }
+        if (codigo != 200) { http_fechar(fd); return NULL; }
+        unsigned cap = 262144, tam = (unsigned)extra;
+        uint8_t *d = aloca(cap);
+        if (!d) { http_fechar(fd); return NULL; }
+        memcpy(d, cab + c, tam);
+        int q;
+        while ((q = http_ler(fd, d + tam, cap - tam)) > 0) {
+            tam += (unsigned)q;
+            if (tam == cap) {
+                if (cap >= IMAGEM_BYTES_MAX) break;
+                uint8_t *m = realoca(d, cap * 2);
+                if (!m) break;
+                d = m;
+                cap *= 2;
+            }
+        }
+        http_fechar(fd);
+        *n = tam;
+        return d;
+    }
+    return NULL;
+}
+
+/* <img>: baixa, reduz para caber na página e reserva as linhas. */
+static bool colocar_imagem(const char *url)
+{
+    if (qtd_imagens == MAX_IMAGENS) return false;
+    char st[100];
+    formatar_texto(st, sizeof st, "Baixando imagem %d...", qtd_imagens + 1);
+    rodape(st);
+    unsigned n = 0;
+    uint8_t *d = baixar_imagem(url, &n);
+    if (!d) return false;
+    uint32_t *px = NULL;
+    int l = 0, a = 0;
+    bool ok = imagem_decodificar(d, n, &px, &l, &a);
+    libera(d);
+    if (!ok) return false;
+    registrar("cipo: imagem %dx%d\n", l, a);
+    int cabe = LARG_TEXTO - recuo, dl = l, da = a;
+    if (dl > cabe) { da = da * cabe / dl; dl = cabe; }
+    if (da > IMAGEM_ALT_MAX) { dl = dl * IMAGEM_ALT_MAX / da; da = IMAGEM_ALT_MAX; }
+    if (dl < 1) dl = 1;
+    if (da < 1) da = 1;
+    uint32_t *r = aloca((size_t)dl * (size_t)da * 4);
+    if (r)
+        for (int y = 0; y < da; y++)
+            for (int x = 0; x < dl; x++) r[y * dl + x] = px[(y * a / da) * l + x * l / dl];
+    libera(px);
+    if (!r) return false;
+    imagem_t *im = &imagens[qtd_imagens];
+    im->px = r; im->l = dl; im->a = da;
+    quebrar();
+    segmento("", qtd_imagens, E_IMAGEM, alvo_atual);
+    qtd_imagens++;
+    linha_atual += (da + LINHA_A - 1) / LINHA_A;
+    if (linha_atual > linhas) linhas = linha_atual;
+    x_atual = recuo;
+    linha_vazia = true;
+    return true;
+}
 
 static void ler_html(const char *h, int n)
 {
@@ -447,6 +541,20 @@ static void ler_html(const char *h, int n)
             if (compara_texto(nome, "br") == 0) {
                 if (linha_vazia) linha_atual++;
                 quebrar();
+                continue;
+            }
+            if (compara_texto(nome, "img") == 0) {
+                char endereco_img[URL_MAX];
+                if (atributo(attrs, na, "src", v, sizeof v) && !comeca_com(v, "data:") &&
+                    juntar_url(url_atual, v, endereco_img, sizeof endereco_img) && colocar_imagem(endereco_img)) continue;
+                if (atributo(attrs, na, "alt", v, sizeof v) && v[0]) {
+                    int e = estilo;
+                    estilo |= E_ITALICO;
+                    palavra("[", 1);
+                    texto_solto(v);
+                    palavra("]", 1);
+                    estilo = e;
+                }
                 continue;
             }
             if (compara_texto(nome, "hr") == 0) { quebrar(); segmento("", 0, E_LINHA, -1); quebrar(); continue; }
@@ -611,6 +719,8 @@ static void ler_html(const char *h, int n)
 static void limpar_pagina(void)
 {
     qtd_segs = qtd_alvos = qtd_textos = qtd_forms = 0;
+    for (int i = 0; i < qtd_imagens; i++) libera(imagens[i].px);
+    qtd_imagens = 0;
     linhas = topo = 0;
     x_atual = linha_atual = recuo = estilo = 0;
     alvo_atual = form_atual = -1;
@@ -649,14 +759,28 @@ static uint32_t cor_de(int e)
     return COR_TEXTO;
 }
 
+/* O cadeado não promete o que não existe: o certificado não é verificado. */
+static const char *texto_pronto(void)
+{
+    return pagina_segura ? "Cifrado, mas a identidade do site NÃO foi verificada. Não digite senhas." : "Pronto";
+}
+
 static void desenhar_pagina(void)
 {
     g_retangulo(j, 0, TOPO, LARG - ROLAGEM, AREA_A, COR_BRANCO);
     for (int i = 0; i < qtd_segs; i++) {
         seg_t *s = &segs[i];
-        if (s->linha < topo) continue;
         if (s->linha >= topo + VISIVEIS) break;
         int x = MARGEM + s->x, y = TOPO + 4 + (s->linha - topo) * LINHA_A;
+        if (s->estilo & E_IMAGEM) {
+            imagem_t *im = &imagens[s->n];
+            for (int k = 0; k < im->a; k++) {
+                if (y + k < TOPO || y + k >= ALT - RODAPE) continue;
+                memcpy(j->px + (y + k) * j->larg + x, im->px + k * im->l, (size_t)im->l * 4);
+            }
+            continue;
+        }
+        if (s->linha < topo) continue;
         if (s->estilo & E_LINHA) { g_retangulo(j, MARGEM, y + 8, LARG_TEXTO, 2, 0xC4CBD2); continue; }
         uint32_t cor = cor_de(s->estilo);
         const char *t = textos + s->texto;
@@ -753,30 +877,26 @@ static void carregar(const char *pedido)
         const char *erro = NULL;
         char detalhe[200] = "";
         for (int redirecoes = 0; redirecoes < 5; redirecoes++) {
-            if (comeca_com(url, "https://")) {
-                erro = "HTTPS não suportado";
-                formatar_texto(detalhe, sizeof detalhe, "%s usa criptografia (TLS), que o SaguiOS ainda não tem.", url);
-                break;
-            }
             char host[128], caminho[512];
             int porta;
             if (!url_separar(url, host, sizeof host, &porta, caminho, sizeof caminho)) { erro = "Endereço inválido"; break; }
             char st[160];
             formatar_texto(st, sizeof st, "Conectando a %s...", host);
             rodape(st);
-            int fd = http_pedir(host, porta, caminho);
+            pagina_segura = url_https(url);
+            int fd = http_pedir_seguro(host, porta, caminho, pagina_segura);
             if (fd < 0) {
                 erro = "Não consegui abrir a página";
-                formatar_texto(detalhe, sizeof detalhe, "%s: %s.", host, nome_erro(fd));
+                formatar_texto(detalhe, sizeof detalhe, "%s: %s.", host, pagina_segura ? tls_erro() : nome_erro(fd));
                 break;
             }
             int extra;
             int c = http_cabecalho(fd, cab, sizeof cab, &extra);
-            if (c < 0) { fechar(fd); erro = "Resposta inválida do servidor"; break; }
+            if (c < 0) { http_fechar(fd); erro = "Resposta inválida do servidor"; break; }
             codigo = http_codigo(cab);
             char destino[URL_MAX];
             if (codigo >= 300 && codigo < 400 && http_campo(cab, "Location", destino, sizeof destino)) {
-                fechar(fd);
+                http_fechar(fd);
                 char nova[URL_MAX];
                 if (!juntar_url(url, destino, nova, sizeof nova)) { erro = "Redirecionamento inválido"; break; }
                 copia_texto(url, nova, sizeof url);
@@ -790,18 +910,18 @@ static void carregar(const char *pedido)
             for (char *p = tipo; *p; p++) *p = minuscula(*p);
             html = comeca_com(tipo, "text/html") || comeca_com(tipo, "application/xhtml");
             if (!html && !comeca_com(tipo, "text/")) {
-                fechar(fd);
+                http_fechar(fd);
                 erro = "Tipo de arquivo que o Cipó não mostra";
                 formatar_texto(detalhe, sizeof detalhe, "O servidor mandou \"%s\". Para guardar o arquivo, use o comando baixar no Terminal.", tipo);
                 break;
             }
             int cap = 65536;
             corpo = aloca((size_t)cap);
-            if (!corpo) { fechar(fd); erro = "Sem memória"; break; }
+            if (!corpo) { http_fechar(fd); erro = "Sem memória"; break; }
             memcpy(corpo, cab + c, (size_t)extra);
             tam = extra;
             int r, mostrado = 0;
-            while ((r = ler(fd, corpo + tam, (unsigned)(cap - tam))) > 0) {
+            while ((r = http_ler(fd, corpo + tam, (unsigned)(cap - tam))) > 0) {
                 tam += r;
                 if (tam == cap) {
                     if (cap >= PAGINA_MAX) break;
@@ -816,7 +936,7 @@ static void carregar(const char *pedido)
                     rodape(st);
                 }
             }
-            fechar(fd);
+            http_fechar(fd);
             break;
         }
         limpar_pagina();
@@ -846,11 +966,11 @@ static void carregar(const char *pedido)
         libera(corpo);
     }
     if (!titulo[0]) copia_texto(titulo, url_atual, sizeof titulo);
-    char t[128];
+    char t[48];   /* o kernel recusa título maior que a moldura guarda */
     formatar_texto(t, sizeof t, "Cipó - %s", titulo);
     titulo_janela(j->id, t);
     registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, qtd_alvos);
-    rodape("Pronto");
+    rodape(texto_pronto());
     desenhar_pagina();
 }
 
@@ -961,7 +1081,7 @@ int principal(int argc, char **argv)
             int a = alvo_em(e.x, e.y);
             if (a >= 0 && alvos[a].tipo == A_LINK) rodape(textos + alvos[a].url);
             else if (a >= 0) rodape("Formulário: clique para digitar");
-            else rodape("Pronto");
+            else rodape(texto_pronto());
         }
     }
     jan_fechar(j);

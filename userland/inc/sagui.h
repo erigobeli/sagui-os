@@ -97,6 +97,17 @@ int  conectar(uint32_t ip, int porta);               /* descritor TCP para ler/e
 bool texto_para_ip(const char *s, uint32_t *ip);
 /* HTTP (http.c): */
 bool url_separar(const char *url, char *host, int max_host, int *porta, char *caminho, int max_caminho);
+bool url_https(const char *url);
+int  http_pedir_seguro(const char *host, int porta, const char *caminho, bool seguro);   /* seguro = TLS 1.3, sem verificar o certificado */
+int  http_ler(int fd, void *buf, unsigned n);                        /* como ler, também por TLS */
+void http_fechar(int fd);
+int  tls_abrir(int fd, const char *host);
+int  tls_escrever(const void *d, unsigned n);
+int  tls_ler(void *d, unsigned max);
+void tls_fechar(void);
+bool tls_ativo(int fd);
+const char *tls_erro(void);
+bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);   /* PNG e JPEG */
 int  http_pedir(const char *host, int porta, const char *caminho);   /* manda o GET; devolve o descritor */
 int  http_cabecalho(int fd, char *buf, int max, int *extra);         /* tamanho do cabeçalho; *extra = corpo que já veio */
 int  http_codigo(const char *cabecalho);                             /* 200, 404... */
