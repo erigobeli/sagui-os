@@ -24,7 +24,9 @@ static unsigned dados_n;
 static bool fim;
 static const char *t_erro = "";
 
+static bool t_recusado;
 const char *tls_erro(void) { return t_erro; }
+bool tls_certificado_recusado(void) { return t_recusado; }
 bool tls_ativo(int fd) { return fd == t_fd; }
 
 static int falha(const char *m) { t_erro = m; registrar("tls: %s\n", m); return ERRO_FORMATO; }
@@ -196,6 +198,7 @@ int tls_abrir(int fd, const char *host)
     sha256_t tr;
 
     t_fd = fd;
+    t_recusado = false;
     fim = false;
     dados_n = 0;
     t_erro = "conexão fechada durante o aperto de mãos";
@@ -244,12 +247,12 @@ int tls_abrir(int fd, const char *host)
             if (k + 4 + t > tem) break;
             if (hs[k] == 11) {
                 const char *e = cert_cadeia(hs + k + 4, t, host);
-                if (e) { t_fd = -1; return falha(e); }
+                if (e) { t_fd = -1; t_recusado = true; return falha(e); }
                 cadeia_ok = true;
             } else if (hs[k] == 15) {
                 sha256_fim(&tr, h);
                 const char *e = cadeia_ok ? cert_prova(hs + k + 4, t, h) : "prova sem certificado";
-                if (e) { t_fd = -1; return falha(e); }
+                if (e) { t_fd = -1; t_recusado = true; return falha(e); }
                 prova_ok = true;
             } else if (hs[k] == 20) {
                 if (!prova_ok) { t_fd = -1; return falha("o servidor não provou a identidade"); }

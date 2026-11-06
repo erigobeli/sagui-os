@@ -108,6 +108,7 @@ int  tls_ler(void *d, unsigned max);
 void tls_fechar(void);
 bool tls_ativo(int fd);
 const char *tls_erro(void);
+bool tls_certificado_recusado(void);
 typedef struct {
     void (*escrever)(const char *t);                       /* document.write */
     void (*titulo)(const char *t);                         /* document.title = */

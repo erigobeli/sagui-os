@@ -2039,7 +2039,7 @@ static void carregar(const char *pedido)
             rodape(st);
             pagina_segura = url_https(url);
             int fd = http_pedir_seguro(host, porta, caminho, pagina_segura);
-            if (fd < 0 && fd != ERRO_FORMATO && adivinhou) {   /* certificado recusado não cai para HTTP */
+            if (fd < 0 && !tls_certificado_recusado() && adivinhou) {   /* certificado recusado não cai para HTTP */
                 adivinhou = false;
                 char t[URL_MAX];
                 formatar_texto(t, sizeof t, "http://%s", url + 8);

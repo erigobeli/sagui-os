@@ -51,10 +51,10 @@ def main():
         m.esperar_serial("arquivos: pronto", 20)
         time.sleep(0.5)
         a = janela(m.serial(), "Arquivos")
-        verificar("arquivos: pasta / (8 itens)" in m.serial(), "Arquivos abre na raiz: 6 pastas e 2 arquivos")
+        verificar("arquivos: pasta / (9 itens)" in m.serial(), "Arquivos abre na raiz: 7 pastas e 2 arquivos")
         m.captura("H23-arquivos-raiz")
 
-        m.clique(*item(a, 2), duplo=True)                         # historia/
+        m.clique(*item(a, 3), duplo=True)                         # historia/
         m.esperar_serial("arquivos: pasta /historia (2 itens)", 10)
         verificar(True, "duplo clique na pasta historia entra nela")
         m.clique(*item(a, 0), duplo=True)                         # linux.txt
