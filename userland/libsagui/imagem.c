@@ -3,7 +3,7 @@
  * PNG (RFC 2083 e 1951): todos os tipos de cor e profundidades, sem
  * entrelaçamento. Transparência vira mistura com branco.
  * JPEG (ITU T.81): sequencial de Huffman, 8 bits, cinza ou YCbCr. JPEG
- * progressivo ainda não é aceito.
+ * progressivo também é aceito.
  * Tudo com inteiros, porque os programas não usam a FPU. */
 #include "sagui.h"
 
@@ -240,7 +240,7 @@ static const int16_t base_cos[8][8] = {
 };
 
 typedef struct { uint8_t cont[17], val[256]; bool tem; } jhuff_t;
-typedef struct { int id, h, v, q, dc, ac, pred, passo; uint8_t *plano; } comp_t;
+typedef struct { int id, h, v, q, dc, ac, pred, passo, bl, ba; uint8_t *plano; int16_t *coef; } comp_t;
 typedef struct { const uint8_t *p; unsigned n, pos; uint32_t bits; int qtd; bool fim; } jbits_t;
 
 static int jbit(jbits_t *b)
@@ -299,19 +299,153 @@ static void idct(const int *f, uint8_t *s, int passo)
 
 static uint8_t satura(int v) { return (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v); }
 
+/* ---- JPEG progressivo ----
+ * A foto chega em várias passadas: primeiro o grosso, depois os detalhes. Os
+ * coeficientes de cada bloco ficam guardados até a última passada. */
+typedef struct { int ss, se, ah, al; } passada_t;
+
+static bool bloco_dc(jbits_t *b, comp_t *c, int16_t *f, const passada_t *p, const jhuff_t *hdc)
+{
+    if (p->ah) { if (jbit(b)) f[0] = (int16_t)(f[0] | 1 << p->al); return true; }
+    int s = jsimbolo(b, &hdc[c->dc]);
+    if (s < 0 || s > 15) return false;
+    c->pred += estender(jbits(b, s), s);
+    f[0] = (int16_t)(c->pred * (1 << p->al));
+    return true;
+}
+
+static void refinar(jbits_t *b, int16_t *c, int bit)
+{
+    if (jbit(b) && !(*c & bit)) *c = (int16_t)(*c + (*c > 0 ? bit : -bit));
+}
+
+static bool bloco_ac(jbits_t *b, int16_t *f, const passada_t *p, const jhuff_t *h, int *fim_faixa)
+{
+    int bit = 1 << p->al;
+    if (!p->ah) {
+        if (*fim_faixa) { --*fim_faixa; return true; }
+        for (int k = p->ss; k <= p->se; k++) {
+            int rs = jsimbolo(b, h);
+            if (rs < 0) return false;
+            int r = rs >> 4, s = rs & 15;
+            if (!s) {
+                if (r < 15) { *fim_faixa = (1 << r) - 1 + jbits(b, r); break; }
+                k += 15;
+                continue;
+            }
+            k += r;
+            if (k > 63) return false;
+            f[ziguezague[k]] = (int16_t)(estender(jbits(b, s), s) * bit);
+        }
+        return true;
+    }
+    int k = p->ss;
+    if (!*fim_faixa) {
+        while (k <= p->se) {
+            int rs = jsimbolo(b, h);
+            if (rs < 0) return false;
+            int r = rs >> 4, s = rs & 15, novo = 0;
+            if (!s) {
+                if (r < 15) { *fim_faixa = (1 << r) + jbits(b, r); break; }
+            } else novo = jbit(b) ? bit : -bit;
+            for (; k <= p->se; k++) {
+                int16_t *c = &f[ziguezague[k]];
+                if (*c) refinar(b, c, bit);
+                else if (!r) { if (novo) *c = (int16_t)novo; k++; break; }
+                else r--;
+            }
+        }
+    }
+    if (*fim_faixa) {
+        for (; k <= p->se; k++) {
+            int16_t *c = &f[ziguezague[k]];
+            if (*c) refinar(b, c, bit);
+        }
+        --*fim_faixa;
+    }
+    return true;
+}
+
+/* Decodifica uma passada. Dado ruim encerra a passada, e a foto sai com o que veio. */
+static void passada(jbits_t *b, comp_t **sc, int ns, passada_t *p, int mx, int my, int reinicio,
+                    int l, int a, int hmax, int vmax, const jhuff_t *hdc, const jhuff_t *hac)
+{
+    int nb_l = mx, nb_a = my;
+    if (ns == 1) {   /* passada de um componente só: blocos da imagem, sem enchimento */
+        nb_l = ((l * sc[0]->h + hmax - 1) / hmax + 7) / 8;
+        nb_a = ((a * sc[0]->v + vmax - 1) / vmax + 7) / 8;
+    }
+    int resta = reinicio, fim_faixa = 0;
+    for (int y = 0; y < nb_a; y++)
+        for (int x = 0; x < nb_l; x++) {
+            if (reinicio && !resta) {
+                b->qtd = 0; b->fim = false;
+                while (b->pos + 1 < b->n && !(b->p[b->pos] == 0xFF && b->p[b->pos + 1] >= 0xD0 && b->p[b->pos + 1] <= 0xD7)) b->pos++;
+                b->pos += 2;
+                for (int i = 0; i < ns; i++) sc[i]->pred = 0;
+                fim_faixa = 0;
+                resta = reinicio;
+            }
+            resta--;
+            for (int i = 0; i < ns; i++) {
+                comp_t *c = sc[i];
+                int vs = ns == 1 ? 1 : c->v, hs = ns == 1 ? 1 : c->h;
+                for (int v = 0; v < vs; v++)
+                    for (int h = 0; h < hs; h++) {
+                        int16_t *f = c->coef + (size_t)((y * vs + v) * c->bl + x * hs + h) * 64;
+                        bool ok = p->ss ? bloco_ac(b, f, p, &hac[c->ac], &fim_faixa) : bloco_dc(b, c, f, p, hdc);
+                        if (!ok) return;
+                    }
+            }
+        }
+}
+
+static bool jpeg_planos(comp_t *cs, int nc, int mx, int my)
+{
+    for (int i = 0; i < nc; i++) {
+        cs[i].bl = mx * cs[i].h;
+        cs[i].ba = my * cs[i].v;
+        cs[i].passo = cs[i].bl * 8;
+        cs[i].plano = aloca((size_t)cs[i].passo * (size_t)(cs[i].ba * 8));
+        if (!cs[i].plano) return false;
+    }
+    return true;
+}
+
+static bool jpeg_pixels(comp_t *cs, int nc, int l, int a, int hmax, int vmax, uint32_t **saida)
+{
+    uint32_t *px = aloca((size_t)l * (size_t)a * 4);
+    if (!px) return false;
+    for (int yy = 0; yy < a; yy++)
+        for (int xx = 0; xx < l; xx++) {
+            int Y = cs[0].plano[(yy * cs[0].v / vmax) * cs[0].passo + xx * cs[0].h / hmax];
+            if (nc == 1) { px[yy * l + xx] = (uint32_t)Y * 0x010101; continue; }
+            int cb = cs[1].plano[(yy * cs[1].v / vmax) * cs[1].passo + xx * cs[1].h / hmax] - 128;
+            int cr = cs[2].plano[(yy * cs[2].v / vmax) * cs[2].passo + xx * cs[2].h / hmax] - 128;
+            px[yy * l + xx] = (uint32_t)satura(Y + (359 * cr >> 8)) << 16 |
+                              (uint32_t)satura(Y - ((88 * cb + 183 * cr) >> 8)) << 8 |
+                              satura(Y + (454 * cb >> 8));
+        }
+    *saida = px;
+    return true;
+}
+
 static bool jpeg(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int *pa)
 {
     static uint8_t q[4][64];
     static jhuff_t hdc[4], hac[4];
     comp_t cs[3];
     int nc = 0, l = 0, a = 0, hmax = 1, vmax = 1, reinicio = 0;
-    bool ok = false;
+    bool ok = false, progressivo = false;
+    int mx = 0, my = 0;
     memset(cs, 0, sizeof cs);
     unsigned k = 2;
     while (k + 4 <= n) {
         if (d[k] != 0xFF) { k++; continue; }
         unsigned m = d[k + 1];
         if (m == 0xFF || m == 0) { k++; continue; }
+        if (m >= 0xD0 && m <= 0xD7) { k += 2; continue; }
+        if (m == 0xD9) break;
         unsigned t = (unsigned)d[k + 2] << 8 | d[k + 3];
         const uint8_t *c = d + k + 4;
         if (k + 2 + t > n) break;
@@ -331,7 +465,8 @@ static bool jpeg(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int *p
                 h->tem = true;
                 i += 17 + tot;
             }
-        } else if (m == 0xC0 || m == 0xC1) {
+        } else if (m == 0xC0 || m == 0xC1 || m == 0xC2) {
+            progressivo = m == 0xC2;
             if (c[0] != 8) goto fim;
             a = c[1] << 8 | c[2]; l = c[3] << 8 | c[4]; nc = c[5];
             if (nc != 1 && nc != 3) goto fim;
@@ -344,23 +479,42 @@ static bool jpeg(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int *p
                 if (cs[i].h > hmax) hmax = cs[i].h;
                 if (cs[i].v > vmax) vmax = cs[i].v;
             }
-        } else if (m == 0xC2) {
-            registrar("imagem: JPEG progressivo nao suportado\n");
-            goto fim;
         } else if (m == 0xDD) {
             reinicio = c[0] << 8 | c[1];
+        } else if (m == 0xDA && progressivo) {
+            int ns = c[0];
+            if (!nc || ns < 1 || ns > nc) goto fim;
+            if (!cs[0].plano) {
+                mx = (l + 8 * hmax - 1) / (8 * hmax); my = (a + 8 * vmax - 1) / (8 * vmax);
+                if (!jpeg_planos(cs, nc, mx, my)) goto fim;
+                for (int i = 0; i < nc; i++) {
+                    size_t tam = (size_t)cs[i].bl * (size_t)cs[i].ba * 128;
+                    cs[i].coef = aloca(tam);
+                    if (!cs[i].coef) goto fim;
+                    memset(cs[i].coef, 0, tam);
+                }
+            }
+            comp_t *sc[3];
+            for (int i = 0; i < ns; i++) {
+                sc[i] = NULL;
+                for (int z = 0; z < nc; z++)
+                    if (cs[z].id == c[1 + i * 2]) { sc[i] = &cs[z]; cs[z].dc = c[2 + i * 2] >> 4 & 3; cs[z].ac = c[2 + i * 2] & 3; cs[z].pred = 0; }
+                if (!sc[i]) goto fim;
+            }
+            passada_t p = { c[1 + ns * 2], c[2 + ns * 2], c[3 + ns * 2] >> 4, c[3 + ns * 2] & 15 };
+            if (p.se > 63 || p.ss > p.se || p.al > 13 || (p.ss && ns != 1)) goto fim;
+            jbits_t b = { d, n, k + 2 + t, 0, 0, false };
+            passada(&b, sc, ns, &p, mx, my, reinicio, l, a, hmax, vmax, hdc, hac);
+            k = b.pos;
+            continue;
         } else if (m == 0xDA) {
             if (!nc || c[0] != nc) goto fim;
             for (int i = 0; i < nc; i++)
                 for (int z = 0; z < nc; z++)
                     if (cs[z].id == c[1 + i * 2]) { cs[z].dc = c[2 + i * 2] >> 4 & 3; cs[z].ac = c[2 + i * 2] & 3; }
             int mcu_l = 8 * hmax, mcu_a = 8 * vmax;
-            int mx = (l + mcu_l - 1) / mcu_l, my = (a + mcu_a - 1) / mcu_a;
-            for (int i = 0; i < nc; i++) {
-                cs[i].passo = mx * cs[i].h * 8;
-                cs[i].plano = aloca((size_t)cs[i].passo * (size_t)(my * cs[i].v * 8));
-                if (!cs[i].plano) goto fim;
-            }
+            mx = (l + mcu_l - 1) / mcu_l; my = (a + mcu_a - 1) / mcu_a;
+            if (!jpeg_planos(cs, nc, mx, my)) goto fim;
             jbits_t b = { d, n, k + 2 + t, 0, 0, false };
             int resta = reinicio;
             for (int y = 0; y < my; y++)
@@ -394,26 +548,26 @@ static bool jpeg(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int *p
                                 idct(f, cs[i].plano + ((y * cs[i].v + v) * 8) * cs[i].passo + (x * cs[i].h + h) * 8, cs[i].passo);
                             }
                 }
-            uint32_t *px = aloca((size_t)l * (size_t)a * 4);
-            if (!px) goto fim;
-            for (int yy = 0; yy < a; yy++)
-                for (int xx = 0; xx < l; xx++) {
-                    int Y = cs[0].plano[(yy * cs[0].v / vmax) * cs[0].passo + xx * cs[0].h / hmax];
-                    if (nc == 1) { px[yy * l + xx] = (uint32_t)Y * 0x010101; continue; }
-                    int cb = cs[1].plano[(yy * cs[1].v / vmax) * cs[1].passo + xx * cs[1].h / hmax] - 128;
-                    int cr = cs[2].plano[(yy * cs[2].v / vmax) * cs[2].passo + xx * cs[2].h / hmax] - 128;
-                    px[yy * l + xx] = (uint32_t)satura(Y + (359 * cr >> 8)) << 16 |
-                                      (uint32_t)satura(Y - ((88 * cb + 183 * cr) >> 8)) << 8 |
-                                      satura(Y + (454 * cb >> 8));
-                }
-            *saida = px; *pl = l; *pa = a;
-            ok = true;
+            ok = jpeg_pixels(cs, nc, l, a, hmax, vmax, saida);
+            if (ok) { *pl = l; *pa = a; }
             goto fim;
         }
         k += 2 + t;
     }
+    if (progressivo && cs[0].coef) {   /* fim do arquivo: junta as passadas */
+        for (int i = 0; i < nc; i++)
+            for (int y = 0; y < cs[i].ba; y++)
+                for (int x = 0; x < cs[i].bl; x++) {
+                    const int16_t *e = cs[i].coef + (size_t)(y * cs[i].bl + x) * 64;
+                    int f[64];
+                    for (int z = 0; z < 64; z++) f[ziguezague[z]] = e[ziguezague[z]] * q[cs[i].q][z];
+                    idct(f, cs[i].plano + y * 8 * cs[i].passo + x * 8, cs[i].passo);
+                }
+        ok = jpeg_pixels(cs, nc, l, a, hmax, vmax, saida);
+        if (ok) { *pl = l; *pa = a; }
+    }
 fim:
-    for (int i = 0; i < 3; i++) libera(cs[i].plano);
+    for (int i = 0; i < 3; i++) { libera(cs[i].plano); libera(cs[i].coef); }
     return ok;
 }
 
