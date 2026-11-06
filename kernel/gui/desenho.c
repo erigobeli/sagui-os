@@ -113,6 +113,15 @@ void sup_icone(superficie_t *s, int x, int y, const uint32_t *argb, int lado)
         }
 }
 
+void sup_icone_escala(superficie_t *s, int x, int y, const uint32_t *argb, int lado, int destino)
+{
+    for (int j = 0; j < destino; j++)
+        for (int i = 0; i < destino; i++) {
+            uint32_t c = argb[(j * lado / destino) * lado + i * lado / destino];
+            if (c >> 24) ponto_misturado(s, x + i, y + j, c & 0xFFFFFF, (int)(c >> 24), 255);
+        }
+}
+
 void sup_escurecer(superficie_t *s, int x, int y, int l, int a, int alfa)
 {
     int x0 = x < s->cx0 ? s->cx0 : x, y0 = y < s->cy0 ? s->cy0 : y;

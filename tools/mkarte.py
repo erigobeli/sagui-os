@@ -198,8 +198,17 @@ def pendrive(t):
     t.disco(32, 42, 3, 0x1A4FA8)
 
 
+def cipo(t):
+    t.disco(32, 32, 26, vertical(0x5CC4F0, 0x1A5FB8, 6, 58))
+    t.poligono([(14, 20), (28, 13), (35, 22), (27, 30), (29, 42), (21, 46), (15, 33)], 0x2FB765)
+    t.poligono([(39, 26), (52, 24), (55, 36), (46, 48), (38, 38)], 0x2FB765)
+    t.traco([(8, 58), (20, 44), (28, 34), (42, 22), (58, 5)], 3.2, 0x7A5A1E)
+    for x, y in ((18, 47), (31, 31), (45, 19)):
+        t.disco(x + 3, y + 3, 4.5, 0xFFDF4A, ry=3)
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
-          ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive)]
+          ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive), ("cipo", cipo)]
 
 
 def main():

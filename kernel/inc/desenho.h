@@ -19,6 +19,7 @@ void sup_desenho(superficie_t *s, int x, int y, const desenho_t *d, int escala);
 void sup_copiar(superficie_t *s, int x, int y, const uint32_t *origem, int larg, int alt, int passo);
 void sup_texto_forte(superficie_t *s, int x, int y, const char *t, uint32_t cor);
 void sup_icone(superficie_t *s, int x, int y, const uint32_t *argb, int lado);
+void sup_icone_escala(superficie_t *s, int x, int y, const uint32_t *argb, int lado, int destino);
 void sup_escurecer(superficie_t *s, int x, int y, int l, int a, int alfa);   /* alfa de 0 a 256 */
 void sup_degrade(superficie_t *s, int x, int y, int l, int a, uint32_t topo, uint32_t base);
 uint32_t cor_mistura(uint32_t a, uint32_t b, int num, int den);

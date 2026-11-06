@@ -55,6 +55,11 @@ def main():
         m.clique(jx + 2 + 40, jy + 24 + 20)   # Voltar
         time.sleep(2)
         verificar(len(re.findall(r'cipo: pronto "P.gina A"', m.serial())) == 2, "Voltar abriu a página A de novo")
+        m.clique(jx + 864 - 2 - 40 + 8, jy + 12)                  # maximizar
+        m.esperar_serial("maximizada: 1020x718", 10)
+        time.sleep(3)
+        verificar(len(re.findall(r'cipo: pronto "P.gina A"', m.serial())) == 3, "maximizado, diagrama a página de novo")
+        m.captura("H37-cipo-maximizado")
     srv.shutdown()
     return 0
 

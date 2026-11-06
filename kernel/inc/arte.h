@@ -13,7 +13,7 @@ extern const desenho_t arte_sagui, arte_icone_sobre;
 /* Ícones 64x64 em ARGB, gerados por tools/mkarte.py. */
 #define ICONE_LADO 64
 extern const uint32_t arte_px_arquivos[], arte_px_terminal[], arte_px_editor[], arte_px_calculadora[],
-                      arte_px_banana[], arte_px_sagui3d[], arte_px_sobre[], arte_px_pendrive[];
+                      arte_px_banana[], arte_px_sagui3d[], arte_px_sobre[], arte_px_pendrive[], arte_px_cipo[];
 bool arte_cor(char letra, uint32_t *cor);
 
 #endif

@@ -16,7 +16,7 @@
 #include "sistema.h"
 #include "vfs.h"
 
-static uint32_t *fundo;
+static uint32_t *fundo, *papel;   /* fundo = papel de parede + mascote + ícones */
 static int larg, alt;
 static int minuto_mostrado = -1;
 
@@ -35,24 +35,34 @@ static const icone_t icones[] = {
     { "Sagui 3D",    "/bin/sagui3d",     arte_px_sagui3d },   /* bônus B4 */
     { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre },
     { "Pendrive",    "/bin/arquivos",    arte_px_pendrive },   /* só aparece com um pendrive conectado (H34) */
+    { "Cipó",        "/bin/cipo",        arte_px_cipo },
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
-#define ICONE_PENDRIVE (QTD_ICONES - 1)
+#define ICONE_PENDRIVE 7
+#define ICONE_CIPO 8
 static bool pendrive_visivel;
 static char nome_pendrive[24] = "Pendrive";
 
 static bool icone_visivel(int i) { return i != ICONE_PENDRIVE || pendrive_visivel; }
 #define ICONE_X 20
 #define ICONE_Y0 (BARRA_SUPERIOR + 16)
-#define ICONE_PASSO 84   /* 8 ícones cabem em 768 linhas */
-#define ICONE_L 96
-#define ICONE_A 88
+#define ICONE_L_MIN 96
+
+static int ic_x[QTD_ICONES], ic_y[QTD_ICONES];
+static int lado_icone = ICONE_LADO;
+static bool grade_ligada;
+
+static int celula_l(void) { return lado_icone + 32 > ICONE_L_MIN ? lado_icone + 32 : ICONE_L_MIN; }
+static int celula_a(void) { return lado_icone + 20; }
 
 int area_qtd_icones(void) { return QTD_ICONES; }
+bool area_icone_e_pendrive(int i) { return i == ICONE_PENDRIVE; }
+int area_icones_lado(void) { return lado_icone; }
+bool area_grade_ligada(void) { return grade_ligada; }
 
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
 {
-    *x = ICONE_X; *y = ICONE_Y0 + i * ICONE_PASSO; *l = ICONE_L; *a = ICONE_A;
+    *x = ic_x[i]; *y = ic_y[i]; *l = celula_l(); *a = celula_a() + 4;
 }
 
 /* Seno de um ângulo de 0 a 1023 (volta inteira), de -256 a 256, por parábolas:
@@ -108,7 +118,7 @@ static bool desenhar_fundo_imagem(void)
                 const uint8_t *linha = idx + (y * ia / alt) * il;
                 for (int x = 0; x < larg; x++) {
                     const uint8_t *c = d + 8 + linha[x * il / larg] * 3;
-                    fundo[y * larg + x] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
+                    papel[y * larg + x] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
                 }
             }
             ok = true;
@@ -154,14 +164,26 @@ static void desenhar_fundo_padrao(bool noite)
             if (y > rio2) c = cor_mistura(c, 0x123C86, 1, 2);
             if (y > rio3) c = cor_mistura(c, 0x0C2860, 1, 2);
             if (y == rio1 || y == rio2) c = cor_mistura(c, 0xFFFFFF, 1, 4);
-            fundo[y * larg + x] = c;
+            papel[y * larg + x] = c;
         }
     }
 }
 
-static void desenhar_fundo(void)
+static void desenhar_icone(superficie_t *s, int i, int x, int y)
 {
-    if (fundo_escolhido != 0 || !desenhar_fundo_imagem()) desenhar_fundo_padrao(fundo_escolhido == 2);
+    int l = celula_l();
+    sup_icone_escala(s, x + (l - lado_icone) / 2, y, icones[i].desenho, ICONE_LADO, lado_icone);
+    const char *nome = i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
+    texto_com_sombra(s, x + (l - texto_largura(nome)) / 2, y + lado_icone + 4, nome, 0xFFFFFF);
+}
+
+void area_icone_fantasma(superficie_t *s, int i, int x, int y) { desenhar_icone(s, i, x, y); }
+
+/* Junta o papel de parede, o mascote e os ícones. Mover um ícone só refaz
+ * isto: a imagem não é decodificada de novo. */
+static void compor_fundo(void)
+{
+    memcpy(fundo, papel, (uint32_t)(larg * alt) * 4);
     superficie_t s;
     sup_iniciar(&s, fundo, larg, alt);
     /* O mascote, grande, no canto de baixo à direita. */
@@ -169,15 +191,72 @@ static void desenhar_fundo(void)
     int mx = larg - 32 * esc - 30, my = alt - 32 * esc - 40;
     sup_desenho(&s, mx, my, &arte_sagui, esc);
     texto_com_sombra(&s, mx + 16 * esc - texto_largura("SaguiOS") / 2, my + 32 * esc + 6, "SaguiOS", 0xFFFFFF);
-    /* Ícones na coluna da esquerda, com o nome embaixo. */
+    for (int i = 0; i < QTD_ICONES; i++)
+        if (icone_visivel(i)) desenhar_icone(&s, i, ic_x[i], ic_y[i]);
+}
+
+static void desenhar_fundo(void)
+{
+    if (fundo_escolhido != 0 || !desenhar_fundo_imagem()) desenhar_fundo_padrao(fundo_escolhido == 2);
+    compor_fundo();
+}
+
+/* Põe os ícones em colunas, a partir do canto. */
+void area_icones_organizar(void)
+{
+    int linhas = (alt - ICONE_Y0) / celula_a();
+    if (linhas < 1) linhas = 1;
     for (int i = 0; i < QTD_ICONES; i++) {
-        if (!icone_visivel(i)) continue;
-        int x, y, l, a;
-        area_icone_retangulo(i, &x, &y, &l, &a);
-        sup_icone(&s, x + (l - ICONE_LADO) / 2, y, icones[i].desenho, ICONE_LADO);
-        const char *nome = i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
-        texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 68, nome, 0xFFFFFF);
+        ic_x[i] = ICONE_X + i / linhas * celula_l();
+        ic_y[i] = ICONE_Y0 + i % linhas * celula_a();
     }
+    if (fundo) compor_fundo();
+}
+
+static bool celula_ocupada(int i, int x, int y)
+{
+    for (int k = 0; k < QTD_ICONES; k++)
+        if (k != i && icone_visivel(k) && ic_x[k] == x && ic_y[k] == y) return true;
+    return false;
+}
+
+void area_icone_mover(int i, int x, int y)
+{
+    int l = celula_l(), a = celula_a();
+    if (grade_ligada) {
+        int col = (x - ICONE_X + l / 2) / l, lin = (y - ICONE_Y0 + a / 2) / a;
+        int cols = (larg - ICONE_X) / l, lins = (alt - ICONE_Y0) / a;
+        if (col < 0) col = 0;
+        if (lin < 0) lin = 0;
+        if (col >= cols) col = cols - 1;
+        if (lin >= lins) lin = lins - 1;
+        /* Célula ocupada: desce até achar uma livre, e passa à coluna seguinte. */
+        for (int n = 0; n < cols * lins && celula_ocupada(i, ICONE_X + col * l, ICONE_Y0 + lin * a); n++)
+            if (++lin >= lins) { lin = 0; col = (col + 1) % cols; }
+        x = ICONE_X + col * l;
+        y = ICONE_Y0 + lin * a;
+    }
+    if (x < 0) x = 0;
+    if (y < BARRA_SUPERIOR) y = BARRA_SUPERIOR;
+    if (x > larg - l) x = larg - l;
+    if (y > alt - a) y = alt - a;
+    ic_x[i] = x; ic_y[i] = y;
+    compor_fundo();
+    klog("[GUI] icone %d movido para (%d,%d)\n", i, x, y);
+}
+
+void area_grade(bool ligada)
+{
+    grade_ligada = ligada;
+    if (ligada) area_icones_organizar();
+    klog("[GUI] icones: grade %s\n", ligada ? "ligada" : "desligada");
+}
+
+void area_icones_tamanho(int lado)
+{
+    lado_icone = lado;
+    area_icones_organizar();
+    klog("[GUI] icones: tamanho %d\n", lado);
 }
 
 void area_fundo_escolher(int i)
@@ -193,7 +272,12 @@ bool area_iniciar(void)
     larg = (int)video_largura();
     alt = (int)video_altura();
     fundo = kmalloc((uint32_t)(larg * alt) * 4);
-    if (!fundo) return false;
+    papel = kmalloc((uint32_t)(larg * alt) * 4);
+    if (!fundo || !papel) return false;
+    area_icones_organizar();
+    /* O Cipó começa no canto oposto, longe das janelas. */
+    ic_x[ICONE_CIPO] = larg - celula_l();
+    ic_y[ICONE_CIPO] = ICONE_Y0;
     desenhar_fundo();
     return true;
 }
@@ -283,7 +367,7 @@ bool area_pendrive(bool presente, const char *rotulo)
     if (presente == pendrive_visivel && txt_compara(nome, nome_pendrive) == 0) return false;
     pendrive_visivel = presente;
     txt_copia_n(nome_pendrive, nome, sizeof nome_pendrive);
-    desenhar_fundo();
+    compor_fundo();
     return true;
 }
 

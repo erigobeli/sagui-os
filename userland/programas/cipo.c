@@ -20,8 +20,10 @@
 #include "sagui.h"
 #include "gui.h"
 
-#define LARG      860
-#define ALT       600
+#define LARG_INICIO 860
+#define ALT_INICIO  600
+#define LARG      (j->larg)
+#define ALT       (j->alt)
 #define TOPO      40
 #define RODAPE    22
 #define AREA_A    (ALT - TOPO - RODAPE)
@@ -69,7 +71,7 @@ static jan_t  *j;
 static caixa_t endereco;
 static botao_t bt_voltar = { 8, 7, 70, 26, "Voltar", false };
 static botao_t bt_inicio = { 84, 7, 70, 26, "Início", false };
-static botao_t bt_ir = { LARG - 50, 7, 42, 26, "Ir", false };
+static botao_t bt_ir = { LARG_INICIO - 50, 7, 42, 26, "Ir", false };
 static char rodape_texto[128];
 
 /* ------------------------------------------------------------ memória */
@@ -897,7 +899,7 @@ static int alvo_em(int x, int y)
 
 int principal(int argc, char **argv)
 {
-    j = jan_abrir("Cipó", LARG, ALT);
+    j = jan_abrir_redimensionavel("Cipó", LARG_INICIO, ALT_INICIO);
     if (!j) return 1;
     endereco = (caixa_t){ .x = 162, .y = 8, .l = LARG - 162 - 58 };
     copia_texto(rodape_texto, "?", sizeof rodape_texto);
@@ -910,6 +912,17 @@ int principal(int argc, char **argv)
     for (;;) {
         if (proximo_evento(j->id, &e, true) != 1) continue;
         if (e.tipo == EV_FECHAR) break;
+        if (e.tipo == EV_TAMANHO) {
+            /* A diagramação depende da largura: abre a página de novo. */
+            jan_tamanho(j, &e);
+            bt_ir.x = LARG - 50;
+            endereco.l = LARG - 162 - 58;
+            char url[URL_MAX];
+            copia_texto(url, url_atual, sizeof url);
+            carregar(url);
+            jan_mostrar(j);
+            continue;
+        }
         if (caixa_tratar(j, &endereco, &e) && endereco.texto[0]) { navegar(endereco.texto); continue; }
         if (botao_tratar(j, &bt_ir, &e) && endereco.texto[0]) { navegar(endereco.texto); continue; }
         if (botao_tratar(j, &bt_inicio, &e)) { navegar("sobre:inicio"); continue; }

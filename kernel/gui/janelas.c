@@ -62,6 +62,8 @@ static int suj_x0, suj_y0, suj_x1, suj_y1;   /* retângulo a recompor */
 /* Estado do mouse no gerenciador. */
 static int arrastando = -1, arr_dx, arr_dy;   /* janela sendo arrastada e onde foi pega */
 static int captura = -1;                       /* janela que recebeu o último clique */
+static int icone_pego = -1, pego_dx, pego_dy, pego_x, pego_y, fantasma_x, fantasma_y;
+static bool icone_arrastando;
 static uint32_t ult_clique_tique;
 static int ult_clique_x, ult_clique_y, ult_clique_alvo = -999;
 
@@ -158,6 +160,8 @@ static void desenhar_sombra(int x, int y, int l, int a, bool foco)
     sup_escurecer(&tela, x + l - 6, y - 3, 6, 6, 70);
 }
 
+void gui_sombra(int x, int y, int l, int a) { desenhar_sombra(x, y, l, a, true); }
+
 /* Disco de 16 pixels: metade da largura de cada linha. */
 static void desenhar_disco(int bx, int by, uint32_t topo, uint32_t base)
 {
@@ -217,7 +221,7 @@ static void desenhar_moldura(janela_t *j, bool foco)
 #define MENU_SEP_A  9
 #define MENU_L_MIN  170
 
-enum { A_NADA, A_ABRIR_ICONE, A_REMOVER_PEN, A_FUNDOS, A_FUNDO, A_MOSTRAR_AREA,
+enum { A_NADA, A_ABRIR_ICONE, A_REMOVER_PEN, A_FUNDOS, A_FUNDO, A_ICONES, A_TAMANHO, A_GRADE, A_ORGANIZAR, A_MOSTRAR_AREA,
        A_RESTAURAR, A_MINIMIZAR, A_MAXIMIZAR, A_FECHAR, A_PROGRAMA };
 
 typedef struct { char texto[30]; int acao, arg; bool separador; } item_menu_t;
@@ -310,7 +314,7 @@ static void desenhar_menu(void)
             sup_retangulo(&tela, x + 4, yy, 3, MENU_ITEM_A, 0xE8BE30);
         }
         sup_texto(&tela, x + 16, yy + 4, it->texto, sob ? 0xFFFFFF : 0x1E2328);
-        if (it->acao == A_FUNDOS) sup_texto(&tela, x + l - 18, yy + 4, ">", sob ? 0xFFFFFF : 0x6A737C);
+        if (it->acao == A_FUNDOS || it->acao == A_ICONES) sup_texto(&tela, x + l - 18, yy + 4, ">", sob ? 0xFFFFFF : 0x6A737C);
         yy += MENU_ITEM_A;
         if (it->separador) {
             sup_retangulo(&tela, x + 10, yy + 4, l - 20, 1, 0xC4CBD2);
@@ -380,6 +384,8 @@ void gui_mostrar(void)
         area_barra(&tela, qtd == 0);
         desenhar_tarefas();
     }
+    if (icone_arrastando) area_icone_fantasma(&tela, icone_pego, fantasma_x, fantasma_y);
+    iniciar_desenhar(&tela);
     desenhar_menu();
     video_marcar(tela.cx0, tela.cy0, tela.cx1 - tela.cx0, tela.cy1 - tela.cy0);
     video_mostrar();
@@ -513,6 +519,7 @@ static void menu_da_area(int x, int y)
     menu_item("Editor de texto", A_ABRIR_ICONE, 2);
     menu_separador();
     menu_item("Papel de parede", A_FUNDOS, 0);
+    menu_item("Ícones", A_ICONES, 0);
     menu_item("Mostrar área de trabalho", A_MOSTRAR_AREA, 0);
     menu_separador();
     menu_item("Sobre o SaguiOS", A_ABRIR_ICONE, 6);
@@ -522,7 +529,7 @@ static void menu_da_area(int x, int y)
 static void menu_do_icone(int ic, int x, int y)
 {
     menu_novo(0);
-    if (ic == area_qtd_icones() - 1) {
+    if (area_icone_e_pendrive(ic)) {
         menu_item("Abrir", A_ABRIR_ICONE, ic);
         menu_item("Remover com segurança", A_REMOVER_PEN, ic);
     } else {
@@ -549,6 +556,21 @@ static void menu_executar(item_menu_t *it)
         }
         menu_abrir(x + 24, y + 24);
         break;
+    case A_ICONES: {
+        int t = area_icones_lado();
+        menu_novo(0);
+        menu_item(t == 48 ? "* Pequenos" : "  Pequenos", A_TAMANHO, 48);
+        menu_item(t == 64 ? "* Médios" : "  Médios", A_TAMANHO, 64);
+        menu_item(t == 96 ? "* Grandes" : "  Grandes", A_TAMANHO, 96);
+        menu_separador();
+        menu_item(area_grade_ligada() ? "* Alinhar à grade" : "  Alinhar à grade", A_GRADE, 0);
+        menu_item("  Organizar agora", A_ORGANIZAR, 0);
+        menu_abrir(x + 24, y + 24);
+        break;
+    }
+    case A_TAMANHO: area_icones_tamanho(arg); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_GRADE: area_grade(!area_grade_ligada()); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_ORGANIZAR: area_icones_organizar(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_FUNDO:
         area_fundo_escolher(arg);
         gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
@@ -578,9 +600,39 @@ static void menu_tratar_mouse(evento_mouse_t *m)
     else if (i < 0) menu_fechar();
 }
 
+/* Ícone pego com o botão esquerdo. Só vira arrasto depois de andar um pouco,
+ * para o duplo clique continuar funcionando. */
+
+static void sujar_fantasma(void)
+{
+    gui_redesenhar(fantasma_x - 4, fantasma_y - 4, 140, 130);
+}
+
+static void tratar_icone_pego(evento_mouse_t *m)
+{
+    if (!(m->botoes & BOTAO_ESQUERDO)) {
+        if (icone_arrastando) {
+            area_icone_mover(icone_pego, fantasma_x, fantasma_y);
+            gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+        }
+        icone_pego = -1;
+        icone_arrastando = false;
+        return;
+    }
+    int dx = m->x - pego_x, dy = m->y - pego_y;
+    if (!icone_arrastando && dx * dx + dy * dy < 25) return;
+    if (icone_arrastando) sujar_fantasma();
+    icone_arrastando = true;
+    fantasma_x = m->x - pego_dx;
+    fantasma_y = m->y - pego_dy;
+    sujar_fantasma();
+}
+
 static void tratar_mouse(evento_mouse_t *m)
 {
     if (menu.aberto) { menu_tratar_mouse(m); return; }
+    if (iniciar_aberto()) { iniciar_mouse(m); return; }
+    if (icone_pego >= 0) { tratar_icone_pego(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
 
@@ -605,6 +657,7 @@ static void tratar_mouse(evento_mouse_t *m)
     }
 
     if (apertou && m->y < BARRA_SUPERIOR) {
+        if (m->x < 108 && (m->mudaram & BOTAO_ESQUERDO)) { iniciar_abrir(); captura = -1; return; }
         if (area_desligar_clicado(m->x, m->y) && (m->mudaram & BOTAO_ESQUERDO)) {
             char *argv[] = { "desligar", NULL };
             int pid = processo_executar("/bin/desligar", 1, argv, NULL);
@@ -630,6 +683,13 @@ static void tratar_mouse(evento_mouse_t *m)
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
+            if (ic >= 0 && (m->mudaram & BOTAO_ESQUERDO) && !duplo) {
+                int ix, iy, il, ia;
+                area_icone_retangulo(ic, &ix, &iy, &il, &ia);
+                icone_pego = ic;
+                pego_x = m->x; pego_y = m->y;
+                pego_dx = m->x - ix; pego_dy = m->y - iy;
+            }
             if (m->mudaram & BOTAO_DIREITO) {
                 if (ic >= 0) menu_do_icone(ic, m->x, m->y);
                 else menu_da_area(m->x, m->y);
@@ -710,6 +770,7 @@ static void tarefa_gerenciador(void *arg)
         int t;
         while ((t = teclado_tentar()) >= 0) {
             if (menu.aberto) { if (t == TECLA_ESC) menu_fechar(); continue; }
+            if (iniciar_aberto()) { iniciar_tecla(t); continue; }
             janela_t *j = focada();
             if (!j) continue;
             evento_t e = { .tipo = EV_TECLA, .tecla = (unsigned)t, .modificadores = teclado_modificadores() & 3 };
@@ -725,7 +786,7 @@ static void tarefa_gerenciador(void *arg)
         disco_t *pd = NULL;
         for (int k = 0; k < MAX_DISCOS && !pd; k++) { disco_t *d = disco_indice(k); if (d && d->presente && !d->de_boot) pd = d; }
         if (area_pendrive(pd != NULL, pd ? (pd->rotulo[0] ? pd->rotulo : "Pendrive") : NULL))
-            gui_redesenhar(0, BARRA_SUPERIOR, 140, (int)video_altura() - BARRA_SUPERIOR);
+            gui_redesenhar(0, BARRA_SUPERIOR, (int)video_largura(), (int)video_altura() - BARRA_SUPERIOR);
         if (aviso_ate && (int32_t)(relogio_tiques() - aviso_ate) >= 0) {
             aviso_ate = 0;
             int x, y;

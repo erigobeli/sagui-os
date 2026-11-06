@@ -28,7 +28,7 @@ def main():
         cor_antes = cor_do_pixel(antes, 600, 700)
 
         m.clique(600, 620, botao=2)
-        m.esperar_serial("[GUI] menu aberto com 6 itens", 10)
+        m.esperar_serial("[GUI] menu aberto com 7 itens", 10)
         m.captura("H35-1-menu-area")
         x, y = posicao_menu(m)
         m.clique(x + 20, y + 4 + 3 * 24 + 9 + 12)
