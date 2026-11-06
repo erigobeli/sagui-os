@@ -28,8 +28,9 @@
 #define RODAPE    22
 #define AREA_A    (ALT - TOPO - RODAPE)
 #define ROLAGEM   14
-#define MARGEM    12
-#define LARG_TEXTO (LARG - ROLAGEM - 2 * MARGEM)
+#define COLUNA_MAX 840   /* em tela cheia, o texto fica numa coluna central */
+#define LARG_TEXTO (LARG - ROLAGEM - 24 > COLUNA_MAX ? COLUNA_MAX : LARG - ROLAGEM - 24)
+#define MARGEM    ((LARG - ROLAGEM - LARG_TEXTO) / 2)
 #define LINHA_A   18
 #define VISIVEIS  ((AREA_A - 8) / LINHA_A)
 #define URL_MAX   600
@@ -44,6 +45,7 @@
 #define E_CAMPO   32
 #define E_LINHA   64   /* linha horizontal (<hr>) */
 #define E_IMAGEM  128  /* "n" é o índice em imagens[] */
+#define E_GRANDE  256  /* letra em dobro: <h1> e <h2> */
 #define MAX_IMAGENS 12
 #define IMAGEM_ALT_MAX 420
 #define IMAGEM_BYTES_MAX (6 * 1024 * 1024)
@@ -51,7 +53,7 @@
 typedef struct {
     int     linha;
     int16_t x, n;
-    uint8_t estilo;
+    uint16_t estilo;
     int16_t alvo;        /* link ou campo de formulário; -1 = nenhum */
     int     texto;       /* deslocamento em "textos" */
 } seg_t;
@@ -284,9 +286,19 @@ static int x_atual, linha_atual, recuo, estilo, alvo_atual = -1;
 static bool linha_vazia = true, espaco_pendente;
 static int brancas;          /* linhas em branco seguidas (evita buracos) */
 
+/* Centraliza a linha que acabou: os segmentos dela andam juntos. */
+static int centro, ini_linha;
+static bool linha_grande;
+
 static void quebrar(void)
 {
-    if (!linha_vazia) { linha_atual++; brancas = 0; }
+    if (!linha_vazia && centro) {
+        int d = (LARG_TEXTO - x_atual) / 2;
+        for (int i = ini_linha; d > 0 && i < qtd_segs; i++) segs[i].x = (int16_t)(segs[i].x + d);
+    }
+    ini_linha = qtd_segs;
+    if (!linha_vazia) { linha_atual += linha_grande ? 2 : 1; brancas = 0; }
+    linha_grande = false;
     x_atual = recuo;
     linha_vazia = true;
     espaco_pendente = false;
@@ -305,7 +317,8 @@ static void segmento(const char *t, int n, int est, int alvo)
     s->linha = linha_atual;
     s->x = (int16_t)x_atual;
     s->n = (int16_t)n;
-    s->estilo = (uint8_t)est;
+    s->estilo = (uint16_t)est;
+    if (est & E_GRANDE) linha_grande = true;
     s->alvo = (int16_t)alvo;
     s->texto = guardar_texto(t, n);
     linha_vazia = false;
@@ -317,14 +330,15 @@ static void segmento(const char *t, int n, int est, int alvo)
 static void palavra(const char *t, int n)
 {
     while (n > 0) {
-        int esp = espaco_pendente && !linha_vazia ? LETRA_L : 0;
-        int cabe = (LARG_TEXTO - x_atual - esp) / LETRA_L;
+        int passo = estilo & E_GRANDE ? 2 * LETRA_L : LETRA_L;
+        int esp = espaco_pendente && !linha_vazia ? passo : 0;
+        int cabe = (LARG_TEXTO - x_atual - esp) / passo;
         if (n > cabe && !linha_vazia) { quebrar(); continue; }
         if (cabe < 1) cabe = 1;
         int k = n < cabe ? n : cabe;
         x_atual += esp;
         segmento(t, k, estilo, alvo_atual);
-        x_atual += k * LETRA_L;
+        x_atual += k * passo;
         espaco_pendente = false;
         t += k;
         n -= k;
@@ -457,6 +471,7 @@ static bool colocar_imagem(const char *url)
     libera(d);
     if (!ok) return false;
     registrar("cipo: imagem %dx%d\n", l, a);
+    if (a <= 24 && l <= 32) { libera(px); return true; }   /* ícones de enfeite ocupam uma linha à toa */
     int cabe = LARG_TEXTO - recuo, dl = l, da = a;
     if (dl > cabe) { da = da * cabe / dl; dl = cabe; }
     if (da > IMAGEM_ALT_MAX) { dl = dl * IMAGEM_ALT_MAX / da; da = IMAGEM_ALT_MAX; }
@@ -471,7 +486,9 @@ static bool colocar_imagem(const char *url)
     imagem_t *im = &imagens[qtd_imagens];
     im->px = r; im->l = dl; im->a = da;
     quebrar();
+    if (centro) x_atual = recuo + (LARG_TEXTO - recuo - dl) / 2;
     segmento("", qtd_imagens, E_IMAGEM, alvo_atual);
+    ini_linha = qtd_segs;
     qtd_imagens++;
     linha_atual += (da + LINHA_A - 1) / LINHA_A;
     if (linha_atual > linhas) linhas = linha_atual;
@@ -479,6 +496,68 @@ static bool colocar_imagem(const char *url)
     linha_vazia = true;
     return true;
 }
+
+/* O que só atrapalha numa página sem CSS: menus, rodapés e o que o site esconde. */
+static bool escondido(const char *nome, const char *a, int n)
+{
+    static const char *const tags[] = { "nav", "aside", "footer", "noscript", "dialog", "select", "iframe" };
+    static const char *const classes[] = { "noprint", "mw-editsection", "navbox", "sr-only", "visually-hidden",
+                                           "vector-menu", "vector-toc", "vector-dropdown", "vector-page-toolbar", "vector-header",
+                                           "vector-sticky", "vector-column-start", "vector-pinn", "skip-", "mw-jump", "cookie" };
+    char v[200];
+    for (unsigned i = 0; i < sizeof tags / sizeof tags[0]; i++)
+        if (compara_texto(nome, tags[i]) == 0) return true;
+    if (compara_texto(nome, "img") == 0 || compara_texto(nome, "input") == 0 || compara_texto(nome, "br") == 0 ||
+        compara_texto(nome, "hr") == 0 || compara_texto(nome, "meta") == 0 || compara_texto(nome, "link") == 0) return false;
+    if (atributo(a, n, "style", v, sizeof v)) {
+        for (char *p = v; *p; p++) {
+            if (comeca_com(p, "display:none") || comeca_com(p, "display: none")) return true;
+        }
+    }
+    if (atributo(a, n, "class", v, sizeof v))
+        for (unsigned i = 0; i < sizeof classes / sizeof classes[0]; i++)
+            for (char *p = v; *p; p++)
+                if (comeca_com(p, classes[i])) return true;
+    /* "hidden" só como classe inteira: "overflow-hidden" não esconde nada. */
+    if (atributo(a, n, "class", v, sizeof v))
+        for (char *p = v; *p; p++)
+            if (comeca_com(p, "hidden") && (p == v || p[-1] == ' ') && (!p[6] || p[6] == ' ')) return true;
+    return false;
+}
+
+/* Com <main>, só ele interessa: é onde o site diz que está o conteúdo. */
+static const char *achar_tag(const char *h, int n, const char *tag)
+{
+    int t = (int)tam_texto(tag);
+    for (int i = 0; i + t < n; i++)
+        if (h[i] == '<' && igual_sem_caixa(h + i, tag, t) && (h[i + t] == ' ' || h[i + t] == '>')) return h + i;
+    return NULL;
+}
+
+static void achar_titulo(const char *h, int n)
+{
+    const char *t = achar_tag(h, n, "<title");
+    if (!t) return;
+    while (t < h + n && *t != '>') t++;
+    t++;
+    int k = 0;
+    while (t + k < h + n && t[k] != '<' && k < (int)sizeof titulo - 1) { titulo[k] = t[k]; k++; }
+    titulo[k] = 0;
+}
+
+static void ler_html(const char *h, int n);
+
+static void ler_pagina(const char *h, int n)
+{
+    const char *m = achar_tag(h, n, "<main");
+    const char *f = m ? achar_tag(m, n - (int)(m - h), "</main") : NULL;
+    if (!m) { ler_html(h, n); return; }
+    achar_titulo(h, n);
+    ler_html(m, (int)((f ? f : h + n) - m));
+}
+
+static char oculto[16];
+static int oculto_prof;
 
 static void ler_html(const char *h, int n)
 {
@@ -517,6 +596,11 @@ static void ler_html(const char *h, int n)
             const char *attrs = h + ini_attr;
             int na = k - ini_attr;
             i = k + 1;
+            if (pular_ate == 2) {                /* elemento escondido: conta os iguais aninhados */
+                if (compara_texto(nome, oculto) == 0 && !(na > 0 && attrs[na - 1] == '/')) oculto_prof += fecha ? -1 : 1;
+                if (!oculto_prof) pular_ate = -1;
+                continue;
+            }
             if (pular_ate >= 0) {
                 if (fecha && pular_ate == 1 && (compara_texto(nome, "script") == 0 || compara_texto(nome, "style") == 0 ||
                                                 compara_texto(nome, "svg") == 0 || compara_texto(nome, "template") == 0))
@@ -526,6 +610,13 @@ static void ler_html(const char *h, int n)
             if (!fecha && (compara_texto(nome, "script") == 0 || compara_texto(nome, "style") == 0 ||
                            compara_texto(nome, "svg") == 0 || compara_texto(nome, "template") == 0)) {
                 if (!(na > 0 && attrs[na - 1] == '/')) pular_ate = 1;
+                continue;
+            }
+            if (!fecha && escondido(nome, attrs, na)) {
+                SOLTAR();
+                copia_texto(oculto, nome, sizeof oculto);
+                oculto_prof = 1;
+                pular_ate = 2;
                 continue;
             }
             /* Uma tag sempre separa palavras (menos as de estilo do texto). */
@@ -538,6 +629,13 @@ static void ler_html(const char *h, int n)
             else SOLTAR();
             char v[URL_MAX];
             if (compara_texto(nome, "title") == 0) { em_titulo = !fecha; continue; }
+            if (compara_texto(nome, "center") == 0) {
+                quebrar();
+                centro += fecha ? -1 : 1;
+                if (centro < 0) centro = 0;
+                continue;
+            }
+            if (compara_texto(nome, "a") == 0 && fecha && i < n && h[i] == '<' && i + 2 < n && h[i + 1] == 'a') espaco_pendente = true;   /* links colados no HTML */
             if (compara_texto(nome, "br") == 0) {
                 if (linha_vazia) linha_atual++;
                 quebrar();
@@ -560,7 +658,8 @@ static void ler_html(const char *h, int n)
             if (compara_texto(nome, "hr") == 0) { quebrar(); segmento("", 0, E_LINHA, -1); quebrar(); continue; }
             if (nome[0] == 'h' && nome[1] >= '1' && nome[1] <= '6' && !nome[2]) {
                 paragrafo();
-                if (fecha) estilo &= ~E_TITULO; else estilo |= E_TITULO;
+                if (fecha) estilo &= ~(E_TITULO | E_GRANDE);
+                else estilo |= E_TITULO | (nome[1] <= '2' ? E_GRANDE : 0);
                 continue;
             }
             if (compara_texto(nome, "ul") == 0 || compara_texto(nome, "ol") == 0) {
@@ -722,6 +821,8 @@ static void limpar_pagina(void)
     for (int i = 0; i < qtd_imagens; i++) libera(imagens[i].px);
     qtd_imagens = 0;
     linhas = topo = 0;
+    centro = ini_linha = 0;
+    linha_grande = false;
     x_atual = linha_atual = recuo = estilo = 0;
     alvo_atual = form_atual = -1;
     linha_vazia = true;
@@ -765,6 +866,22 @@ static const char *texto_pronto(void)
     return pagina_segura ? "Cifrado, mas a identidade do site NÃO foi verificada. Não digite senhas." : "Pronto";
 }
 
+extern const unsigned char fonte_sagui[256][16];
+
+/* Letra em dobro, para os títulos grandes. */
+static void texto_grande(int x, int y, const char *t, int n, uint32_t cor)
+{
+    for (int i = 0; i < n; i++, x += 2 * LETRA_L) {
+        const unsigned char *g = fonte_sagui[(uint8_t)t[i]];
+        for (int l = 0; l < 16; l++)
+            for (int c = 0; c < 8; c++)
+                if (g[l] & (0x80 >> c)) {
+                    int yy = y + 2 * l;
+                    if (yy >= TOPO && yy + 2 <= ALT - RODAPE) g_retangulo(j, x + 2 * c, yy, 2, 2, cor);
+                }
+    }
+}
+
 static void desenhar_pagina(void)
 {
     g_retangulo(j, 0, TOPO, LARG - ROLAGEM, AREA_A, COR_BRANCO);
@@ -788,6 +905,7 @@ static void desenhar_pagina(void)
             g_retangulo(j, x - 2, y, s->n * LETRA_L + 4, LETRA_A + 1, 0xEEF2F6);
             g_moldura(j, x - 3, y - 1, s->n * LETRA_L + 6, LETRA_A + 3, COR_BORDA);
         }
+        if (s->estilo & E_GRANDE) { texto_grande(x, y, t, s->n, cor); continue; }
         g_texto_n(j, x, y, t, s->n, cor);
         if (s->estilo & (E_NEGRITO | E_TITULO)) g_texto_n(j, x + 1, y, t, s->n, cor);   /* negrito: duas vezes */
         if (s->estilo & E_LINK) g_retangulo(j, x, y + LETRA_A, s->n * LETRA_L, 1, cor);
@@ -964,7 +1082,7 @@ static void carregar(const char *pedido)
         } else if (corpo) {
             tam = converter(corpo, tam);
             if (html) {
-                ler_html(corpo, tam);
+                ler_pagina(corpo, tam);
             } else {
                 estilo = E_PRE;
                 pre_n = 1;
