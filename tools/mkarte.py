@@ -207,8 +207,16 @@ def cipo(t):
         t.disco(x + 3, y + 3, 4.5, 0xFFDF4A, ry=3)
 
 
+def lixeira(t):
+    t.ret(24, 5, 40, 12, 3, 0x8A949E)
+    t.ret(10, 10, 54, 17, 3, vertical(0xC4CCD4, 0x98A2AC, 10, 17))
+    t.poligono([(14, 18), (50, 18), (46, 60), (18, 60)], vertical(0xB7C0C9, 0x77828E, 18, 60))
+    for x in (24, 32, 40):
+        t.traco([(x, 24), (x + (32 - x) * 0.12, 54)], 3, 0x5A6470)
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
-          ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive), ("cipo", cipo)]
+          ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive), ("cipo", cipo), ("lixeira", lixeira)]
 
 
 def main():

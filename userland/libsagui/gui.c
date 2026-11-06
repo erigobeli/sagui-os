@@ -237,6 +237,25 @@ void caixa_desenhar(jan_t *j, caixa_t *c)
     jan_mostrar_area(j, c->x, c->y, c->l, a);
 }
 
+#define ARQ_TEXTO "/tmp/.texto"
+
+void transferir_texto(const char *t, int n)
+{
+    int fd = abrir(ARQ_TEXTO, ABRIR_ESCREVER | ABRIR_CRIAR | ABRIR_TRUNCAR);
+    if (fd < 0) return;
+    escrever_tudo(fd, t, (unsigned)n);
+    fechar(fd);
+}
+
+int colar_texto(char *d, int max)
+{
+    int fd = abrir(ARQ_TEXTO, ABRIR_LER), n = 0, r;
+    if (fd < 0) return 0;
+    while (n < max && (r = ler(fd, d + n, (unsigned)(max - n))) > 0) n += r;
+    fechar(fd);
+    return n;
+}
+
 bool caixa_tratar(jan_t *j, caixa_t *c, const evento_t *e)
 {
     if (e->tipo == EV_CLIQUE) {
@@ -254,6 +273,16 @@ bool caixa_tratar(jan_t *j, caixa_t *c, const evento_t *e)
     int n = (int)tam_texto(c->texto);
     unsigned t = e->tecla;
     if (t == '\n') return true;
+    if (t == 3) { transferir_texto(c->texto, n); return false; }        /* Ctrl+C: a caixa inteira */
+    if (t == 22) {                                                      /* Ctrl+V */
+        char b[128];
+        int k = colar_texto(b, (int)sizeof c->texto - 1 - n);
+        memmove(c->texto + c->cursor + k, c->texto + c->cursor, (size_t)(n - c->cursor + 1));
+        memcpy(c->texto + c->cursor, b, (size_t)k);
+        c->cursor += k;
+        caixa_desenhar(j, c);
+        return false;
+    }
     if (t == '\b') {
         if (c->cursor > 0) { memmove(c->texto + c->cursor - 1, c->texto + c->cursor, (size_t)(n - c->cursor + 1)); c->cursor--; }
     } else if (t == TECLA_DELETE) {
@@ -361,6 +390,15 @@ void area_desenhar(jan_t *j, area_t *a)
     int pos = inicio_da_linha(a, a->topo);
     for (int k = 0; k < vis && pos <= a->tam; k++) {
         int n = tamanho_da_linha(a, pos);
+        if (a->ancora) {                     /* faixa da seleção nesta linha */
+            int s0 = a->ancora - 1 < a->cursor ? a->ancora - 1 : a->cursor;
+            int s1 = a->ancora - 1 < a->cursor ? a->cursor : a->ancora - 1;
+            int c0 = s0 > pos ? s0 - pos : 0, c1 = s1 < pos + n ? s1 - pos : n;
+            if (c0 > cabem) c0 = cabem;
+            if (c1 > cabem) c1 = cabem;
+            if (s0 <= pos + n && s1 >= pos && c1 > c0)
+                g_retangulo(j, a->x + 5 + c0 * LETRA_L, a->y + 4 + k * LETRA_A, (c1 - c0) * LETRA_L, LETRA_A, 0xBFE8CD);
+        }
         g_texto_n(j, a->x + 5, a->y + 4 + k * LETRA_A, a->buf + pos, n < cabem ? n : cabem, COR_TEXTO);
         if (a->foco && !a->somente_leitura && a->topo + k == lin_cur && col_cur <= cabem)
             g_retangulo(j, a->x + 5 + col_cur * LETRA_L, a->y + 4 + k * LETRA_A, 2, LETRA_A, COR_TEXTO);
@@ -407,9 +445,47 @@ static void mover_vertical(area_t *a, int delta)
     a->cursor = ini + (col < n ? col : n);
 }
 
+static int area_posicao(area_t *a, int x, int y)
+{
+    int lin = a->topo + (y - a->y - 4) / LETRA_A, col = (x - a->x - 5 + LETRA_L / 2) / LETRA_L;
+    int total = total_linhas(a);
+    if (lin >= total) lin = total - 1;
+    if (lin < 0) lin = 0;
+    int ini = inicio_da_linha(a, lin), n = tamanho_da_linha(a, ini);
+    return ini + (col < 0 ? 0 : col > n ? n : col);
+}
+
+/* Apaga o trecho selecionado. Devolve true se havia um. */
+static bool apagar_selecao(area_t *a)
+{
+    if (!a->ancora) return false;
+    int s0 = a->ancora - 1 < a->cursor ? a->ancora - 1 : a->cursor;
+    int s1 = a->ancora - 1 < a->cursor ? a->cursor : a->ancora - 1;
+    for (int k = s0; k < s1; k++) remover(a, s0);
+    a->cursor = s0;
+    a->ancora = 0;
+    return s1 > s0;
+}
+
+static void copiar_selecao(area_t *a)
+{
+    if (!a->ancora) return;
+    int s0 = a->ancora - 1 < a->cursor ? a->ancora - 1 : a->cursor;
+    int s1 = a->ancora - 1 < a->cursor ? a->cursor : a->ancora - 1;
+    transferir_texto(a->buf + s0, s1 - s0);
+}
+
 bool area_tratar(jan_t *j, area_t *a, const evento_t *e)
 {
     bool mudou = false;
+    if (e->tipo == EV_MOVER && (e->botoes & 1) && a->foco && dentro(e->x, e->y, a->x, a->y, a->l - BARRA_ROLAGEM, a->a)) {
+        int p = area_posicao(a, e->x, e->y);
+        if (!a->ancora) a->ancora = a->cursor + 1;
+        a->cursor = p;
+        if (a->ancora - 1 == p) a->ancora = 0;
+        area_desenhar(j, a);
+        return false;
+    }
     if (e->tipo == EV_CLIQUE) {
         bool estava = a->foco;
         a->foco = dentro(e->x, e->y, a->x, a->y, a->l, a->a);
@@ -421,12 +497,8 @@ bool area_tratar(jan_t *j, area_t *a, const evento_t *e)
                 if (a->topo > total - vis) a->topo = total - vis;
                 if (a->topo < 0) a->topo = 0;
             } else {
-                int lin = a->topo + (e->y - a->y - 4) / LETRA_A, col = (e->x - a->x - 5 + LETRA_L / 2) / LETRA_L;
-                int total = total_linhas(a);
-                if (lin >= total) lin = total - 1;
-                if (lin < 0) lin = 0;
-                int ini = inicio_da_linha(a, lin), n = tamanho_da_linha(a, ini);
-                a->cursor = ini + (col < 0 ? 0 : col > n ? n : col);
+                a->cursor = area_posicao(a, e->x, e->y);
+                a->ancora = 0;
             }
         }
         if (a->foco || estava) area_desenhar(j, a);
@@ -435,6 +507,36 @@ bool area_tratar(jan_t *j, area_t *a, const evento_t *e)
     if (e->tipo != EV_TECLA || !a->foco) return false;
     unsigned t = e->tecla;
     int vis = area_linhas_visiveis(a);
+    bool anda = t == TECLA_ESQUERDA || t == TECLA_DIREITA || t == TECLA_CIMA || t == TECLA_BAIXO ||
+                t == TECLA_PGUP || t == TECLA_PGDN || t == TECLA_HOME || t == TECLA_END;
+    if (anda) {
+        if (!(e->modificadores & 1)) a->ancora = 0;
+        else if (!a->ancora) a->ancora = a->cursor + 1;
+    }
+    if (t == 1) { a->ancora = 1; a->cursor = a->tam; area_desenhar(j, a); return false; }       /* Ctrl+A */
+    if (t == 3) { copiar_selecao(a); return false; }                                            /* Ctrl+C */
+    if (t == 24 && !a->somente_leitura) {                                                       /* Ctrl+X */
+        copiar_selecao(a);
+        mudou = apagar_selecao(a);
+        cursor_visivel(a);
+        area_desenhar(j, a);
+        return mudou;
+    }
+    if (t == 22 && !a->somente_leitura) {                                                       /* Ctrl+V */
+        static char b[16384];
+        apagar_selecao(a);
+        int n = colar_texto(b, (int)sizeof b);
+        if (n) inserir(a, b, n);
+        cursor_visivel(a);
+        area_desenhar(j, a);
+        return true;
+    }
+    if (!anda && !a->somente_leitura && a->ancora && (t == '\b' || t == TECLA_DELETE || t == '\n' || (t >= 0x20 && t < 0x100))) {
+        bool so_apaga = t == '\b' || t == TECLA_DELETE;
+        apagar_selecao(a);
+        if (so_apaga) { cursor_visivel(a); area_desenhar(j, a); return true; }
+        mudou = true;
+    }
     if (t == TECLA_ESQUERDA) { if (a->cursor > 0) a->cursor--; }
     else if (t == TECLA_DIREITA) { if (a->cursor < a->tam) a->cursor++; }
     else if (t == TECLA_CIMA) mover_vertical(a, -1);
@@ -466,7 +568,7 @@ void lista_desenhar(jan_t *j, lista_t *l)
     int vis = (l->a - 4) / LISTA_ALTURA_ITEM;
     for (int k = 0; k < vis && l->topo + k < l->qtd; k++) {
         int i = l->topo + k, y = l->y + 2 + k * LISTA_ALTURA_ITEM;
-        bool sel = i == l->sel;
+        bool sel = i == l->sel || (l->marcas && l->marcas[i]);
         if (sel) g_retangulo(j, l->x + 2, y, l->l - 4, LISTA_ALTURA_ITEM, COR_SELECAO);
         int tx = l->x + 6;
         if (l->icone) { l->icone(j, tx, y + 2, i); tx += 22; }
@@ -493,6 +595,18 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
     if (e->tipo == EV_CLIQUE && dentro(e->x, e->y, l->x, l->y, l->l, l->a)) {
         int i = l->topo + (e->y - l->y - 2) / LISTA_ALTURA_ITEM;
         if (i < 0 || i >= l->qtd) return LISTA_NADA;
+        if (l->marcas) {
+            if (e->modificadores & 2) {                     /* Ctrl: liga e desliga um item */
+                if (l->sel >= 0 && !l->marcas[l->sel] && l->sel != i) l->marcas[l->sel] = 1;
+                l->marcas[i] = !l->marcas[i];
+            } else if ((e->modificadores & 1) && l->sel >= 0) {   /* Shift: faixa */
+                int a0 = l->sel < i ? l->sel : i, a1 = l->sel < i ? i : l->sel;
+                memset(l->marcas, 0, (size_t)l->qtd);
+                for (int k = a0; k <= a1; k++) l->marcas[k] = 1;
+            } else {
+                memset(l->marcas, 0, (size_t)l->qtd);
+            }
+        }
         l->sel = i;
         lista_desenhar(j, l);
         return e->cliques >= 2 ? LISTA_ATIVOU : LISTA_SELECIONOU;

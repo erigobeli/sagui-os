@@ -56,6 +56,7 @@ typedef struct {
     uint16_t estilo;
     int16_t alvo;        /* link ou campo de formulário; -1 = nenhum */
     int     texto;       /* deslocamento em "textos" */
+    uint32_t cor;        /* 0 = cor do estilo; senão cor + 1 */
 } seg_t;
 
 enum { A_LINK = 1, A_CAMPO };
@@ -288,6 +289,7 @@ static int brancas;          /* linhas em branco seguidas (evita buracos) */
 
 /* Centraliza a linha que acabou: os segmentos dela andam juntos. */
 static int centro, ini_linha;
+static uint32_t cor_css;
 static bool linha_grande;
 
 static void quebrar(void)
@@ -318,6 +320,7 @@ static void segmento(const char *t, int n, int est, int alvo)
     s->x = (int16_t)x_atual;
     s->n = (int16_t)n;
     s->estilo = (uint16_t)est;
+    s->cor = cor_css;
     if (est & E_GRANDE) linha_grande = true;
     s->alvo = (int16_t)alvo;
     s->texto = guardar_texto(t, n);
@@ -498,6 +501,175 @@ static bool colocar_imagem(const char *url)
 }
 
 /* O que só atrapalha numa página sem CSS: menus, rodapés e o que o site esconde. */
+static const char *achar_tag(const char *h, int n, const char *tag);
+
+/* ---- CSS: só o que muda uma página de texto ----
+ * Regras de <style> com seletor simples (tag, .classe, #id, tag.classe) e o
+ * atributo style. Entendem display:none, text-align:center, color e
+ * font-weight:bold. Folhas externas, seletores compostos e @media ficam de fora. */
+#define MAX_REGRAS 192
+typedef struct { char sel[36]; uint8_t esconde, centra, negrito; uint32_t cor; } regra_t;
+static regra_t regras[MAX_REGRAS];
+static int qtd_regras;
+
+static int hex_val(char c) { return c >= '0' && c <= '9' ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'f' ? (c | 32) - 'a' + 10 : -1; }
+
+/* Claro demais some no fundo branco, porque o fundo do site não é usado. */
+static uint32_t ler_cor(const char *v, int n)
+{
+    uint32_t c = 0;
+    if (n < 4 || v[0] != '#') return 0;
+    if (n >= 7 && hex_val(v[6]) >= 0) {
+        for (int i = 1; i <= 6; i++) { int h = hex_val(v[i]); if (h < 0) return 0; c = c << 4 | (uint32_t)h; }
+    } else {
+        for (int i = 1; i <= 3; i++) { int h = hex_val(v[i]); if (h < 0) return 0; c = c << 8 | (uint32_t)(h * 17); }
+    }
+    int luz = (int)((c >> 16 & 255) * 3 + (c >> 8 & 255) * 6 + (c & 255)) / 10;
+    return luz > 190 ? 0 : c + 1;
+}
+
+static void ler_declaracoes(const char *d, int n, regra_t *r)
+{
+    for (int i = 0; i < n;) {
+        while (i < n && (eh_espaco(d[i]) || d[i] == ';')) i++;
+        int ini = i;
+        while (i < n && d[i] != ':' && d[i] != ';') i++;
+        if (i >= n || d[i] == ';') continue;
+        int fim_p = i++;
+        while (i < n && eh_espaco(d[i])) i++;
+        int v = i;
+        while (i < n && d[i] != ';') i++;
+        int nv = i - v, np = fim_p - ini;
+        const char *p = d + ini, *val = d + v;
+        if (np == 7 && igual_sem_caixa(p, "display", 7) && nv >= 4 && igual_sem_caixa(val, "none", 4)) r->esconde = 1;
+        else if (np == 10 && igual_sem_caixa(p, "text-align", 10) && nv >= 6 && igual_sem_caixa(val, "center", 6)) r->centra = 1;
+        else if (np == 5 && igual_sem_caixa(p, "color", 5)) { uint32_t c = ler_cor(val, nv); if (c) r->cor = c; }
+        else if (np == 11 && igual_sem_caixa(p, "font-weight", 11) && nv >= 3 && (val[0] == '7' || val[0] == '8' || val[0] == '9' || igual_sem_caixa(val, "bold", 4))) r->negrito = 1;
+    }
+}
+
+static void ler_css(const char *c, int n)
+{
+    int i = 0;
+    while (i < n) {
+        while (i < n && (eh_espaco(c[i]) || c[i] == '}')) i++;
+        if (i + 1 < n && c[i] == '/' && c[i + 1] == '*') {
+            i += 2;
+            while (i + 1 < n && !(c[i] == '*' && c[i + 1] == '/')) i++;
+            i += 2;
+            continue;
+        }
+        int ini = i;
+        while (i < n && c[i] != '{' && c[i] != ';') i++;
+        if (i >= n) break;
+        if (c[ini] == '@') {                      /* pula o bloco inteiro */
+            if (c[i] == ';') { i++; continue; }
+            int prof = 0;
+            do { if (c[i] == '{') prof++; else if (c[i] == '}') prof--; i++; } while (i < n && prof);
+            continue;
+        }
+        if (c[i] == ';') { i++; continue; }
+        int fim_s = i++, corpo = i;
+        while (i < n && c[i] != '}') i++;
+        regra_t r;
+        memset(&r, 0, sizeof r);
+        ler_declaracoes(c + corpo, i - corpo, &r);
+        if (!r.esconde && !r.centra && !r.negrito && !r.cor) continue;
+        for (int s = ini; s < fim_s;) {           /* "a, b, c" vira três regras */
+            while (s < fim_s && (eh_espaco(c[s]) || c[s] == ',')) s++;
+            int k = s;
+            bool simples = true;
+            while (k < fim_s && c[k] != ',') {
+                if (eh_espaco(c[k]) && k + 1 < fim_s && c[k + 1] != ',' && !eh_espaco(c[k + 1])) simples = false;
+                if (c[k] == ':' || c[k] == '[' || c[k] == '>' || c[k] == '+' || c[k] == '~' || c[k] == '*') simples = false;
+                k++;
+            }
+            int t = k - s;
+            while (t && eh_espaco(c[s + t - 1])) t--;
+            if (simples && t > 0 && t < 36 && qtd_regras < MAX_REGRAS) {
+                regra_t *d = &regras[qtd_regras++];
+                *d = r;
+                memcpy(d->sel, c + s, (size_t)t);
+                d->sel[t] = 0;
+            }
+            s = k;
+        }
+    }
+    registrar("cipo: css %d regras\n", qtd_regras);
+}
+
+static bool tem_palavra(const char *lista_v, const char *p, int t)
+{
+    for (const char *s = lista_v; *s;) {
+        while (*s == ' ') s++;
+        int k = 0;
+        while (s[k] && s[k] != ' ') k++;
+        if (k == t && memcmp(s, p, (size_t)t) == 0) return true;
+        s += k;
+    }
+    return false;
+}
+
+/* Junta o que vale para esta tag: regras de <style> e o atributo style. */
+static void css_da_tag(const char *nome, const char *a, int n, regra_t *r)
+{
+    char classe[200] = "", id[64] = "", st[300];
+    memset(r, 0, sizeof *r);
+    atributo(a, n, "class", classe, sizeof classe);
+    atributo(a, n, "id", id, sizeof id);
+    for (int i = 0; i < qtd_regras; i++) {
+        const char *s = regras[i].sel, *ponto = acha_char(s, '.');
+        bool bate;
+        if (s[0] == '#') bate = compara_texto(s + 1, id) == 0;
+        else if (ponto) {
+            int t = (int)(ponto - s);
+            bate = (t == 0 || ((int)tam_texto(nome) == t && memcmp(nome, s, (size_t)t) == 0)) &&
+                   tem_palavra(classe, ponto + 1, (int)tam_texto(ponto + 1));
+        } else bate = compara_texto(s, nome) == 0;
+        if (!bate) continue;
+        r->esconde |= regras[i].esconde;
+        r->centra |= regras[i].centra;
+        r->negrito |= regras[i].negrito;
+        if (regras[i].cor) r->cor = regras[i].cor;
+    }
+    if (atributo(a, n, "style", st, sizeof st)) ler_declaracoes(st, (int)tam_texto(st), r);
+    if (atributo(a, n, "align", st, sizeof st) && igual_sem_caixa(st, "center", 6)) r->centra = 1;
+    if (compara_texto(nome, "font") == 0 && atributo(a, n, "color", st, sizeof st)) {
+        uint32_t c = ler_cor(st, (int)tam_texto(st));
+        if (c) r->cor = c;
+    }
+    if (compara_texto(nome, "body") == 0 || compara_texto(nome, "html") == 0) r->cor = 0;
+}
+
+/* Efeitos abertos, para desfazer quando a tag fechar. */
+typedef struct { char nome[16]; int prof; bool centra, negrito; uint32_t cor; } efeito_t;
+static efeito_t efeitos[24];
+static int qtd_efeitos;
+
+static void efeito_tag(const char *nome, bool fecha, const regra_t *r)
+{
+    efeito_t *e = qtd_efeitos ? &efeitos[qtd_efeitos - 1] : NULL;
+    if (e && compara_texto(e->nome, nome) == 0) {
+        e->prof += fecha ? -1 : 1;
+        if (e->prof) return;
+        if (e->centra) { quebrar(); centro--; }
+        if (e->negrito) estilo &= ~E_NEGRITO;
+        cor_css = e->cor;
+        qtd_efeitos--;
+        return;
+    }
+    if (fecha || !r || (!r->centra && !r->negrito && !r->cor) || qtd_efeitos == 24) return;
+    e = &efeitos[qtd_efeitos++];
+    copia_texto(e->nome, nome, sizeof e->nome);
+    e->prof = 1;
+    e->centra = r->centra;
+    e->negrito = r->negrito && !(estilo & E_NEGRITO);
+    e->cor = cor_css;
+    if (r->centra) { quebrar(); centro++; }
+    if (e->negrito) estilo |= E_NEGRITO;
+    if (r->cor) cor_css = r->cor;
+}
+
 static bool escondido(const char *nome, const char *a, int n)
 {
     static const char *const tags[] = { "nav", "aside", "footer", "noscript", "dialog", "select", "iframe" };
@@ -553,6 +725,12 @@ static void ler_pagina(const char *h, int n)
     const char *f = m ? achar_tag(m, n - (int)(m - h), "</main") : NULL;
     if (!m) { ler_html(h, n); return; }
     achar_titulo(h, n);
+    for (const char *p = achar_tag(h, (int)(m - h), "<style"); p; p = achar_tag(p + 6, (int)(m - p) - 6, "<style")) {
+        const char *ini = p;
+        while (ini < m && *ini != '>') ini++;
+        const char *fim_c = achar_tag(ini, (int)(m - ini), "</style");
+        if (fim_c) ler_css(ini + 1, (int)(fim_c - ini) - 1);
+    }
     ler_html(m, (int)((f ? f : h + n) - m));
 }
 
@@ -607,18 +785,28 @@ static void ler_html(const char *h, int n)
                     pular_ate = -1;
                 continue;
             }
+            if (!fecha && compara_texto(nome, "style") == 0) {
+                const char *f = achar_tag(h + i, n - i, "</style");
+                if (f) ler_css(h + i, (int)(f - (h + i)));
+            }
             if (!fecha && (compara_texto(nome, "script") == 0 || compara_texto(nome, "style") == 0 ||
                            compara_texto(nome, "svg") == 0 || compara_texto(nome, "template") == 0)) {
                 if (!(na > 0 && attrs[na - 1] == '/')) pular_ate = 1;
                 continue;
             }
-            if (!fecha && escondido(nome, attrs, na)) {
+            regra_t css;
+            if (!fecha) css_da_tag(nome, attrs, na, &css);
+            if (!fecha && (css.esconde || escondido(nome, attrs, na))) {
                 SOLTAR();
                 copia_texto(oculto, nome, sizeof oculto);
                 oculto_prof = 1;
                 pular_ate = 2;
                 continue;
             }
+            SOLTAR();
+            bool vazia = compara_texto(nome, "img") == 0 || compara_texto(nome, "br") == 0 || compara_texto(nome, "hr") == 0 ||
+                         compara_texto(nome, "input") == 0 || compara_texto(nome, "meta") == 0 || compara_texto(nome, "link") == 0;
+            if (!vazia) efeito_tag(nome, fecha, fecha ? NULL : &css);
             /* Uma tag sempre separa palavras (menos as de estilo do texto). */
             bool de_estilo = compara_texto(nome, "b") == 0 || compara_texto(nome, "strong") == 0 ||
                              compara_texto(nome, "i") == 0 || compara_texto(nome, "em") == 0 ||
@@ -822,6 +1010,8 @@ static void limpar_pagina(void)
     qtd_imagens = 0;
     linhas = topo = 0;
     centro = ini_linha = 0;
+    qtd_regras = qtd_efeitos = 0;
+    cor_css = 0;
     linha_grande = false;
     x_atual = linha_atual = recuo = estilo = 0;
     alvo_atual = form_atual = -1;
@@ -899,7 +1089,7 @@ static void desenhar_pagina(void)
         }
         if (s->linha < topo) continue;
         if (s->estilo & E_LINHA) { g_retangulo(j, MARGEM, y + 8, LARG_TEXTO, 2, 0xC4CBD2); continue; }
-        uint32_t cor = cor_de(s->estilo);
+        uint32_t cor = s->cor && !(s->estilo & E_LINK) ? s->cor - 1 : cor_de(s->estilo);
         const char *t = textos + s->texto;
         if (s->estilo & E_CAMPO) {
             g_retangulo(j, x - 2, y, s->n * LETRA_L + 4, LETRA_A + 1, 0xEEF2F6);

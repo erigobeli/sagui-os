@@ -122,6 +122,12 @@ void sup_icone_escala(superficie_t *s, int x, int y, const uint32_t *argb, int l
         }
 }
 
+void sup_tingir(superficie_t *s, int x, int y, int l, int a, uint32_t cor, int alfa)
+{
+    for (int j = 0; j < a; j++)
+        for (int i = 0; i < l; i++) ponto_misturado(s, x + i, y + j, cor, alfa, 255);
+}
+
 void sup_escurecer(superficie_t *s, int x, int y, int l, int a, int alfa)
 {
     int x0 = x < s->cx0 ? s->cx0 : x, y0 = y < s->cy0 ? s->cy0 : y;

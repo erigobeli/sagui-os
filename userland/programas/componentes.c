@@ -28,7 +28,7 @@ int principal(int argc, char **argv)
     for (int i = 1; i <= 30; i++)
         n += formatar_texto(texto + n, sizeof texto - (size_t)n, "Linha %d da área de texto, com rolagem.\n", i);
     area_definir(&area, texto, n);
-    lista_t lista = { 332, 120, 212, 220, itens, 12, 0, 0, NULL };
+    lista_t lista = { 332, 120, 212, 220, itens, 12, 0, 0, NULL, NULL };
     int cliques = 0;
     char buf[64];
 

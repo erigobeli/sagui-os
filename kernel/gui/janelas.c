@@ -64,6 +64,9 @@ static int arrastando = -1, arr_dx, arr_dy;   /* janela sendo arrastada e onde f
 static int captura = -1;                       /* janela que recebeu o último clique */
 static int icone_pego = -1, pego_dx, pego_dy, pego_x, pego_y, fantasma_x, fantasma_y;
 static bool icone_arrastando;
+static bool laco_ativo;
+static int laco_x0, laco_y0, laco_x1, laco_y1;
+static void laco_retangulo(int *x, int *y, int *l, int *a);
 static uint32_t ult_clique_tique;
 static int ult_clique_x, ult_clique_y, ult_clique_alvo = -999;
 
@@ -221,7 +224,7 @@ static void desenhar_moldura(janela_t *j, bool foco)
 #define MENU_SEP_A  9
 #define MENU_L_MIN  170
 
-enum { A_NADA, A_ABRIR_ICONE, A_REMOVER_PEN, A_FUNDOS, A_FUNDO, A_ICONES, A_TAMANHO, A_GRADE, A_ORGANIZAR, A_MOSTRAR_AREA,
+enum { A_NADA, A_ABRIR_ICONE, A_REMOVER_PEN, A_FUNDOS, A_FUNDO, A_ICONES, A_TAMANHO, A_GRADE, A_ORGANIZAR, A_ATUALIZAR, A_ICONE_LIXO, A_RESTAURAR_ICONES, A_ESVAZIAR, A_MOSTRAR_AREA,
        A_RESTAURAR, A_MINIMIZAR, A_MAXIMIZAR, A_FECHAR, A_PROGRAMA };
 
 typedef struct { char texto[30]; int acao, arg; bool separador; } item_menu_t;
@@ -384,6 +387,12 @@ void gui_mostrar(void)
         area_barra(&tela, qtd == 0);
         desenhar_tarefas();
     }
+    if (laco_ativo) {
+        int lx, ly, ll, la;
+        laco_retangulo(&lx, &ly, &ll, &la);
+        sup_tingir(&tela, lx, ly, ll, la, 0x18A65A, 70);
+        sup_moldura(&tela, lx, ly, ll, la, 0xE8BE30);
+    }
     if (icone_arrastando) area_icone_fantasma(&tela, icone_pego, fantasma_x, fantasma_y);
     iniciar_desenhar(&tela);
     desenhar_menu();
@@ -523,6 +532,8 @@ static void menu_da_area(int x, int y)
     menu_item("Mostrar área de trabalho", A_MOSTRAR_AREA, 0);
     menu_separador();
     menu_item("Sobre o SaguiOS", A_ABRIR_ICONE, 6);
+    menu_separador();
+    menu_item("Atualizar", A_ATUALIZAR, 0);
     menu_abrir(x, y);
 }
 
@@ -532,8 +543,15 @@ static void menu_do_icone(int ic, int x, int y)
     if (area_icone_e_pendrive(ic)) {
         menu_item("Abrir", A_ABRIR_ICONE, ic);
         menu_item("Remover com segurança", A_REMOVER_PEN, ic);
+    } else if (area_icone_e_lixeira(ic)) {
+        menu_item("Abrir", A_ABRIR_ICONE, ic);
+        menu_item("Restaurar ícones", A_RESTAURAR_ICONES, 0);
+        menu_separador();
+        menu_item("Esvaziar lixeira", A_ESVAZIAR, 0);
     } else {
         menu_item("Abrir", A_ABRIR_ICONE, ic);
+        menu_separador();
+        menu_item("Mover para a lixeira", A_ICONE_LIXO, ic);
     }
     menu_abrir(x, y);
 }
@@ -571,6 +589,14 @@ static void menu_executar(item_menu_t *it)
     case A_TAMANHO: area_icones_tamanho(arg); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_GRADE: area_grade(!area_grade_ligada()); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_ORGANIZAR: area_icones_organizar(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_ATUALIZAR: area_atualizar(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_ICONE_LIXO: area_jogar_fora(arg); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_RESTAURAR_ICONES: area_restaurar_icones(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_ESVAZIAR: {
+        char *argv[] = { "arquivos", "--esvaziar", NULL };
+        processo_executar("/bin/arquivos", 2, argv, NULL);
+        break;
+    }
     case A_FUNDO:
         area_fundo_escolher(arg);
         gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
@@ -612,6 +638,9 @@ static void tratar_icone_pego(evento_mouse_t *m)
 {
     if (!(m->botoes & BOTAO_ESQUERDO)) {
         if (icone_arrastando) {
+            int ix, iy, il, ia;
+            area_icone_retangulo(icone_pego, &ix, &iy, &il, &ia);
+            if (area_icone_selecionado(icone_pego)) area_mover_selecao(icone_pego, fantasma_x - ix, fantasma_y - iy);
             area_icone_mover(icone_pego, fantasma_x, fantasma_y);
             gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
         }
@@ -628,11 +657,45 @@ static void tratar_icone_pego(evento_mouse_t *m)
     sujar_fantasma();
 }
 
+static void laco_retangulo(int *x, int *y, int *l, int *a)
+{
+    *x = laco_x0 < laco_x1 ? laco_x0 : laco_x1;
+    *y = laco_y0 < laco_y1 ? laco_y0 : laco_y1;
+    *l = (laco_x0 < laco_x1 ? laco_x1 - laco_x0 : laco_x0 - laco_x1) + 1;
+    *a = (laco_y0 < laco_y1 ? laco_y1 - laco_y0 : laco_y0 - laco_y1) + 1;
+}
+
+static void sujar_laco(void)
+{
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    gui_redesenhar(x - 1, y - 1, l + 2, a + 2);
+}
+
+static void tratar_laco(evento_mouse_t *m)
+{
+    sujar_laco();
+    if (m->botoes & BOTAO_ESQUERDO) {
+        laco_x1 = m->x;
+        laco_y1 = m->y < BARRA_SUPERIOR ? BARRA_SUPERIOR : m->y;
+        sujar_laco();
+        return;
+    }
+    laco_ativo = false;
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    if (l > 4 || a > 4) {
+        area_selecionar(x, y, l, a);
+        gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+    }
+}
+
 static void tratar_mouse(evento_mouse_t *m)
 {
     if (menu.aberto) { menu_tratar_mouse(m); return; }
     if (iniciar_aberto()) { iniciar_mouse(m); return; }
     if (icone_pego >= 0) { tratar_icone_pego(m); return; }
+    if (laco_ativo) { tratar_laco(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
 
@@ -683,6 +746,13 @@ static void tratar_mouse(evento_mouse_t *m)
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
+            if ((ic < 0 || !area_icone_selecionado(ic)) && area_limpar_selecao())
+                gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+            if (ic < 0 && (m->mudaram & BOTAO_ESQUERDO)) {
+                laco_ativo = true;
+                laco_x0 = laco_x1 = m->x;
+                laco_y0 = laco_y1 = m->y;
+            }
             if (ic >= 0 && (m->mudaram & BOTAO_ESQUERDO) && !duplo) {
                 int ix, iy, il, ia;
                 area_icone_retangulo(ic, &ix, &iy, &il, &ia);
@@ -697,6 +767,7 @@ static void tratar_mouse(evento_mouse_t *m)
             captura = -1;
             return;
         }
+        if (area_limpar_selecao()) gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
         trazer_para_cima(k);
         janela_t *j = &janelas[ordem[qtd - 1]];
         int idx = ordem[qtd - 1];
@@ -771,6 +842,11 @@ static void tarefa_gerenciador(void *arg)
         while ((t = teclado_tentar()) >= 0) {
             if (menu.aberto) { if (t == TECLA_ESC) menu_fechar(); continue; }
             if (iniciar_aberto()) { iniciar_tecla(t); continue; }
+            if (t == TECLA_DELETE && area_tem_selecao()) {
+                area_jogar_fora(-1);
+                gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                continue;
+            }
             janela_t *j = focada();
             if (!j) continue;
             evento_t e = { .tipo = EV_TECLA, .tecla = (unsigned)t, .modificadores = teclado_modificadores() & 3 };

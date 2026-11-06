@@ -36,14 +36,18 @@ static const icone_t icones[] = {
     { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre },
     { "Pendrive",    "/bin/arquivos",    arte_px_pendrive },   /* só aparece com um pendrive conectado (H34) */
     { "Cipó",        "/bin/cipo",        arte_px_cipo },
+    { "Lixeira",     "/bin/arquivos",    arte_px_lixeira },
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
 #define ICONE_PENDRIVE 7
 #define ICONE_CIPO 8
+#define ICONE_LIXEIRA 9
 static bool pendrive_visivel;
 static char nome_pendrive[24] = "Pendrive";
 
-static bool icone_visivel(int i) { return i != ICONE_PENDRIVE || pendrive_visivel; }
+static bool ic_sel[QTD_ICONES], ic_lixo[QTD_ICONES];
+
+static bool icone_visivel(int i) { return !ic_lixo[i] && (i != ICONE_PENDRIVE || pendrive_visivel); }
 #define ICONE_X 20
 #define ICONE_Y0 (BARRA_SUPERIOR + 16)
 #define ICONE_L_MIN 96
@@ -57,6 +61,8 @@ static int celula_a(void) { return lado_icone + 20; }
 
 int area_qtd_icones(void) { return QTD_ICONES; }
 bool area_icone_e_pendrive(int i) { return i == ICONE_PENDRIVE; }
+bool area_icone_e_lixeira(int i) { return i == ICONE_LIXEIRA; }
+bool area_icone_selecionado(int i) { return ic_sel[i]; }
 int area_icones_lado(void) { return lado_icone; }
 bool area_grade_ligada(void) { return grade_ligada; }
 
@@ -172,6 +178,10 @@ static void desenhar_fundo_padrao(bool noite)
 static void desenhar_icone(superficie_t *s, int i, int x, int y)
 {
     int l = celula_l();
+    if (ic_sel[i]) {
+        sup_tingir(s, x + 2, y - 2, l - 4, celula_a() + 2, 0x18A65A, 90);
+        sup_moldura(s, x + 2, y - 2, l - 4, celula_a() + 2, 0xE8BE30);
+    }
     sup_icone_escala(s, x + (l - lado_icone) / 2, y, icones[i].desenho, ICONE_LADO, lado_icone);
     const char *nome = i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
     texto_com_sombra(s, x + (l - texto_largura(nome)) / 2, y + lado_icone + 4, nome, 0xFFFFFF);
@@ -245,6 +255,64 @@ void area_icone_mover(int i, int x, int y)
     klog("[GUI] icone %d movido para (%d,%d)\n", i, x, y);
 }
 
+void area_selecionar(int x, int y, int l, int a)
+{
+    int n = 0;
+    for (int i = 0; i < QTD_ICONES; i++) {
+        int il = celula_l(), ia = celula_a();
+        ic_sel[i] = icone_visivel(i) && ic_x[i] < x + l && ic_x[i] + il > x && ic_y[i] < y + a && ic_y[i] + ia > y;
+        n += ic_sel[i];
+    }
+    compor_fundo();
+    klog("[GUI] icones selecionados: %d\n", n);
+}
+
+bool area_tem_selecao(void)
+{
+    for (int i = 0; i < QTD_ICONES; i++) if (ic_sel[i]) return true;
+    return false;
+}
+
+bool area_limpar_selecao(void)
+{
+    bool havia = area_tem_selecao();
+    memset(ic_sel, 0, sizeof ic_sel);
+    if (havia) compor_fundo();
+    return havia;
+}
+
+void area_mover_selecao(int i, int dx, int dy)
+{
+    for (int k = 0; k < QTD_ICONES; k++)
+        if (k != i && ic_sel[k]) area_icone_mover(k, ic_x[k] + dx, ic_y[k] + dy);
+}
+
+/* A lixeira e o pendrive não vão para a lixeira. */
+void area_jogar_fora(int i)
+{
+    for (int k = 0; k < QTD_ICONES; k++)
+        if ((i < 0 ? ic_sel[k] : k == i) && k != ICONE_LIXEIRA && k != ICONE_PENDRIVE) {
+            ic_lixo[k] = true;
+            klog("[GUI] icone %s na lixeira\n", icones[k].nome);
+        }
+    memset(ic_sel, 0, sizeof ic_sel);
+    compor_fundo();
+}
+
+void area_restaurar_icones(void)
+{
+    memset(ic_lixo, 0, sizeof ic_lixo);
+    compor_fundo();
+    klog("[GUI] icones restaurados\n");
+}
+
+void area_atualizar(void)
+{
+    memset(ic_sel, 0, sizeof ic_sel);
+    desenhar_fundo();
+    klog("[GUI] area de trabalho atualizada\n");
+}
+
 void area_grade(bool ligada)
 {
     grade_ligada = ligada;
@@ -278,6 +346,8 @@ bool area_iniciar(void)
     /* O Cipó começa no canto oposto, longe das janelas. */
     ic_x[ICONE_CIPO] = larg - celula_l();
     ic_y[ICONE_CIPO] = ICONE_Y0;
+    ic_x[ICONE_LIXEIRA] = larg - celula_l();
+    ic_y[ICONE_LIXEIRA] = alt - 2 * celula_a() - 110;
     desenhar_fundo();
     return true;
 }
@@ -393,6 +463,11 @@ void area_icone_direito(int i)
 void area_icone_abrir(int i)
 {
     if (i < 0 || i >= QTD_ICONES) return;
+    if (i == ICONE_LIXEIRA) {
+        char *argv[] = { "arquivos", "/.lixeira", NULL };
+        processo_executar("/bin/arquivos", 2, argv, NULL);
+        return;
+    }
     if (i == ICONE_PENDRIVE) {
         disco_t *d = primeiro_disco();
         if (!d) return;

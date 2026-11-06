@@ -78,7 +78,10 @@ typedef struct {
     bool  foco;
     bool  modificado;
     bool  somente_leitura;
+    int   ancora;         /* início da seleção + 1; 0 = sem seleção */
 } area_t;
+void transferir_texto(const char *t, int n);     /* copia para a área de transferência */
+int  colar_texto(char *d, int max);
 bool area_iniciar(area_t *a, int x, int y, int l, int al);
 void area_definir(area_t *a, const char *texto, int n);
 void area_desenhar(jan_t *j, area_t *a);
@@ -95,6 +98,7 @@ typedef struct {
     int    qtd;
     int    sel;
     int    topo;
+    uint8_t *marcas;      /* seleção múltipla: 1 por item; NULL = só "sel" */
     /* Desenha um ícone pequeno (16x16) antes do texto do item, se não for NULL. */
     void (*icone)(jan_t *j, int x, int y, int item);
 } lista_t;

@@ -85,7 +85,7 @@ static void achar_arquivos(no_t *pasta, const char *caminho, int nivel)
 {
     if (nivel > 6) return;
     for (no_t *n = pasta->filho; n && qtd_res < MAX_RES; n = n->irmao) {
-        if (n->removido) continue;
+        if (n->removido || n->nome[0] == '.') continue;
         char c[120];
         snformatar(c, sizeof c, "%s/%s", caminho, n->nome);
         if (txt_compara(c, "/bin") == 0 || txt_compara(c, "/testes") == 0) continue;
