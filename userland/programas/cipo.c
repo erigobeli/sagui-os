@@ -905,7 +905,7 @@ static void carregar(const char *pedido)
             }
             if (fd < 0) {
                 erro = "Não consegui abrir a página";
-                formatar_texto(detalhe, sizeof detalhe, "%s: %s.", host, pagina_segura ? tls_erro() : nome_erro(fd));
+                formatar_texto(detalhe, sizeof detalhe, "%s: %s.", host, pagina_segura && fd == ERRO_FORMATO ? tls_erro() : nome_erro(fd));
                 break;
             }
             int extra;

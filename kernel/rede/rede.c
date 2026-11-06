@@ -169,6 +169,7 @@ typedef struct {
     uint16_t id;
     uint32_t inicio, prazo, reenviar;
     uint32_t ip;                  /* ping: destino; DNS: resposta */
+    uint32_t tentativas_dns;
     int      resultado;           /* 1 = chegou; <0 = erro */
     char     nome[128];
 } espera_t;
@@ -373,6 +374,8 @@ static void dhcp_tique(void)
 /* ------------------------------------------------------------ DNS */
 
 #define PORTA_DNS 53
+#define DNS_RESERVA_1 0x08080808   /* 8.8.8.8 */
+#define DNS_RESERVA_2 0x01010101   /* 1.1.1.1 */
 
 static uint16_t dns_porta(const espera_t *e) { return (uint16_t)(50000 + (e->id & 0x3FF)); }
 
@@ -396,7 +399,12 @@ static void dns_perguntar(espera_t *e)
     *p++ = 0;
     poe16(p, 1); poe16(p + 2, 1);            /* tipo A (IPv4), classe IN */
     p += 4;
-    udp_enviar(servidor_dns, dns_porta(e), PORTA_DNS, (uint32_t)(p - m));
+    /* Se o servidor do DHCP não responder (o DNS interno do QEMU falha em alguns
+     * Macs), cada nova tentativa vai para outro servidor público. */
+    static const uint32_t reserva[2] = { DNS_RESERVA_1, DNS_RESERVA_2 };
+    uint32_t alvo = e->tentativas_dns % 3 == 0 ? servidor_dns : reserva[e->tentativas_dns % 3 - 1];
+    e->tentativas_dns++;
+    udp_enviar(alvo, dns_porta(e), PORTA_DNS, (uint32_t)(p - m));
     e->reenviar = relogio_tiques() + TIQUES_POR_SEGUNDO;
 }
 
@@ -449,7 +457,7 @@ int32_t sis_resolver(uint32_t pnome, uint32_t pip, uint32_t c, uint32_t d, uint3
         if (r == 0 || r > 120) return ERRO_INVALIDO;
         if (!rede_pronta()) return ERRO_SEM_REDE;
         if (!servidor_dns) return ERRO_NAO_EXISTE;
-        e = espera_nova(ESP_DNS, 4000);
+        e = espera_nova(ESP_DNS, 6000);
         if (!e) return ERRO_LIMITE;
         txt_copia_n(e->nome, nome, sizeof e->nome);
         dns_perguntar(e);
@@ -471,7 +479,7 @@ static void udp_chegou(uint32_t origem, uint32_t destino, const uint8_t *u, uint
     uint16_t po = be16(u), pd = be16(u + 2);
     n = be16(u + 4);
     if (pd == PORTA_DHCP_CLIENTE && po == PORTA_DHCP_SERVIDOR) dhcp_chegou(u + 8, n - 8);
-    else if (po == PORTA_DNS && origem == servidor_dns) dns_chegou(pd, u + 8, n - 8);
+    else if (po == PORTA_DNS && (origem == servidor_dns || origem == DNS_RESERVA_1 || origem == DNS_RESERVA_2)) dns_chegou(pd, u + 8, n - 8);
 }
 
 static void ip_chegou(const uint8_t *h, uint32_t n)
