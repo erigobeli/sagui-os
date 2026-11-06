@@ -67,7 +67,7 @@ typedef struct { uint32_t *px; int l, a; } imagem_t;
 static imagem_t imagens[MAX_IMAGENS];
 static int qtd_imagens;
 static bool pagina_segura, substituir;
-static char titulo_js[96];
+static char titulo_js[96], alerta_js[120];
 
 static seg_t  *segs;   static int qtd_segs, cap_segs;
 static alvo_t *alvos;  static int qtd_alvos, cap_alvos;
@@ -795,7 +795,12 @@ static int js_ler(const char *id, char *d, int max)
     return n;
 }
 
-static void js_alerta(const char *t) { registrar("cipo: alert %s\n", t); mensagem("Página", t); }
+/* Sem caixa modal: um site com alert em laço travaria o Cipó. Vai para o rodapé. */
+static void js_alerta(const char *t)
+{
+    registrar("cipo: alert %s\n", t);
+    formatar_texto(alerta_js, sizeof alerta_js, "Alerta da página: %s", t);
+}
 
 /* Roda os <script> sem src, na ordem. Devolve o HTML novo (ou o mesmo). */
 static char *rodar_scripts(char *h, int *n)
@@ -1173,6 +1178,7 @@ static uint32_t cor_de(int e)
 /* O cadeado não promete o que não existe: o certificado não é verificado. */
 static const char *texto_pronto(void)
 {
+    if (alerta_js[0]) return alerta_js;
     return pagina_segura ? "Cifrado, mas a identidade do site NÃO foi verificada. Não digite senhas." : "Pronto";
 }
 
@@ -1392,7 +1398,7 @@ static void carregar(const char *pedido)
         } else if (corpo) {
             tam = converter(corpo, tam);
             if (html) {
-                titulo_js[0] = 0;
+                titulo_js[0] = alerta_js[0] = 0;
                 char *novo = rodar_scripts(corpo, &tam);
                 ler_pagina(novo, tam);
                 if (novo != corpo) libera(novo);
