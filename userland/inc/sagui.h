@@ -89,6 +89,19 @@ void silenciar(void);
 int  teclas_seguradas(unsigned char mapa[32]);   /* 1 = em foco; CV_* em abi.h */
 #define SEGURADA(mapa, cv) (((mapa)[(cv) >> 3] >> ((cv) & 7)) & 1)
 
+/* ---- rede (D032). IPs como número: 10.0.2.15 = 0x0A00020F ---- */
+int  ping(uint32_t ip, unsigned prazo_ms);           /* ms até a resposta, ou erro */
+int  resolver(const char *nome, uint32_t *ip);       /* "10.0.2.2" ou "exemplo.com" -> ip; 0 = ok */
+int  conectar(uint32_t ip, int porta);               /* descritor TCP para ler/escrever/fechar */
+bool texto_para_ip(const char *s, uint32_t *ip);
+/* HTTP (http.c): */
+bool url_separar(const char *url, char *host, int max_host, int *porta, char *caminho, int max_caminho);
+int  http_pedir(const char *host, int porta, const char *caminho);   /* manda o GET; devolve o descritor */
+int  http_cabecalho(int fd, char *buf, int max, int *extra);         /* tamanho do cabeçalho; *extra = corpo que já veio */
+int  http_codigo(const char *cabecalho);                             /* 200, 404... */
+bool http_campo(const char *cabecalho, const char *nome, char *valor, int max);
+#define IP_PARTES(ip) (unsigned)((ip) >> 24), (unsigned)(((ip) >> 16) & 255), (unsigned)(((ip) >> 8) & 255), (unsigned)((ip) & 255)
+
 /* ---- memória e texto ---- */
 void  *memcpy(void *d, const void *s, size_t n);
 void  *memmove(void *d, const void *s, size_t n);

@@ -17,8 +17,9 @@
 #include "texto.h"
 #include "vfs.h"
 #include "fat32.h"
+#include "rede.h"
 
-enum { A_NO = 1, A_TERMINAL, A_PIPE_LER, A_PIPE_ESCREVER, A_FAT };
+enum { A_NO = 1, A_TERMINAL, A_PIPE_LER, A_PIPE_ESCREVER, A_FAT, A_TCP };
 
 typedef struct arquivo {
     int      tipo;
@@ -27,6 +28,7 @@ typedef struct arquivo {
     no_t    *no;
     pipe_t  *pipe;
     fat_arq_t *fat;      /* arquivo no pendrive (/usb) */
+    struct tcp_conexao *tcp;   /* conexão de rede (D032) */
     int      refs;
 } arquivo_t;
 
@@ -45,6 +47,7 @@ static void arquivo_soltar(arquivo_t *a)
     if (--a->refs > 0) return;
     if (a->tipo == A_NO) vfs_soltar(a->no);
     else if (a->tipo == A_FAT) { if (fat_vivo(a)) fat_fechar(a->fat); kfree(a->fat); }
+    else if (a->tipo == A_TCP) tcp_fechar(a->tcp);
     else if (a->tipo == A_PIPE_LER) pipe_fechar_ponta(a->pipe, false);
     else if (a->tipo == A_PIPE_ESCREVER) pipe_fechar_ponta(a->pipe, true);
     kfree(a);
@@ -166,6 +169,7 @@ int32_t sis_ler(uint32_t fd, uint32_t buf, uint32_t n, uint32_t d, uint32_t e)
         return r;
     }
     case A_PIPE_LER:  return pipe_ler(a->pipe, (char *)buf, n);
+    case A_TCP:       return tcp_ler(a->tcp, (char *)buf, n);
     default:          return ERRO_ACESSO;
     }
 }
@@ -194,6 +198,7 @@ int32_t sis_escrever(uint32_t fd, uint32_t buf, uint32_t n, uint32_t d, uint32_t
     }
     case A_TERMINAL:      return terminal_escrever((const char *)buf, n);
     case A_PIPE_ESCREVER: return pipe_escrever(a->pipe, (const char *)buf, n);
+    case A_TCP:           return tcp_escrever(a->tcp, (const char *)buf, n);
     default:              return ERRO_ACESSO;
     }
 }
@@ -390,6 +395,17 @@ int32_t sis_duplicar(uint32_t antigo, uint32_t novo, uint32_t c, uint32_t d, uin
 /* disponivel(fd): quanto dá para ler de um pipe sem bloquear. O Terminal em
  * janela usa isto para olhar a saída do shell e os eventos da janela no
  * mesmo laço, sem ficar preso em nenhum dos dois. */
+int arquivos_novo_tcp(struct tcp_conexao *c)
+{
+    int fd = fd_livre(atual);
+    if (fd < 0) return fd;
+    arquivo_t *a = arquivo_novo(A_TCP, ABRIR_LER | ABRIR_ESCREVER);
+    if (!a) return ERRO_SEM_MEMORIA;
+    a->tcp = c;
+    atual->arquivos[fd] = a;
+    return fd;
+}
+
 int32_t sis_disponivel(uint32_t fd, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;

@@ -767,6 +767,80 @@ zerado, para um programa em segundo plano não ler o que se digita em outra
 janela. Ctrl e espaço sozinhos (que não geram caractere) também aparecem no
 mapa, o que permite atirar com eles.
 
+## D032. Rede: placa e1000, IPv4 e TCP de cliente
+
+**Placa.** O primeiro driver é o da Intel PRO/1000 (82540EM), a placa que o
+QEMU emula por padrão e a do VirtualBox ("PRO/1000 MT Desktop"): um só
+driver cobre as duas máquinas virtuais e o teste automático. Ele usa dois
+anéis de descritores (64 de recepção, 16 de envio, buffers de 2 KB) e não
+usa interrupções: uma tarefa do kernel consulta a placa a cada tique
+(10 ms), como o USB consulta as portas. Com 64 quadros por tique isso dá
+até ~9 MB/s, muito mais do que o resto do sistema consome. A placa do G470
+ainda não tem driver: o comando `rede` lista as placas de rede do PCI com
+fabricante e modelo, para saber qual escrever. A pilha conversa com o
+driver por cinco campos (`placa_t`: nome, MAC, enviar, receber, cabo), então
+o segundo driver não mexe no resto.
+
+**Pilha.** Ethernet, ARP (tabela de 16), IPv4 sem fragmentação, ICMP
+(responde a pings e faz o comando `ping`), UDP, DHCP (o endereço chega em
+segundo plano, depois do boot) e DNS (só registros A). Tudo roda com as
+interrupções desligadas, na tarefa da rede ou dentro de uma chamada de
+sistema, então nada disputa o mesmo estado.
+
+**TCP.** Só o lado cliente: o SaguiOS conecta, não escuta. Uma conexão é um
+descritor comum, e `ler`, `escrever` e `fechar` funcionam como num pipe.
+O que está guardado e o que foi simplificado:
+- tudo que foi enviado fica guardado até a confirmação; sem ACK no prazo
+  (1 s, dobrando a cada tentativa, até 6), reenvia a partir do primeiro byte
+  não confirmado;
+- a recepção é em ordem num anel de 32 KB, e a janela anunciada é o espaço
+  livre dele: um servidor rápido espera o programa ler;
+- segmentos fora de ordem são descartados (o ACK repetido faz o servidor
+  reenviar); não há "time-wait" nem sonda de janela zero.
+
+**Chamadas.** `SIS_PING`, `SIS_RESOLVER` e `SIS_CONECTAR` seguem o padrão
+de D010: a primeira execução manda o pedido e bloqueia com prazo, e a
+chamada roda de novo ao acordar para ver se a resposta chegou.
+
+**HTTP.** O programa `baixar` fala HTTP/1.0 com `Connection: close`: a
+resposta vem inteira e sem pedaços, e o fim da conexão é o fim do arquivo.
+Segue até três redirecionamentos. HTTPS fica de fora: precisaria de TLS
+(criptografia), um projeto do tamanho de tudo o que está aqui.
+
+## D033. Cipó, o navegador
+
+O nome: o sagui atravessa a mata pulando de cipó em cipó; o navegador
+atravessa a web pulando de link em link. É um programa comum do anel 3
+(`/bin/cipo`), em cima da rede da D032; a parte de HTTP (separar o
+endereço, mandar o GET, ler o cabeçalho) foi para a libsagui (`http.c`) e
+é a mesma do `baixar`.
+
+O que ele faz, nesta ordem:
+1. baixa o corpo inteiro para a memória (até 1 MB), seguindo até cinco
+   redirecionamentos, e converte de UTF-8 para Latin-1 (se o texto não for
+   UTF-8 válido, já era Latin-1); aspas e travessões que o Latin-1 não tem
+   viram os parecidos;
+2. lê o HTML uma vez só e diagrama na hora: cada palavra vira um segmento
+   com linha, coluna, estilo e, se for link, o endereço já resolvido
+   (relativo, `../`, `?consulta`, `//host`). Títulos saem em verde e
+   negrito, links em azul sublinhado, listas com marcador ou número,
+   `<pre>` com os espaços, `<hr>` como linha. `<script>`, `<style>`, `<svg>`
+   e `<template>` são pulados; imagens viram o texto `alt`;
+3. desenhar é pintar os segmentos das linhas visíveis.
+
+Formulários: só GET e só caixas de texto, o que basta para buscas. Clicar
+na caixa pede o texto num diálogo e abre `ação?campos-escondidos&campo=texto`
+(com o texto em UTF-8 e codificado para URL).
+
+Fora, de propósito: JavaScript, CSS, imagens, cookies, POST e HTTPS (não há
+TLS). Como quase toda a web atual exige HTTPS, a página inicial do Cipó
+lista sites que ainda falam HTTP (o primeiro site da web, no CERN, e o
+68k.news, de notícias em HTML simples, por exemplo).
+
+Logo depois do boot o endereço IP ainda está chegando pelo DHCP; o
+`http_pedir` da libsagui espera até 10 s pela rede antes de desistir, para
+o Cipó aberto logo depois do boot não mostrar erro à toa.
+
 ## Sagui 3D (B4)
 
 Um jogo em primeira pessoa com visual 2,5D, escrito para este projeto em

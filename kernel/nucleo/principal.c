@@ -22,6 +22,7 @@
 #include "i8042.h"
 #include "gui.h"
 #include "usb.h"
+#include "rede.h"
 
 #define SAGUI_VERSAO "1.0"
 
@@ -252,6 +253,17 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
             console_cor(COR_AMARELO, COR_PRETO);
             kprintf("[aviso] Nenhum controlador USB 2.0 (EHCI) encontrado.\n");
             console_cor(COR_CINZA, COR_PRETO);
+        }
+    }
+    /* D032: placa de rede; o endereço vem por DHCP em segundo plano. */
+    {
+        const char *placa = rede_iniciar();
+        if (placa) {
+            char linha[96];
+            snformatar(linha, sizeof linha, "Rede: %s, endereço por DHCP (comandos rede, ping, baixar)", placa);
+            etapa(linha);
+        } else {
+            klog("[REDE] nenhuma placa suportada\n");
         }
     }
     klog("[SAGUI] boot ok\n");
