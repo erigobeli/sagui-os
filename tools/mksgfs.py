@@ -34,6 +34,8 @@ import os
 import struct
 import sys
 
+import lz
+
 TIPO_ARQUIVO, TIPO_PASTA, TIPO_PROGRAMA = 1, 2, 3
 TAM_CAB, TAM_ENTRADA, MAX_CAMINHO = 32, 72, 56
 EXT_TEXTO = {".txt", ".md", ".cfg"}
@@ -90,10 +92,12 @@ def main():
         sys.exit(__doc__)
     itens = coletar(sys.argv[1])
     img = montar(itens)
+    tam_real = len(img)
+    img = b"SGLZ" + struct.pack("<I", tam_real) + lz.comprimir(img)   # o kernel desfaz no boot
     os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
     with open(sys.argv[2], "wb") as f:
         f.write(img)
-    print(f"mksgfs: {len(itens)} entradas, {len(img)} bytes -> {sys.argv[2]}")
+    print(f"mksgfs: {len(itens)} entradas, {tam_real} bytes, {len(img)} comprimidos -> {sys.argv[2]}")
 
 
 if __name__ == "__main__":

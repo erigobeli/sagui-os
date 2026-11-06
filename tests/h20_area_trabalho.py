@@ -18,17 +18,7 @@ def cor_do_fundo(x, y):
     """Decodifica rootfs/arte/fundo.sgi e devolve a cor de um pixel."""
     d = open(os.path.join(RAIZ, "rootfs/arte/fundo.sgi"), "rb").read()
     largura = d[4] | d[5] << 8
-    i, idx = 776, bytearray()
-    while i < len(d):
-        n = d[i]
-        i += 1
-        if n < 128:
-            idx += d[i:i + n + 1]
-            i += n + 1
-        else:
-            idx += bytes([d[i]]) * (n - 125)
-            i += 1
-    k = 8 + idx[y * largura + x] * 3
+    k = 8 + d[776 + y * largura + x] * 3
     return tuple(d[k:k + 3])
 
 

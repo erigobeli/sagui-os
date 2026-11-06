@@ -14,6 +14,7 @@
 #include "memoria.h"
 #include "teclado.h"
 #include "sgfs.h"
+#include "lz.h"
 #include "paginacao.h"
 #include "processo.h"
 #include "sistema.h"
@@ -88,6 +89,19 @@ static void registrar_mapa(void)
 }
 
 /* Confere o cabeçalho do SGFS (o leitor completo vem na H08). */
+/* O ramdisk vem comprimido na imagem: "SGLZ", tamanho real e os dados. */
+static void expandir_ramdisk(void)
+{
+    const uint8_t *rd = (const uint8_t *)info_boot.ramdisk_inicio;
+    if (info_boot.ramdisk_bytes < 8 || memcmp(rd, "SGLZ", 4) != 0) return;
+    uint32_t real = *(const uint32_t *)(rd + 4);
+    uint8_t *d = kmalloc(real);
+    if (!d) { kprintf("Ramdisk: sem memoria para %u bytes\n", real); return; }
+    lz_expandir(rd + 8, info_boot.ramdisk_bytes - 8, d);
+    info_boot.ramdisk_inicio = (uint32_t)d;
+    info_boot.ramdisk_bytes = real;
+}
+
 static void conferir_ramdisk(void)
 {
     const uint8_t *rd = (const uint8_t *)info_boot.ramdisk_inicio;
@@ -229,6 +243,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     }
 
     /* H08: sistema de arquivos do ramdisk. */
+    expandir_ramdisk();
     conferir_ramdisk();
     if (sgfs_iniciar((const void *)info_boot.ramdisk_inicio, info_boot.ramdisk_bytes)) {
         char linha[96];

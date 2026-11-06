@@ -67,6 +67,7 @@ typedef struct { uint32_t *px; int l, a; } imagem_t;
 static imagem_t imagens[MAX_IMAGENS];
 static int qtd_imagens;
 static bool pagina_segura, substituir;
+static char titulo_js[96];
 
 static seg_t  *segs;   static int qtd_segs, cap_segs;
 static alvo_t *alvos;  static int qtd_alvos, cap_alvos;
@@ -719,6 +720,125 @@ static void achar_titulo(const char *h, int n)
 
 static void ler_html(const char *h, int n);
 
+/* ---- JavaScript ----
+ * Os scripts rodam antes da diagramação, mexendo direto no texto do HTML:
+ * document.write entra no lugar do <script>, e getElementById troca o miolo
+ * do elemento. Por isso eventos e mudanças depois de carregar não existem. */
+#define SCRIPT_MAX (24 * 1024)
+#define HTML_MAX (2 * 1024 * 1024)
+
+static char *js_h;
+static int js_n, js_cap, js_saida;   /* js_saida: onde document.write escreve */
+
+static bool js_trocar(int ini, int fim, const char *t, int n)
+{
+    if (js_n - (fim - ini) + n + 1 > js_cap) return false;
+    memmove(js_h + ini + n, js_h + fim, (size_t)(js_n - fim));
+    memcpy(js_h + ini, t, (size_t)n);
+    js_n += n - (fim - ini);
+    js_h[js_n] = 0;
+    return true;
+}
+
+static void js_escrever(const char *t)
+{
+    int n = (int)tam_texto(t);
+    if (js_trocar(js_saida, js_saida, t, n)) js_saida += n;
+}
+
+static void js_titulo(const char *t) { copia_texto(titulo_js, t, sizeof titulo_js); }
+
+/* Acha o miolo de <tag id="...">...</tag>, contando as tags iguais aninhadas. */
+static bool js_elemento(const char *id, int *ini, int *fim)
+{
+    char a1[80], a2[80];
+    formatar_texto(a1, sizeof a1, "id=\"%s\"", id);
+    formatar_texto(a2, sizeof a2, "id='%s'", id);
+    int t = (int)tam_texto(a1);
+    for (int i = 0; i + t < js_n; i++) {
+        if (memcmp(js_h + i, a1, (size_t)t) != 0 && memcmp(js_h + i, a2, (size_t)t) != 0) continue;
+        int o = i;
+        while (o > 0 && js_h[o] != '<') o--;
+        char nome[16];
+        int k = 0;
+        for (int p = o + 1; k < 15 && letra(js_h[p]); p++) nome[k++] = js_h[p];
+        nome[k] = 0;
+        int c = i;
+        while (c < js_n && js_h[c] != '>') c++;
+        *ini = ++c;
+        int prof = 1;
+        for (int p = c; p + k + 2 < js_n; p++) {
+            if (js_h[p] != '<') continue;
+            bool fecha = js_h[p + 1] == '/';
+            if (igual_sem_caixa(js_h + p + 1 + fecha, nome, k) && !letra(js_h[p + 1 + fecha + k])) prof += fecha ? -1 : 1;
+            if (!prof) { *fim = p; return true; }
+        }
+        return false;
+    }
+    return false;
+}
+
+static void js_definir(const char *id, const char *t)
+{
+    int a, b;
+    if (!js_elemento(id, &a, &b)) return;
+    int n = (int)tam_texto(t);
+    if (js_trocar(a, b, t, n) && a < js_saida) js_saida += n - (b - a);
+}
+
+static int js_ler(const char *id, char *d, int max)
+{
+    int a, b;
+    if (!js_elemento(id, &a, &b)) return 0;
+    int n = b - a < max - 1 ? b - a : max - 1;
+    memcpy(d, js_h + a, (size_t)n);
+    return n;
+}
+
+static void js_alerta(const char *t) { registrar("cipo: alert %s\n", t); mensagem("Página", t); }
+
+/* Roda os <script> sem src, na ordem. Devolve o HTML novo (ou o mesmo). */
+static char *rodar_scripts(char *h, int *n)
+{
+    static const js_hooks_t ganchos = { js_escrever, js_titulo, js_definir, js_ler, js_alerta };
+    if (!achar_tag(h, *n, "<script")) return h;
+    js_cap = *n * 2 + 65536;
+    if (js_cap > HTML_MAX) js_cap = HTML_MAX;
+    js_h = aloca((size_t)js_cap);
+    if (!js_h) return h;
+    memcpy(js_h, h, (size_t)*n);
+    js_n = *n;
+    js_h[js_n] = 0;
+    js_reiniciar();
+    int feitos = 0, parados = 0;
+    for (int i = 0; ; ) {
+        const char *p = achar_tag(js_h + i, js_n - i, "<script");
+        if (!p) break;
+        int ini = (int)(p - js_h), c = ini;
+        while (c < js_n && js_h[c] != '>') c++;
+        const char *f = achar_tag(js_h + c, js_n - c, "</script");
+        if (!f) break;
+        int fim = (int)(f - js_h), depois = fim;
+        while (depois < js_n && js_h[depois] != '>') depois++;
+        depois++;
+        char tipo[40] = "", src_s[8];
+        bool externo = atributo(js_h + ini + 7, c - ini - 7, "src", src_s, sizeof src_s);
+        atributo(js_h + ini + 7, c - ini - 7, "type", tipo, sizeof tipo);
+        bool roda = !externo && fim - c - 1 <= SCRIPT_MAX && (!tipo[0] || comeca_com(tipo, "text/javascript"));
+        if (!roda) { i = depois; continue; }
+        static char codigo[SCRIPT_MAX + 1];
+        int nc = fim - c - 1;
+        memcpy(codigo, js_h + c + 1, (size_t)nc);
+        js_trocar(ini, depois, "", 0);
+        js_saida = ini;
+        if (js_executar(codigo, nc, &ganchos)) feitos++; else parados++;
+        i = js_saida;
+    }
+    registrar("cipo: js %d scripts, %d parados\n", feitos, parados);
+    *n = js_n;
+    return js_h;
+}
+
 static void ler_pagina(const char *h, int n)
 {
     const char *m = achar_tag(h, n, "<main");
@@ -1272,7 +1392,11 @@ static void carregar(const char *pedido)
         } else if (corpo) {
             tam = converter(corpo, tam);
             if (html) {
-                ler_pagina(corpo, tam);
+                titulo_js[0] = 0;
+                char *novo = rodar_scripts(corpo, &tam);
+                ler_pagina(novo, tam);
+                if (novo != corpo) libera(novo);
+                if (titulo_js[0]) copia_texto(titulo, titulo_js, sizeof titulo);
             } else {
                 estilo = E_PRE;
                 pre_n = 1;

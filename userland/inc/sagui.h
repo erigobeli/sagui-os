@@ -107,6 +107,15 @@ int  tls_ler(void *d, unsigned max);
 void tls_fechar(void);
 bool tls_ativo(int fd);
 const char *tls_erro(void);
+typedef struct {
+    void (*escrever)(const char *t);                       /* document.write */
+    void (*titulo)(const char *t);                         /* document.title = */
+    void (*definir)(const char *id, const char *t);        /* elemento.textContent = */
+    int  (*ler)(const char *id, char *d, int max);
+    void (*alerta)(const char *t);
+} js_hooks_t;
+bool js_executar(const char *codigo, int n, const js_hooks_t *h);
+void js_reiniciar(void);
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);   /* PNG e JPEG */
 int  http_pedir(const char *host, int porta, const char *caminho);   /* manda o GET; devolve o descritor */
 int  http_cabecalho(int fd, char *buf, int max, int *extra);         /* tamanho do cabeçalho; *extra = corpo que já veio */

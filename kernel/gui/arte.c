@@ -4,6 +4,24 @@
  * paleta abaixo e '.' é transparente. Desenhar = percorrer as letras e pintar
  * quadradinhos do tamanho da escala. */
 #include "arte.h"
+#include "vfs.h"
+
+const uint32_t *arte_px_arquivos, *arte_px_terminal, *arte_px_editor, *arte_px_calculadora, *arte_px_banana,
+               *arte_px_sagui3d, *arte_px_sobre, *arte_px_pendrive, *arte_px_cipo, *arte_px_lixeira;
+
+void arte_carregar_icones(void)
+{
+    static const uint32_t **const ordem[] = { &arte_px_arquivos, &arte_px_terminal, &arte_px_editor, &arte_px_calculadora,
+        &arte_px_banana, &arte_px_sagui3d, &arte_px_sobre, &arte_px_pendrive, &arte_px_cipo, &arte_px_lixeira };
+    static const uint32_t vazio[ICONE_LADO * ICONE_LADO];
+    uint8_t *d = NULL;
+    uint32_t tam = 0;
+    bool ok = vfs_ler_inteiro("/arte/icones.bin", &d, &tam) >= 0;
+    for (uint32_t i = 0; i < sizeof ordem / sizeof ordem[0]; i++) {
+        uint32_t ini = i * ICONE_LADO * ICONE_LADO * 4;
+        *ordem[i] = ok && ini + ICONE_LADO * ICONE_LADO * 4 <= tam ? (const uint32_t *)(d + ini) : vazio;
+    }
+}
 
 /* O sagui-de-tufos-brancos: cabeça escura com a mancha branca na testa, os
  * tufos brancos nas orelhas, corpo cinza e a cauda listrada. 32x32. */

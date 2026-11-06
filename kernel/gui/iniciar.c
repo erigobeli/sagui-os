@@ -25,17 +25,17 @@
 #define PA (LISTA_Y - PY + MAX_RES * ITEM_A + RODAPE_A)
 #define MAX_BUSCA 28
 
-typedef struct { const char *nome, *programa; const uint32_t *icone; } app_t;
+typedef struct { const char *nome, *programa; const uint32_t *const *icone; } app_t;
 
 static const app_t apps[] = {
-    { "Arquivos",     "/bin/arquivos",       arte_px_arquivos },
-    { "Banana",       "/bin/banana",         arte_px_banana },
-    { "Calculadora",  "/bin/calculadora",    arte_px_calculadora },
-    { "Cipó (navegador)", "/bin/cipo",       arte_px_cipo },
-    { "Editor",       "/bin/editor",         arte_px_editor },
-    { "Sagui 3D",     "/bin/sagui3d",        arte_px_sagui3d },
-    { "Sobre o SaguiOS", "/bin/sobre-o-sistema", arte_px_sobre },
-    { "Terminal",     "/bin/terminal",       arte_px_terminal },
+    { "Arquivos",     "/bin/arquivos",       &arte_px_arquivos },
+    { "Banana",       "/bin/banana",         &arte_px_banana },
+    { "Calculadora",  "/bin/calculadora",    &arte_px_calculadora },
+    { "Cipó (navegador)", "/bin/cipo",       &arte_px_cipo },
+    { "Editor",       "/bin/editor",         &arte_px_editor },
+    { "Sagui 3D",     "/bin/sagui3d",        &arte_px_sagui3d },
+    { "Sobre o SaguiOS", "/bin/sobre-o-sistema", &arte_px_sobre },
+    { "Terminal",     "/bin/terminal",       &arte_px_terminal },
 };
 #define QTD_APPS (int)(sizeof apps / sizeof apps[0])
 
@@ -109,7 +109,7 @@ static void procurar(void)
             txt_copia_n(r->nome, apps[i].nome, sizeof r->nome);
             txt_copia_n(r->caminho, apps[i].programa, sizeof r->caminho);
             r->tipo = 0;
-            r->icone = apps[i].icone;
+            r->icone = *apps[i].icone;
         }
     if (busca[0]) achar_arquivos(vfs_raiz(), "", 0);
     sel = qtd_res ? 0 : -1;

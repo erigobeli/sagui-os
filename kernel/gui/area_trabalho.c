@@ -23,20 +23,20 @@ static int minuto_mostrado = -1;
 typedef struct {
     const char *nome;
     const char *programa;
-    const uint32_t *desenho;
+    const uint32_t *const *desenho;
 } icone_t;
 
 static const icone_t icones[] = {
-    { "Arquivos",    "/bin/arquivos",    arte_px_arquivos },
-    { "Terminal",    "/bin/terminal",    arte_px_terminal },
-    { "Editor",      "/bin/editor",      arte_px_editor },
-    { "Calculadora", "/bin/calculadora", arte_px_calculadora },
-    { "Banana",      "/bin/banana",      arte_px_banana },
-    { "Sagui 3D",    "/bin/sagui3d",     arte_px_sagui3d },   /* bônus B4 */
-    { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre },
-    { "Pendrive",    "/bin/arquivos",    arte_px_pendrive },   /* só aparece com um pendrive conectado (H34) */
-    { "Cipó",        "/bin/cipo",        arte_px_cipo },
-    { "Lixeira",     "/bin/arquivos",    arte_px_lixeira },
+    { "Arquivos",    "/bin/arquivos",    &arte_px_arquivos },
+    { "Terminal",    "/bin/terminal",    &arte_px_terminal },
+    { "Editor",      "/bin/editor",      &arte_px_editor },
+    { "Calculadora", "/bin/calculadora", &arte_px_calculadora },
+    { "Banana",      "/bin/banana",      &arte_px_banana },
+    { "Sagui 3D",    "/bin/sagui3d",     &arte_px_sagui3d },   /* bônus B4 */
+    { "Sobre",       "/bin/sobre-o-sistema",   &arte_px_sobre },
+    { "Pendrive",    "/bin/arquivos",    &arte_px_pendrive },   /* só aparece com um pendrive conectado (H34) */
+    { "Cipó",        "/bin/cipo",        &arte_px_cipo },
+    { "Lixeira",     "/bin/arquivos",    &arte_px_lixeira },
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
 #define ICONE_PENDRIVE 7
@@ -105,32 +105,18 @@ static bool desenhar_fundo_imagem(void)
     if (vfs_ler_inteiro("/arte/fundo.sgi", &d, &tam) < 0) return false;
     bool ok = false;
     int il = tam > SGI_CAB ? d[4] | d[5] << 8 : 0, ia = tam > SGI_CAB ? d[6] | d[7] << 8 : 0;
-    uint8_t *idx = il > 0 && ia > 0 && d[0] == 'S' && d[1] == 'G' && d[2] == 'I' && d[3] == '1'
-                 ? kmalloc((uint32_t)(il * ia)) : NULL;
-    if (idx) {
-        uint32_t i = SGI_CAB, o = 0, total = (uint32_t)(il * ia);
-        while (i < tam && o < total) {
-            uint32_t n = d[i++];
-            if (n < 128) {
-                for (n++; n && i < tam && o < total; n--) idx[o++] = d[i++];
-            } else if (i < tam) {
-                uint8_t v = d[i++];
-                for (n -= 125; n && o < total; n--) idx[o++] = v;
+    if (il > 0 && ia > 0 && tam >= (uint32_t)(SGI_CAB + il * ia) && memcmp(d, "SGI2", 4) == 0) {
+        const uint8_t *idx = d + SGI_CAB;
+        /* Outras resoluções: escolhe o pixel mais próximo da imagem. */
+        for (int y = 0; y < alt; y++) {
+            const uint8_t *linha = idx + (y * ia / alt) * il;
+            for (int x = 0; x < larg; x++) {
+                const uint8_t *c = d + 8 + linha[x * il / larg] * 3;
+                papel[y * larg + x] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
             }
         }
-        if (o == total) {
-            /* Outras resoluções: escolhe o pixel mais próximo da imagem. */
-            for (int y = 0; y < alt; y++) {
-                const uint8_t *linha = idx + (y * ia / alt) * il;
-                for (int x = 0; x < larg; x++) {
-                    const uint8_t *c = d + 8 + linha[x * il / larg] * 3;
-                    papel[y * larg + x] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
-                }
-            }
-            ok = true;
-            klog("[GUI] fundo: /arte/fundo.sgi %dx%d\n", il, ia);
-        }
-        kfree(idx);
+        ok = true;
+        klog("[GUI] fundo: /arte/fundo.sgi %dx%d\n", il, ia);
     }
     kfree(d);
     return ok;
@@ -182,7 +168,7 @@ static void desenhar_icone(superficie_t *s, int i, int x, int y)
         sup_tingir(s, x + 2, y - 2, l - 4, celula_a() + 2, 0x18A65A, 90);
         sup_moldura(s, x + 2, y - 2, l - 4, celula_a() + 2, 0xE8BE30);
     }
-    sup_icone_escala(s, x + (l - lado_icone) / 2, y, icones[i].desenho, ICONE_LADO, lado_icone);
+    sup_icone_escala(s, x + (l - lado_icone) / 2, y, *icones[i].desenho, ICONE_LADO, lado_icone);
     const char *nome = i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
     texto_com_sombra(s, x + (l - texto_largura(nome)) / 2, y + lado_icone + 4, nome, 0xFFFFFF);
 }
@@ -341,6 +327,7 @@ bool area_iniciar(void)
     alt = (int)video_altura();
     fundo = kmalloc((uint32_t)(larg * alt) * 4);
     papel = kmalloc((uint32_t)(larg * alt) * 4);
+    arte_carregar_icones();
     if (!fundo || !papel) return false;
     area_icones_organizar();
     /* O Cipó começa no canto oposto, longe das janelas. */

@@ -2,11 +2,12 @@
 """
 mkarte.py - gera os ícones 64x64 da área de trabalho.
 
-Uso: mkarte.py <saida.c>
+Uso: mkarte.py <saida.bin>
 
 Cada ícone é descrito aqui com formas simples (retângulo arredondado, círculo,
 polígono, traço). O script calcula a cobertura de cada pixel com 4x4 amostras,
-o que suaviza as bordas, acrescenta uma sombra e escreve vetores ARGB em C.
+o que suaviza as bordas, acrescenta uma sombra e grava os pixels ARGB, um ícone
+depois do outro, em /arte/icones.bin. A ordem é a de kernel/inc/arte.h.
 Nenhuma imagem pronta entra no projeto: os desenhos são estes números.
 """
 import math
@@ -221,17 +222,13 @@ ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("
 
 def main():
     if len(sys.argv) != 2:
-        sys.exit("uso: mkarte.py <saida.c>")
-    with open(sys.argv[1], "w", encoding="utf-8") as f:
-        f.write("/* Gerado por tools/mkarte.py. Não edite. */\n#include \"arte.h\"\n\n")
-        for nome, desenhar in ICONES:
+        sys.exit("uso: mkarte.py <saida.bin>")
+    with open(sys.argv[1], "wb") as f:
+        for _nome, desenhar in ICONES:
             t = Tela()
             desenhar(t)
-            px = t.com_sombra()
-            f.write(f"const uint32_t arte_px_{nome}[{T * T}] = {{\n")
-            for k in range(0, len(px), 8):
-                f.write("    " + ", ".join(f"0x{v:08X}" for v in px[k:k + 8]) + ",\n")
-            f.write("};\n\n")
+            for v in t.com_sombra():
+                f.write(v.to_bytes(4, "little"))
 
 
 if __name__ == "__main__":

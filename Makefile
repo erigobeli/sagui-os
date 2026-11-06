@@ -30,7 +30,7 @@ B       := build
 KERNEL_C   := $(shell find kernel -name '*.c' | sort)
 KERNEL_ASM := $(shell find kernel -name '*.asm' | sort)
 KERNEL_OBJ := $(patsubst %.c,$(B)/%.o,$(KERNEL_C)) $(patsubst %.asm,$(B)/%.asm.o,$(KERNEL_ASM)) \
-              $(B)/gerado/fonte8x16.o $(B)/gerado/arte_icones.o
+              $(B)/gerado/fonte8x16.o
 KERNEL_HDR := $(shell find kernel -name '*.h')
 ROOTFS     := $(shell find rootfs -type f | sort)
 
@@ -88,13 +88,10 @@ $(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/mkfonte.py
 $(B)/gerado/fonte8x16.o: $(B)/gerado/fonte8x16.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Os ícones são descritos em tools/mkarte.py e viram C no build.
-$(B)/gerado/arte_icones.c: tools/mkarte.py
+# Os ícones são descritos em tools/mkarte.py e entram no ramdisk.
+$(B)/gerado/icones.bin: tools/mkarte.py
 	@mkdir -p $(dir $@)
 	$(PY) tools/mkarte.py $@
-
-$(B)/gerado/arte_icones.o: $(B)/gerado/arte_icones.c kernel/inc/arte.h
-	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(B)/kernel.elf: $(KERNEL_OBJ) kernel/ligacao.ld
 	$(LD) $(LDFLAGS) -T kernel/ligacao.ld -o $@ $(KERNEL_OBJ)
@@ -137,9 +134,10 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # ---------- ramdisk (SGFS) ----------
 # O ramdisk é montado a partir de uma cópia do rootfs/ com os programas em
 # /bin e os programas de teste em /testes.
-$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) tools/mksgfs.py
+$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(B)/gerado/icones.bin tools/mksgfs.py tools/lz.py
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
+	cp $(B)/gerado/icones.bin $(B)/rootfs/arte/icones.bin
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
 	$(if $(PROG_TESTE),mkdir -p $(B)/rootfs/testes && cp $(PROG_TESTE) $(B)/rootfs/testes/)
 	$(PY) tools/mksgfs.py $(B)/rootfs $@
