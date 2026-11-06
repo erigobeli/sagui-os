@@ -55,10 +55,18 @@ def main():
         m.clique(jx + 2 + 40, jy + 24 + 20)   # Voltar
         time.sleep(2)
         verificar(len(re.findall(r'cipo: pronto "P.gina A"', m.serial())) == 2, "Voltar abriu a página A de novo")
+        m.clique(jx + 2 + 400, jy + 24 + 20)                      # clique no endereço e digita por cima
+        time.sleep(0.4)
+        m.digitar(f"10.0.2.2:{porta}/b.html\n", 0.08)
+        m.esperar_serial(f"cipo: sem HTTPS, tentando http://10.0.2.2:{porta}/b.html", 30)
+        time.sleep(3)
+        verificar(len(re.findall(r'cipo: pronto "P.gina B"', m.serial())) == 2, "digitar troca o endereço, e sem HTTPS cai para HTTP")
+        m.clique(jx + 2 + 40, jy + 24 + 20)                       # Voltar para a página A
+        time.sleep(2)
         m.clique(jx + 864 - 2 - 40 + 8, jy + 12)                  # maximizar
         m.esperar_serial("maximizada: 1020x718", 10)
         time.sleep(3)
-        verificar(len(re.findall(r'cipo: pronto "P.gina A"', m.serial())) == 3, "maximizado, diagrama a página de novo")
+        verificar(len(re.findall(r'cipo: pronto "P.gina A"', m.serial())) == 4, "maximizado, diagrama a página de novo")
         m.captura("H37-cipo-maximizado")
     srv.shutdown()
     return 0

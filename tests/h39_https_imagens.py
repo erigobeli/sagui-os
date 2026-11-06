@@ -68,6 +68,14 @@ def main():
         cores = [cor_do_pixel(png, x, y) for y in range(jy + 70, jy + 400, 6)]
         verificar(any(c[0] > 180 and c[1] < 60 and c[2] < 70 for c in cores), "vermelho do PNG na tela")
         verificar(any(c[2] > 170 and c[0] < 50 and c[1] < 90 for c in cores), "azul do JPEG na tela")
+    # Digitado à mão e sem esquema: tenta HTTPS. O endereço da página inicial não atrapalha.
+    with Maquina("h39-d", "ide", imagem=imagem_de_teste("/bin/cipo", ["--vesa"]), extras=extras) as m:
+        m.esperar_serial('cipo: pronto "In', 60)
+        time.sleep(1)
+        m.digitar(f"10.0.2.2:{porta}\n", 0.08)
+        m.esperar_serial(f"cipo: abrindo https://10.0.2.2:{porta}", 10)
+        m.esperar_serial('cipo: pronto "Fotos"', 60)
+        verificar(True, "endereço digitado sem esquema abre por HTTPS")
     srv.shutdown()
 
     srv = servidor(pasta, ssl.TLSVersion.TLSv1_2)

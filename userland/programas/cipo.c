@@ -63,7 +63,7 @@ typedef struct { int acao; char fixa[300]; int campo; } form_t;   /* campo = nom
 typedef struct { uint32_t *px; int l, a; } imagem_t;
 static imagem_t imagens[MAX_IMAGENS];
 static int qtd_imagens;
-static bool pagina_segura;
+static bool pagina_segura, substituir;
 
 static seg_t  *segs;   static int qtd_segs, cap_segs;
 static alvo_t *alvos;  static int qtd_alvos, cap_alvos;
@@ -830,9 +830,12 @@ static void desenhar_barra(void)
 
 static const char pagina_inicio[] =
     "<title>Início</title><h1>Cipó, o navegador do SaguiOS</h1>"
-    "<p>Digite um endereço lá em cima e aperte Enter, ou escolha um site abaixo. O SaguiOS fala "
-    "<b>HTTP</b>, sem criptografia: sites que só abrem com <b>https://</b> não funcionam aqui.</p>"
-    "<h3>Sites que ainda falam HTTP</h3><ul>"
+    "<p>Digite um endereço lá em cima e aperte Enter, ou escolha um site abaixo. O Cipó mostra texto e "
+    "imagens PNG e JPEG; não roda JavaScript nem CSS. No <b>https://</b> a conexão é cifrada, mas a "
+    "identidade do site <b>não</b> é verificada: não digite senhas.</p>"
+    "<h3>Para começar</h3><ul>"
+    "<li><a href=\"https://pt.wikipedia.org/\">pt.wikipedia.org</a>: a Wikipédia em português</li>"
+    "<li><a href=\"https://www.google.com/\">www.google.com</a>: busca</li>"
     "<li><a href=\"http://info.cern.ch/\">info.cern.ch</a>: o primeiro site da história (1991)</li>"
     "<li><a href=\"http://68k.news/\">68k.news</a>: notícias do dia em HTML simples</li>"
     "<li><a href=\"http://neverssl.com/\">neverssl.com</a>: um site feito para nunca usar https</li>"
@@ -855,18 +858,22 @@ static void carregar(const char *pedido)
 {
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
+    /* Sem esquema, tenta HTTPS primeiro e cai para HTTP se não der. */
+    bool adivinhou = false;
     if (!comeca_com(url, "http://") && !comeca_com(url, "https://") && !comeca_com(url, "sobre:")) {
         char t[URL_MAX];
-        formatar_texto(t, sizeof t, "http://%s", url);
+        formatar_texto(t, sizeof t, "https://%s", url);
         copia_texto(url, t, sizeof url);
+        adivinhou = true;
     }
     copia_texto(url_atual, url, sizeof url_atual);
-    caixa_definir(&endereco, url);
+    caixa_definir(&endereco, comeca_com(url, "sobre:") ? "" : url);
     endereco.foco = false;
     desenhar_barra();
     registrar("cipo: abrindo %s\n", url);
 
     if (comeca_com(url, "sobre:")) {
+        pagina_segura = false;
         limpar_pagina();
         ler_html(pagina_inicio, (int)sizeof pagina_inicio - 1);
     } else {
@@ -885,6 +892,17 @@ static void carregar(const char *pedido)
             rodape(st);
             pagina_segura = url_https(url);
             int fd = http_pedir_seguro(host, porta, caminho, pagina_segura);
+            if (fd < 0 && adivinhou) {
+                adivinhou = false;
+                char t[URL_MAX];
+                formatar_texto(t, sizeof t, "http://%s", url + 8);
+                copia_texto(url, t, sizeof url);
+                copia_texto(url_atual, url, sizeof url_atual);
+                caixa_definir(&endereco, url);
+                desenhar_barra();
+                registrar("cipo: sem HTTPS, tentando %s\n", url);
+                continue;
+            }
             if (fd < 0) {
                 erro = "Não consegui abrir a página";
                 formatar_texto(detalhe, sizeof detalhe, "%s: %s.", host, pagina_segura ? tls_erro() : nome_erro(fd));
@@ -1026,6 +1044,10 @@ int principal(int argc, char **argv)
     desenhar_barra();
     rodape("Pronto");
     carregar(argc > 1 ? argv[1] : "sobre:inicio");
+    if (argc <= 1) {   /* na página inicial, já dá para digitar */
+        endereco.foco = true;
+        desenhar_barra();
+    }
     jan_mostrar(j);
 
     evento_t e;
@@ -1043,7 +1065,16 @@ int principal(int argc, char **argv)
             jan_mostrar(j);
             continue;
         }
+        /* Como nos outros navegadores: clicar no endereço e digitar troca o
+         * endereço inteiro, em vez de escrever depois dele. */
+        bool tinha_foco = endereco.foco;
+        if (e.tipo == EV_TECLA && substituir && e.tecla >= 32 && e.tecla < 256) {
+            caixa_definir(&endereco, "");
+            endereco.foco = true;
+        }
+        if (e.tipo == EV_TECLA) substituir = false;
         if (caixa_tratar(j, &endereco, &e) && endereco.texto[0]) { navegar(endereco.texto); continue; }
+        if (endereco.foco && !tinha_foco) substituir = true;
         if (botao_tratar(j, &bt_ir, &e) && endereco.texto[0]) { navegar(endereco.texto); continue; }
         if (botao_tratar(j, &bt_inicio, &e)) { navegar("sobre:inicio"); continue; }
         if (botao_tratar(j, &bt_voltar, &e)) {
