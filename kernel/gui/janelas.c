@@ -224,7 +224,7 @@ static void desenhar_moldura(janela_t *j, bool foco)
 #define MENU_SEP_A  9
 #define MENU_L_MIN  170
 
-enum { A_NADA, A_ABRIR_ICONE, A_REMOVER_PEN, A_FUNDOS, A_FUNDO, A_ICONES, A_TAMANHO, A_GRADE, A_ORGANIZAR, A_ATUALIZAR, A_ICONE_LIXO, A_RESTAURAR_ICONES, A_ESVAZIAR, A_MOSTRAR_AREA,
+enum { A_NADA, A_ABRIR_ICONE, A_REMOVER_PEN, A_FUNDOS, A_FUNDO, A_ICONES, A_TAMANHO, A_GRADE, A_ORGANIZAR, A_ATUALIZAR, A_PROPRIEDADES, A_ICONE_LIXO, A_RESTAURAR_ICONES, A_ESVAZIAR, A_MOSTRAR_AREA,
        A_RESTAURAR, A_MINIMIZAR, A_MAXIMIZAR, A_FECHAR, A_PROGRAMA };
 
 typedef struct { char texto[30]; int acao, arg; bool separador; } item_menu_t;
@@ -525,6 +525,7 @@ static void menu_da_area(int x, int y)
     menu_novo(0);
     menu_item("Novo Terminal", A_ABRIR_ICONE, 1);
     menu_item("Arquivos", A_ABRIR_ICONE, 0);
+    menu_item("Atualizar", A_ATUALIZAR, 0);
     menu_item("Editor de texto", A_ABRIR_ICONE, 2);
     menu_separador();
     menu_item("Papel de parede", A_FUNDOS, 0);
@@ -532,8 +533,6 @@ static void menu_da_area(int x, int y)
     menu_item("Mostrar área de trabalho", A_MOSTRAR_AREA, 0);
     menu_separador();
     menu_item("Sobre o SaguiOS", A_ABRIR_ICONE, 6);
-    menu_separador();
-    menu_item("Atualizar", A_ATUALIZAR, 0);
     menu_abrir(x, y);
 }
 
@@ -553,6 +552,7 @@ static void menu_do_icone(int ic, int x, int y)
         menu_separador();
         menu_item("Mover para a lixeira", A_ICONE_LIXO, ic);
     }
+    menu_item("Propriedades", A_PROPRIEDADES, ic);
     menu_abrir(x, y);
 }
 
@@ -590,6 +590,12 @@ static void menu_executar(item_menu_t *it)
     case A_GRADE: area_grade(!area_grade_ligada()); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_ORGANIZAR: area_icones_organizar(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_ATUALIZAR: area_atualizar(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
+    case A_PROPRIEDADES: {
+        char t[96];
+        snformatar(t, sizeof t, "%s: atalho para %s", area_icone_nome(arg), area_icone_programa(arg));
+        gui_aviso(t);
+        break;
+    }
     case A_ICONE_LIXO: area_jogar_fora(arg); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_RESTAURAR_ICONES: area_restaurar_icones(); gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); break;
     case A_ESVAZIAR: {
@@ -752,6 +758,10 @@ static void tratar_mouse(evento_mouse_t *m)
                 laco_ativo = true;
                 laco_x0 = laco_x1 = m->x;
                 laco_y0 = laco_y1 = m->y;
+            }
+            if (ic >= 0 && !area_icone_selecionado(ic)) {
+                area_marcar_icone(ic);
+                gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
             }
             if (ic >= 0 && (m->mudaram & BOTAO_ESQUERDO) && !duplo) {
                 int ix, iy, il, ia;

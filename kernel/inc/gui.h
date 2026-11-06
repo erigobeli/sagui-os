@@ -24,6 +24,9 @@ bool area_limpar_selecao(void);                     /* true se havia seleção *
 bool area_tem_selecao(void);
 bool area_icone_selecionado(int i);
 void area_mover_selecao(int i, int dx, int dy);     /* os outros ícones acompanham o ícone i */
+void area_marcar_icone(int i);                      /* clique: seleciona só este ícone */
+const char *area_icone_nome(int i);
+const char *area_icone_programa(int i);
 void area_jogar_fora(int i);                        /* i < 0: todos os selecionados */
 void area_restaurar_icones(void);
 void area_atualizar(void);

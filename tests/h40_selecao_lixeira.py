@@ -57,11 +57,29 @@ def main():
         time.sleep(0.5)
         b = janela(m.serial(), "Arquivos")
         m.clique(*item(b, 0), botao=2)
-        m.esperar_serial("[GUI] menu aberto com 2 itens", 10)
-        x, y = re.findall(r"menu aberto com 2 itens em \((\d+),(\d+)\)", m.serial())[-1]
+        m.esperar_serial("[GUI] menu aberto com 5 itens", 10)
+        x, y = re.findall(r"menu aberto com 5 itens em \((\d+),(\d+)\)", m.serial())[-1]
         m.clique(int(x) + 20, int(y) + 4 + 12)                    # Restaurar
         m.esperar_serial("arquivos: restaurado /tmp/dois.txt", 10)
         verificar(True, "Restaurar devolve o arquivo ao lugar de origem")
+        m.esperar_serial("arquivos: pasta /.lixeira (2 itens)", 10)
+        m.clique(*item(b, 0), botao=2)
+        m.esperar_serial("[GUI] menu aberto com 5 itens", 10)
+        x, y = re.findall(r"menu aberto com 5 itens em \((\d+),(\d+)\)", m.serial())[-1]
+        m.clique(int(x) + 20, int(y) + 4 + 2 * 24 + 12)           # Propriedades
+        m.esperar_serial("arquivos: propriedades", 10)
+        time.sleep(0.5)
+        m.captura("H40-3-propriedades")
+        m.tecla("ret")
+        time.sleep(0.5)
+        verificar(True, "Propriedades abre")
+        m.clique(b["x"] + 430 + 75, b["y"] + 20)                  # Esvaziar lixeira
+        m.esperar_serial('"Esvaziar lixeira"', 10)
+        time.sleep(0.3)
+        m.tecla("ret")
+        m.esperar_serial("arquivos: lixeira esvaziada", 10)
+        m.esperar_serial("arquivos: pasta /.lixeira (0 itens)", 10)
+        verificar(True, "Esvaziar lixeira limpa a pasta e a lista se atualiza")
 
         m.arrastar(500, 640, 10, 120)                             # laço da área de trabalho
         m.esperar_serial("[GUI] icones selecionados:", 10)
@@ -69,7 +87,7 @@ def main():
         m.clique(700, 700, botao=2)
         m.esperar_serial("[GUI] menu aberto com 8 itens", 10)
         x, y = re.findall(r"menu aberto com 8 itens em \((\d+),(\d+)\)", m.serial())[-1]
-        m.clique(int(x) + 20, int(y) + 4 + 7 * 24 + 18 + 12)     # Atualizar
+        m.clique(int(x) + 20, int(y) + 4 + 2 * 24 + 12)          # Atualizar
         m.esperar_serial("[GUI] area de trabalho atualizada", 10)
         verificar(True, "Atualizar no menu da área de trabalho")
 

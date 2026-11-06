@@ -20,6 +20,8 @@ bool url_separar(const char *url, char *host, int max_host, int *porta, char *ca
     return host[0] && *porta > 0 && *porta <= 65535;
 }
 
+static const char *versao = "1.1";
+
 int http_ler(int fd, void *buf, unsigned n)
 {
     return tls_ativo(fd) ? tls_ler(buf, n) : ler(fd, buf, n);
@@ -33,7 +35,34 @@ void http_fechar(int fd)
 
 int http_pedir(const char *host, int porta, const char *caminho)
 {
-    return http_pedir_seguro(host, porta, caminho, false);
+    versao = "1.0";   /* o baixar grava o corpo como veio, sem pedaços */
+    int fd = http_pedir_seguro(host, porta, caminho, false);
+    versao = "1.1";
+    return fd;
+}
+
+/* HTTP/1.1 manda o corpo em pedaços: "tamanho em hexa", dados, e assim por
+ * diante. Junta tudo no lugar e devolve o tamanho novo. */
+int http_juntar_pedacos(char *d, int n)
+{
+    int i = 0, o = 0;
+    while (i < n) {
+        int t = 0, h;
+        for (; i < n; i++) {
+            char c = d[i];
+            h = c >= '0' && c <= '9' ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'f' ? (c | 32) - 'a' + 10 : -1;
+            if (h < 0) break;
+            t = t * 16 + h;
+        }
+        while (i < n && d[i] != '\n') i++;
+        i++;
+        if (t == 0 || i >= n) break;
+        if (t > n - i) t = n - i;      /* cortado pelo limite de tamanho */
+        memmove(d + o, d + i, (size_t)t);
+        o += t;
+        i += t + 2;
+    }
+    return o;
 }
 
 int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seguro)
@@ -50,7 +79,7 @@ int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seg
     if (fd < 0) return fd;
     char pedido[900];
     int n = formatar_texto(pedido, sizeof pedido,
-                           "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: SaguiOS\r\nConnection: close\r\n\r\n", caminho, host);
+                           "GET %s HTTP/%s\r\nHost: %s\r\nUser-Agent: Mozilla/5.0 (compatible; SaguiOS)\r\nAccept: */*\r\nConnection: close\r\n\r\n", caminho, versao, host);
     if (seguro) {
         r = tls_abrir(fd, host);
         if (r < 0) { fechar(fd); return r; }

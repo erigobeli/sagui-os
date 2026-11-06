@@ -253,6 +253,16 @@ void area_selecionar(int x, int y, int l, int a)
     klog("[GUI] icones selecionados: %d\n", n);
 }
 
+void area_marcar_icone(int i)
+{
+    memset(ic_sel, 0, sizeof ic_sel);
+    ic_sel[i] = true;
+    compor_fundo();
+}
+
+const char *area_icone_nome(int i) { return icones[i].nome; }
+const char *area_icone_programa(int i) { return icones[i].programa; }
+
 bool area_tem_selecao(void)
 {
     for (int i = 0; i < QTD_ICONES; i++) if (ic_sel[i]) return true;

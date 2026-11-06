@@ -36,7 +36,7 @@ def main():
         m.clique(600, 700, botao=2)
         m.esperar_serial("[GUI] menu aberto com 8 itens", 10)
         x, y = menu(m)
-        m.clique(x + 20, y + 4 + 4 * 24 + 9 + 12)                 # Ícones (item 4)
+        m.clique(x + 20, y + 4 + 5 * 24 + 9 + 12)                 # Ícones (item 4)
         m.esperar_serial("[GUI] menu aberto com 5 itens", 10)
         time.sleep(0.4)
         x, y = menu(m)

@@ -31,7 +31,7 @@ def main():
         m.esperar_serial("[GUI] menu aberto com 8 itens", 10)
         m.captura("H35-1-menu-area")
         x, y = posicao_menu(m)
-        m.clique(x + 20, y + 4 + 3 * 24 + 9 + 12)
+        m.clique(x + 20, y + 4 + 4 * 24 + 9 + 12)
         m.esperar_serial("[GUI] menu: Papel de parede", 10)
         m.esperar_serial("[GUI] menu aberto com 3 itens", 10)
         time.sleep(0.3)

@@ -93,6 +93,10 @@ static void desenhar_rodape(const char *msg)
 
 /* Lê a pasta: primeiro as pastas, depois o resto (o kernel já devolve em
  * ordem alfabética). */
+static botao_t bt[5];
+static uint32_t assinatura_vista;
+static uint32_t assinatura(void);
+
 static void carregar(void)
 {
     entrada_pasta_t e;
@@ -116,6 +120,10 @@ static void carregar(void)
     char msg[64];
     formatar_texto(msg, sizeof msg, "%d itens. Duplo clique para abrir.", n);
     desenhar_rodape(msg);
+    /* O botão de esvaziar só existe dentro da lixeira. */
+    if (compara_texto(pasta, "/.lixeira") == 0) botao_desenhar(j, &bt[4]);
+    else { g_retangulo(j, 428, 2, 156, 36, 0xE6E9EC); jan_mostrar_area(j, 428, 2, 156, 36); }
+    assinatura_vista = assinatura();
     registrar("arquivos: pasta %s (%d itens)", pasta, n);
 }
 
@@ -393,8 +401,9 @@ static void colar_itens(void)
     carregar();
 }
 
-static botao_t bt[3] = {
+static botao_t bt[5] = {
     { 8, 7, 90, 26, "Voltar", false }, { 106, 7, 110, 26, "Nova pasta", false }, { 224, 7, 90, 26, "Apagar", false },
+    { 322, 7, 100, 26, "Atualizar", false }, { 430, 7, 150, 26, "Esvaziar lixeira", false },
 };
 
 static void desenhar_tudo(void)
@@ -402,12 +411,109 @@ static void desenhar_tudo(void)
     g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
     g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
     g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
-    for (int i = 0; i < 3; i++) botao_desenhar(j, &bt[i]);
+    for (int i = 0; i < 4; i++) botao_desenhar(j, &bt[i]);
     lista.l = LARG - LATERAL - 14;
     lista.a = ALT - 70 - 30;
     desenhar_lateral();
     carregar();
     jan_mostrar(j);
+}
+
+/* Soma simples do conteúdo da pasta, para notar mudanças feitas por outra
+ * janela, pelo Terminal ou pelo menu da lixeira. */
+static uint32_t assinatura(void)
+{
+    entrada_pasta_t e;
+    uint32_t h = 2166136261u;
+    for (int i = 0; listar(pasta, i, &e) == 1; i++) {
+        for (const char *p = e.nome; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+        h = (h ^ e.tamanho) * 16777619u;
+    }
+    return h;
+}
+
+/* Recarrega mantendo o item selecionado, se ele continuar lá. */
+static void atualizar_lista(void)
+{
+    char antes[64] = "";
+    int topo = lista.topo;
+    if (lista.sel >= 0 && lista.sel < lista.qtd) copia_texto(antes, nomes[lista.sel], sizeof antes);
+    carregar();
+    for (int i = 0; i < lista.qtd; i++)
+        if (compara_texto(nomes[i], antes) == 0) lista.sel = i;
+    lista.topo = topo < lista.qtd ? topo : 0;
+    lista_desenhar(j, &lista);
+    assinatura_vista = assinatura();
+}
+
+static void esvaziar_lixeira(void)
+{
+    if (!confirmar("Esvaziar lixeira", "Apagar de vez tudo o que está na lixeira?")) return;
+    remover_tudo(LIXEIRA);
+    criar_pasta(LIXEIRA);
+    registrar("arquivos: lixeira esvaziada");
+    atualizar_lista();
+}
+
+static void renomear_item(void)
+{
+    int i = lista.sel;
+    if (i < 0 || i >= lista.qtd) return;
+    char nome[64], de[200], para[200];
+    copia_texto(nome, nomes[i], sizeof nome);
+    if (!pedir_texto("Renomear", "Novo nome:", nome, sizeof nome) || !nome[0]) return;
+    caminho_de(i, de, sizeof de);
+    formatar_texto(para, sizeof para, "%s/%s", compara_texto(pasta, "/") ? pasta : "", nome);
+    if (existe(para)) { mensagem("Renomear", "Já existe um item com esse nome."); return; }
+    int r = renomear(de, para);
+    if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui renomear:\n%s", nome_erro(r)); mensagem("Renomear", m); return; }
+    registrar("arquivos: renomeado %s", para);
+    atualizar_lista();
+}
+
+/* Soma tamanho e itens de uma pasta, descendo nas de dentro. */
+static void medir(const char *c, unsigned *bytes, int *arqs, int *pastas)
+{
+    entrada_pasta_t e;
+    for (int i = 0; listar(c, i, &e) == 1; i++) {
+        if (e.nome[0] == '.') continue;
+        if (e.tipo == TIPO_PASTA) {
+            char f[200];
+            formatar_texto(f, sizeof f, "%s/%s", compara_texto(c, "/") ? c : "", e.nome);
+            (*pastas)++;
+            medir(f, bytes, arqs, pastas);
+        } else { (*arqs)++; *bytes += e.tamanho; }
+    }
+}
+
+static void propriedades(bool da_pasta)
+{
+    char m[400], c[200];
+    unsigned bytes = 0;
+    int arqs = 0, pastas = 0, i = lista.sel;
+    if (da_pasta || i < 0) {
+        medir(pasta, &bytes, &arqs, &pastas);
+        formatar_texto(m, sizeof m, "Pasta: %s\nConteúdo: %d arquivos, %d pastas\nTamanho: %u bytes (%u KB)", pasta, arqs, pastas, bytes, (bytes + 1023) / 1024);
+    } else if (qtd_marcados() > 1) {
+        for (int k = 0; k < lista.qtd; k++) {
+            if (!marcado(k)) continue;
+            caminho_de(k, c, sizeof c);
+            if (tipos[k] == TIPO_PASTA) { pastas++; medir(c, &bytes, &arqs, &pastas); }
+            else { arqs++; bytes += tamanhos[k]; }
+        }
+        formatar_texto(m, sizeof m, "%d itens selecionados\nConteúdo: %d arquivos, %d pastas\nTamanho: %u bytes (%u KB)", qtd_marcados(), arqs, pastas, bytes, (bytes + 1023) / 1024);
+    } else {
+        caminho_de(i, c, sizeof c);
+        if (tipos[i] == TIPO_PASTA) {
+            medir(c, &bytes, &arqs, &pastas);
+            formatar_texto(m, sizeof m, "Nome: %s\nTipo: pasta\nLocal: %s\nConteúdo: %d arquivos, %d pastas\nTamanho: %u bytes (%u KB)", nomes[i], pasta, arqs, pastas, bytes, (bytes + 1023) / 1024);
+        } else {
+            formatar_texto(m, sizeof m, "Nome: %s\nTipo: %s\nLocal: %s\nTamanho: %u bytes (%u KB)", nomes[i],
+                           tipos[i] == TIPO_PROGRAMA ? "programa" : "arquivo", pasta, tamanhos[i], (tamanhos[i] + 1023) / 1024);
+        }
+    }
+    registrar("arquivos: propriedades %s", da_pasta ? pasta : nomes[i >= 0 ? i : 0]);
+    mensagem("Propriedades", m);
 }
 
 /* Menu do botão direito na lista. */
@@ -420,9 +526,10 @@ static void abrir_menu(const evento_t *e)
     if (menu_em_item) {
         if (!marcas[i]) { memset(marcas, 0, sizeof marcas); lista.sel = i; }
         lista_desenhar(j, &lista);
-        jan_menu(j, e->x, e->y, na_lixeira() ? "Restaurar|Apagar de vez" : "Abrir|Copiar|Recortar|Apagar||Nova pasta|Colar");
+        jan_menu(j, e->x, e->y, na_lixeira() ? "Restaurar|Apagar de vez|Propriedades||Esvaziar lixeira|Atualizar"
+                                              : "Abrir|Copiar|Recortar|Renomear|Apagar|Propriedades||Nova pasta|Colar|Atualizar");
     } else {
-        jan_menu(j, e->x, e->y, "Nova pasta|Colar");
+        jan_menu(j, e->x, e->y, na_lixeira() ? "Esvaziar lixeira|Atualizar|Propriedades" : "Nova pasta|Colar|Atualizar|Propriedades");
     }
 }
 
@@ -450,6 +557,7 @@ int principal(int argc, char **argv)
             /* Sem evento: de vez em quando confere se um pendrive entrou ou saiu. */
             if (tempo_ms() - ultimo > 700) {
                 ultimo = tempo_ms();
+                if (assinatura() != assinatura_vista) atualizar_lista();
                 if (atualizar_pendrive()) {
                     desenhar_lateral();
                     info_arquivo_t inf;
@@ -466,14 +574,24 @@ int principal(int argc, char **argv)
         if (e.tipo == EV_CLIQUE && (e.botoes & 2) && e.x >= LATERAL) { abrir_menu(&e); continue; }
         if (e.tipo == EV_MENU) {
             unsigned k = e.tecla;
-            if (!menu_em_item) { if (k == 0) nova_pasta(); else colar_itens(); }
-            else if (na_lixeira()) { if (k == 0) restaurar_item(); else apagar_item(); }
+            if (!menu_em_item && na_lixeira()) {
+                if (k == 0) esvaziar_lixeira(); else if (k == 1) atualizar_lista(); else propriedades(true);
+            } else if (!menu_em_item) {
+                if (k == 0) nova_pasta(); else if (k == 1) colar_itens(); else if (k == 2) atualizar_lista(); else propriedades(true);
+            } else if (na_lixeira()) {
+                if (k == 0) restaurar_item(); else if (k == 1) apagar_item(); else if (k == 2) propriedades(false);
+                else if (k == 3) esvaziar_lixeira(); else atualizar_lista();
+            }
             else if (k == 0) abrir_item(lista.sel);
             else if (k == 1) copiar_itens(false);
             else if (k == 2) copiar_itens(true);
-            else if (k == 3) apagar_item();
-            else if (k == 4) nova_pasta();
-            else colar_itens();
+            else if (k == 3) renomear_item();
+            else if (k == 4) apagar_item();
+            else if (k == 5) propriedades(false);
+            else if (k == 6) nova_pasta();
+            else if (k == 7) colar_itens();
+            else atualizar_lista();
+            assinatura_vista = assinatura();
             continue;
         }
         if (botao_tratar(j, &bt_lado_raiz, &e)) { copia_texto(pasta, "/", sizeof pasta); carregar(); }
@@ -493,6 +611,8 @@ int principal(int argc, char **argv)
         if (botao_tratar(j, &bt[0], &e)) voltar();
         if (botao_tratar(j, &bt[1], &e)) nova_pasta();
         if (botao_tratar(j, &bt[2], &e)) apagar_item();
+        if (botao_tratar(j, &bt[3], &e)) atualizar_lista();
+        if (na_lixeira() && botao_tratar(j, &bt[4], &e)) esvaziar_lixeira();
         if (e.tipo == EV_TECLA && e.tecla == '\b') { voltar(); continue; }
         if (e.tipo == EV_TECLA && e.tecla == TECLA_DELETE) { apagar_item(); continue; }
         if (e.tipo == EV_TECLA && e.tecla == 3) { copiar_itens(false); continue; }

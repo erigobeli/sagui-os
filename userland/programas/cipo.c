@@ -34,7 +34,7 @@
 #define LINHA_A   18
 #define VISIVEIS  ((AREA_A - 8) / LINHA_A)
 #define URL_MAX   600
-#define PAGINA_MAX (1024 * 1024)
+#define PAGINA_MAX (4 * 1024 * 1024)
 
 /* Estilos (bits) */
 #define E_NEGRITO 1
@@ -67,7 +67,8 @@ typedef struct { uint32_t *px; int l, a; } imagem_t;
 static imagem_t imagens[MAX_IMAGENS];
 static int qtd_imagens;
 static bool pagina_segura, substituir;
-static char titulo_js[96], alerta_js[120];
+static unsigned inicio_pagina;
+static char titulo_js[96], alerta_js[120], nota_busca[80];
 
 static seg_t  *segs;   static int qtd_segs, cap_segs;
 static alvo_t *alvos;  static int qtd_alvos, cap_alvos;
@@ -417,7 +418,7 @@ static void rodape(const char *t);
 /* Baixa uma imagem inteira, seguindo redirecionamentos. */
 static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
 {
-    static char cab[8192];
+    static char cab[16384];
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
     for (int r = 0; r < 4; r++) {
@@ -453,6 +454,8 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
             }
         }
         http_fechar(fd);
+        char te[32];
+        if (http_campo(cab, "Transfer-Encoding", te, sizeof te)) tam = (unsigned)http_juntar_pedacos((char *)d, (int)tam);
         *n = tam;
         return d;
     }
@@ -463,6 +466,7 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
 static bool colocar_imagem(const char *url)
 {
     if (qtd_imagens == MAX_IMAGENS) return false;
+    if (tempo_ms() - inicio_pagina > 15000) return false;   /* página cheia de fotos não prende o navegador */
     char st[100];
     formatar_texto(st, sizeof st, "Baixando imagem %d...", qtd_imagens + 1);
     rodape(st);
@@ -503,6 +507,31 @@ static bool colocar_imagem(const char *url)
 
 /* O que só atrapalha numa página sem CSS: menus, rodapés e o que o site esconde. */
 static const char *achar_tag(const char *h, int n, const char *tag);
+
+/* Os resultados do Bing passam por /ck/a, que redireciona com JavaScript. O
+ * destino vem no parâmetro u=a1<base64>: abre direto. */
+static void destino_bing(char *url, int max)
+{
+    if (!comeca_com(url, "https://www.bing.com/ck/a")) return;
+    const char *p = url;
+    while (*p && !((*p == '&' || *p == '?') && p[1] == 'u' && p[2] == '=' && p[3] == 'a' && p[4] == '1')) p++;
+    if (!*p) return;
+    p += 5;
+    char d[URL_MAX];
+    int k = 0, bits = 0;
+    uint32_t acc = 0;
+    for (; *p && *p != '&' && k < (int)sizeof d - 1; p++) {
+        char c = *p;
+        int v = c >= 'A' && c <= 'Z' ? c - 'A' : c >= 'a' && c <= 'z' ? c - 'a' + 26 : c >= '0' && c <= '9' ? c - '0' + 52 :
+                c == '-' || c == '+' ? 62 : c == '_' || c == '/' ? 63 : -1;
+        if (v < 0) break;
+        acc = acc << 6 | (uint32_t)v;
+        bits += 6;
+        if (bits >= 8) { bits -= 8; d[k++] = (char)(acc >> bits); }
+    }
+    d[k] = 0;
+    if (comeca_com(d, "http")) copia_texto(url, d, (size_t)max);
+}
 
 /* ---- CSS: só o que muda uma página de texto ----
  * Regras de <style> com seletor simples (tag, .classe, #id, tag.classe) e o
@@ -725,7 +754,7 @@ static void ler_html(const char *h, int n);
  * document.write entra no lugar do <script>, e getElementById troca o miolo
  * do elemento. Por isso eventos e mudanças depois de carregar não existem. */
 #define SCRIPT_MAX (24 * 1024)
-#define HTML_MAX (2 * 1024 * 1024)
+#define HTML_MAX (6 * 1024 * 1024)
 
 static char *js_h;
 static int js_n, js_cap, js_saida;   /* js_saida: onde document.write escreve */
@@ -1020,6 +1049,7 @@ static void ler_html(const char *h, int n)
                 if (fecha) { alvo_atual = -1; estilo &= ~E_LINK; continue; }
                 char url[URL_MAX];
                 if (atributo(attrs, na, "href", v, sizeof v) && juntar_url(url_atual, v, url, sizeof url)) {
+                    destino_bing(url, sizeof url);
                     alvo_atual = novo_alvo(A_LINK, url, -1, NULL);
                     if (alvo_atual >= 0) estilo |= E_LINK;
                 }
@@ -1178,6 +1208,7 @@ static uint32_t cor_de(int e)
 /* O cadeado não promete o que não existe: o certificado não é verificado. */
 static const char *texto_pronto(void)
 {
+    if (nota_busca[0]) return nota_busca;
     if (alerta_js[0]) return alerta_js;
     return pagina_segura ? "Cifrado, mas a identidade do site NÃO foi verificada. Não digite senhas." : "Pronto";
 }
@@ -1287,11 +1318,64 @@ static void pagina_de_erro(const char *titulo_erro, const char *texto)
     ler_html(h, (int)tam_texto(h));
 }
 
+/* Escreve o texto de uma busca como parâmetro de endereço. */
+static void codificar(const char *t, char *d, int max)
+{
+    static const char hexa[] = "0123456789ABCDEF";
+    int k = 0;
+    for (; *t && k < max - 4; t++) {
+        uint8_t c = (uint8_t)*t;
+        if (c == ' ') d[k++] = '+';
+        else if (letra((char)c) || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') d[k++] = (char)c;
+        else { d[k++] = '%'; d[k++] = hexa[c >> 4]; d[k++] = hexa[c & 15]; }
+    }
+    d[k] = 0;
+}
+
+/* Texto solto na barra vira busca. A busca do Google exige JavaScript real e
+ * devolve página vazia, então vai para o Bing, que responde sem JavaScript. */
+static void trocar_busca(char *url, int max)
+{
+    char q[300] = "";
+    const char *g = NULL;
+    for (const char *p = url; *p; p++) if (comeca_com(p, "google.")) { g = p; break; }
+    if (g) {
+        const char *b = g;
+        while (*b && *b != '/') b++;
+        if (comeca_com(b, "/search?")) {
+            const char *p = b;
+            while (*p) {
+                if ((*p == '?' || *p == '&') && p[1] == 'q' && p[2] == '=') {
+                    int k = 0;
+                    for (p += 3; *p && *p != '&' && k < (int)sizeof q - 1; p++) q[k++] = *p;
+                    q[k] = 0;
+                    break;
+                }
+                p++;
+            }
+            if (q[0]) {
+                formatar_texto(url, (size_t)max, "https://www.bing.com/search?q=%s", q);
+                copia_texto(nota_busca, "A busca do Google exige JavaScript: resultados do Bing.", sizeof nota_busca);
+            }
+        }
+        return;
+    }
+    if (comeca_com(url, "http://") || comeca_com(url, "https://") || comeca_com(url, "sobre:")) return;
+    bool ponto = false, espaco = false;
+    for (const char *p = url; *p; p++) { ponto |= *p == '.' || *p == ':'; espaco |= *p == ' '; }
+    if (ponto && !espaco) return;
+    codificar(url, q, sizeof q);
+    formatar_texto(url, (size_t)max, "https://www.bing.com/search?q=%s", q);
+}
+
 /* Baixa o endereço (seguindo redirecionamentos) e monta a página. */
 static void carregar(const char *pedido)
 {
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
+    inicio_pagina = tempo_ms();
+    nota_busca[0] = 0;
+    trocar_busca(url, sizeof url);
     /* Sem esquema, tenta HTTPS primeiro e cai para HTTP se não der. */
     bool adivinhou = false;
     if (!comeca_com(url, "http://") && !comeca_com(url, "https://") && !comeca_com(url, "sobre:")) {
@@ -1311,7 +1395,7 @@ static void carregar(const char *pedido)
         limpar_pagina();
         ler_html(pagina_inicio, (int)sizeof pagina_inicio - 1);
     } else {
-        static char cab[8192];
+        static char cab[16384];
         char *corpo = NULL;
         int tam = 0, codigo = 0;
         bool html = true;
@@ -1389,6 +1473,8 @@ static void carregar(const char *pedido)
                 }
             }
             http_fechar(fd);
+            char te[32];
+            if (http_campo(cab, "Transfer-Encoding", te, sizeof te)) tam = http_juntar_pedacos(corpo, tam);
             break;
         }
         limpar_pagina();
@@ -1403,6 +1489,13 @@ static void carregar(const char *pedido)
                 ler_pagina(novo, tam);
                 if (novo != corpo) libera(novo);
                 if (titulo_js[0]) copia_texto(titulo, titulo_js, sizeof titulo);
+                if (!linhas) {
+                    char t[96];
+                    copia_texto(t, titulo, sizeof t);
+                    pagina_de_erro("Esta página só existe com JavaScript completo",
+                                   "O site monta tudo por JavaScript, e o Cipó só roda um pedaço pequeno da linguagem. Vídeos também não tocam aqui.");
+                    copia_texto(titulo, t, sizeof titulo);
+                }
             } else {
                 estilo = E_PRE;
                 pre_n = 1;
