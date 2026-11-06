@@ -48,12 +48,23 @@ ESCONDIDA = """<html><head><title>Oculta</title><link rel="stylesheet" href="t.c
 <body><div class="app"><p>texto-revelado</p><p>outra linha</p><p>mais uma</p></div></body></html>"""
 
 
+CAIXAS = """<html><head><title>Caixas</title><style>
+:root { --vermelho: #c81e28 }
+body { background: #f0e6c8 }
+.linha { display: flex; gap: 0 }
+.a { background: var(--vermelho); color: white; padding: 18px; width: 50% }
+.b { background-color: rgb(20, 60, 200); color: white; padding: 18px; width: 50% }
+</style></head><body><div class="linha"><div class="a">esquerda</div><div class="b">direita</div></div>
+<table><tr><td>um</td><td>dois</td></tr></table></body></html>"""
+
+
 def main():
     pasta = os.path.join(SAIDA, "h42-www")
     os.makedirs(pasta, exist_ok=True)
     open(os.path.join(pasta, "index.html"), "w").write(HTML)
     open(os.path.join(pasta, "sem.html"), "w").write(HTML.replace('href="s.css"', 'href="vazia.css"'))
     open(os.path.join(pasta, "vazia.css"), "w").write("")
+    open(os.path.join(pasta, "caixas.html"), "w").write(CAIXAS)
     open(os.path.join(pasta, "oculta.html"), "w").write(ESCONDIDA)
     open(os.path.join(pasta, "s.css"), "w").write(CSS)
     open(os.path.join(pasta, "t.css"), "w").write(".app { display: none }")
@@ -96,6 +107,19 @@ def main():
     print("sem folha:", sem, "com folha:", linhas)
     verificar(sem - linhas == 6, f"exatamente 3 parágrafos somem ({sem} para {linhas} linhas)")
 
+    with Maquina("h42-l", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/caixas.html", ["--vesa"]), extras=extras) as m:
+        m.esperar_serial('cipo: pronto "Caixas"', 120)
+        time.sleep(1)
+        s = m.serial()
+        png = m.captura("H42-cipo-caixas")
+        jan = re.search(r'criada por \d+: "Cip.*?" \d+x\d+ em \((\d+),(\d+)\)', s)
+        jx, jy = int(jan.group(1)), int(jan.group(2))
+        y = jy + 90
+        linha = [cor_do_pixel(png, x, y)[:3] for x in range(jx + 20, jx + 800, 10)]
+        verificar(any(c == (200, 30, 40) for c in linha), "coluna vermelha do flex")
+        verificar(any(c == (20, 60, 200) for c in linha), "coluna azul ao lado, na mesma altura")
+        fundo = cor_do_pixel(png, jx + 8, jy + 300)[:3]
+        verificar(fundo == (240, 230, 200), f"fundo do body pintado ({fundo})")
     with Maquina("h42-o", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/oculta.html", ["--vesa"]), extras=extras) as m:
         m.esperar_serial('cipo: pronto "Oculta"', 120)
         s = m.serial()

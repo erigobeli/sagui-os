@@ -46,7 +46,9 @@
 #define E_LINHA   64   /* linha horizontal (<hr>) */
 #define E_IMAGEM  128  /* "n" é o índice em imagens[] */
 #define E_GRANDE  256  /* letra em dobro: <h1> e <h2> */
-#define MAX_IMAGENS 12
+#define E_LINKCOR 512  /* link com a cor do CSS */
+#define E_SEMLINHA 1024 /* link sem sublinhado */
+#define MAX_IMAGENS 40
 #define IMAGEM_ALT_MAX 420
 #define IMAGEM_BYTES_MAX (6 * 1024 * 1024)
 
@@ -293,16 +295,36 @@ static int brancas;          /* linhas em branco seguidas (evita buracos) */
 static int centro, ini_linha;
 static uint32_t cor_css;
 static bool linha_grande;
+static int dir_atual, direita;      /* limite direito da caixa atual; linha à direita */
+static uint32_t fundo_atual = 0xFFFFFF, fundo_pagina = 0xFFFFFF;
+
+/* Fundos e bordas das caixas, desenhados antes do texto. */
+typedef struct { int l0, l1; int16_t x0, x1; uint32_t fundo, borda; } ret_t;   /* cores + 1; 0 = nenhuma */
+static ret_t *rets; static int qtd_rets, cap_rets;
+
+static int luz(uint32_t c) { return (int)((c >> 16 & 255) * 3 + (c >> 8 & 255) * 6 + (c & 255)) / 10; }
+
+/* float: a caixa fica de lado e o texto corre ao lado dela até o fundo dela. */
+static int fd_fundo, fd_lim = -1, fd_orig, fe_fundo, fe_lim = -1, fe_orig;
+
+static void ajustar_floats(void)
+{
+    if (fd_fundo && linha_atual >= fd_fundo) fd_fundo = 0;
+    if (fe_fundo && linha_atual >= fe_fundo) fe_fundo = 0;
+    if (!fd_fundo && dir_atual == fd_lim) dir_atual = fd_orig;
+    if (!fe_fundo && recuo == fe_lim) recuo = fe_orig;
+}
 
 static void quebrar(void)
 {
-    if (!linha_vazia && centro) {
-        int d = (LARG_TEXTO - x_atual) / 2;
+    if (!linha_vazia && (centro || direita)) {
+        int d = (dir_atual - x_atual) / (direita ? 1 : 2);
         for (int i = ini_linha; d > 0 && i < qtd_segs; i++) segs[i].x = (int16_t)(segs[i].x + d);
     }
     ini_linha = qtd_segs;
     if (!linha_vazia) { linha_atual += linha_grande ? 2 : 1; brancas = 0; }
     linha_grande = false;
+    ajustar_floats();
     x_atual = recuo;
     linha_vazia = true;
     espaco_pendente = false;
@@ -323,6 +345,12 @@ static void segmento(const char *t, int n, int est, int alvo)
     s->n = (int16_t)n;
     s->estilo = (uint16_t)est;
     s->cor = cor_css;
+    /* Texto que sumiria no fundo vira preto ou branco; o link segue a mesma regra. */
+    int lf = luz(fundo_atual), lt = cor_css ? luz(cor_css - 1) : (est & E_LINK ? 60 : 40);
+    if (lt - lf < 70 && lf - lt < 70) {
+        s->cor = (lf > 128 ? 0x101418u : 0xF2F4F6u) + 1;
+        s->estilo |= E_LINKCOR;
+    }
     if (est & E_GRANDE) linha_grande = true;
     s->alvo = (int16_t)alvo;
     s->texto = guardar_texto(t, n);
@@ -337,7 +365,7 @@ static void palavra(const char *t, int n)
     while (n > 0) {
         int passo = estilo & E_GRANDE ? 2 * LETRA_L : LETRA_L;
         int esp = espaco_pendente && !linha_vazia ? passo : 0;
-        int cabe = (LARG_TEXTO - x_atual - esp) / passo;
+        int cabe = (dir_atual - x_atual - esp) / passo;
         if (n > cabe && !linha_vazia) { quebrar(); continue; }
         if (cabe < 1) cabe = 1;
         int k = n < cabe ? n : cabe;
@@ -410,6 +438,7 @@ static bool paragrafo_tag(const char *t)
            (t[0] == 'h' && t[1] >= '1' && t[1] <= '6' && !t[2]);
 }
 
+static int recuo_lista[8];
 static int pilha_lista[8], niveis;   /* contador de cada lista aberta (0 = com marcador) */
 static int negrito_n, italico_n, pre_n, form_atual = -1;
 static bool em_titulo;
@@ -463,7 +492,7 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
 }
 
 /* <img>: baixa, reduz para caber na página e reserva as linhas. */
-static bool colocar_imagem(const char *url)
+static bool colocar_imagem(const char *url, int larg_css)
 {
     if (qtd_imagens == MAX_IMAGENS) return false;
     if (tempo_ms() - inicio_pagina > 15000) return false;   /* página cheia de fotos não prende o navegador */
@@ -472,16 +501,19 @@ static bool colocar_imagem(const char *url)
     rodape(st);
     unsigned n = 0;
     uint8_t *d = baixar_imagem(url, &n);
-    if (!d) return false;
+    if (!d) { registrar("cipo: imagem nao baixou %s\n", url); return false; }
     uint32_t *px = NULL;
     int l = 0, a = 0;
     bool ok = imagem_decodificar(d, n, &px, &l, &a);
     libera(d);
-    if (!ok) return false;
+    if (!ok) { registrar("cipo: imagem nao decodificou (%d bytes) %s\n", (int)n, url); return false; }
     registrar("cipo: imagem %dx%d\n", l, a);
-    if (a <= 24 && l <= 32) { libera(px); return true; }   /* ícones de enfeite ocupam uma linha à toa */
-    int cabe = LARG_TEXTO - recuo, dl = l, da = a;
+    if (a <= 2 || l <= 2) { libera(px); return true; }     /* pixel de rastreamento */
+    bool na_linha = a <= 36 && l <= 64;                     /* ícone: fica no meio do texto */
+    int cabe = dir_atual - recuo, dl = l, da = a;
+    if (larg_css > 0 && larg_css < cabe) cabe = larg_css;
     if (dl > cabe) { da = da * cabe / dl; dl = cabe; }
+    if (na_linha && da > LINHA_A - 2) { dl = dl * (LINHA_A - 2) / da; da = LINHA_A - 2; }
     if (da > IMAGEM_ALT_MAX) { dl = dl * IMAGEM_ALT_MAX / da; da = IMAGEM_ALT_MAX; }
     if (dl < 1) dl = 1;
     if (da < 1) da = 1;
@@ -493,8 +525,15 @@ static bool colocar_imagem(const char *url)
     if (!r) return false;
     imagem_t *im = &imagens[qtd_imagens];
     im->px = r; im->l = dl; im->a = da;
+    if (na_linha) {
+        if (x_atual + dl > dir_atual && !linha_vazia) quebrar();
+        segmento("", qtd_imagens, E_IMAGEM, alvo_atual);
+        x_atual += dl + 4;
+        qtd_imagens++;
+        return true;
+    }
     quebrar();
-    if (centro) x_atual = recuo + (LARG_TEXTO - recuo - dl) / 2;
+    if (centro) x_atual = recuo + (dir_atual - recuo - dl) / 2;
     segmento("", qtd_imagens, E_IMAGEM, alvo_atual);
     ini_linha = qtd_segs;
     qtd_imagens++;
@@ -534,32 +573,74 @@ static void destino_bing(char *url, int max)
 }
 
 /* ---- CSS: só o que muda uma página de texto ----
- * Lê <style>, folhas externas (<link>), @media de tela e o atributo style.
+ * Lê <style>, folhas externas (<link>), @media de tela, var() e o atributo style.
+ * Caixas: fundo, borda, margem, padding, largura, flex, grid, float e tabelas
+ * em colunas, sobre a grade de linhas do Cipó (altura em múltiplos de LINHA_A).
  * Seletores: tag, .classe, #id, combinações deles e descendentes ("a .b", "a > b").
  * Vale a regra mais específica e, no empate, a última; !important ganha de todas.
- * Entendem display, text-align, color e font-weight. Pseudoclasses, [atributo],
+ * Pseudoclasses, [atributo],
  * "+" e "~" ficam de fora: a regra é ignorada, para não esconder o que não deve. */
-#define MAX_REGRAS 3000
+#define MAX_REGRAS 2500
 #define SEL_MAX 72
 #define LARGURA_CSS 1000   /* largura que as condições de @media enxergam */
-/* esconde, centra e negrito: 0 = não fala nada, 1 = liga, 2 = desliga. */
-typedef struct { char sel[SEL_MAX]; uint8_t esconde, centra, negrito, forte; uint16_t peso; uint32_t cor; } regra_t;
+/* Campos pequenos: 0 = a regra não fala nada.
+ * esconde: 1 none, 2 block, 3 inline, 4 inline-block, 5 flex, 6 grid, 7 outro.
+ * centra: 1 centro, 2 esquerda, 3 direita. negrito, italico: 1 liga, 2 desliga.
+ * sublinha: 1 sem, 2 com. flutua: 1 esquerda, 2 direita. colunas: do grid.
+ * v[]: medidas + 1 em px; acima de V_PCT é porcentagem; V_AUTO é "auto". */
+enum { V_ME, V_MD, V_MC, V_MB, V_PE, V_PD, V_PC, V_PB, V_L, V_LMAX, V_FONTE, V_VAO, QTD_V };
+#define V_PCT 20000
+#define V_AUTO 30000
+typedef struct {
+    char sel[SEL_MAX];
+    uint8_t esconde, disp, centra, negrito, italico, sublinha, flutua, colunas, sem_marca, vertical, forte;
+    uint16_t peso;
+    uint32_t cor, fundo, borda;
+    int16_t v[QTD_V];
+} regra_t;
 static regra_t regras[MAX_REGRAS];
 static int qtd_regras, qtd_folhas;
 static bool css_escondeu, sem_esconder;
 
-/* Elementos abertos, para os seletores de descendente. */
-typedef struct { char nome[12], classe[80], id[32]; } aberto_t;
-#define MAX_ABERTOS 48
+/* Elementos abertos: servem aos seletores de descendente e guardam o que
+ * desfazer quando a tag fechar. Uma "fila" é um flex, grid ou <tr>: os filhos
+ * viram colunas lado a lado. */
+#define MAX_FILHOS 12
+typedef struct {
+    char nome[12], classe[80], id[32];
+    bool bloco, celula, fila;
+    int flut, flut_l;
+    uint8_t disp;
+    int ret, marg_b, pad_b;
+    int s_recuo, s_dir, s_centro, s_direita, s_estilo, s_mascara, s_niveis, s_marca;
+    uint32_t s_cor, s_fundo;
+    int larg;                                     /* da célula */
+    int x0, x_prox, x_fim, linha0, fundo, vao, colunas, qtd, filho;
+    uint8_t peso[MAX_FILHOS]; int soma;
+} aberto_t;
+#define MAX_ABERTOS 64
 static aberto_t abertos[MAX_ABERTOS];
-static int qtd_abertos;
+static int qtd_abertos, excesso_abertos, ultimo_disp;
+static bool sem_marca;
+
+/* Variáveis do CSS (--nome: valor). */
+typedef struct { char nome[32], valor[40]; } var_css_t;
+static var_css_t vars_css[128];
+static int qtd_vars;
 
 static int hex_val(char c) { return c >= '0' && c <= '9' ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'f' ? (c | 32) - 'a' + 10 : -1; }
 
-/* Claro demais some no fundo branco, porque o fundo do site não é usado. */
 static uint32_t ler_cor(const char *v, int n)
 {
+    static const struct { const char *n; uint32_t c; } nomes[] = {
+        { "white", 0xFFFFFF }, { "black", 0 }, { "red", 0xFF0000 }, { "green", 0x008000 }, { "blue", 0x0000FF },
+        { "gray", 0x808080 }, { "grey", 0x808080 }, { "yellow", 0xFFFF00 }, { "orange", 0xFFA500 },
+        { "navy", 0x000080 }, { "silver", 0xC0C0C0 }, { "purple", 0x800080 }, { "maroon", 0x800000 } };
     uint32_t c = 0;
+    for (unsigned i = 0; i < sizeof nomes / sizeof nomes[0]; i++) {
+        int t = (int)tam_texto(nomes[i].n);
+        if (n >= t && igual_sem_caixa(v, nomes[i].n, t) && (n == t || eh_espaco(v[t]) || v[t] == ';' || v[t] == '!')) return nomes[i].c + 1;
+    }
     if (n >= 10 && igual_sem_caixa(v, "rgb", 3)) {
         int i = 3, partes = 0;
         while (i < n && v[i] != '(') i++;
@@ -578,8 +659,73 @@ static uint32_t ler_cor(const char *v, int n)
     } else {
         for (int i = 1; i <= 3; i++) { int h = hex_val(v[i]); if (h < 0) return 0; c = c << 8 | (uint32_t)(h * 17); }
     }
-    int luz = (int)((c >> 16 & 255) * 3 + (c >> 8 & 255) * 6 + (c & 255)) / 10;
-    return luz > 190 ? 0 : c + 1;
+    return c + 1;
+}
+
+/* Lê uma medida no começo de v; devolve o valor guardado (ver regra_t) e o que consumiu. */
+static int ler_medida(const char *v, int n, int *usado)
+{
+    int i = 0, t = 0;
+    bool neg = false, tem = false;
+    if (n >= 4 && igual_sem_caixa(v, "auto", 4)) { *usado = 4; return V_AUTO; }
+    if (i < n && v[i] == '-') { neg = true; i++; }
+    while (i < n && v[i] >= '0' && v[i] <= '9') { t = t * 10 + v[i++] - '0'; tem = true; if (t > 9000) t = 9000; }
+    int frac = 0;
+    if (i < n && v[i] == '.') { i++; if (i < n && v[i] >= '0' && v[i] <= '9') { frac = v[i] - '0'; tem = true; } while (i < n && v[i] >= '0' && v[i] <= '9') i++; }
+    int u = i;
+    while (i < n && !eh_espaco(v[i]) && v[i] != ';' && v[i] != '!' && v[i] != ',' && v[i] != ')') i++;
+    *usado = i;
+    if (!tem) return 0;
+    if (neg) return 1;
+    if (u < n && v[u] == '%') return V_PCT + t;
+    if (u + 1 < n && ((v[u] | 32) == 'e' || (v[u] | 32) == 'r')) return (t * 16 + frac * 16 / 10) + 1;
+    if (u + 1 < n && (v[u] | 32) == 'v') return V_PCT + t;   /* vw vira porcentagem */
+    return t + 1;
+}
+
+/* margin: 1 a 4 valores, na ordem cima, direita, baixo, esquerda. */
+static void ler_quatro(const char *v, int n, int16_t *o, int c, int d, int b, int e)
+{
+    int m[4], q = 0, i = 0;
+    while (i < n && q < 4) {
+        while (i < n && eh_espaco(v[i])) i++;
+        if (i >= n || v[i] == '!') break;
+        int u = 0, x = ler_medida(v + i, n - i, &u);
+        if (!x || !u) return;
+        m[q++] = x;
+        i += u;
+    }
+    if (!q) return;
+    o[c] = (int16_t)m[0];
+    o[d] = (int16_t)m[q > 1 ? 1 : 0];
+    o[b] = (int16_t)m[q > 2 ? 2 : 0];
+    o[e] = (int16_t)m[q > 3 ? 3 : q > 1 ? 1 : 0];
+}
+
+/* Primeira cor numa lista de valores, como "1px solid #ccc". */
+static uint32_t cor_na_lista(const char *v, int n)
+{
+    for (int i = 0; i < n;) {
+        while (i < n && eh_espaco(v[i])) i++;
+        int k = i, prof = 0;
+        while (k < n && (prof || !eh_espaco(v[k]))) { if (v[k] == '(') prof++; else if (v[k] == ')') prof--; k++; }
+        uint32_t c = k > i ? ler_cor(v + i, k - i) : 0;
+        if (c) return c;
+        i = k;
+    }
+    return 0;
+}
+
+static int contar_colunas(const char *v, int n)
+{
+    if (n > 7 && igual_sem_caixa(v, "repeat(", 7)) { int t = texto_para_int(v + 7); return t > 0 && t <= 12 ? t : 0; }
+    int q = 0;
+    for (int i = 0; i < n; q++) {
+        while (i < n && eh_espaco(v[i])) i++;
+        if (i >= n) break;
+        while (i < n && !eh_espaco(v[i])) i++;
+    }
+    return q > 12 ? 12 : q;
 }
 
 static void ler_declaracoes(const char *d, int n, regra_t *r)
@@ -596,11 +742,63 @@ static void ler_declaracoes(const char *d, int n, regra_t *r)
         int nv = i - v, np = fim_p - ini;
         const char *p = d + ini, *val = d + v;
         for (int k = 0; k < nv; k++) if (val[k] == '!') { r->forte = 1; nv = k; break; }
-        if (np == 7 && igual_sem_caixa(p, "display", 7)) r->esconde = nv >= 4 && igual_sem_caixa(val, "none", 4) ? 1 : 2;
-        else if (np == 10 && igual_sem_caixa(p, "text-align", 10)) r->centra = nv >= 6 && igual_sem_caixa(val, "center", 6) ? 1 : 2;
-        else if (np == 5 && igual_sem_caixa(p, "color", 5)) { uint32_t c = ler_cor(val, nv); if (c) r->cor = c; }
-        else if (np == 11 && igual_sem_caixa(p, "font-weight", 11) && nv >= 3)
-            r->negrito = val[0] == '7' || val[0] == '8' || val[0] == '9' || igual_sem_caixa(val, "bold", 4) ? 1 : 2;
+        while (nv && eh_espaco(val[nv - 1])) nv--;
+        if (np > 2 && p[0] == '-' && p[1] == '-') {
+            if (qtd_vars < 128 && np < 32 && nv < 40) {
+                var_css_t *w = &vars_css[qtd_vars++];
+                memcpy(w->nome, p, (size_t)np); w->nome[np] = 0;
+                memcpy(w->valor, val, (size_t)nv); w->valor[nv] = 0;
+            }
+            continue;
+        }
+        if (nv > 6 && igual_sem_caixa(val, "var(", 4)) {
+            int t = 4;
+            while (t < nv && val[t] != ')' && val[t] != ',') t++;
+            bool achou = false;
+            for (int w = qtd_vars - 1; w >= 0 && !achou; w--)
+                if ((int)tam_texto(vars_css[w].nome) == t - 4 && memcmp(vars_css[w].nome, val + 4, (size_t)(t - 4)) == 0) {
+                    val = vars_css[w].valor; nv = (int)tam_texto(val); achou = true;
+                }
+            if (!achou) continue;
+        }
+#define PROP(x) (np == (int)sizeof(x) - 1 && igual_sem_caixa(p, x, np))
+#define VAL(x) (nv >= (int)sizeof(x) - 1 && igual_sem_caixa(val, x, (int)sizeof(x) - 1))
+        int u;
+        if (PROP("display")) {
+            r->esconde = VAL("none") ? 1 : VAL("block") ? 2 : VAL("inline-block") || VAL("inline-flex") ? 4 : VAL("inline") ? 3 :
+                         VAL("flex") ? 5 : VAL("grid") ? 6 : 7;
+        } else if (PROP("visibility")) { if (VAL("hidden")) r->esconde = 1; }
+        else if (PROP("clip") || PROP("clip-path")) { if (!VAL("auto") && !VAL("none")) r->esconde = 1; }
+        else if ((PROP("left") || PROP("text-indent") || PROP("top")) && nv > 4 && val[0] == '-' && val[1] >= '1' && val[1] <= '9' && val[4] >= '0' && val[4] <= '9') r->esconde = 1;
+        else if (PROP("text-align")) r->centra = VAL("center") ? 1 : VAL("right") ? 3 : 2;
+        else if (PROP("color")) { uint32_t c = ler_cor(val, nv); if (c) r->cor = c; }
+        else if (PROP("background-color") || PROP("background")) { uint32_t c = cor_na_lista(val, nv); if (c) r->fundo = c; }
+        else if (PROP("border")) { uint32_t c = cor_na_lista(val, nv); if (c) r->borda = c; }
+        else if (PROP("font-weight") && nv >= 3)
+            r->negrito = val[0] == '6' || val[0] == '7' || val[0] == '8' || val[0] == '9' || VAL("bold") ? 1 : 2;
+        else if (PROP("font-style")) r->italico = VAL("italic") || VAL("oblique") ? 1 : 2;
+        else if (PROP("text-decoration") || PROP("text-decoration-line")) r->sublinha = VAL("none") ? 1 : VAL("underline") ? 2 : 0;
+        else if (PROP("float")) r->flutua = VAL("left") ? 1 : VAL("right") ? 2 : 0;
+        else if (PROP("list-style") || PROP("list-style-type")) r->sem_marca = VAL("none") ? 1 : 2;
+        else if (PROP("flex-direction")) r->vertical = VAL("column") ? 1 : 2;
+        else if (PROP("grid-template-columns")) r->colunas = (uint8_t)contar_colunas(val, nv);
+        else if (PROP("margin")) ler_quatro(val, nv, r->v, V_MC, V_MD, V_MB, V_ME);
+        else if (PROP("padding")) ler_quatro(val, nv, r->v, V_PC, V_PD, V_PB, V_PE);
+        else if (PROP("margin-left")) r->v[V_ME] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("margin-right")) r->v[V_MD] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("margin-top")) r->v[V_MC] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("margin-bottom")) r->v[V_MB] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("padding-left")) r->v[V_PE] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("padding-right")) r->v[V_PD] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("padding-top")) r->v[V_PC] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("padding-bottom")) r->v[V_PB] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("width")) { r->v[V_L] = (int16_t)ler_medida(val, nv, &u); if (r->v[V_L] == 1 || r->v[V_L] == 2) r->esconde = 1; }
+        else if (PROP("max-height") || PROP("height")) { if (nv >= 1 && val[0] == '0' && (nv == 1 || val[1] == 'p')) r->esconde = 1; }
+        else if (PROP("max-width")) r->v[V_LMAX] = (int16_t)ler_medida(val, nv, &u);
+        else if (PROP("font-size")) { r->v[V_FONTE] = (int16_t)ler_medida(val, nv, &u); if (r->v[V_FONTE] == 1) r->esconde = 1; }
+        else if (PROP("gap") || PROP("column-gap")) r->v[V_VAO] = (int16_t)ler_medida(val, nv, &u);
+#undef PROP
+#undef VAL
     }
 }
 
@@ -630,6 +828,7 @@ static bool guardar_seletor(const char *c, int t, regra_t *d)
 {
     int o = 0, peso = 0;
     bool inicio = true;
+    if (t >= 5 && igual_sem_caixa(c, ":root", 5)) { memcpy(d->sel, "html", 4); o = 4; c += 5; t -= 5; peso = 10; inicio = false; }
     for (int i = 0; i < t; i++) {
         char x = c[i];
         if (x == ':' || x == '[' || x == '+' || x == '~' || x == '\\') return false;
@@ -679,7 +878,9 @@ static void ler_css(const char *c, int n)
         regra_t r;
         memset(&r, 0, sizeof r);
         ler_declaracoes(c + corpo, i - corpo, &r);
-        if (!r.esconde && !r.centra && !r.negrito && !r.cor) continue;
+        bool algo = false;
+        for (unsigned b = SEL_MAX; b < sizeof r; b++) if (((const uint8_t *)&r)[b]) algo = true;
+        if (!algo) continue;
         for (int s = ini; s < fim_s;) {           /* "a, b, c" vira três regras */
             while (s < fim_s && (eh_espaco(c[s]) || c[s] == ',')) s++;
             int k = s;
@@ -742,38 +943,26 @@ static bool bate_seletor(const char *s, const char *nome, const char *classe, co
     return true;
 }
 
-static void abrir_elemento(const char *nome, const char *a, int n)
-{
-    if (qtd_abertos++ >= MAX_ABERTOS) return;
-    aberto_t *e = &abertos[qtd_abertos - 1];
-    copia_texto(e->nome, nome, sizeof e->nome);
-    e->classe[0] = e->id[0] = 0;
-    atributo(a, n, "class", e->classe, sizeof e->classe);
-    atributo(a, n, "id", e->id, sizeof e->id);
-}
-
-static void fechar_elemento(const char *nome)
-{
-    for (int i = (qtd_abertos < MAX_ABERTOS ? qtd_abertos : MAX_ABERTOS) - 1; i >= 0; i--)
-        if (compara_texto(abertos[i].nome, nome) == 0) { qtd_abertos = i; return; }
-    if (qtd_abertos > MAX_ABERTOS) qtd_abertos--;
-}
-
 /* Junta o que vale para esta tag: as regras e o atributo style. */
 static void css_da_tag(const char *nome, const char *a, int n, regra_t *r)
 {
     char classe[200] = "", id[64] = "", st[300];
-    int p_esconde = -1, p_centra = -1, p_negrito = -1, p_cor = -1;
+    int pe = -1, pc = -1, pn = -1, pk = -1, pi = -1, ps = -1, pf = -1, pm = -1, pv = -1, pl = -1, po = -1, pb = -1;
+    int pv_m[QTD_V];
+    for (int i = 0; i < QTD_V; i++) pv_m[i] = -1;
     memset(r, 0, sizeof *r);
     atributo(a, n, "class", classe, sizeof classe);
     atributo(a, n, "id", id, sizeof id);
     for (int i = 0; i < qtd_regras; i++) {
         const regra_t *g = &regras[i];
         if (!bate_seletor(g->sel, nome, classe, id)) continue;
-        if (g->esconde && g->peso >= p_esconde) { r->esconde = g->esconde; p_esconde = g->peso; }
-        if (g->centra && g->peso >= p_centra) { r->centra = g->centra; p_centra = g->peso; }
-        if (g->negrito && g->peso >= p_negrito) { r->negrito = g->negrito; p_negrito = g->peso; }
-        if (g->cor && g->peso >= p_cor) { r->cor = g->cor; p_cor = g->peso; }
+#define APLICA(campo, marca) if (g->campo && g->peso >= marca) { r->campo = g->campo; marca = g->peso; }
+        APLICA(esconde, pe) APLICA(centra, pc) APLICA(negrito, pn) APLICA(cor, pk) APLICA(italico, pi)
+        APLICA(sublinha, ps) APLICA(flutua, pf) APLICA(sem_marca, pm) APLICA(vertical, pv) APLICA(colunas, pl)
+        APLICA(fundo, po) APLICA(borda, pb)
+#undef APLICA
+        for (int k = 0; k < QTD_V; k++)
+            if (g->v[k] && g->peso >= pv_m[k]) { r->v[k] = g->v[k]; pv_m[k] = g->peso; }
     }
     /* body{display:none} é truque para o JavaScript revelar a página depois. */
     bool raiz = compara_texto(nome, "body") == 0 || compara_texto(nome, "html") == 0;
@@ -785,10 +974,269 @@ static void css_da_tag(const char *nome, const char *a, int n, regra_t *r)
         uint32_t c = ler_cor(st, (int)tam_texto(st));
         if (c) r->cor = c;
     }
-    if (raiz) r->cor = 0;
+    if (compara_texto(nome, "body") == 0 && r->fundo) { fundo_pagina = fundo_atual = r->fundo - 1; }
+    if (raiz) { if (r->fundo && compara_texto(nome, "html") == 0) fundo_pagina = fundo_atual = r->fundo - 1; r->fundo = 0; }
+    if (atributo(a, n, "bgcolor", st, sizeof st)) {
+        uint32_t c = ler_cor(st, (int)tam_texto(st));
+        if (c && raiz) fundo_pagina = fundo_atual = c - 1; else if (c) r->fundo = c;
+    }
+    if (atributo(a, n, "width", st, sizeof st) && !r->v[V_L]) { int u; r->v[V_L] = (int16_t)ler_medida(st, (int)tam_texto(st), &u); }
+    r->disp = r->esconde;
     r->esconde = r->esconde == 1;
-    r->centra = r->centra == 1;
-    r->negrito = r->negrito == 1;
+}
+
+static bool bloco(const char *nome);
+static bool paragrafo_tag(const char *nome);
+
+static int medir(int v, int base)
+{
+    if (!v || v == V_AUTO) return 0;
+    if (v >= V_PCT) return base * (v - V_PCT) / 100;
+    return v - 1;
+}
+
+static int em_linhas(int v) { int px = medir(v, 0); return (px + LINHA_A / 2) / LINHA_A; }
+
+/* Filhos diretos de um elemento, com o tamanho do texto de cada um. */
+static int contar_filhos(const char *h, int n, uint8_t *peso, int *soma)
+{
+    int prof = 0, q = 0, tam[MAX_FILHOS];
+    char ultimo[8] = "";
+    memset(tam, 0, sizeof tam);
+    if (n > 131072) n = 131072;
+    for (int i = 0; i < n;) {
+        if (h[i] != '<') {
+            if (prof > 0 && q && q <= MAX_FILHOS && !eh_espaco(h[i])) tam[q - 1]++;
+            i++;
+            continue;
+        }
+        if (i + 3 < n && h[i + 1] == '!') { while (i < n && h[i] != '>') i++; i++; continue; }
+        bool fecha = i + 1 < n && h[i + 1] == '/';
+        int k = i + 1 + (fecha ? 1 : 0), t = 0;
+        char nm[8];
+        while (k < n && h[k] != '>' && !eh_espaco(h[k]) && h[k] != '/') { if (t < 7) nm[t++] = minuscula(h[k]); k++; }
+        nm[t] = 0;
+        char aspas = 0;
+        while (k < n && (aspas || h[k] != '>')) { if (aspas && h[k] == aspas) aspas = 0; else if (!aspas && (h[k] == '"' || h[k] == '\'')) aspas = h[k]; k++; }
+        bool auto_f = k > 0 && h[k - 1] == '/';
+        i = k + 1;
+        if (!compara_texto(nm, "script") || !compara_texto(nm, "style")) {
+            if (fecha) continue;
+            const char *f = achar_tag(h + i, n - i, nm[1] == 'c' ? "</script" : "</style");
+            if (f) i = (int)(f - h);
+            continue;
+        }
+        bool vazia = !compara_texto(nm, "img") || !compara_texto(nm, "br") || !compara_texto(nm, "hr") || !compara_texto(nm, "input") ||
+                     !compara_texto(nm, "meta") || !compara_texto(nm, "link") || !compara_texto(nm, "source") || auto_f;
+        if (fecha) { if (--prof < 0) break; continue; }
+        bool irmao = prof == 1 && ultimo[0] && (!compara_texto(nm, "td") || !compara_texto(nm, "th") || !compara_texto(nm, "li")) &&
+                     (!compara_texto(ultimo, "td") || !compara_texto(ultimo, "th") || !compara_texto(ultimo, "li"));
+        if (prof == 0 || irmao) { q++; copia_texto(ultimo, nm, sizeof ultimo); if (!vazia && !irmao) prof++; }
+        else if (!vazia) prof++;
+        if (!compara_texto(nm, "img") && q && q <= MAX_FILHOS) tam[q - 1] += 16;
+    }
+    *soma = 0;
+    for (int i = 0; i < MAX_FILHOS; i++) {
+        int t = tam[i] > 90 ? 90 : tam[i] < 4 ? 4 : tam[i];
+        peso[i] = (uint8_t)t;
+        if (i < q) *soma += t;
+    }
+    return q;
+}
+
+static void encerrar_fila(aberto_t *f)
+{
+    quebrar();
+    if (f->fundo > linha_atual) linha_atual = f->fundo;
+    f->fila = false;
+    x_atual = recuo;
+}
+
+/* Liga o CSS de um elemento que abriu. resto = o HTML logo depois da tag. */
+static void abrir_elemento(const char *nome, const char *a, int n, const regra_t *r, bool de_estilo, const char *resto, int nresto)
+{
+    if (qtd_abertos >= MAX_ABERTOS) { excesso_abertos++; return; }
+    aberto_t *pai = qtd_abertos ? &abertos[qtd_abertos - 1] : NULL;
+    aberto_t *e = &abertos[qtd_abertos++];
+    memset(e, 0, sizeof *e);
+    copia_texto(e->nome, nome, sizeof e->nome);
+    atributo(a, n, "class", e->classe, sizeof e->classe);
+    atributo(a, n, "id", e->id, sizeof e->id);
+    e->ret = -1;
+    e->disp = r->disp;
+    e->s_recuo = recuo; e->s_dir = dir_atual; e->s_centro = centro; e->s_direita = direita;
+    e->s_cor = cor_css; e->s_fundo = fundo_atual; e->s_estilo = estilo; e->s_niveis = niveis; e->s_marca = sem_marca;
+    bool tabela = !compara_texto(nome, "td") || !compara_texto(nome, "th") || !compara_texto(nome, "tr") || !compara_texto(nome, "table");
+    if (tabela && !r->centra) centro = direita = 0;   /* <center> centra a tabela, não o texto dela */
+    bool lista = !compara_texto(nome, "li") || !compara_texto(nome, "ul") || !compara_texto(nome, "ol");
+    bool titulo_t = nome[0] == 'h' && nome[1] >= '1' && nome[1] <= '6' && !nome[2];
+    bool em_fila = pai && pai->fila;
+    bool flut = r->flutua && !em_fila && !lista;
+    if (de_estilo) e->bloco = r->disp == 2 || r->disp == 5 || r->disp == 6;
+    else e->bloco = r->disp != 3 && r->disp != 4 && (r->disp || tabela || lista || titulo_t || bloco(nome) || paragrafo_tag(nome));
+    if (em_fila || flut) e->bloco = true;
+
+    if (e->bloco) {
+        quebrar();
+        if (em_fila) {
+            int area = pai->x_fim - pai->x0, w = medir(r->v[V_L], area);
+            if (!w) {
+                if (pai->colunas) w = area / pai->colunas;
+                else if (pai->filho < MAX_FILHOS && pai->soma) w = area * pai->peso[pai->filho] / pai->soma;
+                else w = area / MAX_FILHOS;
+            }
+            if (w < 48) w = 48;
+            if (w > area) w = area;
+            /* Sem largura pedida, a célula aceita o que sobrou da linha. */
+            if (!r->v[V_L] && pai->x_prox + w > pai->x_fim && pai->x_fim - pai->x_prox >= 48) w = pai->x_fim - pai->x_prox;
+            pai->filho++;
+            if (pai->x_prox > pai->x0 && pai->x_prox + w > pai->x_fim + 1) {
+                pai->x_prox = pai->x0;
+                pai->linha0 = pai->fundo;
+            }
+            int x = r->flutua == 2 ? pai->x_fim - w : pai->x_prox;
+            linha_atual = pai->linha0;
+            recuo = x;
+            dir_atual = x + w - pai->vao;
+            if (dir_atual <= recuo + 16) dir_atual = recuo + w;
+            e->celula = true;
+            e->larg = r->flutua == 2 ? 0 : w;
+            brancas = 1;
+        } else if (flut && dir_atual - recuo > 200) {
+            int area = dir_atual - recuo, w = medir(r->v[V_L], area);
+            if (!w) w = area * 2 / 5;
+            if (w > area - 120) w = area - 120;
+            e->flut = r->flutua;
+            e->flut_l = w;
+            e->linha0 = linha_atual;
+            if (r->flutua == 2) recuo = dir_atual - w; else dir_atual = recuo + w;
+            brancas = 1;
+        } else {
+            int area = dir_atual - recuo;
+            int ml = medir(r->v[V_ME], area), mr = medir(r->v[V_MD], area);
+            int w = medir(r->v[V_L], area), wm = medir(r->v[V_LMAX], area);
+            if (ml + mr >= area) ml = mr = 0;
+            int livre = area - ml - mr;
+            if (!w || w > livre) w = livre;
+            if (wm && wm < w) w = wm;
+            if (r->v[V_ME] == V_AUTO && r->v[V_MD] == V_AUTO) ml = (area - w) / 2;
+            else if (r->v[V_ME] == V_AUTO) ml = area - w - mr;
+            linha_atual += em_linhas(r->v[V_MC]);
+            recuo += ml;
+            dir_atual = recuo + w;
+        }
+        e->marg_b = em_linhas(r->v[V_MB]);
+        int x0 = recuo, x1 = dir_atual;
+        if (r->fundo || r->borda) {
+            if (crescer((void **)&rets, &cap_rets, qtd_rets + 1, (int)sizeof(ret_t))) {
+                ret_t *q = &rets[qtd_rets];
+                q->l0 = q->l1 = linha_atual;
+                q->x0 = (int16_t)x0; q->x1 = (int16_t)x1;
+                q->fundo = r->fundo; q->borda = r->borda;
+                e->ret = qtd_rets++;
+            }
+            if (r->fundo) fundo_atual = r->fundo - 1;
+            brancas = 1;
+        }
+        int area = dir_atual - recuo;
+        int pl = medir(r->v[V_PE], area), pr = medir(r->v[V_PD], area);
+        if (pl + pr < area - 32) { recuo += pl; dir_atual -= pr; }
+        linha_atual += em_linhas(r->v[V_PC]);
+        e->pad_b = em_linhas(r->v[V_PB]);
+        x_atual = recuo;
+        linha_vazia = true;
+    }
+    if (e->bloco && r->centra) {
+        centro = r->centra == 1; direita = r->centra == 3;
+    }
+    if (r->cor) cor_css = r->cor;
+    int liga = 0, desliga = 0;
+    if (r->negrito == 1) liga |= E_NEGRITO; else if (r->negrito == 2) desliga |= E_NEGRITO;
+    if (r->italico == 1) liga |= E_ITALICO; else if (r->italico == 2) desliga |= E_ITALICO;
+    if (r->sublinha == 1) liga |= E_SEMLINHA; else if (r->sublinha == 2) desliga |= E_SEMLINHA;
+    if (r->cor) liga |= E_LINKCOR;
+    int fonte = medir(r->v[V_FONTE], 16);
+    if (r->v[V_FONTE] && r->v[V_FONTE] < V_PCT) { if (fonte >= 26) liga |= E_GRANDE; else desliga |= E_GRANDE; }
+    e->s_mascara = liga | desliga;
+    estilo = (estilo | liga) & ~desliga;
+    if (r->sem_marca) sem_marca = r->sem_marca == 1;
+
+    bool quer_fila = (r->disp == 5 && r->vertical != 1) || r->disp == 6 || !compara_texto(nome, "tr");
+    if (quer_fila && e->bloco) {
+        e->fila = true;
+        e->colunas = r->disp == 6 ? (r->colunas ? r->colunas : 1) : 0;
+        e->qtd = contar_filhos(resto, nresto, e->peso, &e->soma);
+        e->x0 = e->x_prox = recuo; e->x_fim = dir_atual;
+        e->linha0 = e->fundo = linha_atual;
+        e->vao = r->v[V_VAO] ? medir(r->v[V_VAO], 0) : 8;
+    }
+}
+
+static void desfazer(aberto_t *e, aberto_t *pai)
+{
+    if (e->fila) encerrar_fila(e);
+    if (e->bloco) {
+        quebrar();
+        linha_atual += e->pad_b;
+    }
+    if (e->ret >= 0) rets[e->ret].l1 = linha_atual;
+    if (e->bloco) linha_atual += e->marg_b;
+    if (linha_atual > linhas) linhas = linha_atual;
+    int extra = 0;
+    for (int i = e->s_niveis; i < niveis && i < 8; i++) extra += recuo_lista[i];
+    recuo = e->s_recuo + extra;
+    dir_atual = e->s_dir; centro = e->s_centro; direita = e->s_direita;
+    cor_css = e->s_cor; fundo_atual = e->s_fundo; sem_marca = e->s_marca;
+    estilo = (estilo & ~e->s_mascara) | (e->s_estilo & e->s_mascara);
+    if (e->flut) {
+        int l = linha_atual;
+        linha_atual = e->linha0;
+        if (e->flut == 2) {
+            if (!fd_fundo) fd_orig = dir_atual;
+            dir_atual -= e->flut_l + 10;
+            fd_lim = dir_atual;
+            if (l > fd_fundo) fd_fundo = l;
+        } else {
+            if (!fe_fundo) fe_orig = recuo;
+            recuo += e->flut_l + 10;
+            fe_lim = recuo;
+            if (l > fe_fundo) fe_fundo = l;
+        }
+        brancas = 1;
+    }
+    ajustar_floats();
+    if (e->bloco) { x_atual = recuo; linha_vazia = true; }
+    if (e->celula && pai) {
+        if (linha_atual > pai->fundo) pai->fundo = linha_atual;
+        pai->x_prox += e->larg;
+        if (pai->fila) linha_atual = pai->linha0;
+    }
+}
+
+static void fechar_elemento(const char *nome, const char *barreira)
+{
+    if (excesso_abertos) { excesso_abertos--; return; }
+    int i = qtd_abertos - 1;
+    for (; i >= 0; i--) {
+        if (compara_texto(abertos[i].nome, nome) == 0) break;
+        if (barreira && compara_texto(abertos[i].nome, barreira) == 0) return;
+    }
+    if (i < 0) return;
+    while (qtd_abertos > i) {
+        aberto_t *e = &abertos[--qtd_abertos];
+        ultimo_disp = e->disp;
+        desfazer(e, qtd_abertos ? &abertos[qtd_abertos - 1] : NULL);
+    }
+}
+
+/* <li>, <td>, <tr> e <p> fecham sozinhos quando o próximo irmão abre. */
+static void fechar_implicito(const char *nome)
+{
+    aberto_t *t = qtd_abertos ? &abertos[qtd_abertos - 1] : NULL;
+    if (!compara_texto(nome, "li")) fechar_elemento("li", niveis ? "ul" : NULL);
+    else if (!compara_texto(nome, "td") || !compara_texto(nome, "th")) { fechar_elemento("td", "tr"); fechar_elemento("th", "tr"); }
+    else if (!compara_texto(nome, "tr")) fechar_elemento("tr", "table");
+    else if (!compara_texto(nome, "p") && t && !compara_texto(t->nome, "p")) fechar_elemento("p", NULL);
 }
 
 /* <link rel=stylesheet>: baixa e lê, dentro de um limite de tempo e de arquivos. */
@@ -807,35 +1255,6 @@ static void folha_externa(const char *a, int n)
     ler_css((const char *)d, (int)t);
     libera(d);
     registrar("cipo: folha %d bytes, %d regras\n", (int)t, qtd_regras);
-}
-
-/* Efeitos abertos, para desfazer quando a tag fechar. */
-typedef struct { char nome[16]; int prof; bool centra, negrito; uint32_t cor; } efeito_t;
-static efeito_t efeitos[24];
-static int qtd_efeitos;
-
-static void efeito_tag(const char *nome, bool fecha, const regra_t *r)
-{
-    efeito_t *e = qtd_efeitos ? &efeitos[qtd_efeitos - 1] : NULL;
-    if (e && compara_texto(e->nome, nome) == 0) {
-        e->prof += fecha ? -1 : 1;
-        if (e->prof) return;
-        if (e->centra) { quebrar(); centro--; }
-        if (e->negrito) estilo &= ~E_NEGRITO;
-        cor_css = e->cor;
-        qtd_efeitos--;
-        return;
-    }
-    if (fecha || !r || (!r->centra && !r->negrito && !r->cor) || qtd_efeitos == 24) return;
-    e = &efeitos[qtd_efeitos++];
-    copia_texto(e->nome, nome, sizeof e->nome);
-    e->prof = 1;
-    e->centra = r->centra;
-    e->negrito = r->negrito && !(estilo & E_NEGRITO);
-    e->cor = cor_css;
-    if (r->centra) { quebrar(); centro++; }
-    if (e->negrito) estilo |= E_NEGRITO;
-    if (r->cor) cor_css = r->cor;
 }
 
 static bool escondido(const char *nome, const char *a, int n)
@@ -1031,6 +1450,34 @@ static void ler_pagina(const char *h, int n)
     ler_html(m, (int)((f ? f : h + n) - m));
 }
 
+/* A imagem de verdade: sites guardam em data-src ou srcset e deixam um
+ * marcador em src até o JavaScript trocar. */
+static bool fonte_imagem(const char *a, int n, char *v, int max)
+{
+    static const char *const atrasadas[] = { "data-src", "data-lazy-src", "data-original", "data-lazy", "data-url" };
+    static char lista[4096];
+    for (unsigned i = 0; i < sizeof atrasadas / sizeof atrasadas[0]; i++)
+        if (atributo(a, n, atrasadas[i], v, max) && v[0] && !comeca_com(v, "data:")) return true;
+    if (atributo(a, n, "srcset", lista, sizeof lista) || atributo(a, n, "data-srcset", lista, sizeof lista)) {
+        int melhor = -1;
+        for (const char *p = lista; *p;) {
+            while (*p == ' ' || *p == ',' || *p == '\n') p++;
+            const char *u = p;
+            while (*p && *p != ' ' && *p != '\n') p++;
+            int t = (int)(p - u);
+            if (t && u[t - 1] == ',') t--;
+            while (*p == ' ') p++;
+            int w = 1;
+            if (*p >= '0' && *p <= '9') { w = texto_para_int(p); while (*p && *p != ',') p++; }
+            /* a maior que não passe muito da página; acima disso, só se não houver outra */
+            bool boa = melhor < 0 || (w <= 900 ? w > melhor || melhor > 900 : w < melhor);
+            if (t && t < max && boa) { memcpy(v, u, (size_t)t); v[t] = 0; melhor = w; }
+        }
+        if (melhor >= 0 && !comeca_com(v, "data:")) return true;
+    }
+    return atributo(a, n, "src", v, max) && v[0] && !comeca_com(v, "data:");
+}
+
 static char oculto[16];
 static int oculto_prof;
 
@@ -1104,9 +1551,6 @@ static void ler_html(const char *h, int n)
             SOLTAR();
             bool vazia = compara_texto(nome, "img") == 0 || compara_texto(nome, "br") == 0 || compara_texto(nome, "hr") == 0 ||
                          compara_texto(nome, "input") == 0 || compara_texto(nome, "meta") == 0 || compara_texto(nome, "link") == 0;
-            if (!vazia) efeito_tag(nome, fecha, fecha ? NULL : &css);
-            if (fecha) fechar_elemento(nome);
-            else if (!vazia && !(na > 0 && attrs[na - 1] == '/')) abrir_elemento(nome, attrs, na);
             /* Uma tag sempre separa palavras (menos as de estilo do texto). */
             bool de_estilo = compara_texto(nome, "b") == 0 || compara_texto(nome, "strong") == 0 ||
                              compara_texto(nome, "i") == 0 || compara_texto(nome, "em") == 0 ||
@@ -1115,6 +1559,16 @@ static void ler_html(const char *h, int n)
                              compara_texto(nome, "code") == 0 || compara_texto(nome, "u") == 0;
             if (!de_estilo) { SOLTAR(); espaco_pendente = true; }
             else SOLTAR();
+            ultimo_disp = 0;
+            if (fecha) fechar_elemento(nome, NULL);
+            else if (!vazia && !(na > 0 && attrs[na - 1] == '/')) {
+                fechar_implicito(nome);
+                abrir_elemento(nome, attrs, na, &css, de_estilo, h + i, n - i);
+            }
+            {   /* bloco tornado inline pelo CSS: vira um pedaço da linha */
+                int d = fecha ? ultimo_disp : css.disp;
+                if ((d == 3 || d == 4) && !de_estilo && (bloco(nome) || paragrafo_tag(nome) || !compara_texto(nome, "li"))) { espaco_pendente = true; continue; }
+            }
             char v[URL_MAX];
             if (compara_texto(nome, "title") == 0) { em_titulo = !fecha; continue; }
             if (compara_texto(nome, "center") == 0) {
@@ -1131,9 +1585,9 @@ static void ler_html(const char *h, int n)
             }
             if (compara_texto(nome, "img") == 0) {
                 char endereco_img[URL_MAX];
-                if (atributo(attrs, na, "src", v, sizeof v) && !comeca_com(v, "data:") &&
-                    juntar_url(url_atual, v, endereco_img, sizeof endereco_img) && colocar_imagem(endereco_img)) continue;
-                if (atributo(attrs, na, "alt", v, sizeof v) && v[0]) {
+                if (fonte_imagem(attrs, na, v, sizeof v) && juntar_url(url_atual, v, endereco_img, sizeof endereco_img) &&
+                    colocar_imagem(endereco_img, medir(css.v[V_L], dir_atual - recuo))) continue;
+                if (atributo(attrs, na, "alt", v, sizeof v) && v[0] && compara_texto(v, "noicon")) {
                     int e = estilo;
                     estilo |= E_ITALICO;
                     palavra("[", 1);
@@ -1143,22 +1597,37 @@ static void ler_html(const char *h, int n)
                 }
                 continue;
             }
-            if (compara_texto(nome, "hr") == 0) { quebrar(); segmento("", 0, E_LINHA, -1); quebrar(); continue; }
+            if (compara_texto(nome, "hr") == 0) {
+                quebrar();
+                segmento("", 0, E_LINHA, -1);
+                segs[qtd_segs - 1].n = (int16_t)(dir_atual - recuo);
+                quebrar();
+                continue;
+            }
             if (nome[0] == 'h' && nome[1] >= '1' && nome[1] <= '6' && !nome[2]) {
                 paragrafo();
                 if (fecha) estilo &= ~(E_TITULO | E_GRANDE);
-                else estilo |= E_TITULO | (nome[1] <= '2' ? E_GRANDE : 0);
+                else {
+                    estilo |= E_TITULO;
+                    if (nome[1] <= '2' && !(css.v[V_FONTE] && medir(css.v[V_FONTE], 16) < 24)) {
+                        abertos[qtd_abertos ? qtd_abertos - 1 : 0].s_mascara |= E_GRANDE;
+                        estilo |= E_GRANDE;
+                    }
+                }
                 continue;
             }
             if (compara_texto(nome, "ul") == 0 || compara_texto(nome, "ol") == 0) {
-                if (!fecha && niveis < 8) { pilha_lista[niveis++] = nome[0] == 'o' ? 1 : 0; recuo += 24; }
-                else if (fecha && niveis > 0) { niveis--; recuo -= 24; }
+                if (!fecha && niveis < 8) {
+                    recuo_lista[niveis] = css.sem_marca == 1 || sem_marca ? 0 : 24;
+                    recuo += recuo_lista[niveis];
+                    pilha_lista[niveis++] = nome[0] == 'o' ? 1 : 0;
+                } else if (fecha && niveis > 0) recuo -= recuo_lista[--niveis];
                 if (niveis == 0 || !fecha) paragrafo(); else quebrar();
                 continue;
             }
             if (compara_texto(nome, "li") == 0) {
                 quebrar();
-                if (!fecha) {
+                if (!fecha && !sem_marca) {
                     char marca[8];
                     if (niveis && pilha_lista[niveis - 1]) formatar_texto(marca, sizeof marca, "%d.", pilha_lista[niveis - 1]++);
                     else { marca[0] = (char)0xB7; marca[1] = 0; }
@@ -1175,7 +1644,6 @@ static void ler_html(const char *h, int n)
                 negrito_n += fecha ? -1 : 1;
                 if (negrito_n < 0) negrito_n = 0;
                 if (negrito_n) estilo |= E_NEGRITO; else estilo &= ~E_NEGRITO;
-                if (compara_texto(nome, "th") == 0) x_atual += fecha ? 0 : 16;
                 continue;
             }
             if (compara_texto(nome, "i") == 0 || compara_texto(nome, "em") == 0) {
@@ -1201,7 +1669,7 @@ static void ler_html(const char *h, int n)
                 }
                 continue;
             }
-            if (compara_texto(nome, "td") == 0) { if (!fecha && !linha_vazia) x_atual += 16; continue; }
+            if (compara_texto(nome, "td") == 0) continue;
             if (compara_texto(nome, "img") == 0) {
                 if (atributo(attrs, na, "alt", v, 80) && v[0]) {
                     char t[96];
@@ -1311,7 +1779,10 @@ static void limpar_pagina(void)
     qtd_imagens = 0;
     linhas = topo = 0;
     centro = ini_linha = 0;
-    qtd_regras = qtd_efeitos = qtd_folhas = qtd_abertos = 0;
+    qtd_regras = qtd_folhas = qtd_abertos = excesso_abertos = qtd_rets = qtd_vars = 0;
+    dir_atual = LARG_TEXTO; direita = 0;
+    fd_fundo = fe_fundo = 0; fd_lim = fe_lim = -1; sem_marca = false;
+    fundo_atual = fundo_pagina = 0xFFFFFF;
     css_escondeu = false;
     cor_css = 0;
     linha_grande = false;
@@ -1352,12 +1823,12 @@ static uint32_t cor_de(int e)
     return COR_TEXTO;
 }
 
-/* O cadeado não promete o que não existe: o certificado não é verificado. */
+/* O certificado é verificado, mas sem RDRAND as chaves da conexão são fracas. */
 static const char *texto_pronto(void)
 {
     if (nota_busca[0]) return nota_busca;
     if (alerta_js[0]) return alerta_js;
-    return pagina_segura ? "Cifrado, mas a identidade do site NÃO foi verificada. Não digite senhas." : "Pronto";
+    return pagina_segura ? "Site verificado. A segurança ainda é experimental: evite senhas." : "Pronto";
 }
 
 extern const unsigned char fonte_sagui[256][16];
@@ -1378,10 +1849,21 @@ static void texto_grande(int x, int y, const char *t, int n, uint32_t cor)
 
 static void desenhar_pagina(void)
 {
-    g_retangulo(j, 0, TOPO, LARG - ROLAGEM, AREA_A, COR_BRANCO);
+    g_retangulo(j, 0, TOPO, LARG - ROLAGEM, AREA_A, fundo_pagina);
+    for (int i = 0; i < qtd_rets; i++) {
+        const ret_t *q = &rets[i];
+        int y0 = TOPO + 4 + (q->l0 - topo) * LINHA_A, y1 = TOPO + 4 + (q->l1 - topo) * LINHA_A;
+        int x0 = MARGEM + q->x0, x1 = MARGEM + q->x1;
+        if (q->x0 <= 0 && q->x1 >= LARG_TEXTO) { x0 = 0; x1 = LARG - ROLAGEM; }   /* faixa de ponta a ponta */
+        if (y0 < TOPO) y0 = TOPO;
+        if (y1 > ALT - RODAPE) y1 = ALT - RODAPE;
+        if (y1 <= y0 || x1 <= x0) continue;
+        if (q->fundo) g_retangulo(j, x0, y0, x1 - x0, y1 - y0, q->fundo - 1);
+        if (q->borda) g_moldura(j, x0, y0, x1 - x0, y1 - y0, q->borda - 1);
+    }
     for (int i = 0; i < qtd_segs; i++) {
         seg_t *s = &segs[i];
-        if (s->linha >= topo + VISIVEIS) break;
+        if (s->linha >= topo + VISIVEIS) continue;
         int x = MARGEM + s->x, y = TOPO + 4 + (s->linha - topo) * LINHA_A;
         if (s->estilo & E_IMAGEM) {
             imagem_t *im = &imagens[s->n];
@@ -1392,8 +1874,8 @@ static void desenhar_pagina(void)
             continue;
         }
         if (s->linha < topo) continue;
-        if (s->estilo & E_LINHA) { g_retangulo(j, MARGEM, y + 8, LARG_TEXTO, 2, 0xC4CBD2); continue; }
-        uint32_t cor = s->cor && !(s->estilo & E_LINK) ? s->cor - 1 : cor_de(s->estilo);
+        if (s->estilo & E_LINHA) { g_retangulo(j, x, y + 8, s->n, 2, 0xC4CBD2); continue; }
+        uint32_t cor = s->cor && (!(s->estilo & E_LINK) || s->estilo & E_LINKCOR) ? s->cor - 1 : cor_de(s->estilo);
         const char *t = textos + s->texto;
         if (s->estilo & E_CAMPO) {
             g_retangulo(j, x - 2, y, s->n * LETRA_L + 4, LETRA_A + 1, 0xEEF2F6);
@@ -1402,7 +1884,7 @@ static void desenhar_pagina(void)
         if (s->estilo & E_GRANDE) { texto_grande(x, y, t, s->n, cor); continue; }
         g_texto_n(j, x, y, t, s->n, cor);
         if (s->estilo & (E_NEGRITO | E_TITULO)) g_texto_n(j, x + 1, y, t, s->n, cor);   /* negrito: duas vezes */
-        if (s->estilo & E_LINK) g_retangulo(j, x, y + LETRA_A, s->n * LETRA_L, 1, cor);
+        if ((s->estilo & E_LINK) && !(s->estilo & E_SEMLINHA)) g_retangulo(j, x, y + LETRA_A, s->n * LETRA_L, 1, cor);
     }
     /* Barra de rolagem. */
     int bx = LARG - ROLAGEM;
@@ -1557,7 +2039,7 @@ static void carregar(const char *pedido)
             rodape(st);
             pagina_segura = url_https(url);
             int fd = http_pedir_seguro(host, porta, caminho, pagina_segura);
-            if (fd < 0 && adivinhou) {
+            if (fd < 0 && fd != ERRO_FORMATO && adivinhou) {   /* certificado recusado não cai para HTTP */
                 adivinhou = false;
                 char t[URL_MAX];
                 formatar_texto(t, sizeof t, "http://%s", url + 8);
@@ -1714,7 +2196,6 @@ static int alvo_em(int x, int y)
     int linha = topo + (y - TOPO - 4) / LINHA_A;
     for (int i = 0; i < qtd_segs; i++) {
         seg_t *s = &segs[i];
-        if (s->linha > linha) break;
         if (s->linha == linha && s->alvo >= 0 && x >= MARGEM + s->x - 2 && x < MARGEM + s->x + s->n * LETRA_L + 6) return s->alvo;
     }
     return -1;

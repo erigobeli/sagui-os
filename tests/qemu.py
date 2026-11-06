@@ -17,6 +17,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import time
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -114,6 +115,30 @@ def imagem_de_teste(teste, extras=()):
                     "--mbr", os.path.join(b, "boot", "mbr.bin"), "--estagio2", os.path.join(b, "boot", "estagio2.bin"),
                     "--kernel", os.path.join(b, "kernel.bin"), "--kernel-elf", os.path.join(b, "kernel.elf"),
                     "--ramdisk", os.path.join(b, "ramdisk.sgfs"), "--saida", destino, "--teste", teste, *extras],
+                   check=True, stdout=subprocess.DEVNULL)
+    return destino
+
+
+def imagem_com_raizes(teste, certificados, extras=()):
+    """Como imagem_de_teste, com autoridades de teste a mais em /etc/raizes.bin
+    (certificados em PEM). O site de teste não está na lista de verdade."""
+    sys.path.insert(0, os.path.join(RAIZ, "tools"))
+    import mkraizes
+    b = os.path.join(RAIZ, "build")
+    pasta = os.path.join(SAIDA, "raizes-rootfs")
+    subprocess.run(["rm", "-rf", pasta], check=True)
+    subprocess.run(["cp", "-r", os.path.join(b, "rootfs"), pasta], check=True)
+    with open(os.path.join(pasta, "etc", "raizes.bin"), "ab") as f:
+        for c in certificados:
+            f.write(mkraizes.registro(c))
+    ram = os.path.join(SAIDA, "raizes.sgfs")
+    subprocess.run(["python3", os.path.join(RAIZ, "tools", "mksgfs.py"), pasta, ram], check=True, stdout=subprocess.DEVNULL)
+    seguro = re.sub(r"[^A-Za-z0-9_.-]+", "_", teste).strip("_")[:40]
+    destino = os.path.join(SAIDA, f"teste-raiz-{seguro}.img")
+    subprocess.run(["python3", os.path.join(RAIZ, "tools", "mkimagem.py"),
+                    "--mbr", os.path.join(b, "boot", "mbr.bin"), "--estagio2", os.path.join(b, "boot", "estagio2.bin"),
+                    "--kernel", os.path.join(b, "kernel.bin"), "--kernel-elf", os.path.join(b, "kernel.elf"),
+                    "--ramdisk", ram, "--saida", destino, "--teste", teste, *extras],
                    check=True, stdout=subprocess.DEVNULL)
     return destino
 

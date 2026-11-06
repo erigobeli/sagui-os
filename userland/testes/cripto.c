@@ -60,6 +60,11 @@ int principal(int argc, char **argv)
     hex("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", b, 32);
     x25519(s, a, b);
     confere("x25519", s, "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552", 32);
+    uint8_t g[64];
+    sha512("abc", 3, g);
+    confere("sha512", g, "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f", 64);
+    sha384("abc", 3, g);
+    confere("sha384", g, "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7", 48);
     registrar("cripto: %s\n", falhas ? "FALHOU" : "tudo certo");
     return falhas;
 }

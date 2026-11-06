@@ -1,12 +1,11 @@
 /* tls.c - cliente TLS 1.3 (RFC 8446), com X25519 e AES-128-GCM-SHA256.
  *
- * LIMITE DE SEGURANÇA: o certificado do servidor NÃO é verificado. A conversa
- * é cifrada, mas nada prova que o outro lado é mesmo o site pedido: quem
- * estiver no caminho pode se passar por ele. Não use para senhas ou dados
- * sensíveis. Falta validar a cadeia e ter uma lista de autoridades.
+ * O certificado é conferido em certificado.c: cadeia até /etc/raizes.bin, nome
+ * do site, validade e a prova de posse da chave. Revogação não é consultada.
  *
- * A aleatoriedade vem do contador de ciclos e do relógio, passada pelo
- * SHA-256. É fraca: o SaguiOS ainda não tem uma fonte de entropia de verdade.
+ * A aleatoriedade vem do RDRAND, se o processador tiver, do contador de ciclos
+ * e do relógio, passados pelo SHA-256. Sem RDRAND ela é fraca: o SaguiOS ainda
+ * não tem outra fonte de entropia de verdade.
  *
  * Só uma conexão por vez. Sem retomada de sessão nem 0-RTT. */
 #include "sagui.h"
@@ -30,6 +29,13 @@ bool tls_ativo(int fd) { return fd == t_fd; }
 
 static int falha(const char *m) { t_erro = m; registrar("tls: %s\n", m); return ERRO_FORMATO; }
 
+static bool tem_rdrand(void)
+{
+    uint32_t a = 1, b, c, d;
+    __asm__ volatile("cpuid" : "+a"(a), "=b"(b), "=c"(c), "=d"(d));
+    return c >> 30 & 1;
+}
+
 static void aleatorio(uint8_t *d, unsigned n)
 {
     static uint8_t estado[32];
@@ -40,6 +46,11 @@ static void aleatorio(uint8_t *d, unsigned n)
         for (int i = 0; i < 32; i++) {
             uint32_t lo, hi, ms = tempo_ms();
             __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+            if (tem_rdrand()) {
+                uint32_t r = 0;
+                __asm__ volatile("rdrand %0" : "=r"(r) :: "cc");
+                sha256_somar(&c, &r, 4);
+            }
             sha256_somar(&c, &lo, 4);
             sha256_somar(&c, &hi, 4);
             sha256_somar(&c, &ms, 4);
@@ -137,7 +148,7 @@ static unsigned montar_hello(uint8_t *m, const char *host, const uint8_t pub[32]
     memcpy(m + k, host, nh); k += nh;
     k += p16(m + k, 43); k += p16(m + k, 3); m[k++] = 2; k += p16(m + k, 0x0304);   /* supported_versions */
     k += p16(m + k, 10); k += p16(m + k, 4); k += p16(m + k, 2); k += p16(m + k, 29); /* supported_groups */
-    static const uint16_t assin[] = { 0x0403, 0x0804, 0x0805, 0x0806, 0x0401, 0x0501, 0x0601, 0x0503, 0x0603, 0x0807 };
+    static const uint16_t assin[] = { 0x0403, 0x0503, 0x0804, 0x0805, 0x0806, 0x0401, 0x0501, 0x0601 };
     unsigned na = sizeof assin / 2;
     k += p16(m + k, 13); k += p16(m + k, na * 2 + 2); k += p16(m + k, na * 2);        /* signature_algorithms */
     for (unsigned i = 0; i < na; i++) k += p16(m + k, assin[i]);
@@ -219,7 +230,7 @@ int tls_abrir(int fd, const char *host)
 
     /* Mensagens cifradas até o Finished do servidor. */
     unsigned tem = 0;
-    bool pronto = false;
+    bool pronto = false, cadeia_ok = false, prova_ok = false;
     while (!pronto) {
         tipo = ler_registro(true, &n);
         if (tipo <= 0 || tipo == 21) { t_fd = -1; return tipo < 0 ? tipo : falha("alerta durante o aperto de mãos"); }
@@ -231,7 +242,17 @@ int tls_abrir(int fd, const char *host)
         while (k + 4 <= tem) {
             unsigned t = (unsigned)hs[k + 1] << 16 | (unsigned)hs[k + 2] << 8 | hs[k + 3];
             if (k + 4 + t > tem) break;
-            if (hs[k] == 20) {
+            if (hs[k] == 11) {
+                const char *e = cert_cadeia(hs + k + 4, t, host);
+                if (e) { t_fd = -1; return falha(e); }
+                cadeia_ok = true;
+            } else if (hs[k] == 15) {
+                sha256_fim(&tr, h);
+                const char *e = cadeia_ok ? cert_prova(hs + k + 4, t, h) : "prova sem certificado";
+                if (e) { t_fd = -1; return falha(e); }
+                prova_ok = true;
+            } else if (hs[k] == 20) {
+                if (!prova_ok) { t_fd = -1; return falha("o servidor não provou a identidade"); }
                 hkdf_rotulo(s_hs, "finished", NULL, 0, fk, 32);
                 sha256_fim(&tr, h);
                 hmac_sha256(fk, 32, h, 32, v);
@@ -259,7 +280,7 @@ int tls_abrir(int fd, const char *host)
     if (r < 0) { t_fd = -1; return r; }
     chaves(&rec, s_ap);
     chaves(&env, c_ap);
-    registrar("tls: conectado a %s (TLS 1.3, certificado NAO verificado)\n", host);
+    registrar("tls: conectado a %s (TLS 1.3, certificado verificado)\n", host);
     return 0;
 }
 

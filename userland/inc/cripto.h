@@ -9,6 +9,8 @@ void sha256_iniciar(sha256_t *c);
 void sha256_somar(sha256_t *c, const void *dados, unsigned n);
 void sha256_fim(const sha256_t *c, uint8_t saida[32]);
 void sha256(const void *d, unsigned n, uint8_t saida[32]);
+void sha384(const void *d, unsigned n, uint8_t saida[48]);
+void sha512(const void *d, unsigned n, uint8_t saida[64]);
 void hmac_sha256(const uint8_t *chave, unsigned nc, const void *d, unsigned n, uint8_t saida[32]);
 void hkdf_extrair(const uint8_t *sal, unsigned ns, const uint8_t *ikm, unsigned ni, uint8_t prk[32]);
 void hkdf_rotulo(const uint8_t segredo[32], const char *rotulo, const uint8_t *ctx, unsigned nctx, uint8_t *saida, unsigned n);
@@ -17,5 +19,9 @@ void aes_bloco(const aes_t *a, const uint8_t e[16], uint8_t s[16]);
 void gcm_cifrar(const aes_t *a, const uint8_t iv[12], const uint8_t *aad, unsigned na, uint8_t *d, unsigned n, uint8_t marca[16]);
 bool gcm_decifrar(const aes_t *a, const uint8_t iv[12], const uint8_t *aad, unsigned na, uint8_t *d, unsigned n, const uint8_t marca[16]);
 void x25519(uint8_t saida[32], const uint8_t escalar[32], const uint8_t ponto[32]);
+
+/* certificado.c: devolvem NULL se está tudo certo, ou o motivo da recusa. */
+const char *cert_cadeia(const uint8_t *msg, unsigned n, const char *host);
+const char *cert_prova(const uint8_t *msg, unsigned n, const uint8_t transcricao[32]);
 
 #endif
