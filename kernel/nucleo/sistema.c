@@ -33,6 +33,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_DORMIR] = sis_dormir,           [SIS_TEMPO] = sis_tempo,
     [SIS_DATA] = sis_data,               [SIS_INFO_SISTEMA] = sis_info_sistema,
     [SIS_AUMENTAR_MEM] = sis_aumentar_memoria, [SIS_REINICIAR] = sis_reiniciar,
+    [SIS_DESLIGAR] = sis_desligar,
     [SIS_REGISTRAR] = sis_registrar,
     [SIS_MODO_TERMINAL] = sis_modo_terminal,   [SIS_LIMPAR_TELA] = sis_limpar_tela,
     [SIS_CRIAR_JANELA] = sis_criar_janela,     [SIS_FECHAR_JANELA] = sis_fechar_janela,

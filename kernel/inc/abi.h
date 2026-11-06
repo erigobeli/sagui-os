@@ -42,6 +42,7 @@
 #define SIS_MODO_TERMINAL  46   /* (TERM_LINHA ou TERM_BRUTO) */
 #define SIS_LIMPAR_TELA    47   /* () */
 #define SIS_REGISTRAR      48   /* (texto) -> escreve no log do sistema (serial), não na tela */
+#define SIS_DESLIGAR       49   /* () */
 /* Janelas (fase 5) */
 #define SIS_CRIAR_JANELA   50   /* (titulo, largura | altura << 16, &pixels) -> id */
 #define SIS_FECHAR_JANELA  51   /* (id) */

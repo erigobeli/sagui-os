@@ -326,7 +326,7 @@ static void desenhar_menu(void)
 #define TAREFA_PASSO (TAREFA_L + 4)
 
 /* Quantos botões cabem antes do relógio. */
-static int tarefas_max(void) { return ((int)video_largura() - 210 - TAREFA_X0) / TAREFA_PASSO; }
+static int tarefas_max(void) { return ((int)video_largura() - 320 - TAREFA_X0) / TAREFA_PASSO; }
 
 static void desenhar_tarefas(void)
 {
@@ -605,6 +605,13 @@ static void tratar_mouse(evento_mouse_t *m)
     }
 
     if (apertou && m->y < BARRA_SUPERIOR) {
+        if (area_desligar_clicado(m->x, m->y) && (m->mudaram & BOTAO_ESQUERDO)) {
+            char *argv[] = { "desligar", NULL };
+            int pid = processo_executar("/bin/desligar", 1, argv, NULL);
+            klog("[GUI] botao Desligar clicado -> /bin/desligar (pid %d)\n", pid);
+            captura = -1;
+            return;
+        }
         janela_t *t = tarefa_em(m->x, m->y);
         if (t && (m->mudaram & BOTAO_DIREITO)) menu_de_janela(t, m->x, BARRA_SUPERIOR);
         else if (t && t == focada()) minimizar(t);

@@ -21,6 +21,7 @@ bool area_pendrive(bool presente, const char *rotulo);
 const char *area_fundo_nome(int i);
 int  area_fundo_atual(void);
 void area_fundo_escolher(int i);           /* troca o papel de parede */
+bool area_desligar_clicado(int x, int y);
 
 /* Gerenciador de janelas (janelas.c) */
 bool gui_iniciar(void);                    /* liga a área de trabalho e o gerenciador */

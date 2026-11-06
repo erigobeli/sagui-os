@@ -237,8 +237,31 @@ void area_barra(superficie_t *s, bool frase)
     char hora[48];
     snformatar(hora, sizeof hora, "%s %02u/%02u/%u  %02u:%02u", semana[dia_da_semana(d.ano, d.mes, d.dia)],
                d.dia, d.mes, d.ano, d.hora, d.minuto);
-    sup_texto(s, larg - texto_largura(hora) - 10, 3, hora, 0xFFFFFF);
+    int x_hora = larg - texto_largura(hora) - 10;
+    sup_texto(s, x_hora, 3, hora, 0xFFFFFF);
+
+    /* Botão de desligar na barra superior */
+    int btn_l = 84, btn_a = 18;
+    int btn_x = x_hora - btn_l - 16;
+    int btn_y = 2;
+    sup_degrade(s, btn_x, btn_y, btn_l, btn_a, 0xB03028, 0x7E1C18);
+    sup_texto(s, btn_x + (btn_l - texto_largura("Desligar")) / 2, btn_y + 1, "Desligar", 0xFFFFFF);
+
     if (novo) klog("[GUI] relogio: %s\n", hora);
+}
+
+bool area_desligar_clicado(int x, int y)
+{
+    if (y < 0 || y >= BARRA_SUPERIOR) return false;
+    char hora[48];
+    data_hora_t d;
+    cmos_ler_data(&d);
+    static const char *semana[] = { "dom", "seg", "ter", "qua", "qui", "sex", "sáb" };
+    snformatar(hora, sizeof hora, "%s %02u/%02u/%u  %02u:%02u", semana[dia_da_semana(d.ano, d.mes, d.dia)],
+               d.dia, d.mes, d.ano, d.hora, d.minuto);
+    int btn_l = 84;
+    int btn_x = larg - texto_largura(hora) - 10 - btn_l - 16;
+    return (x >= btn_x - 6 && x < btn_x + btn_l + 6);
 }
 
 int area_icone_em(int x, int y)
