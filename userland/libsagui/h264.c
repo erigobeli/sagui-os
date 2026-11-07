@@ -433,6 +433,17 @@ static void modificar_lista(h264_t *h, bits_t *b)
 
 static void pred4x4(uint8_t *d, int passo, int modo, const int *t, const int *l, int lt, bool tem_t, bool tem_l)
 {
+    if (modo == 0) { for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) d[y * passo + x] = (uint8_t)t[x]; return; }
+    if (modo == 1) { for (int y = 0; y < 4; y++) memset(d + y * passo, l[y], 4); return; }
+    if (modo == 2) {
+        int v;
+        if (tem_t && tem_l) v = (t[0] + t[1] + t[2] + t[3] + l[0] + l[1] + l[2] + l[3] + 4) >> 3;
+        else if (tem_l) v = (l[0] + l[1] + l[2] + l[3] + 2) >> 2;
+        else if (tem_t) v = (t[0] + t[1] + t[2] + t[3] + 2) >> 2;
+        else v = 128;
+        for (int y = 0; y < 4; y++) memset(d + y * passo, v, 4);
+        return;
+    }
     int p[4][4];
 #define T(i) ((i) < 0 ? lt : t[i])
 #define L(i) ((i) < 0 ? lt : l[i])
@@ -669,43 +680,47 @@ static void mc_luma(h264_t *h, quadro_t *ref, uint8_t *d, int x, int y, int w, i
         for (int j = 0; j < hh; j++) memcpy(d + j * ps, s + j * 21, w);
         return;
     }
-    for (int j = 0; j < hh; j++)
-        for (int i = 0; i < w; i++) {
-            const uint8_t *p = s + j * 21 + i;
-            int G = p[0], v;
-#define BH(q) clip1((tap6((q), 1) + 16) >> 5)
-#define HV(q) clip1((tap6((q), 21) + 16) >> 5)
-            if (fy == 0) {
-                int b = BH(p);
-                v = fx == 1 ? (G + b + 1) >> 1 : fx == 2 ? b : (p[1] + b + 1) >> 1;
-            } else if (fx == 0) {
-                int hv = HV(p);
-                v = fy == 1 ? (G + hv + 1) >> 1 : fy == 2 ? hv : (p[21] + hv + 1) >> 1;
-            } else if (fx == 2 || fy == 2) {
-                int j1 = 0;
-                for (int k = -2; k <= 3; k++) {
-                    int c = tap6(p + k * 21, 1);
-                    static const int w6[6] = { 1, -5, 20, 20, -5, 1 };
-                    j1 += w6[k + 2] * c;
-                }
-                int jj = clip1((j1 + 512) >> 10);
-                if (fx == 2 && fy == 2) v = jj;
-                else if (fx == 2) {   /* f ou q */
-                    int b = fy == 1 ? BH(p) : BH(p + 21);
-                    v = (b + jj + 1) >> 1;
-                } else {         /* i ou k */
-                    int hv = fx == 1 ? HV(p) : HV(p + 1);
-                    v = (hv + jj + 1) >> 1;
-                }
-            } else {             /* e, g, p, r */
-                int b = fy == 1 ? BH(p) : BH(p + 21);
-                int hv = fx == 1 ? HV(p) : HV(p + 1);
-                v = (b + hv + 1) >> 1;
+    /* Meios-pixels calculados uma vez por bloco. */
+    int braw[21][16];                 /* horizontal sem corte, linhas -2..hh+2 */
+    uint8_t B[17][16], V[16][17], J[16][16];
+    bool usa_b = fx != 0, usa_v = fy != 0, usa_j = (fx == 2 && fy != 0) || (fy == 2 && fx != 0);
+    if (usa_b || usa_j) {
+        int l0 = usa_j ? -2 : 0, l1 = usa_j ? hh + 3 : hh + 1;
+        for (int j = l0; j < l1; j++) {
+            const uint8_t *p = s + j * 21;
+            for (int i = 0; i < w; i++) {
+                int v = tap6(p + i, 1);
+                braw[j + 2][i] = v;
+                if (j >= 0 && j <= hh) B[j][i] = clip1((v + 16) >> 5);
             }
-#undef BH
-#undef HV
-            d[j * ps + i] = (uint8_t)v;
         }
+    }
+    if (usa_v)
+        for (int j = 0; j < hh; j++) {
+            const uint8_t *p = s + j * 21;
+            for (int i = 0; i <= w; i++) V[j][i] = clip1((tap6(p + i, 21) + 16) >> 5);
+        }
+    if (usa_j)
+        for (int j = 0; j < hh; j++)
+            for (int i = 0; i < w; i++) {
+                int v = braw[j][i] - 5 * braw[j + 1][i] + 20 * braw[j + 2][i] + 20 * braw[j + 3][i] - 5 * braw[j + 4][i] + braw[j + 5][i];
+                J[j][i] = clip1((v + 512) >> 10);
+            }
+    int lb = fy == 3 ? 1 : 0, cv = fx == 3 ? 1 : 0;
+    for (int j = 0; j < hh; j++) {
+        uint8_t *o = d + j * ps;
+        const uint8_t *g = s + j * 21;
+        for (int i = 0; i < w; i++) {
+            int v;
+            if (fy == 0) v = fx == 2 ? B[j][i] : (g[i + cv] + B[j][i] + 1) >> 1;
+            else if (fx == 0) v = fy == 2 ? V[j][i] : (g[i + lb * 21] + V[j][i] + 1) >> 1;
+            else if (fx == 2 && fy == 2) v = J[j][i];
+            else if (fx == 2) v = (B[j + lb][i] + J[j][i] + 1) >> 1;
+            else if (fy == 2) v = (V[j][i + cv] + J[j][i] + 1) >> 1;
+            else v = (B[j + lb][i] + V[j][i + cv] + 1) >> 1;
+            o[i] = (uint8_t)v;
+        }
+    }
 }
 
 static void mc_croma(h264_t *h, const uint8_t *plano, uint8_t *d, int x, int y, int w, int hh, int mvx, int mvy)
@@ -1069,7 +1084,7 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
     }
     /* desquantiza luma (AC, ou tudo se não for 16x16) */
     for (int blk = 0; blk < 16; blk++)
-        for (int j = modo16 >= 0 ? 1 : 0; j < 16; j++) {
+        for (int j = modo16 >= 0 ? 1 : 0; j < 16 && m->nz[blk]; j++) {
             if (!lum[blk][j]) continue;
             int cl = ((j & 1) == 0 && ((j >> 2) & 1) == 0) ? 0 : ((j & 1) && ((j >> 2) & 1)) ? 1 : 2;
             lum[blk][j] = ((lum[blk][j] * dq_v[r6][cl]) << q6);
@@ -1085,7 +1100,7 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
             bordas_luma(h, c, bx, by, t, l, &lt, &tt, &tl);
             uint8_t *d = Y + by * 4 * passo + bx * 4;
             pred4x4(d, passo, m->modo4[by * 4 + bx], t, l, lt, tt, tl);
-            idct4_somar(d, passo, lum[by * 4 + bx]);
+            if (m->nz[by * 4 + bx]) idct4_somar(d, passo, lum[by * 4 + bx]);
         }
     } else {
         if (intra) {
@@ -1108,7 +1123,7 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
         }
         for (int i = 0; i < 16; i++) {
             int bx = i & 3, by = i >> 2;
-            bool tem = modo16 >= 0 ? true : (cbp & (1 << ((by >> 1) * 2 + (bx >> 1)))) != 0;
+            bool tem = modo16 >= 0 ? (m->nz[i] || lum[i][0]) : m->nz[i] != 0;
             if (tem) idct4_somar(Y + by * 4 * passo + bx * 4, passo, lum[i]);
         }
     }

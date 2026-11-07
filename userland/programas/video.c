@@ -175,6 +175,8 @@ int principal(int argc, char **argv)
     int pcm_bytes = 0, pcm_feito = 0;
     int iv = 0, ia = 0, mostrados = 0, pulados = 0;
     unsigned inicio = tempo_ms(), parado_desde = 0;
+    unsigned ultimo_quadro = 0;
+    unsigned tempo_parado = 0, tempo_decod = 0, tempo_audio = 0;
     bool fim = false;
     while (!fim) {
         evento_t e;
@@ -188,7 +190,9 @@ int principal(int argc, char **argv)
             if (pcm_feito >= pcm_bytes) {
                 mp4_amostra_t *s = &m.audio[ia];
                 if (!disponivel_ate(s->pos + s->tam)) break;
+                unsigned ta = tempo_ms();
                 int n = aac_quadro(a, dados + s->pos, (int)s->tam, pcm);
+                tempo_audio += tempo_ms() - ta;
                 pcm_bytes = n > 0 ? n * 4 : 0;
                 pcm_feito = 0;
                 ia++;
@@ -207,12 +211,16 @@ int principal(int argc, char **argv)
             if (!disponivel_ate(s->pos + s->tam)) {
                 if (!parado_desde) parado_desde = tempo_ms();
             } else if (agora >= t) {
-                if (parado_desde) { inicio += tempo_ms() - parado_desde; parado_desde = 0; }
+                if (parado_desde) { unsigned p = tempo_ms() - parado_desde; inicio += p; tempo_parado += p; parado_desde = 0; }
+                unsigned td = tempo_ms();
                 h264_amostra(h, dados + s->pos, (int)s->tam, tam_len);
+                tempo_decod += tempo_ms() - td;
                 iv++;
                 unsigned prox = iv < m.n_video
                     ? em_ms(m.video[iv].tempo, m.escala_video) : t + 40;
-                if (tempo_ms() - inicio <= prox + 20) {
+                unsigned dt = tempo_ms();
+                if (dt - inicio <= prox + 20 || dt - ultimo_quadro >= 80) {
+                    ultimo_quadro = dt;
                     h264_imagem_t im;
                     if (h264_imagem(h, &im)) {
                         desenhar(j, &im, esc, 0);
@@ -229,7 +237,8 @@ int principal(int argc, char **argv)
         if (baixando && (parado_desde || !trabalhou)) { baixar_mais(); trabalhou = true; }
         if (!trabalhou) dormir(5);
     }
-    registrar("video: fim; %d quadros mostrados, %d pulados, %u ms", mostrados, pulados, tempo_ms() - inicio);
+    registrar("video: fim; %d quadros mostrados, %d pulados, %u ms; esperando rede %u ms, decodificando %u ms, audio %u ms, baixados %u bytes",
+              mostrados, pulados, tempo_ms() - inicio, tempo_parado, tempo_decod, tempo_audio, tam);
     imprimir("video: %d quadros mostrados, %d pulados\n", mostrados, pulados);
     tocar_pcm(NULL, 0, 0);
     if (baixando) http_fechar(fd_rede);
