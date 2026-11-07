@@ -58,8 +58,12 @@ static char *ar; static unsigned ar_u, ar_c, ar_total;
 static const js_hooks_t *gancho;
 static void lancar_fatal(const char *m);
 
+static unsigned t_suave;   /* limite que vira exceção comum (para testar funções desconhecidas) */
+static unsigned cont_novo;
+static __attribute__((noreturn)) void erro(const char *tipo, const char *m, const char *x);
 static void *novo(unsigned n)
 {
+    if (t_suave && !(++cont_novo & 0x3FFF) && tempo_ms() > t_suave) erro("Error", "limite de tempo", NULL);
     n = (n + 3) & ~3u;
     if (n > ar_c - ar_u) {
         unsigned t = n + 16 > (2u << 20) ? n + 16 : (2u << 20);
@@ -1183,7 +1187,6 @@ static void ligar(no *p, val v, env *e, int d)
     }
     atribuir(p, v, e, d);
 }
-static unsigned t_suave;   /* limite que vira exceção comum (para testar funções desconhecidas) */
 static void chk(void)
 {
     char c;

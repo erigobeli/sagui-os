@@ -1348,9 +1348,16 @@ static char *rodar_scripts(char *h, int *n)
 }
 
 static uint8_t *js_baixar(const char *u, unsigned *n);
+static bool decodificar_registrando(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a)
+{
+    bool ok = imagem_decodificar(d, n, px, l, a);
+    if (ok) registrar("cipo: imagem %dx%d\n", *l, *a);
+    else registrar("cipo: imagem nao decodificou (%d bytes)\n", (int)n);
+    return ok;
+}
 static void ler_pagina(const char *h, int n)
 {
-    static const motor_ganchos_t g = { js_baixar, imagem_decodificar };
+    static const motor_ganchos_t g = { js_baixar, decodificar_registrando };
     if (motor) motor_fim(motor);
     motor = motor_novo(&g);
     if (motor) {
@@ -2132,7 +2139,6 @@ static void carregar(const char *pedido)
         if (mt[0] && !titulo_js[0]) { copia_texto(titulo, mt, sizeof titulo); formatar_texto(t, sizeof t, "Cipó - %s", titulo); titulo_janela(j->id, t); }
         motor_diagramar();
     }
-    registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, qtd_alvos);
     rodape(texto_pronto());
     desenhar_pagina();
     /* imagens chegam depois do texto, umas poucas por vez */
@@ -2142,6 +2148,7 @@ static void carregar(const char *pedido)
         desenhar_pagina();
     }
     if (motor) rodape(texto_pronto());
+    registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, qtd_alvos);
 }
 
 /* Clique num elemento com evento: o motor roda o evento e devolve a página. */

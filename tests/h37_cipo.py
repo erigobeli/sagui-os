@@ -48,8 +48,8 @@ def main():
         s = m.serial()
         verificar(re.search(r'cipo: pronto "P.gina A" \(\d+ linhas, 1 links\)', s), "a página A abriu, com o título e um link")
         m.captura("H37-cipo-pagina")
-        # O link fica na terceira linha (título, linha em branco, parágrafo).
-        m.clique(jx + 2 + 12 + 20, jy + 24 + 40 + 4 + 3 * 18 + 8)
+        # O link abre o parágrafo, logo abaixo do título <h1> (margens de 8 + 21 + 21 px).
+        m.clique(jx + 2 + 8 + 20, jy + 24 + 40 + 100)
         m.esperar_serial("gina B", 20)
         verificar("abrindo http://10.0.2.2:%d/b.html" % porta in m.serial(), "o clique seguiu o link relativo (pasta/../b.html -> /b.html)")
         m.clique(jx + 2 + 40, jy + 24 + 20)   # Voltar

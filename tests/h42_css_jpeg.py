@@ -99,8 +99,8 @@ def main():
         png = m.captura("H42-cipo-css-jpeg")
         jan = re.search(r'criada por \d+: "Cip.*?" \d+x\d+ em \((\d+),(\d+)\)', s)
         jx, jy = int(jan.group(1)), int(jan.group(2))
-        cores_e = [cor_do_pixel(png, jx + 2 + 12 + 30, y) for y in range(jy + 70, jy + 500, 4)]
-        cores_d = [cor_do_pixel(png, jx + 2 + 12 + 130, y) for y in range(jy + 70, jy + 500, 4)]
+        # As imagens ficam na linha, depois do texto: varre a área da página.
+        cores_e = cores_d = [cor_do_pixel(png, x, y) for y in range(jy + 70, jy + 560, 6) for x in range(jx + 4, jx + 840, 6)]
         verificar(any(c[0] > 170 and c[1] < 70 and c[2] < 70 for c in cores_e), "vermelho da foto na tela")
         verificar(any(c[2] > 160 and c[0] < 60 and c[1] < 100 for c in cores_d), "azul da foto na tela")
         print("linhas:", linhas)

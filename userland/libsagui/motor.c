@@ -31,7 +31,7 @@ enum { U_AUTO, U_PX, U_PCT, U_EM, U_REM, U_VW, U_VH, U_NONE, U_FR, U_MAXC, U_MIN
 
 typedef struct { int32_t v; uint8_t u; } medida_t;   /* v em 1/100 para EM/REM/PCT/VW/VH/FR */
 
-#define MAX_TRILHAS 16
+#define MAX_TRILHAS 32
 
 typedef struct {
     uint8_t display, position, flutua, limpa, branco, alinha, peso, italico, sublinha, risca, maiusc;
@@ -48,6 +48,9 @@ typedef struct {
     medida_t vao_l, vao_c;              /* row-gap, column-gap */
     uint8_t n_col; medida_t col[MAX_TRILHAS]; uint8_t col_rep_auto;
     int8_t g_ini, g_span, g_lin, g_lspan;
+    const char *areas;      /* grid-template-areas (texto cru) */
+    const char *area;       /* grid-area: nome */
+    uint8_t opaco0;         /* opacity: 0 */
     int16_t z;
 } estilo_t;
 
@@ -304,15 +307,30 @@ static void juntar(const char *base, const char *rel, char *s, int max)
     for (int i = fim_host; i < k; i++) if (base[i] == '/') ult = i + 1;
     if (ult == fim_host) { if (ult > max - 2) ult = max - 2; memcpy(s, base, (size_t)ult); s[ult++] = '/'; s[ult] = 0; }
     else { if (ult > max - 1) ult = max - 1; memcpy(s, base, (size_t)ult); s[ult] = 0; }
-    while (comeca_com(rel, "./")) rel += 2;
-    while (comeca_com(rel, "../")) {
-        rel += 3;
-        int t = (int)tam_texto(s);
-        if (t > 0 && s[t - 1] == '/') t--;
-        while (t > fim_host && s[t - 1] != '/') t--;
-        if (t > fim_host) s[t] = 0;
-    }
     junta_texto(s, rel, (size_t)max);
+    /* normaliza "/./" e "/pasta/../" no caminho (antes de ? e #) */
+    int fim = (int)tam_texto(s);
+    for (int i = fim_host; s[i]; i++) if (s[i] == '?' || s[i] == '#') { fim = i; break; }
+    char *c = s + fim_host;
+    int n = fim - fim_host, kk = 0;
+    char tmp[600];
+    for (int i = 0; i < n && kk < (int)sizeof tmp - 1;) {
+        if (c[i] == '/' && i + 2 <= n && c[i + 1] == '.' && (i + 2 == n || c[i + 2] == '/')) { i += 2; continue; }
+        if (c[i] == '/' && i + 3 <= n && c[i + 1] == '.' && c[i + 2] == '.' && (i + 3 == n || c[i + 3] == '/')) {
+            while (kk > 0 && tmp[kk - 1] != '/') kk--;
+            if (kk > 0) kk--;
+            i += 3;
+            continue;
+        }
+        tmp[kk++] = c[i++];
+    }
+    if (kk == 0) tmp[kk++] = '/';
+    tmp[kk] = 0;
+    char resto[600];
+    copia_texto(resto, s + fim, sizeof resto);
+    s[fim_host] = 0;
+    junta_texto(s, tmp, (size_t)max);
+    junta_texto(s, resto, (size_t)max);
 }
 
 /* ================================================================ HTML */
@@ -510,6 +528,7 @@ enum {
     PR_FLEX, PR_FDIR, PR_FWRAP, PR_FFLOW, PR_JUSTIFY, PR_AITEMS, PR_ASELF, PR_GROW, PR_SHRINK, PR_BASIS, PR_GAP, PR_RGAP, PR_CGAP, PR_ORDER,
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
+    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -522,12 +541,22 @@ static const char *const nomes_prop[] = {
     "grid-template-columns", "grid-column", "grid-column-start", "grid-column-end", "grid-row", "top", "right", "bottom", "left", "inset", "text-transform", "vertical-align", "z-index",
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
+    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block",
 };
 
 static int achar_prop(const char *p, int n)
 {
     if (n > 2 && p[0] == '-' && p[1] == '-') return PR_CUSTOM;
     if (n > 8 && igual_n(p, "-webkit-", 8)) { p += 8; n -= 8; }
+    static const struct { const char *n; int p; } logicas[] = {
+        {"margin-inline-start", PR_ML}, {"margin-inline-end", PR_MR}, {"margin-block-start", PR_MT}, {"margin-block-end", PR_MB},
+        {"padding-inline-start", PR_PL}, {"padding-inline-end", PR_PR}, {"padding-block-start", PR_PT}, {"padding-block-end", PR_PB},
+        {"margin-inline", PR_MINLINE}, {"margin-block", PR_MBLOCK}, {"padding-inline", PR_PINLINE}, {"padding-block", PR_PBLOCK},
+        {"inset-inline-start", PR_LEFT}, {"inset-inline-end", PR_RIGHT}, {"inset-block-start", PR_TOP}, {"inset-block-end", PR_BOTTOM},
+        {"inline-size", PR_WIDTH}, {"block-size", PR_HEIGHT}, {"max-inline-size", PR_MAXW}, {"min-inline-size", PR_MINW},
+        {"max-block-size", PR_MAXH}, {"min-block-size", PR_MINH}, {"grid-row-start", PR_GROW_L},
+    };
+    for (unsigned i = 0; i < sizeof logicas / sizeof logicas[0]; i++) if ((int)tam_texto(logicas[i].n) == n && igual_n(p, logicas[i].n, n)) return logicas[i].p;
     for (int i = 1; i < PR_CUSTOM; i++) if ((int)tam_texto(nomes_prop[i]) == n && igual_n(p, nomes_prop[i], n)) return i;
     if (n == 10 && igual_n(p, "grid-gap", 8)) return PR_GAP;
     return PR_NADA;
@@ -1350,7 +1379,15 @@ static void trilhas(estilo_t *e, const char *v)
             else { int u; vezes = num100(r[0], tr[0], &u) / 100; }
             medida_t md;
             const char *alvo = r[1]; int ta = tr[1];
-            if (ta > 7 && igual_n(alvo, "minmax(", 7)) { const char *z[2]; int tz[2]; int nz = palavras(alvo + 7, ta - 8, z, tz, 2); if (nz == 2) { alvo = z[0]; ta = tz[0]; } }
+            if (ta > 7 && igual_n(alvo, "minmax(", 7)) {
+                /* auto-fill: o mínimo dá a contagem; repetição fixa: o máximo (fr) dá o tamanho */
+                const char *z[2]; int tz[2]; int nz = palavras(alvo + 7, ta - 8, z, tz, 2);
+                if (nz == 2) {
+                    medida_t mx;
+                    bool fr_max = ler_medida_m(z[1], tz[1], &mx) && mx.u == U_FR;
+                    if (vezes < 0 || !fr_max) { alvo = z[0]; ta = tz[0]; } else { alvo = z[1]; ta = tz[1]; }
+                }
+            }
             if (!ler_medida_m(alvo, ta, &md)) md.u = U_FR, md.v = 100;
             if (vezes < 0) { e->col_rep_auto = 1; e->col[e->n_col++] = md; continue; }
             for (int z = 0; z < vezes && e->n_col < MAX_TRILHAS; z++) e->col[e->n_col++] = md;
@@ -1364,11 +1401,14 @@ static void trilhas(estilo_t *e, const char *v)
     }
 }
 
-static void coluna_grid(estilo_t *e, const char *v)
+static void coluna_grid(estilo_t *e, const char *v0)
 {
-    /* "span 2", "1 / 3", "1 / -1", "2" */
-    const char *p[4]; int t[4];
-    int k = palavras(v, (int)tam_texto(v), p, t, 4);
+    /* "span 2", "1 / 3", "1 / -1", "2", "1/span 18" */
+    char v[96]; int kk = 0;
+    for (const char *q = v0; *q && kk < 90; q++) { if (*q == '/') { v[kk++] = ' '; v[kk++] = '/'; v[kk++] = ' '; } else v[kk++] = *q; }
+    v[kk] = 0;
+    const char *p[6]; int t[6];
+    int k = palavras(v, (int)tam_texto(v), p, t, 6);
     int ini = 0, fim = 0, span = 1, u;
     int i = 0;
     if (i < k && t[i] == 4 && igual_n(p[i], "span", 4) && i + 1 < k) { span = num100(p[i + 1], t[i + 1], &u) / 100; i += 2; }
@@ -1381,7 +1421,7 @@ static void coluna_grid(estilo_t *e, const char *v)
     e->g_ini = (int8_t)ini;
     if (fim == -1) e->g_span = -1;
     else if (fim > ini && ini > 0) e->g_span = (int8_t)(fim - ini);
-    else e->g_span = (int8_t)(span < 1 ? 1 : span > 16 ? 16 : span);
+    else e->g_span = (int8_t)(span < 1 ? 1 : span > MAX_TRILHAS ? MAX_TRILHAS : span);
 }
 
 static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_t *pai)
@@ -1560,6 +1600,34 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_GCOL: coluna_grid(e, v); break;
     case PR_GCS: { int u; int x = num100(v, nv, &u); if (u) e->g_ini = (int8_t)(x / 100); else if (nv > 5 && igual_n(v, "span", 4)) coluna_grid(e, v); break; }
     case PR_GCE: { int u; int x = num100(v, nv, &u) / 100; if (u && x == -1) e->g_span = -1; else if (u && e->g_ini && x > e->g_ini) e->g_span = (int8_t)(x - e->g_ini); else if (nv > 5 && igual_n(v, "span", 4)) coluna_grid(e, v); break; }
+    case PR_GROW_L: {
+        estilo_t tmp = *e;
+        coluna_grid(&tmp, v);
+        e->g_lin = tmp.g_ini; e->g_lspan = tmp.g_span < 1 ? 1 : tmp.g_span;
+        break;
+    }
+    case PR_GTA: e->areas = igual(v, "none") ? NULL : v; break;
+    case PR_GAREA: {
+        int k = palavras(v, nv, p, t, 6);
+        if (k == 1 && !eh_dig(p[0][0]) && p[0][0] != '-') { e->area = m_dup(m, p[0], t[0]); break; }
+        /* "linha-ini / col-ini / linha-fim / col-fim" */
+        int nums[4] = { 0, 0, 0, 0 }, q = 0, u;
+        for (int i = 0; i < k && q < 4; i++) { if (p[i][0] == '/') continue; nums[q++] = num100(p[i], t[i], &u) / 100; }
+        if (nums[0] > 0) { e->g_lin = (int8_t)nums[0]; e->g_lspan = (int8_t)(nums[2] > nums[0] ? nums[2] - nums[0] : 1); }
+        if (nums[1] > 0) { e->g_ini = (int8_t)nums[1]; e->g_span = (int8_t)(nums[3] > nums[1] ? nums[3] - nums[1] : nums[3] == -1 ? -1 : 1); }
+        break;
+    }
+    case PR_MINLINE: case PR_MBLOCK: case PR_PINLINE: case PR_PBLOCK: {
+        medida_t q[4]; int k = palavras(v, nv, p, t, 2);
+        if (!k || !ler_medida_m(p[0], t[0], &q[0])) break;
+        q[1] = q[0];
+        if (k > 1) ler_medida_m(p[1], t[1], &q[1]);
+        for (int i = 0; i < 2; i++) if (q[i].u == U_EM || q[i].u == U_REM) { q[i].v = px_de(&q[i], e->tam); q[i].u = U_PX; }
+        medida_t *alvo = prop == PR_MINLINE || prop == PR_MBLOCK ? e->marg : e->pad;
+        if (prop == PR_MINLINE || prop == PR_PINLINE) { alvo[3] = q[0]; alvo[1] = q[1]; } else { alvo[0] = q[0]; alvo[2] = q[1]; }
+        break;
+    }
+    case PR_OPACITY: { int u; int x = num100(v, nv, &u); if (u) e->opaco0 = x <= 0; break; }
     case PR_TTRANSFORM: e->maiusc = igual(v, "uppercase") ? 1 : igual(v, "lowercase") ? 2 : igual(v, "capitalize") ? 3 : 0; break;
     case PR_VALIGN: e->vert = igual(v, "middle") ? 1 : igual(v, "top") ? 2 : igual(v, "bottom") ? 3 : 0; break;
     case PR_ZINDEX: { int u; int x = num100(v, nv, &u); if (u) e->z = (int16_t)(x / 100); break; }
@@ -1681,6 +1749,7 @@ static void estilizar(motor_t *m, no_m *n)
     }
     if (igual(n->tag, "html") || igual(n->tag, "body")) { if (e->display != D_NONE && e->display != D_FLEX && e->display != D_GRID) e->display = D_BLOCK; }
     if (e->display == D_LIST && !e->lista && !atributo_m(n, "style") && pe && pe->lista) e->lista = pe->lista;
+    if (pn && igual(pn->tag, "details") && !atributo_m(pn, "open") && !igual(n->tag, "summary")) e->display = D_NONE;
 }
 
 static void estilizar_tudo(motor_t *m, no_m *n)
@@ -2398,8 +2467,9 @@ static int fluxo(no_m *n, int cw, int *usado)
             c = c->prox;
             continue;
         }
+        int y_antes = y;
         y = fechar_inline(n, ini, y, cw, ctx, usado);
-        if (y > n->bl[0] + n->pl[0]) { marg_ant = 0; }
+        if (y != y_antes) marg_ant = 0;
         estilo_t *e = &c->e;
         if (e->limpa) {
             int maxy = y;
@@ -2682,32 +2752,79 @@ static int grid(no_m *n, int cw)
     int qtd = 0;
     for (no_m *c = n->filho; c; c = c->prox) if (!c->texto && c->e.display != D_NONE && !fora_do_fluxo(c)) qtd++;
     if (!qtd) return 0;
-    typedef struct { no_m *c; int lin, col, span; } gi_t;
+    typedef struct { no_m *c; int lin, col, span, lspan; } gi_t;
+    /* áreas nomeadas: "a a b" "c c b" */
+    char *anome[24]; int ar0[24], ac0[24], ar1[24], ac1[24], nareas = 0, acols = 0;
+    if (e->areas) {
+        int lin = 0;
+        for (const char *q = e->areas; *q;) {
+            while (*q && *q != '"' && *q != '\'') q++;
+            if (!*q) break;
+            char aspa = *q++;
+            int col = 0;
+            while (*q && *q != aspa) {
+                while (*q == ' ') q++;
+                const char *w0 = q;
+                while (*q && *q != ' ' && *q != aspa) q++;
+                int tw = (int)(q - w0);
+                if (!tw) continue;
+                if (!(tw == 1 && w0[0] == '.')) {
+                    int f = -1;
+                    for (int z = 0; z < nareas; z++) if ((int)tam_texto(anome[z]) == tw && !memcmp(anome[z], w0, (size_t)tw)) f = z;
+                    if (f < 0 && nareas < 24) { f = nareas++; anome[f] = m_dup(mo, w0, tw); ar0[f] = lin; ac0[f] = col; ar1[f] = lin; ac1[f] = col; }
+                    if (f >= 0) { if (lin > ar1[f]) ar1[f] = lin; if (col > ac1[f]) ac1[f] = col; }
+                }
+                col++;
+            }
+            if (*q) q++;
+            if (col > acols) acols = col;
+            lin++;
+        }
+        if (acols > nt) {
+            for (int i = nt; i < acols && i < MAX_TRILHAS; i++) { tr[i].u = U_FR; tr[i].v = 100; }
+            nt = acols > MAX_TRILHAS ? MAX_TRILHAS : acols;
+        }
+    }
     gi_t *it = m_novo(mo, qtd * (int)sizeof(gi_t));
-    int max_lin = qtd + 4;
+    int max_lin = qtd * 2 + 8;
     uint32_t *ocup = m_novo(mo, max_lin * 4);
     if (!it || !ocup) return 0;
     int k = 0, cl = 0, cc = 0;
     for (no_m *c = n->filho; c; c = c->prox) {
         if (c->texto || c->e.display == D_NONE || fora_do_fluxo(c)) continue;
         int span = c->e.g_span < 0 ? nt : c->e.g_span;
-        if (span > nt) span = nt;
         int ini = c->e.g_ini > 0 ? c->e.g_ini - 1 : -1;
+        int lin_fixa = c->e.g_lin > 0 ? c->e.g_lin - 1 : -1, lspan = c->e.g_lspan > 0 ? c->e.g_lspan : 1;
+        if (c->e.area) for (int z = 0; z < nareas; z++) if (igual(anome[z], c->e.area)) {
+            ini = ac0[z]; span = ac1[z] - ac0[z] + 1; lin_fixa = ar0[z]; lspan = ar1[z] - ar0[z] + 1;
+        }
+        if (span > nt) span = nt;
         if (ini >= nt) ini = nt - 1;
         if (ini >= 0 && ini + span > nt) span = nt - ini;
         if (c->e.g_span < 0 && ini > 0) span = nt - ini;
+        if (span < 1) span = 1;
         uint32_t mask = ((span >= 32 ? 0xFFFFFFFFu : (1u << span) - 1));
-        for (;;) {
-            if (cl >= max_lin) break;
-            int col = ini >= 0 ? ini : cc;
-            if (ini >= 0 && col < cc) { cl++; cc = 0; continue; }
-            if (col + span > nt) { cl++; cc = 0; continue; }
-            if (ocup[cl] & (mask << col)) { if (ini >= 0) { cl++; cc = 0; } else cc++; continue; }
-            ocup[cl] |= mask << col;
-            it[k].c = c; it[k].lin = cl; it[k].col = col; it[k].span = span;
-            cc = col + span;
-            break;
+        int lin = -1, col = -1;
+        if (lin_fixa >= 0 && lin_fixa < max_lin) {
+            lin = lin_fixa;
+            col = ini >= 0 ? ini : 0;
+            if (ini < 0) while (col + span <= nt && (ocup[lin] & (mask << col))) col++;
+            if (col + span > nt) col = 0;
+        } else {
+            for (;;) {
+                if (cl >= max_lin) { cl = max_lin - 1; break; }
+                int cc2 = ini >= 0 ? ini : cc;
+                if (ini >= 0 && cc2 < cc) { cl++; cc = 0; continue; }
+                if (cc2 + span > nt) { cl++; cc = 0; continue; }
+                if (ocup[cl] & (mask << cc2)) { if (ini >= 0) { cl++; cc = 0; } else cc++; continue; }
+                lin = cl; col = cc2;
+                cc = cc2 + span;
+                break;
+            }
+            if (lin < 0) { lin = cl; col = 0; }
         }
+        for (int z = 0; z < lspan && lin + z < max_lin; z++) ocup[lin + z] |= mask << col;
+        it[k].c = c; it[k].lin = lin; it[k].col = col; it[k].span = span; it[k].lspan = lspan;
         k++;
     }
     /* larguras das trilhas */
@@ -2732,7 +2849,7 @@ static int grid(no_m *n, int cw)
     for (int i = 0; i < nt; i++) xs[i + 1] = xs[i] + w[i] + gcol;
     /* layout e alturas das linhas */
     int nlin = 0;
-    for (int q = 0; q < k; q++) if (it[q].lin + 1 > nlin) nlin = it[q].lin + 1;
+    for (int q = 0; q < k; q++) if (it[q].lin + it[q].lspan > nlin) nlin = it[q].lin + it[q].lspan;
     int *alt = m_novo(mo, (nlin + 1) * 4);
     if (!alt) return 0;
     for (int q = 0; q < k; q++) {
@@ -2744,7 +2861,14 @@ static int grid(no_m *n, int cw)
         if (lar > ww - c->ml - c->mr && lw < 0) lar = ww - c->ml - c->mr;
         layout_no(c, ww, lar, -1);
         int h = c->a + c->mt + c->mb;
-        if (h > alt[it[q].lin]) alt[it[q].lin] = h;
+        if (it[q].lspan <= 1 && h > alt[it[q].lin]) alt[it[q].lin] = h;
+    }
+    for (int q = 0; q < k; q++) {   /* quem ocupa várias linhas empurra a última */
+        if (it[q].lspan <= 1) continue;
+        int h = it[q].c->a + it[q].c->mt + it[q].c->mb, soma = 0, ult = it[q].lin + it[q].lspan - 1;
+        if (ult >= nlin) ult = nlin - 1;
+        for (int L = it[q].lin; L <= ult; L++) soma += alt[L] + (L < ult ? glin : 0);
+        if (h > soma) alt[ult] += h - soma;
     }
     int y = n->bl[0] + n->pl[0];
     int *ys = m_novo(mo, (nlin + 1) * 4);
@@ -2753,9 +2877,10 @@ static int grid(no_m *n, int cw)
     for (int q = 0; q < k; q++) {
         no_m *c = it[q].c;
         int ww = xs[it[q].col + it[q].span] - xs[it[q].col] - gcol;
-        int livre = alt[it[q].lin] - (c->a + c->mt + c->mb);
+        int alt_area = ys[it[q].lin + it[q].lspan - 1 < nlin ? it[q].lin + it[q].lspan - 1 : nlin - 1] + alt[it[q].lin + it[q].lspan - 1 < nlin ? it[q].lin + it[q].lspan - 1 : nlin - 1] - ys[it[q].lin];
+        int livre = alt_area - (c->a + c->mt + c->mb);
         uint8_t al = c->e.alinha_si ? (c->e.alinha_si == 1 ? 0 : c->e.alinha_si - 1) : e->alinha_itens;
-        if (livre > 0 && al == 0 && c->e.alt.u == U_AUTO) { layout_no(c, ww, c->l, alt[it[q].lin] - c->mt - c->mb); livre = 0; }
+        if (livre > 0 && al == 0 && c->e.alt.u == U_AUTO) { layout_no(c, ww, c->l, alt_area - c->mt - c->mb); livre = 0; }
         int dx = 0;
         if (e->justifica == 1 || (c->e.marg[3].u == U_AUTO && c->e.marg[1].u == U_AUTO)) dx = (ww - c->l - c->ml - c->mr) / 2;
         c->x = xs[it[q].col] + c->ml + (dx > 0 ? dx : 0);
@@ -3068,7 +3193,7 @@ static void achatar_filhos(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l
 static void desenhar_caixa(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
-    if (e->visivel) return;
+    if (e->visivel || e->opaco0) return;
     if (e->fundo) {
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_RET; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.cor = e->fundo; c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
@@ -3145,7 +3270,7 @@ static void controle(no_m *n, int x, int y)
 static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int cb_a)
 {
     estilo_t *e = &n->e;
-    if (e->display == D_NONE) return;
+    if (e->display == D_NONE || e->opaco0) return;
     int x = ox + n->x, y = oy + n->y;
     if (e->position == P_RELATIVE || e->position == P_STICKY) {
         int t = res_med(&e->pos[0], cb_a, e), l = res_med(&e->pos[3], cb_l, e), b = res_med(&e->pos[2], cb_a, e), r = res_med(&e->pos[1], cb_l, e);
