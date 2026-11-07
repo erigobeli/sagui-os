@@ -463,6 +463,25 @@ static val n_baixar(val este, val *a, int n)
     return vS(s);
 }
 
+/* __enviar(url, método, corpo, cabeçalhos) -> [status, texto] (POST, PUT...) */
+static val n_enviar(val este, val *a, int n)
+{
+    (void)este; unsigned t = 0;
+    if (!gancho || tempo_ms() > t_limite) return vNul();
+    str *met = to_str(ARG(1)), *corpo = ARG(2).t == U || ARG(2).t == NUL ? I("") : to_str(ARG(2)), *cab = ARG(3).t == ST ? ARG(3).s : I("");
+    static char m[16], c[2048];
+    copia_texto(m, met->s, sizeof m);
+    copia_texto(c, cab->s, sizeof c);
+    http_preparar(m, c, corpo->s, corpo->n);
+    uint8_t *d = gancho->baixar(to_str(ARG(0))->s, &t);
+    http_preparar(NULL, NULL, NULL, 0);
+    obj *r = novo_arr(2);
+    arr_push(r, vI(d ? 200 : 0));
+    arr_push(r, d ? vS(novo_str((char *)d, (int)t)) : vNul());
+    if (d) libera(d);
+    return vO(r);
+}
+
 /* ---- Expressões regulares: casamento com volta atrás ---- */
 enum { R_CH, R_ANY, R_SET, R_INI, R_FIM, R_B, R_NB, R_GRP, R_REF };
 typedef struct rn { int t, min, max, guloso, cap, olhar, neg; uint8_t c; uint8_t *set; struct rn *alts, *prox_alt, *prox; } rn;
@@ -1167,7 +1186,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
     reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
-    reg(global, "__baixar", n_baixar); reg(global, "__re", n_re);
+    reg(global, "__baixar", n_baixar); reg(global, "__enviar", n_enviar); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(NANV)); por_prop(global, I("Infinity"), vN(INFV)); por_prop(global, I("undefined"), vU());
     por_prop(global, I("window"), vO(global)); por_prop(global, I("self"), vO(global)); por_prop(global, I("globalThis"), vO(global));
     por_prop(global, I("document"), embrulhar(raiz));

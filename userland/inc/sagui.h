@@ -102,6 +102,7 @@ bool url_https(const char *url);
 int  http_pedir_seguro(const char *host, int porta, const char *caminho, bool seguro);   /* seguro = TLS 1.3, sem verificar o certificado */
 int  http_ler(int fd, void *buf, unsigned n);                        /* como ler, também por TLS */
 void http_fechar(int fd);
+void http_preparar(const char *metodo, const char *cabecalhos, const void *corpo, int n);   /* POST etc. no próximo pedido */
 int  http_juntar_pedacos(char *d, int n);                            /* desfaz Transfer-Encoding: chunked */
 int  tls_abrir(int fd, const char *host);
 int  tls_escrever(const void *d, unsigned n);

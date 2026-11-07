@@ -65,6 +65,15 @@ int http_juntar_pedacos(char *d, int n)
     return o;
 }
 
+/* Próximo pedido com outro método, cabeçalhos ("Nome: valor\r\n...") e corpo. */
+static const char *px_metodo, *px_cab;
+static const uint8_t *px_corpo;
+static int px_n;
+void http_preparar(const char *metodo, const char *cabecalhos, const void *corpo, int n)
+{
+    px_metodo = metodo; px_cab = cabecalhos; px_corpo = corpo; px_n = n;
+}
+
 int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seguro)
 {
     uint32_t ip;
@@ -77,15 +86,23 @@ int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seg
         fd = r < 0 ? r : conectar(ip, porta);
     }
     if (fd < 0) return fd;
-    static char pedido[4800];   /* URLs de vídeo têm 1,3 KB */
+    static char pedido[8192];   /* URLs de vídeo têm 1,3 KB */
+    const char *met = px_metodo ? px_metodo : "GET";
     int n = formatar_texto(pedido, sizeof pedido,
-                           "GET %s HTTP/%s\r\nHost: %s\r\nUser-Agent: Mozilla/5.0 (compatible; SaguiOS)\r\nAccept: */*\r\nConnection: close\r\n\r\n", caminho, versao, host);
+                           "%s %s HTTP/%s\r\nHost: %s\r\nUser-Agent: Mozilla/5.0 (compatible; SaguiOS)\r\nAccept: */*\r\nConnection: close\r\n%s",
+                           met, caminho, versao, host, px_cab ? px_cab : "");
+    if (px_metodo && n < (int)sizeof pedido - 64) n += formatar_texto(pedido + n, sizeof pedido - (size_t)n, "Content-Length: %d\r\n", px_n);
+    if (n < (int)sizeof pedido - 3) n += formatar_texto(pedido + n, sizeof pedido - (size_t)n, "\r\n");
+    const uint8_t *corpo = px_corpo; int nc = px_metodo ? px_n : 0;
+    px_metodo = NULL; px_cab = NULL; px_corpo = NULL; px_n = 0;   /* vale só para um pedido */
     if (seguro) {
         r = tls_abrir(fd, host);
         if (r < 0) { fechar(fd); return r; }
         r = tls_escrever(pedido, (unsigned)n);
+        if (r >= 0 && nc > 0) r = tls_escrever(corpo, (unsigned)nc);
     } else {
         r = escrever_tudo(fd, pedido, (unsigned)n);
+        if (r >= 0 && nc > 0) r = escrever_tudo(fd, corpo, (unsigned)nc);
     }
     if (r < 0) { http_fechar(fd); return r; }
     return fd;
