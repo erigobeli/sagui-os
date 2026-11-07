@@ -32,6 +32,7 @@ typedef struct processo {
     char        pasta[CAMINHO_MAX];
     uint32_t    dados_inicio, dados_fim;   /* área que cresce com aumentar_memoria */
     uint32_t    tiques_cpu;
+    uint8_t     fpu[512] __attribute__((aligned(16)));   /* área do fxsave */
 } processo_t;
 
 extern processo_t *atual;

@@ -52,8 +52,8 @@ void paginacao_iniciar(void)
 
     espaco_ativar(dir_kernel);
     /* PG liga a paginação; WP faz o kernel também respeitar páginas só de
-     * leitura; EM faz qualquer instrução de ponto flutuante gerar exceção
-     * (o SaguiOS não salva o estado da FPU, PRD 4). */
+     * leitura; EM faz ponto flutuante gerar exceção até fpu_iniciar decidir
+     * que o processador consegue salvar o estado dele. */
     uint32_t cr0 = le_cr0();
     cr0 |= 0x80000000u | 0x00010000u | 0x4u;
     __asm__ volatile("mov %0, %%cr0" : : "r"(cr0) : "memory");

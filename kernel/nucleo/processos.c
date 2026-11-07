@@ -34,6 +34,29 @@ const char *nome_estado(estado_t e)
     return e <= P_ZUMBI ? n[e] : "?";
 }
 
+/* FPU e SSE: com FXSR, cada processo tem seu estado, trocado no escalonador.
+ * O kernel compila sem registradores de ponto flutuante, então só os programas
+ * mexem neles. Sem FXSR, EM continua ligado e ponto flutuante gera exceção. */
+static bool fpu_ativa;
+static uint8_t fpu_limpa[512] __attribute__((aligned(16)));
+
+static void fpu_iniciar(void)
+{
+    uint32_t a = 1, b, c, d;
+    __asm__ volatile("cpuid" : "+a"(a), "=b"(b), "=c"(c), "=d"(d));
+    if (!(d & (1u << 24))) { kprintf("fpu: sem FXSR, ponto flutuante desligado\n"); return; }
+    uint32_t cr0, cr4;
+    __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
+    cr0 = (cr0 & ~0xCu) | 0x22u;   /* tira EM e TS; liga MP e NE */
+    __asm__ volatile("mov %0, %%cr0" :: "r"(cr0));
+    __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+    cr4 |= 0x600u;                 /* OSFXSR e OSXMMEXCPT */
+    __asm__ volatile("mov %0, %%cr4" :: "r"(cr4));
+    __asm__ volatile("fninit\n\tfxsave %0" : "=m"(fpu_limpa));
+    fpu_ativa = true;
+    kprintf("fpu: x87 e SSE ligados\n");
+}
+
 void processos_iniciar(void)
 {
     /* O código que está rodando agora (o fim da inicialização do kernel) vira
@@ -44,6 +67,8 @@ void processos_iniciar(void)
     p->pid = 0;
     p->estado = P_EXECUTANDO;
     txt_copia_n(p->nome, "ocioso", sizeof p->nome);
+    fpu_iniciar();
+    memcpy(p->fpu, fpu_limpa, sizeof p->fpu);
     p->espaco = espaco_kernel();
     txt_copia_n(p->pasta, "/", sizeof p->pasta);
     atual = p;
@@ -74,6 +99,7 @@ processo_t *processo_novo(const char *nome, int pai)
         p->estado = P_BLOQUEADO;   /* só fica pronto quando o quadro inicial estiver montado */
         p->espera = p;
         txt_copia_n(p->nome, nome, sizeof p->nome);
+        memcpy(p->fpu, fpu_limpa, sizeof p->fpu);
         p->pilha_kernel = pilha;
         p->espaco = espaco_kernel();
         txt_copia_n(p->pasta, "/", sizeof p->pasta);
@@ -201,6 +227,8 @@ quadro_t *escalonar(quadro_t *q)
         tss_definir_pilha(prox->pilha_kernel + PILHA_KERNEL);
     if (prox->espaco != espaco_atual())
         espaco_ativar(prox->espaco);
+    if (fpu_ativa && prox != atual)
+        __asm__ volatile("fxsave %0\n\tfxrstor %1" : "=m"(atual->fpu) : "m"(prox->fpu));
     atual = prox;
     return prox->quadro;
 }
