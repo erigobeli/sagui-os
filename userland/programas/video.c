@@ -156,17 +156,24 @@ int principal(int argc, char **argv)
     int tam_len = 4;
     if (m.n_video) {
         h = h264_novo();
-        if (!h || h264_config(h, avcc, avcc_n, &tam_len) < 0) { imprimir_em(ERROS, "video: H.264 não suportado\n"); h = NULL; }
+        int rc = h ? h264_config(h, avcc, avcc_n, &tam_len) : -99;
+        if (rc < 0) { imprimir_em(ERROS, "video: H.264 não suportado\n"); registrar("video: H.264 recusado (%d, avcC %d bytes)", rc, avcc_n); h = NULL; }
     }
     aac_t *a = m.n_audio && asc_n ? aac_novo(asc, asc_n) : NULL;
-    if (m.n_audio && !a) imprimir_em(ERROS, "video: áudio não suportado (só AAC-LC)\n");
+    if (m.n_audio && !a) { imprimir_em(ERROS, "video: áudio não suportado (só AAC-LC)\n"); registrar("video: AAC recusado (asc %d bytes: %02x %02x)", asc_n, asc[0], asc[1]); }
     if (!h && !a) return 1;
 
     int esc = m.larg > LARG_MAX ? 2 : 1;
     int jl = h ? m.larg / esc : 320, ja = h ? m.alt / esc : 40;
+    /* título: o nome do arquivo, sem a consulta, curto (o kernel recusa títulos longos) */
+    char titulo[40];
     const char *nome = acha_ultimo_char(argv[1], '/');
-    jan_t *j = jan_abrir(nome ? nome + 1 : argv[1], jl, ja);
-    if (!j) return 1;
+    copia_texto(titulo, nome ? nome + 1 : argv[1], sizeof titulo);
+    char *qm = acha_char(titulo, '?');
+    if (qm) *qm = 0;
+    if (comeca_com(titulo, "videoplayback")) copia_texto(titulo, "Vídeo", sizeof titulo);
+    jan_t *j = jan_abrir(titulo, jl, ja);
+    if (!j) { registrar("video: janela recusada"); return 1; }
     g_retangulo(j, 0, 0, j->larg, j->alt, 0);
     jan_mostrar(j);
     tabelas_cor();
@@ -177,7 +184,7 @@ int principal(int argc, char **argv)
     unsigned inicio = tempo_ms(), parado_desde = 0;
     unsigned ultimo_quadro = 0;
     unsigned tempo_parado = 0, tempo_decod = 0, tempo_audio = 0;
-    bool fim = false;
+    bool fim = false, esvaziado = false;
     while (!fim) {
         evento_t e;
         while (proximo_evento(j->id, &e, false) == 1)
@@ -220,17 +227,25 @@ int principal(int argc, char **argv)
                 unsigned prox = iv < m.n_video
                     ? em_ms(m.video[iv].tempo, m.escala_video) : t + 40;
                 unsigned dt = tempo_ms();
-                if (dt - inicio <= prox + 20 || dt - ultimo_quadro >= 80) {
-                    ultimo_quadro = dt;
-                    h264_imagem_t im;
-                    if (h264_imagem(h, &im)) {
+                h264_imagem_t im;
+                bool mostrou = false;
+                while (h264_imagem(h, &im)) {   /* com quadros B saem na ordem de exibição, às vezes 2 de uma vez */
+                    if (dt - inicio <= prox + 20 || dt - ultimo_quadro >= 80) {
+                        ultimo_quadro = dt;
                         desenhar(j, &im, esc, 0);
-                        jan_mostrar(j);
+                        mostrou = true;
                         mostrados++;
-                    }
-                } else pulados++;
+                    } else pulados++;
+                }
+                if (mostrou) jan_mostrar(j);
                 trabalhou = true;
             }
+        }
+        if (h && iv >= m.n_video && !esvaziado) {   /* os quadros retidos para reordenar */
+            esvaziado = true;
+            h264_esvaziar(h);
+            h264_imagem_t im;
+            while (h264_imagem(h, &im)) { desenhar(j, &im, esc, 0); jan_mostrar(j); mostrados++; }
         }
         if ((!h || iv >= m.n_video) && (!a || ia >= m.n_audio)) fim = true;
 

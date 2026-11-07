@@ -77,7 +77,7 @@ int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seg
         fd = r < 0 ? r : conectar(ip, porta);
     }
     if (fd < 0) return fd;
-    char pedido[900];
+    static char pedido[4800];   /* URLs de vídeo têm 1,3 KB */
     int n = formatar_texto(pedido, sizeof pedido,
                            "GET %s HTTP/%s\r\nHost: %s\r\nUser-Agent: Mozilla/5.0 (compatible; SaguiOS)\r\nAccept: */*\r\nConnection: close\r\n\r\n", caminho, versao, host);
     if (seguro) {

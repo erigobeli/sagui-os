@@ -8,6 +8,13 @@
 #include "../../userland/inc/h264.h"
 #include "../../userland/inc/mp4.h"
 
+static void gravar(FILE *o, h264_imagem_t *im)
+{
+    for (int y = 0; y < im->alt; y++) fwrite(im->y + y * im->passo_y, 1, im->larg, o);
+    for (int y = 0; y < im->alt / 2; y++) fwrite(im->u + y * im->passo_c, 1, im->larg / 2, o);
+    for (int y = 0; y < im->alt / 2; y++) fwrite(im->v + y * im->passo_c, 1, im->larg / 2, o);
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) { fprintf(stderr, "uso: teste_h264 entrada.mp4 saida.yuv\n"); return 2; }
@@ -35,11 +42,11 @@ int main(int argc, char **argv)
         r = h264_amostra(h, d + m.video[i].pos, m.video[i].tam, tl);
         if (r) fprintf(stderr, "quadro %d: erro %d\n", i, r);
         h264_imagem_t im;
-        h264_imagem(h, &im);
-        for (int y = 0; y < im.alt; y++) fwrite(im.y + y * im.passo_y, 1, im.larg, o);
-        for (int y = 0; y < im.alt / 2; y++) fwrite(im.u + y * im.passo_c, 1, im.larg / 2, o);
-        for (int y = 0; y < im.alt / 2; y++) fwrite(im.v + y * im.passo_c, 1, im.larg / 2, o);
+        while (h264_imagem(h, &im)) gravar(o, &im);
     }
+    h264_esvaziar(h);
+    h264_imagem_t im;
+    while (h264_imagem(h, &im)) gravar(o, &im);
     double s = (double)(clock() - t0) / CLOCKS_PER_SEC;
     fprintf(stderr, "%d quadros em %.2f s (%.1f qps)\n", m.n_video, s, m.n_video / s);
     fclose(o);

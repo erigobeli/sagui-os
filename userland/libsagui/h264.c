@@ -1,11 +1,12 @@
-/* h264.c - decodificador H.264 perfil Baseline (CAVLC, quadros I e P).
+/* h264.c - decodificador H.264 perfis Baseline e Main (CAVLC e CABAC, quadros I, P e B).
  *
  * É o vídeo do itag 18 do YouTube (avc1.42001E) e da maioria dos MP4
  * "compatíveis". Cobre: SPS/PPS, fatias I e P, vários quadros de referência
  * com janela deslizante e reordenação da lista, predição intra 4x4 e 16x16,
  * croma 4:2:0, compensação de movimento com quarto de pixel e o filtro de
- * desbloqueio. Fica de fora o que o Baseline não usa: CABAC, quadros B,
- * campos entrelaçados, 8x8 e predição ponderada.
+ * desbloqueio; e o perfil Main: CABAC, quadros B (predição direta espacial
+ * e temporal), predição ponderada explícita e implícita e saída na ordem de
+ * exibição (POC). Fica de fora: campos entrelaçados, transformada 8x8 (High).
  *
  * Só inteiros. Compila também no Linux (H264_HOST) para comparar quadro a
  * quadro com o ffmpeg. */
@@ -24,6 +25,7 @@ static void *aloca_zerado(size_t n) { return calloc(1, n); }
 #define DBG(...) do { } while (0)
 #endif
 #include "h264.h"
+#include "cabac_tab.h"
 
 /* ------------------------------------------------------------------ bits */
 
@@ -194,51 +196,65 @@ static inline int vlc_ler(bits_t *b, const uint16_t *t, int nbits)
 /* ------------------------------------------------------------- estado */
 
 #define MAX_REF 16
+#define N_QUADROS (MAX_REF + 4)
 #define REF_NADA (-2)     /* vizinho fora da imagem/fatia */
 #define REF_INTRA (-1)
 
+typedef struct {        /* informação guardada por macrobloco */
+    int8_t  intra;          /* 0 inter, 1 intra, 2 I_PCM */
+    int8_t  i4x4, i16, skip, direto;
+    int8_t  qp, qpc, qpd, cbp, modo_croma;
+    int     fatia;
+    uint8_t nz[16 + 8];     /* coeficientes por bloco 4x4 (luma raster, depois Cb 4, Cr 4) */
+    uint8_t dc;             /* CABAC: DC codificado (bit 0 luma, 1 Cb, 2 Cr) */
+    int8_t  modo4[16];      /* raster */
+    int8_t  refidx[2][4];   /* por 8x8 e lista; -1 = lista não usada */
+    int8_t  ref[2][4];      /* id do quadro de referência (&127) ou -1 */
+    int16_t mv[2][16][2];   /* raster */
+    uint8_t mvd[2][16][2];  /* |mvd| (contexto do CABAC) */
+    uint8_t dir[16];        /* bloco feito por predição direta */
+} mbinfo_t;
+
 typedef struct {
     uint8_t *y, *u, *v;
-    int frame_num, pic_num;
-    bool ref, usado;
+    mbinfo_t *mb;
+    int frame_num, pic_num, poc, ordem;
+    bool ref, saida;
     int id;
 } quadro_t;
 
-typedef struct {        /* informação guardada por macrobloco */
-    int8_t  intra;          /* 0 inter, 1 intra, 2 I_PCM */
-    int8_t  i4x4;           /* usou intra 4x4 */
-    int8_t  qp, qpc;
-    int     fatia;
-    uint8_t nz[16 + 8];     /* coeficientes por bloco 4x4 (luma raster, depois Cb 4, Cr 4) */
-    int8_t  modo4[16];      /* raster */
-    int8_t  ref[4];         /* por 8x8; id do quadro de referência ou -1 */
-    int16_t mv[16][2];      /* raster */
-    int8_t  refidx[4];
-} mbinfo_t;
+typedef struct { int16_t w, o; } peso_t;
 
 struct h264 {
     /* SPS */
     bool sps_ok, pps_ok;
+    int perfil;
     int larg_mb, alt_mb, larg, alt;
     int corte[4];               /* esq, dir, cima, baixo em pixels */
     int log2_frame_num, poc_tipo, log2_poc_lsb, delta_poc_zero;
-    int max_ref;
+    int max_ref, direto_8x8, reordenar;
     /* PPS */
-    int ref_ativas_padrao, qp_inicial, croma_qp_off, ctrl_desbloq, redundante, poc_inferior;
-    int ponderada;
+    int cabac, ref_padrao[2], qp_inicial, croma_qp_off, ctrl_desbloq, redundante, poc_inferior;
+    int ponderada, bipred;
     /* fatia */
-    int tipo, frame_num, nal_ref, idr, qp, num_ref_ativas;
-    int desbloq_modo, alfa_off, beta_off;
+    int tipo, frame_num, nal_ref, idr, qp, num_ref[2];
+    int direto_espacial, cabac_init;
     int fatia_atual;
-    quadro_t *lista[MAX_REF + 1];
+    quadro_t *lista[2][MAX_REF + 1];
+    int log2_peso[2];
+    peso_t peso[2][MAX_REF + 1][3];
+    bool tem_peso[2][MAX_REF + 1];
+    /* POC */
+    int poc, poc_msb_ant, poc_lsb_ant, fn_off, fn_ant, fn_off_ant, geracao;
     /* quadros */
-    quadro_t q[MAX_REF + 2];
+    quadro_t q[N_QUADROS];
     quadro_t *atual;
     int prox_id;
     mbinfo_t *mb;
     int passo, passo_c;
-    bool quadro_aberto;
-    int ultimo_frame_num;
+    bool quadro_aberto, viu_b, esvaziar;
+    bool adaptativo;                /* marcação por MMCO (sem janela deslizante) */
+    int mmco[32][2], n_mmco;        /* aplicadas ao fechar o quadro */
     /* rascunho para RBSP */
     uint8_t *rbsp;
     int rbsp_cap;
@@ -265,13 +281,15 @@ h264_t *h264_novo(void)
 
 static void liberar_quadros(h264_t *h)
 {
-    for (int i = 0; i < MAX_REF + 2; i++) {
+    for (int i = 0; i < N_QUADROS; i++) {
         if (h->q[i].y) libera(h->q[i].y);
+        if (h->q[i].mb) libera(h->q[i].mb);
         h->q[i].y = h->q[i].u = h->q[i].v = NULL;
-        h->q[i].usado = h->q[i].ref = false;
+        h->q[i].mb = NULL;
+        h->q[i].saida = h->q[i].ref = false;
     }
-    if (h->mb) libera(h->mb);
     h->mb = NULL;
+    h->atual = NULL;
 }
 
 void h264_fim(h264_t *h)
@@ -293,18 +311,26 @@ static void pular_escala(bits_t *b, int n)
     }
 }
 
+static void pular_hrd(bits_t *b)
+{
+    int n = (int)ue(b) + 1;
+    ler_bits(b, 8);
+    for (int i = 0; i < n && i < 32; i++) { ue(b); ue(b); ler_bit(b); }
+    ler_bits(b, 20);
+}
+
 static int ler_sps(h264_t *h, bits_t *b)
 {
     int perfil = (int)ler_bits(b, 8);
     ler_bits(b, 16);   /* restrições + nível */
     ue(b);
+    h->perfil = perfil;
     if (perfil == 100 || perfil == 110 || perfil == 122 || perfil == 244 || perfil == 44 ||
         perfil == 83 || perfil == 86 || perfil == 118 || perfil == 128) {
         int croma = (int)ue(b);
         if (croma != 1) return H264_SEM_SUPORTE;
         ue(b); ue(b); ler_bit(b);
-        if (ler_bit(b))
-            for (int i = 0; i < 8; i++) if (ler_bit(b)) pular_escala(b, i < 6 ? 16 : 64);
+        if (ler_bit(b)) return H264_SEM_SUPORTE;    /* matrizes de escala */
     }
     h->log2_frame_num = (int)ue(b) + 4;
     h->poc_tipo = (int)ue(b);
@@ -321,11 +347,29 @@ static int ler_sps(h264_t *h, bits_t *b)
     ler_bit(b);
     int lm = (int)ue(b) + 1, am = (int)ue(b) + 1;
     if (!ler_bit(b)) return H264_SEM_SUPORTE;      /* entrelaçado */
-    ler_bit(b);
+    h->direto_8x8 = ler_bit(b);
     int c[4] = { 0, 0, 0, 0 };
     if (ler_bit(b)) for (int i = 0; i < 4; i++) c[i] = (int)ue(b) * 2;
+    /* quantos quadros podem sair fora de ordem: Baseline nenhum; senão a VUI diz, ou o DPB inteiro */
+    h->reordenar = perfil == 66 ? 0 : h->max_ref;
+    if (ler_bit(b)) {   /* VUI */
+        if (ler_bit(b)) { if (ler_bits(b, 8) == 255) ler_bits(b, 32); }
+        if (ler_bit(b)) ler_bit(b);
+        if (ler_bit(b)) { ler_bits(b, 4); if (ler_bit(b)) ler_bits(b, 24); }
+        if (ler_bit(b)) { ue(b); ue(b); }
+        if (ler_bit(b)) { ler_bits(b, 32); ler_bits(b, 32); ler_bit(b); }
+        int nal = ler_bit(b); if (nal) pular_hrd(b);
+        int vcl = ler_bit(b); if (vcl) pular_hrd(b);
+        if (nal || vcl) ler_bit(b);
+        ler_bit(b);
+        if (ler_bit(b)) {
+            ler_bit(b); ue(b); ue(b); ue(b); ue(b);
+            int r = (int)ue(b); ue(b);
+            if (r <= MAX_REF) h->reordenar = r;
+        }
+    }
     if (lm > 256 || am > 256) return H264_SEM_SUPORTE;
-    if (lm != h->larg_mb || am != h->alt_mb) {
+    if (lm != h->larg_mb || am != h->alt_mb || !h->q[0].y) {
         liberar_quadros(h);
         h->larg_mb = lm;
         h->alt_mb = am;
@@ -333,11 +377,10 @@ static int ler_sps(h264_t *h, bits_t *b)
         h->alt = am * 16;
         h->passo = h->larg;
         h->passo_c = h->larg / 2;
-        h->mb = aloca_zerado(sizeof(mbinfo_t) * lm * am);
-        if (!h->mb) return H264_SEM_MEMORIA;
-        for (int i = 0; i < MAX_REF + 2; i++) {
+        for (int i = 0; i < N_QUADROS; i++) {
             uint8_t *p = aloca(h->larg * h->alt * 3 / 2);
-            if (!p) return H264_SEM_MEMORIA;
+            h->q[i].mb = aloca_zerado(sizeof(mbinfo_t) * lm * am);
+            if (!p || !h->q[i].mb) return H264_SEM_MEMORIA;
             h->q[i].y = p;
             h->q[i].u = p + h->larg * h->alt;
             h->q[i].v = h->q[i].u + h->larg * h->alt / 4;
@@ -351,58 +394,95 @@ static int ler_sps(h264_t *h, bits_t *b)
 static int ler_pps(h264_t *h, bits_t *b)
 {
     ue(b); ue(b);
-    if (ler_bit(b)) return H264_SEM_SUPORTE;       /* CABAC */
+    h->cabac = ler_bit(b);
     h->poc_inferior = ler_bit(b);
     if (ue(b) != 0) return H264_SEM_SUPORTE;       /* grupos de fatias */
-    h->ref_ativas_padrao = (int)ue(b) + 1;
-    ue(b);
+    h->ref_padrao[0] = (int)ue(b) + 1;
+    h->ref_padrao[1] = (int)ue(b) + 1;
     h->ponderada = ler_bit(b);
-    ler_bits(b, 2);
+    h->bipred = (int)ler_bits(b, 2);
     h->qp_inicial = 26 + se(b);
     se(b);
     h->croma_qp_off = se(b);
     h->ctrl_desbloq = ler_bit(b);
     ler_bit(b);          /* intra restrita: tratada como 0 */
     h->redundante = ler_bit(b);
+    if (mais_dados(b) && ler_bit(b)) return H264_SEM_SUPORTE;   /* transformada 8x8 (High) */
     h->pps_ok = true;
     return 0;
 }
 
 /* ------------------------------------------------- quadros de referência */
 
+static void calc_pic_num(h264_t *h)
+{
+    int maxf = 1 << h->log2_frame_num;
+    for (int i = 0; i < N_QUADROS; i++)
+        if (h->q[i].ref) h->q[i].pic_num = h->q[i].frame_num > h->frame_num ? h->q[i].frame_num - maxf : h->q[i].frame_num;
+}
+
 static void janela_deslizante(h264_t *h)
 {
     int n = 0;
-    int maxf = 1 << h->log2_frame_num;
-    for (int i = 0; i < MAX_REF + 2; i++)
-        if (h->q[i].ref) h->q[i].pic_num = h->q[i].frame_num > h->frame_num ? h->q[i].frame_num - maxf : h->q[i].frame_num;
-    for (int i = 0; i < MAX_REF + 2; i++) if (h->q[i].ref) n++;
+    calc_pic_num(h);
+    for (int i = 0; i < N_QUADROS; i++) if (h->q[i].ref) n++;
     while (n > h->max_ref) {
         quadro_t *velho = NULL;
-        for (int i = 0; i < MAX_REF + 2; i++)
+        for (int i = 0; i < N_QUADROS; i++)
             if (h->q[i].ref && (!velho || h->q[i].pic_num < velho->pic_num)) velho = &h->q[i];
         velho->ref = false;
         n--;
     }
 }
 
-static void montar_lista(h264_t *h)
+static void ordenar(quadro_t **l, int k, int (*maior)(quadro_t *, quadro_t *))
 {
-    int maxf = 1 << h->log2_frame_num, k = 0;
-    for (int i = 0; i < MAX_REF + 2; i++) {
-        quadro_t *q = &h->q[i];
-        if (!q->ref || q == h->atual) continue;
-        q->pic_num = q->frame_num > h->frame_num ? q->frame_num - maxf : q->frame_num;
-        h->lista[k++] = q;
-    }
-    for (int i = 1; i < k; i++)                    /* PicNum decrescente */
-        for (int j = i; j > 0 && h->lista[j]->pic_num > h->lista[j - 1]->pic_num; j--) {
-            quadro_t *t = h->lista[j]; h->lista[j] = h->lista[j - 1]; h->lista[j - 1] = t;
+    for (int i = 1; i < k; i++)
+        for (int j = i; j > 0 && maior(l[j], l[j - 1]); j--) { quadro_t *t = l[j]; l[j] = l[j - 1]; l[j - 1] = t; }
+}
+static int pn_maior(quadro_t *a, quadro_t *b) { return a->pic_num > b->pic_num; }
+static int poc_maior(quadro_t *a, quadro_t *b) { return a->poc > b->poc; }
+static int poc_menor(quadro_t *a, quadro_t *b) { return a->poc < b->poc; }
+
+static void montar_listas(h264_t *h)
+{
+    calc_pic_num(h);
+    quadro_t *r[N_QUADROS]; int k = 0;
+    for (int i = 0; i < N_QUADROS; i++) if (h->q[i].ref && &h->q[i] != h->atual) r[k++] = &h->q[i];
+    for (int l = 0; l < 2; l++) for (int i = 0; i <= MAX_REF; i++) h->lista[l][i] = NULL;
+    if (h->tipo == 0) {
+        ordenar(r, k, pn_maior);
+        for (int i = 0; i < k && i <= MAX_REF; i++) h->lista[0][i] = r[i];
+    } else if (h->tipo == 1) {
+        quadro_t *antes[N_QUADROS], *depois[N_QUADROS]; int na = 0, nd = 0;
+        for (int i = 0; i < k; i++) { if (r[i]->poc < h->poc) antes[na++] = r[i]; else depois[nd++] = r[i]; }
+        ordenar(antes, na, poc_maior);
+        ordenar(depois, nd, poc_menor);
+        int p = 0;
+        for (int i = 0; i < na && p <= MAX_REF; i++) h->lista[0][p++] = antes[i];
+        for (int i = 0; i < nd && p <= MAX_REF; i++) h->lista[0][p++] = depois[i];
+        p = 0;
+        for (int i = 0; i < nd && p <= MAX_REF; i++) h->lista[1][p++] = depois[i];
+        for (int i = 0; i < na && p <= MAX_REF; i++) h->lista[1][p++] = antes[i];
+        if (k > 1) {
+            bool iguais = true;
+            for (int i = 0; i < k && i <= MAX_REF; i++) if (h->lista[0][i] != h->lista[1][i]) iguais = false;
+            if (iguais) { quadro_t *t = h->lista[1][0]; h->lista[1][0] = h->lista[1][1]; h->lista[1][1] = t; }
         }
-    for (int i = k; i <= MAX_REF; i++) h->lista[i] = k ? h->lista[i % k] : NULL;
+    }
 }
 
-static void modificar_lista(h264_t *h, bits_t *b)
+/* Depois da modificação: posições sem quadro repetem os existentes (fluxos defeituosos). */
+static void completar_listas(h264_t *h)
+{
+    for (int l = 0; l < 2; l++) {
+        int k = 0;
+        while (k <= MAX_REF && h->lista[l][k]) k++;
+        for (int i = k; i <= MAX_REF; i++) h->lista[l][i] = k ? h->lista[l][i % k] : NULL;
+    }
+}
+
+static void modificar_lista(h264_t *h, bits_t *b, int l)
 {
     if (!ler_bit(b)) return;
     int maxf = 1 << h->log2_frame_num, pred = h->frame_num, idx = 0;
@@ -418,14 +498,37 @@ static void modificar_lista(h264_t *h, bits_t *b)
         pred = sem_volta;
         int num = sem_volta > h->frame_num ? sem_volta - maxf : sem_volta;
         quadro_t *alvo = NULL;
-        for (int i = 0; i < MAX_REF + 2; i++)
+        for (int i = 0; i < N_QUADROS; i++)
             if (h->q[i].ref && &h->q[i] != h->atual && h->q[i].pic_num == num) alvo = &h->q[i];
-        if (!alvo || idx >= h->num_ref_ativas) continue;
-        int n = h->num_ref_ativas;
-        for (int i = n; i > idx; i--) h->lista[i] = h->lista[i - 1];
-        h->lista[idx++] = alvo;
+        if (!alvo || idx >= h->num_ref[l]) continue;
+        int n = h->num_ref[l];
+        quadro_t **L = h->lista[l];
+        for (int i = n; i > idx; i--) L[i] = L[i - 1];
+        L[idx++] = alvo;
         int k = idx;
-        for (int i = idx; i <= n; i++) if (h->lista[i] != alvo) h->lista[k++] = h->lista[i];
+        for (int i = idx; i <= n; i++) if (L[i] != alvo) L[k++] = L[i];
+    }
+}
+
+/* Ordem de exibição (POC). */
+static void calc_poc(h264_t *h, int lsb, int delta_inf)
+{
+    int maxf = 1 << h->log2_frame_num;
+    if (h->poc_tipo == 0) {
+        if (h->idr) { h->poc_msb_ant = 0; h->poc_lsb_ant = 0; }
+        int maxl = 1 << h->log2_poc_lsb, msb;
+        if (lsb < h->poc_lsb_ant && h->poc_lsb_ant - lsb >= maxl / 2) msb = h->poc_msb_ant + maxl;
+        else if (lsb > h->poc_lsb_ant && lsb - h->poc_lsb_ant > maxl / 2) msb = h->poc_msb_ant - maxl;
+        else msb = h->poc_msb_ant;
+        int topo = msb + lsb, fundo = topo + delta_inf;
+        h->poc = topo < fundo ? topo : fundo;
+        if (h->nal_ref) { h->poc_msb_ant = msb; h->poc_lsb_ant = lsb; }
+    } else {
+        if (h->idr) h->fn_off = 0;
+        else if (h->fn_ant > h->frame_num) h->fn_off = h->fn_off_ant + maxf;
+        else h->fn_off = h->fn_off_ant;
+        h->poc = h->idr ? 0 : 2 * (h->fn_off + h->frame_num) - (h->nal_ref ? 0 : 1);
+        h->fn_ant = h->frame_num; h->fn_off_ant = h->fn_off;
     }
 }
 
@@ -668,14 +771,13 @@ static void buscar(uint8_t *dst, int dp, const uint8_t *src, int sp, int sl, int
     }
 }
 
-static void mc_luma(h264_t *h, quadro_t *ref, uint8_t *d, int x, int y, int w, int hh, int mvx, int mvy)
+static void mc_luma(h264_t *h, quadro_t *ref, uint8_t *d, int ps, int x, int y, int w, int hh, int mvx, int mvy)
 {
     uint8_t tmp[21 * 21];
     int fx = mvx & 3, fy = mvy & 3;
     int xi = x + (mvx >> 2), yi = y + (mvy >> 2);
     buscar(tmp, 21, ref->y, h->passo, h->larg, h->alt, xi - 2, yi - 2, w + 5, hh + 5);
     const uint8_t *s = tmp + 2 * 21 + 2;
-    int ps = h->passo;
     if (!fx && !fy) {
         for (int j = 0; j < hh; j++) memcpy(d + j * ps, s + j * 21, w);
         return;
@@ -723,7 +825,7 @@ static void mc_luma(h264_t *h, quadro_t *ref, uint8_t *d, int x, int y, int w, i
     }
 }
 
-static void mc_croma(h264_t *h, const uint8_t *plano, uint8_t *d, int x, int y, int w, int hh, int mvx, int mvy)
+static void mc_croma(h264_t *h, const uint8_t *plano, uint8_t *d, int pd, int x, int y, int w, int hh, int mvx, int mvy)
 {
     uint8_t tmp[9 * 9];
     int fx = mvx & 7, fy = mvy & 7;
@@ -733,113 +835,8 @@ static void mc_croma(h264_t *h, const uint8_t *plano, uint8_t *d, int x, int y, 
     for (int j = 0; j < hh; j++)
         for (int i = 0; i < w; i++) {
             const uint8_t *p = tmp + j * 9 + i;
-            d[j * h->passo_c + i] = (uint8_t)((a * p[0] + b * p[1] + c * p[9] + dd * p[10] + 32) >> 6);
+            d[j * pd + i] = (uint8_t)((a * p[0] + b * p[1] + c * p[9] + dd * p[10] + 32) >> 6);
         }
-}
-
-/* --------------------------------------------- predição de vetor de movimento */
-
-/* Cache 6x5: linha 0 = acima, colunas 0 = esquerda, 5 = direita. */
-typedef struct {
-    int8_t  ref[5][6];
-    int16_t mv[5][6][2];
-} mvc_t;
-
-static void mvc_preencher(h264_t *h, ctx_t *c, mvc_t *k)
-{
-    for (int r = 0; r < 5; r++)
-        for (int q = 0; q < 6; q++) { k->ref[r][q] = REF_NADA; k->mv[r][q][0] = k->mv[r][q][1] = 0; }
-    (void)h;
-    mbinfo_t *ns[4] = { c->a, c->b, c->c, c->d };
-    for (int n = 0; n < 4; n++) {
-        mbinfo_t *m = ns[n];
-        if (!m) continue;
-        int linhas[4], colunas[4], qtd = 0;
-        if (n == 0) for (int y = 0; y < 4; y++) { linhas[qtd] = y; colunas[qtd++] = 3; }
-        else if (n == 1) for (int x = 0; x < 4; x++) { linhas[qtd] = 3; colunas[qtd++] = x; }
-        else if (n == 2) { linhas[0] = 3; colunas[0] = 0; qtd = 1; }
-        else { linhas[0] = 3; colunas[0] = 3; qtd = 1; }
-        for (int i = 0; i < qtd; i++) {
-            int by = linhas[i], bx = colunas[i];
-            int r, q;
-            if (n == 0) { r = by + 1; q = 0; }
-            else if (n == 1) { r = 0; q = bx + 1; }
-            else if (n == 2) { r = 0; q = 5; }
-            else { r = 0; q = 0; }
-            if (m->intra) { k->ref[r][q] = REF_INTRA; continue; }
-            k->ref[r][q] = m->refidx[(by >> 1) * 2 + (bx >> 1)];
-            k->mv[r][q][0] = m->mv[by * 4 + bx][0];
-            k->mv[r][q][1] = m->mv[by * 4 + bx][1];
-        }
-    }
-}
-
-static void mvc_escrever(mvc_t *k, int bx, int by, int w, int hh, int ref, int mx, int my)
-{
-    for (int y = by; y < by + hh; y++)
-        for (int x = bx; x < bx + w; x++) {
-            k->ref[y + 1][x + 1] = (int8_t)ref;
-            k->mv[y + 1][x + 1][0] = (int16_t)mx;
-            k->mv[y + 1][x + 1][1] = (int16_t)my;
-        }
-}
-
-/* forma: 0 normal, 1 16x8 de cima, 2 16x8 de baixo, 3 8x16 esquerda, 4 8x16 direita */
-static void prever_mv(mvc_t *k, int bx, int by, int w, int ref, int forma, int *px, int *py)
-{
-    int ra = k->ref[by + 1][bx], rb = k->ref[by][bx + 1], rc = k->ref[by][bx + w + 1];
-    const int16_t *ma = k->mv[by + 1][bx], *mb = k->mv[by][bx + 1], *mc = k->mv[by][bx + w + 1];
-    /* C dentro do MB ainda não decodificado, ou à direita: usa D. */
-    bool c_ok = rc != REF_NADA;
-    if (bx + w >= 4 && by > 0) c_ok = false;
-    if (by > 0 && bx + w < 4 && rc == REF_NADA) c_ok = false;
-    if (!c_ok) { rc = k->ref[by][bx]; mc = k->mv[by][bx]; }
-    if (forma == 1 && rb == ref) { *px = mb[0]; *py = mb[1]; return; }
-    if (forma == 2 && ra == ref) { *px = ma[0]; *py = ma[1]; return; }
-    if (forma == 3 && ra == ref) { *px = ma[0]; *py = ma[1]; return; }
-    if (forma == 4 && rc == ref) { *px = mc[0]; *py = mc[1]; return; }
-    if (rb == REF_NADA && rc == REF_NADA && ra != REF_NADA) { *px = ma[0]; *py = ma[1]; return; }
-    int iguais = (ra == ref) + (rb == ref) + (rc == ref);
-    if (iguais == 1) {
-        const int16_t *m = ra == ref ? ma : rb == ref ? mb : mc;
-        *px = m[0]; *py = m[1];
-        return;
-    }
-    *px = mediana(ma[0], mb[0], mc[0]);
-    *py = mediana(ma[1], mb[1], mc[1]);
-}
-
-/* --------------------------------------------------- decodificação de MB */
-
-static inline uint8_t *py_(h264_t *h, quadro_t *q, int mbx, int mby) { return q->y + mby * 16 * h->passo + mbx * 16; }
-
-static void reconstruir_inter(h264_t *h, ctx_t *c, mvc_t *k)
-{
-    quadro_t *q = h->atual;
-    int x0 = c->mbx * 16, y0 = c->mby * 16;
-    /* Vetores de cada bloco 4x4 do cache; agrupa por 8x8 quando iguais. */
-    for (int b8 = 0; b8 < 4; b8++) {
-        int bx = (b8 & 1) * 2, by = (b8 >> 1) * 2;
-        int ri = k->ref[by + 1][bx + 1];
-        quadro_t *ref = (ri >= 0 && ri <= MAX_REF) ? h->lista[ri] : NULL;
-        if (!ref) ref = h->lista[0] ? h->lista[0] : q;
-        bool iguais = true;
-        for (int j = 0; j < 2; j++)
-            for (int i = 0; i < 2; i++)
-                if (k->mv[by + 1 + j][bx + 1 + i][0] != k->mv[by + 1][bx + 1][0] ||
-                    k->mv[by + 1 + j][bx + 1 + i][1] != k->mv[by + 1][bx + 1][1]) iguais = false;
-        for (int j = 0; j < 2; j++)
-            for (int i = 0; i < 2; i++) {
-                if (iguais && (i || j)) continue;
-                int xx = bx + i, yy = by + j, tam = iguais ? 8 : 4;
-                int mx = k->mv[yy + 1][xx + 1][0], my = k->mv[yy + 1][xx + 1][1];
-                int lx = x0 + xx * 4, ly = y0 + yy * 4;
-                mc_luma(h, ref, q->y + ly * h->passo + lx, lx, ly, tam, tam, mx, my);
-                int cx = lx / 2, cy = ly / 2, ct = tam / 2;
-                mc_croma(h, ref->u, q->u + cy * h->passo_c + cx, cx, cy, ct, ct, mx, my);
-                mc_croma(h, ref->v, q->v + cy * h->passo_c + cx, cx, cy, ct, ct, mx, my);
-            }
-    }
 }
 
 static void bordas_luma(h264_t *h, ctx_t *c, int bx, int by, int *t, int *l, int *lt, bool *tt, bool *tl)
@@ -864,166 +861,294 @@ static void bordas_luma(h264_t *h, ctx_t *c, int bx, int by, int *t, int *l, int
     *lt = lta ? p[-h->passo - 1] : 128;
 }
 
-static int getenv_dbg_mb = -1;
-static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip)
+/* --------------------------------------------- predição de vetor de movimento */
+
+/* Cache 6x5 por lista: linha 0 = acima, coluna 0 = esquerda, 5 = direita. */
+typedef struct {
+    int8_t  ref[5][6];
+    int16_t mv[5][6][2];
+    uint8_t mvd[5][6][2];
+    uint8_t dir[5][6];
+} mvc_t;
+
+static void mvc_preencher(ctx_t *c, mvc_t *k, int l)
 {
-    mbinfo_t *m = c->m;
-    quadro_t *q = h->atual;
-    int passo = h->passo, pc = h->passo_c;
-    memset(m->nz, 0, sizeof m->nz);
-    m->fatia = h->fatia_atual;
-    m->intra = 0;
-    m->i4x4 = 0;
-    for (int i = 0; i < 16; i++) m->modo4[i] = 2;
-
-    mvc_t k;
-    bool inter = !skip && h->tipo == 0 && tipo_mb < 5;
-    if (h->tipo == 0 && !skip && tipo_mb >= 5) tipo_mb -= 5;
-    bool intra = !skip && !inter;
-    int cbp = 0, modo16 = -1, modo_croma = 0;
-
-    if (intra && tipo_mb == 25) {        /* I_PCM */
-        b->pos = (b->pos + 7) & ~7u;
-        uint8_t *y = py_(h, q, c->mbx, c->mby);
-        for (int j = 0; j < 16; j++) for (int i = 0; i < 16; i++) y[j * passo + i] = (uint8_t)ler_bits(b, 8);
-        for (int comp = 0; comp < 2; comp++) {
-            uint8_t *d = (comp ? q->v : q->u) + c->mby * 8 * pc + c->mbx * 8;
-            for (int j = 0; j < 8; j++) for (int i = 0; i < 8; i++) d[j * pc + i] = (uint8_t)ler_bits(b, 8);
+    for (int r = 0; r < 5; r++)
+        for (int q = 0; q < 6; q++) {
+            k->ref[r][q] = REF_NADA; k->mv[r][q][0] = k->mv[r][q][1] = 0;
+            k->mvd[r][q][0] = k->mvd[r][q][1] = 0; k->dir[r][q] = 0;
         }
-        m->intra = 2;
-        memset(m->nz, 16, sizeof m->nz);
-        m->qp = 0; m->qpc = 0;
-        for (int i = 0; i < 4; i++) { m->refidx[i] = -1; m->ref[i] = -1; }
-        memset(m->mv, 0, sizeof m->mv);
-        return 0;
+    mbinfo_t *ns[4] = { c->a, c->b, c->c, c->d };
+    for (int n = 0; n < 4; n++) {
+        mbinfo_t *m = ns[n];
+        if (!m) continue;
+        int qtd = n == 0 || n == 1 ? 4 : 1;
+        for (int i = 0; i < qtd; i++) {
+            int by, bx, r, q;
+            if (n == 0) { by = i; bx = 3; r = i + 1; q = 0; }
+            else if (n == 1) { by = 3; bx = i; r = 0; q = i + 1; }
+            else if (n == 2) { by = 3; bx = 0; r = 0; q = 5; }
+            else { by = 3; bx = 3; r = 0; q = 0; }
+            if (m->intra) { k->ref[r][q] = REF_INTRA; continue; }
+            int b = by * 4 + bx;
+            k->ref[r][q] = m->refidx[l][(by >> 1) * 2 + (bx >> 1)];
+            if (k->ref[r][q] < 0) k->ref[r][q] = REF_INTRA;
+            k->mv[r][q][0] = m->mv[l][b][0];
+            k->mv[r][q][1] = m->mv[l][b][1];
+            k->mvd[r][q][0] = m->mvd[l][b][0];
+            k->mvd[r][q][1] = m->mvd[l][b][1];
+            k->dir[r][q] = m->dir[b];
+        }
     }
+}
 
-    if (intra) {
-        m->intra = 1;
-        if (tipo_mb == 0) {
-            m->i4x4 = 1;
-            for (int i = 0; i < 16; i++) {
-                int bx = blk_x[i], by = blk_y[i];
-                int ma, mb;
-                bool oka, okb;
-                if (bx > 0) { ma = m->modo4[by * 4 + bx - 1]; oka = true; }
-                else if (c->a) { ma = c->a->i4x4 ? c->a->modo4[by * 4 + 3] : 2; oka = true; }
-                else { ma = 2; oka = false; }
-                if (by > 0) { mb = m->modo4[(by - 1) * 4 + bx]; okb = true; }
-                else if (c->b) { mb = c->b->i4x4 ? c->b->modo4[12 + bx] : 2; okb = true; }
-                else { mb = 2; okb = false; }
-                int pred = (oka && okb) ? (ma < mb ? ma : mb) : 2;
-                int modo;
-                if (ler_bit(b)) modo = pred;
-                else { int r = (int)ler_bits(b, 3); modo = r < pred ? r : r + 1; }
-                m->modo4[by * 4 + bx] = (int8_t)modo;
-            }
-        } else {
-            modo16 = (tipo_mb - 1) % 4;
-            cbp = (((tipo_mb - 1) / 4) % 3) << 4;
-            if (tipo_mb >= 13) cbp |= 15;
+static void mvc_escrever(mvc_t *k, int bx, int by, int w, int hh, int ref, int mx, int my)
+{
+    for (int y = by; y < by + hh; y++)
+        for (int x = bx; x < bx + w; x++) {
+            k->ref[y + 1][x + 1] = (int8_t)ref;
+            k->mv[y + 1][x + 1][0] = (int16_t)mx;
+            k->mv[y + 1][x + 1][1] = (int16_t)my;
         }
-        modo_croma = (int)ue(b);
-        for (int i = 0; i < 4; i++) { m->refidx[i] = -1; m->ref[i] = -1; }
-        memset(m->mv, 0, sizeof m->mv);
-    } else {
-        mvc_preencher(h, c, &k);
-        int nref = h->num_ref_ativas;
-        if (skip) {
-            int ra = k.ref[1][0], rb = k.ref[0][1];
-            int mx = 0, my = 0;
-            if (ra == REF_NADA || rb == REF_NADA ||
-                (ra == 0 && !k.mv[1][0][0] && !k.mv[1][0][1]) ||
-                (rb == 0 && !k.mv[0][1][0] && !k.mv[0][1][1])) mx = my = 0;
-            else prever_mv(&k, 0, 0, 4, 0, 0, &mx, &my);
-            mvc_escrever(&k, 0, 0, 4, 4, 0, mx, my);
-        } else if (tipo_mb < 3) {
-            int np = tipo_mb == 0 ? 1 : 2;
-            int ri[2] = { 0, 0 };
-            for (int p = 0; p < np; p++)
-                if (nref > 1) ri[p] = nref == 2 ? !ler_bit(b) : (int)ue(b);
-            for (int p = 0; p < np; p++) {
-                int bx, by, w, hh, forma;
-                if (tipo_mb == 0) { bx = 0; by = 0; w = 4; hh = 4; forma = 0; }
-                else if (tipo_mb == 1) { bx = 0; by = p * 2; w = 4; hh = 2; forma = 1 + p; }
-                else { bx = p * 2; by = 0; w = 2; hh = 4; forma = 3 + p; }
-                int mx, my;
-                prever_mv(&k, bx, by, w, ri[p], forma, &mx, &my);
-                mx += se(b); my += se(b);
-                mvc_escrever(&k, bx, by, w, hh, ri[p], mx, my);
+}
+
+/* forma: 0 normal, 1 16x8 de cima, 2 16x8 de baixo, 3 8x16 esquerda, 4 8x16 direita */
+static void prever_mv(mvc_t *k, int bx, int by, int w, int ref, int forma, int *px, int *py)
+{
+    int ra = k->ref[by + 1][bx], rb = k->ref[by][bx + 1], rc = k->ref[by][bx + w + 1];
+    const int16_t *ma = k->mv[by + 1][bx], *mb = k->mv[by][bx + 1], *mc = k->mv[by][bx + w + 1];
+    bool c_ok = rc != REF_NADA;
+    if (bx + w >= 4 && by > 0) c_ok = false;
+    if (!c_ok) { rc = k->ref[by][bx]; mc = k->mv[by][bx]; }
+    if (forma == 1 && rb == ref) { *px = mb[0]; *py = mb[1]; return; }
+    if (forma == 2 && ra == ref) { *px = ma[0]; *py = ma[1]; return; }
+    if (forma == 3 && ra == ref) { *px = ma[0]; *py = ma[1]; return; }
+    if (forma == 4 && rc == ref) { *px = mc[0]; *py = mc[1]; return; }
+    if (rb == REF_NADA && rc == REF_NADA && ra != REF_NADA) { *px = ma[0]; *py = ma[1]; return; }
+    int iguais = (ra == ref) + (rb == ref) + (rc == ref);
+    if (iguais == 1) {
+        const int16_t *m = ra == ref ? ma : rb == ref ? mb : mc;
+        *px = m[0]; *py = m[1];
+        return;
+    }
+    *px = mediana(ma[0], mb[0], mc[0]);
+    *py = mediana(ma[1], mb[1], mc[1]);
+}
+
+/* P_Skip */
+static void mv_skip_p(mvc_t *k, int *mx, int *my)
+{
+    int ra = k->ref[1][0], rb = k->ref[0][1];
+    *mx = *my = 0;
+    if (ra == REF_NADA || rb == REF_NADA || (ra == 0 && !k->mv[1][0][0] && !k->mv[1][0][1]) ||
+        (rb == 0 && !k->mv[0][1][0] && !k->mv[0][1][1])) return;
+    prever_mv(k, 0, 0, 4, 0, 0, mx, my);
+}
+
+/* Predição direta dos blocos 4x4 marcados em "quais" (bit por bloco raster).
+ * Escreve ref e mv nos dois caches. */
+static void prever_direto(h264_t *h, ctx_t *c, mvc_t *k, unsigned quais)
+{
+    quadro_t *col = h->lista[1][0];
+    mbinfo_t *mc = col && col->mb ? &col->mb[c->idx] : NULL;
+    if (h->direto_espacial) {
+        int ref[2], mv[2][2];
+        for (int l = 0; l < 2; l++) {
+            int ra = k[l].ref[1][0], rb = k[l].ref[0][1], rc = k[l].ref[0][5];
+            if (rc == REF_NADA) rc = k[l].ref[0][0];
+            int r = -1;
+            int cand[3] = { ra, rb, rc };
+            for (int i = 0; i < 3; i++) if (cand[i] >= 0 && (r < 0 || cand[i] < r)) r = cand[i];
+            ref[l] = r;
+        }
+        bool zero = ref[0] < 0 && ref[1] < 0;
+        if (zero) ref[0] = ref[1] = 0;
+        for (int l = 0; l < 2; l++) {
+            mv[l][0] = mv[l][1] = 0;
+            if (!zero && ref[l] >= 0) prever_mv(&k[l], 0, 0, 4, ref[l], 0, &mv[l][0], &mv[l][1]);
+        }
+        for (int b = 0; b < 16; b++) {
+            if (!(quais & (1u << b))) continue;
+            int bx = b & 3, by = b >> 2;
+            int cx = bx, cy = by;
+            if (h->direto_8x8) { cx = (bx >> 1) * 3; cy = (by >> 1) * 3; }
+            bool col_zero = false;
+            if (mc && !mc->intra && !zero) {
+                int b8 = (cy >> 1) * 2 + (cx >> 1), lc = mc->refidx[0][b8] >= 0 ? 0 : 1;
+                int rcol = mc->refidx[lc][b8];
+                const int16_t *mvc = mc->mv[lc][cy * 4 + cx];
+                col_zero = rcol == 0 && mvc[0] >= -1 && mvc[0] <= 1 && mvc[1] >= -1 && mvc[1] <= 1;
             }
-        } else {
-            int sub[4], ri[4] = { 0, 0, 0, 0 };
-            for (int i = 0; i < 4; i++) sub[i] = (int)ue(b) & 3;
-            if (nref > 1 && tipo_mb != 4)
-                for (int i = 0; i < 4; i++) ri[i] = nref == 2 ? !ler_bit(b) : (int)ue(b);
-            for (int i = 0; i < 4; i++) {
-                int bx0 = (i & 1) * 2, by0 = (i >> 1) * 2;
-                int n = sub[i] == 0 ? 1 : sub[i] == 3 ? 4 : 2;
-                for (int s = 0; s < n; s++) {
-                    int bx = bx0, by = by0, w = 2, hh = 2;
-                    if (sub[i] == 1) { hh = 1; by += s; }
-                    else if (sub[i] == 2) { w = 1; bx += s; }
-                    else if (sub[i] == 3) { w = 1; hh = 1; bx += s & 1; by += s >> 1; }
-                    int mx, my;
-                    prever_mv(&k, bx, by, w, ri[i], 0, &mx, &my);
-                    mx += se(b); my += se(b);
-                    mvc_escrever(&k, bx, by, w, hh, ri[i], mx, my);
+            for (int l = 0; l < 2; l++) {
+                int mx = mv[l][0], my = mv[l][1];
+                if (ref[l] < 0) { mvc_escrever(&k[l], bx, by, 1, 1, REF_INTRA, 0, 0); continue; }
+                if (zero || (ref[l] == 0 && col_zero)) mx = my = 0;
+                mvc_escrever(&k[l], bx, by, 1, 1, ref[l], mx, my);
+            }
+        }
+        return;
+    }
+    /* temporal */
+    for (int b = 0; b < 16; b++) {
+        if (!(quais & (1u << b))) continue;
+        int bx = b & 3, by = b >> 2, cx = bx, cy = by;
+        if (h->direto_8x8) { cx = (bx >> 1) * 3; cy = (by >> 1) * 3; }
+        int r0 = 0, mvc0 = 0, mvc1 = 0;
+        if (mc && !mc->intra) {
+            int b8 = (cy >> 1) * 2 + (cx >> 1), lc = mc->refidx[0][b8] >= 0 ? 0 : 1;
+            int id = mc->ref[lc][b8];
+            mvc0 = mc->mv[lc][cy * 4 + cx][0]; mvc1 = mc->mv[lc][cy * 4 + cx][1];
+            for (int i = 0; i < h->num_ref[0]; i++) if (h->lista[0][i] && (h->lista[0][i]->id & 127) == id) { r0 = i; break; }
+        }
+        quadro_t *q0 = h->lista[0][r0];
+        int tb = clip(h->poc - (q0 ? q0->poc : 0), -128, 127), td = clip((col ? col->poc : 0) - (q0 ? q0->poc : 0), -128, 127);
+        int m0x = mvc0, m0y = mvc1;
+        if (td) {
+            int tx = (16384 + absi(td / 2)) / td;
+            int dsf = clip((tb * tx + 32) >> 6, -1024, 1023);
+            m0x = (dsf * mvc0 + 128) >> 8; m0y = (dsf * mvc1 + 128) >> 8;
+        }
+        mvc_escrever(&k[0], bx, by, 1, 1, r0, m0x, m0y);
+        mvc_escrever(&k[1], bx, by, 1, 1, 0, m0x - mvc0, m0y - mvc1);
+    }
+}
+
+/* ------------------------------------------------ compensação com pesos */
+
+static void pesos_implicitos(h264_t *h, int r0, int r1, int *w0, int *w1)
+{
+    quadro_t *a = h->lista[0][r0], *b = h->lista[1][r1];
+    *w0 = *w1 = 32;
+    if (!a || !b) return;
+    int tb = clip(h->poc - a->poc, -128, 127), td = clip(b->poc - a->poc, -128, 127);
+    if (!td) return;
+    int tx = (16384 + absi(td / 2)) / td;
+    int dsf = clip((tb * tx + 32) >> 6, -1024, 1023);
+    if ((dsf >> 2) < -64 || (dsf >> 2) > 128) return;
+    *w0 = 64 - (dsf >> 2); *w1 = dsf >> 2;
+}
+
+/* Bloco w x hh em (x, y) do quadro atual: componente 0 luma, 1 Cb, 2 Cr. */
+static void combinar(h264_t *h, uint8_t *d, int passo, const uint8_t *p0, const uint8_t *p1, int w, int hh,
+                     int comp, int r0, int r1)
+{
+    bool bi = p0 && p1;
+    int modo = 0;   /* 0 média/cópia, 1 explícito, 2 implícito */
+    if (h->tipo == 0 && h->ponderada) modo = 1;
+    else if (h->tipo == 1 && h->bipred == 1) modo = 1;
+    else if (h->tipo == 1 && h->bipred == 2 && bi) modo = 2;
+    if (modo == 1 && !(bi ? (h->tem_peso[0][r0] || h->tem_peso[1][r1]) : (p0 ? h->tem_peso[0][r0] : h->tem_peso[1][r1]))) modo = 0;
+    if (!modo) {
+        for (int j = 0; j < hh; j++)
+            for (int i = 0; i < w; i++)
+                d[j * passo + i] = bi ? (uint8_t)((p0[j * 16 + i] + p1[j * 16 + i] + 1) >> 1) : (p0 ? p0 : p1)[j * 16 + i];
+        return;
+    }
+    int lw = modo == 2 ? 5 : h->log2_peso[comp ? 1 : 0];
+    int w0, w1, o0 = 0, o1 = 0;
+    if (modo == 2) pesos_implicitos(h, r0, r1, &w0, &w1);
+    else {
+        int def = 1 << lw;
+        w0 = h->tem_peso[0][r0] ? h->peso[0][r0][comp].w : def; o0 = h->tem_peso[0][r0] ? h->peso[0][r0][comp].o : 0;
+        w1 = h->tem_peso[1][r1] ? h->peso[1][r1][comp].w : def; o1 = h->tem_peso[1][r1] ? h->peso[1][r1][comp].o : 0;
+    }
+    for (int j = 0; j < hh; j++)
+        for (int i = 0; i < w; i++) {
+            int v;
+            if (bi) v = ((p0[j * 16 + i] * w0 + p1[j * 16 + i] * w1 + (1 << lw)) >> (lw + 1)) + ((o0 + o1 + 1) >> 1);
+            else {
+                int p = p0 ? p0[j * 16 + i] : p1[j * 16 + i], ww = p0 ? w0 : w1, oo = p0 ? o0 : o1;
+                v = lw >= 1 ? ((p * ww + (1 << (lw - 1))) >> lw) + oo : p * ww + oo;
+            }
+            d[j * passo + i] = clip1(v);
+        }
+}
+
+/* Faz a predição inter do MB inteiro a partir dos caches (refs e mvs das duas listas). */
+static void reconstruir_inter(h264_t *h, ctx_t *c, mvc_t *k)
+{
+    quadro_t *q = h->atual;
+    int x0 = c->mbx * 16, y0 = c->mby * 16;
+    uint8_t t[2][16 * 16], tc[2][2][8 * 16];
+    for (int b8 = 0; b8 < 4; b8++) {
+        int bx = (b8 & 1) * 2, by = (b8 >> 1) * 2;
+        bool iguais = true;
+        for (int l = 0; l < 2; l++)
+            for (int j = 0; j < 2; j++)
+                for (int i = 0; i < 2; i++)
+                    if (k[l].ref[by + 1 + j][bx + 1 + i] != k[l].ref[by + 1][bx + 1] ||
+                        k[l].mv[by + 1 + j][bx + 1 + i][0] != k[l].mv[by + 1][bx + 1][0] ||
+                        k[l].mv[by + 1 + j][bx + 1 + i][1] != k[l].mv[by + 1][bx + 1][1]) iguais = false;
+        for (int j = 0; j < 2; j++)
+            for (int i = 0; i < 2; i++) {
+                if (iguais && (i || j)) continue;
+                int xx = bx + i, yy = by + j, tam = iguais ? 8 : 4;
+                int lx = x0 + xx * 4, ly = y0 + yy * 4, cx = lx / 2, cy = ly / 2, ct = tam / 2;
+                int rr[2] = { -1, -1 };
+                for (int l = 0; l < 2; l++) {
+                    int ri = k[l].ref[yy + 1][xx + 1];
+                    if (ri < 0 || ri > MAX_REF) continue;
+                    quadro_t *ref = h->lista[l][ri];
+                    if (!ref) ref = h->lista[l][0] ? h->lista[l][0] : q;
+                    rr[l] = ri;
+                    int mx = k[l].mv[yy + 1][xx + 1][0], my = k[l].mv[yy + 1][xx + 1][1];
+                    mc_luma(h, ref, t[l], 16, lx, ly, tam, tam, mx, my);
+                    mc_croma(h, ref->u, tc[l][0], 16, cx, cy, ct, ct, mx, my);
+                    mc_croma(h, ref->v, tc[l][1], 16, cx, cy, ct, ct, mx, my);
                 }
+                if (rr[0] < 0 && rr[1] < 0) continue;
+                combinar(h, q->y + ly * h->passo + lx, h->passo, rr[0] >= 0 ? t[0] : NULL, rr[1] >= 0 ? t[1] : NULL, tam, tam, 0, rr[0] < 0 ? 0 : rr[0], rr[1] < 0 ? 0 : rr[1]);
+                for (int cp = 0; cp < 2; cp++)
+                    combinar(h, (cp ? q->v : q->u) + cy * h->passo_c + cx, h->passo_c, rr[0] >= 0 ? tc[0][cp] : NULL, rr[1] >= 0 ? tc[1][cp] : NULL,
+                             ct, ct, 1 + cp, rr[0] < 0 ? 0 : rr[0], rr[1] < 0 ? 0 : rr[1]);
             }
-        }
+    }
+}
+
+/* Copia refs e mvs dos caches para o MB (para vizinhos, desbloqueio e quadros futuros). */
+static void guardar_movimento(h264_t *h, mbinfo_t *m, mvc_t *k)
+{
+    for (int l = 0; l < 2; l++) {
         for (int i = 0; i < 4; i++) {
-            int r = k.ref[(i >> 1) * 2 + 1][(i & 1) * 2 + 1];
-            m->refidx[i] = (int8_t)r;
-            quadro_t *rq = (r >= 0 && r <= MAX_REF) ? h->lista[r] : NULL;
-            m->ref[i] = (int8_t)(rq ? rq->id & 127 : -1);
+            int r = k[l].ref[(i >> 1) * 2 + 1][(i & 1) * 2 + 1];
+            if (r < 0) r = -1;
+            m->refidx[l][i] = (int8_t)r;
+            quadro_t *rq = (r >= 0 && r <= MAX_REF) ? h->lista[l][r] : NULL;
+            m->ref[l][i] = (int8_t)(rq ? rq->id & 127 : -1);
         }
         for (int y = 0; y < 4; y++)
             for (int x = 0; x < 4; x++) {
-                m->mv[y * 4 + x][0] = k.mv[y + 1][x + 1][0];
-                m->mv[y * 4 + x][1] = k.mv[y + 1][x + 1][1];
+                m->mv[l][y * 4 + x][0] = k[l].ref[y + 1][x + 1] >= 0 ? k[l].mv[y + 1][x + 1][0] : 0;
+                m->mv[l][y * 4 + x][1] = k[l].ref[y + 1][x + 1] >= 0 ? k[l].mv[y + 1][x + 1][1] : 0;
+                m->mvd[l][y * 4 + x][0] = k[l].mvd[y + 1][x + 1][0];
+                m->mvd[l][y * 4 + x][1] = k[l].mvd[y + 1][x + 1][1];
             }
-        if (getenv_dbg_mb == c->idx) { DBG("MB %d tipo %d skip %d:", c->idx, tipo_mb, skip); for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) DBG(" [%d %d r%d]", k.mv[y+1][x+1][0], k.mv[y+1][x+1][1], k.ref[y+1][x+1]); DBG("\n"); }
-        reconstruir_inter(h, c, &k);
     }
+    for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) m->dir[y * 4 + x] = k[0].dir[y + 1][x + 1];
+}
 
-    if (!skip && modo16 < 0) {
-        uint32_t cod = ue(b);
-        if (cod > 47) return -1;
-        cbp = intra ? cbp_intra[cod] : cbp_inter[cod];
-    }
-    if (skip) cbp = 0;
-    if (cbp || modo16 >= 0) {
-        int d = se(b);
-        if (d < -26 || d > 25) return -1;
-        h->qp = (h->qp + d + 52) % 52;
-    }
-    m->qp = (int8_t)h->qp;
-    int qpc = qp_croma[clip(h->qp + h->croma_qp_off, 0, 51)];
-    m->qpc = (int8_t)qpc;
+/* --------------------------------------------------- resíduo e reconstrução */
 
-    /* Coeficientes */
-    int lum[16][16];
-    int16_t dc[16];
-    memset(lum, 0, sizeof lum);
+static inline uint8_t *py_(h264_t *h, quadro_t *q, int mbx, int mby) { return q->y + mby * 16 * h->passo + mbx * 16; }
+
+typedef struct {
+    int lum[16][16];        /* por bloco raster, coeficientes na posição da matriz */
+    int dc[16];             /* DC da luma (16x16), na ordem de varredura */
+    int cdc[2][4];
+    int cro[2][4][16];
+} coef_t;
+
+/* Predição intra + desquantização + IDCT. O MB inter já tem a predição no quadro. */
+static void aplicar_residuo(h264_t *h, ctx_t *c, mbinfo_t *m, bool intra, int modo16, int modo_croma, int cbp, coef_t *k)
+{
+    quadro_t *q = h->atual;
+    int passo = h->passo, pc = h->passo_c;
     int qp = h->qp, q6 = qp / 6, r6 = qp % 6;
+    int qpc = m->qpc;
+    int (*lum)[16] = k->lum;
     if (modo16 >= 0) {
-        memset(dc, 0, sizeof dc);
-        int n = residuo(b, nc_luma(c, 0, 0), dc, 0, 16);
-        if (n < 0) return -1;
-        if (cbp & 15)
-            for (int i = 0; i < 16; i++) {
-                int bx = blk_x[i], by = blk_y[i];
-                int16_t t[16];
-                memset(t, 0, sizeof t);
-                n = residuo(b, nc_luma(c, bx, by), t, 0, 15);
-                if (n < 0) return -1;
-                m->nz[by * 4 + bx] = (uint8_t)n;
-                for (int j = 0; j < 15; j++) lum[by * 4 + bx][zigzag[j + 1]] = t[j];
-            }
-        /* DC: Hadamard 4x4 */
         int cm[16], tmp[16];
-        for (int i = 0; i < 16; i++) cm[zigzag[i]] = dc[i];
+        for (int i = 0; i < 16; i++) cm[zigzag[i]] = k->dc[i];
         for (int i = 0; i < 4; i++) {
             int *r = &cm[i * 4];
             int a = r[0] + r[1], bq = r[0] - r[1], cc = r[2] + r[3], dd = r[2] - r[3];
@@ -1035,62 +1160,32 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
             for (int kk = 0; kk < 4; kk++) {
                 int v = f[kk], ls = 16 * dq_v[r6][0];
                 v = qp >= 36 ? (v * ls) << (q6 - 6) : (v * ls + (1 << (5 - q6))) >> (6 - q6);
-                lum[kk * 4 + i][0] = v;   /* linha kk, coluna i do arranjo de blocos */
+                lum[kk * 4 + i][0] = v;
             }
         }
-    } else {
-        for (int i = 0; i < 16; i++) {
-            if (!(cbp & (1 << (i >> 2)))) continue;
-            int bx = blk_x[i], by = blk_y[i];
-            int16_t t[16];
-            memset(t, 0, sizeof t);
-            int n = residuo(b, nc_luma(c, bx, by), t, 0, 16);
-            if (n < 0) return -1;
-            m->nz[by * 4 + bx] = (uint8_t)n;
-            for (int j = 0; j < 16; j++) lum[by * 4 + bx][zigzag[j]] = t[j];
-        }
     }
-    int cro[2][4][16];
-    memset(cro, 0, sizeof cro);
     if (cbp & 0x30) {
-        int16_t cdc[2][4];
-        for (int comp = 0; comp < 2; comp++) {
-            memset(cdc[comp], 0, sizeof cdc[comp]);
-            if (residuo(b, -1, cdc[comp], 0, 4) < 0) return -1;
-        }
-        if (cbp & 0x20)
-            for (int comp = 0; comp < 2; comp++)
-                for (int i = 0; i < 4; i++) {
-                    int16_t t[16];
-                    memset(t, 0, sizeof t);
-                    int n = residuo(b, nc_croma(c, comp, i & 1, i >> 1), t, 0, 15);
-                    if (n < 0) return -1;
-                    m->nz[16 + comp * 4 + i] = (uint8_t)n;
-                    for (int j = 0; j < 15; j++) cro[comp][i][zigzag[j + 1]] = t[j];
-                }
         int c6 = qpc / 6, cr6 = qpc % 6;
         for (int comp = 0; comp < 2; comp++) {
-            int a = cdc[comp][0], bq = cdc[comp][1], cc = cdc[comp][2], dd = cdc[comp][3];
+            int a = k->cdc[comp][0], bq = k->cdc[comp][1], cc = k->cdc[comp][2], dd = k->cdc[comp][3];
             int f[4] = { a + bq + cc + dd, a - bq + cc - dd, a + bq - cc - dd, a - bq - cc + dd };
             for (int i = 0; i < 4; i++)
-                cro[comp][i][0] = (((f[i] * 16 * dq_v[cr6][0]) << c6) >> 5);
+                k->cro[comp][i][0] = (((f[i] * 16 * dq_v[cr6][0]) << c6) >> 5);
         }
         for (int comp = 0; comp < 2; comp++)
             for (int i = 0; i < 4; i++)
                 for (int j = 1; j < 16; j++) {
+                    if (!k->cro[comp][i][j]) continue;
                     int cl = ((j & 3) & 1) == 0 && ((j >> 2) & 1) == 0 ? 0 : (((j & 3) & 1) && ((j >> 2) & 1)) ? 1 : 2;
-                    cro[comp][i][j] = ((cro[comp][i][j] * dq_v[cr6][cl]) << c6);
+                    k->cro[comp][i][j] = ((k->cro[comp][i][j] * dq_v[cr6][cl]) << c6);
                 }
     }
-    /* desquantiza luma (AC, ou tudo se não for 16x16) */
     for (int blk = 0; blk < 16; blk++)
         for (int j = modo16 >= 0 ? 1 : 0; j < 16 && m->nz[blk]; j++) {
             if (!lum[blk][j]) continue;
             int cl = ((j & 1) == 0 && ((j >> 2) & 1) == 0) ? 0 : ((j & 1) && ((j >> 2) & 1)) ? 1 : 2;
             lum[blk][j] = ((lum[blk][j] * dq_v[r6][cl]) << q6);
         }
-
-    /* Reconstrução da luma */
     uint8_t *Y = py_(h, q, c->mbx, c->mby);
     if (intra && modo16 < 0) {
         for (int i = 0; i < 16; i++) {
@@ -1127,7 +1222,6 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
             if (tem) idct4_somar(Y + by * 4 * passo + bx * 4, passo, lum[i]);
         }
     }
-    /* Croma */
     for (int comp = 0; comp < 2; comp++) {
         uint8_t *C = (comp ? q->v : q->u) + c->mby * 8 * pc + c->mbx * 8;
         if (intra) {
@@ -1140,13 +1234,9 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
                 for (int bl = 0; bl < 4; bl++) {
                     int xo = (bl & 1) * 4, yo = (bl >> 1) * 4, st = 0, sl = 0, v;
                     for (int i = 0; i < 4; i++) { st += t[xo + i]; sl += l[yo + i]; }
-                    if ((xo == 0 && yo == 0) || (xo && yo)) {
-                        v = ta && la ? (st + sl + 4) >> 3 : la ? (sl + 2) >> 2 : ta ? (st + 2) >> 2 : 128;
-                    } else if (xo) {
-                        v = ta ? (st + 2) >> 2 : la ? (sl + 2) >> 2 : 128;
-                    } else {
-                        v = la ? (sl + 2) >> 2 : ta ? (st + 2) >> 2 : 128;
-                    }
+                    if ((xo == 0 && yo == 0) || (xo && yo)) v = ta && la ? (st + sl + 4) >> 3 : la ? (sl + 2) >> 2 : ta ? (st + 2) >> 2 : 128;
+                    else if (xo) v = ta ? (st + 2) >> 2 : la ? (sl + 2) >> 2 : 128;
+                    else v = la ? (sl + 2) >> 2 : ta ? (st + 2) >> 2 : 128;
                     for (int j = 0; j < 4; j++) memset(C + (yo + j) * pc + xo, v, 4);
                 }
             } else if (modo_croma == 1) for (int j = 0; j < 8; j++) memset(C + j * pc, l[j], 8);
@@ -1155,8 +1245,194 @@ static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip
         }
         if (cbp & 0x30)
             for (int i = 0; i < 4; i++)
-                idct4_somar(C + (i >> 1) * 4 * pc + (i & 1) * 4, pc, cro[comp][i]);
+                idct4_somar(C + (i >> 1) * 4 * pc + (i & 1) * 4, pc, k->cro[comp][i]);
     }
+}
+
+static void iniciar_mb(h264_t *h, mbinfo_t *m)
+{
+    memset(m->nz, 0, sizeof m->nz);
+    m->fatia = h->fatia_atual;
+    m->intra = m->i4x4 = m->i16 = m->skip = m->direto = 0;
+    m->qpd = 0; m->cbp = 0; m->modo_croma = 0; m->dc = 0;
+    for (int i = 0; i < 16; i++) { m->modo4[i] = 2; m->dir[i] = 0; }
+    memset(m->mvd, 0, sizeof m->mvd);
+}
+
+static void sem_movimento(mbinfo_t *m)
+{
+    for (int l = 0; l < 2; l++) for (int i = 0; i < 4; i++) { m->refidx[l][i] = -1; m->ref[l][i] = -1; }
+    memset(m->mv, 0, sizeof m->mv);
+}
+
+static void pcm(h264_t *h, ctx_t *c, mbinfo_t *m, bits_t *b)
+{
+    quadro_t *q = h->atual;
+    int passo = h->passo, pc = h->passo_c;
+    b->pos = (b->pos + 7) & ~7u;
+    uint8_t *y = py_(h, q, c->mbx, c->mby);
+    for (int j = 0; j < 16; j++) for (int i = 0; i < 16; i++) y[j * passo + i] = (uint8_t)ler_bits(b, 8);
+    for (int comp = 0; comp < 2; comp++) {
+        uint8_t *d = (comp ? q->v : q->u) + c->mby * 8 * pc + c->mbx * 8;
+        for (int j = 0; j < 8; j++) for (int i = 0; i < 8; i++) d[j * pc + i] = (uint8_t)ler_bits(b, 8);
+    }
+    m->intra = 2;
+    memset(m->nz, 16, sizeof m->nz);
+    m->qp = 0; m->qpc = (int8_t)qp_croma[clip(h->croma_qp_off, 0, 51)];
+    m->cbp = 0x2F; m->dc = 7;
+    sem_movimento(m);
+}
+
+/* --------------------------------------------------- MB por CAVLC (I e P) */
+
+static int getenv_dbg_mb = -1, dbg_poc = -1;
+static int decodificar_mb(h264_t *h, bits_t *b, ctx_t *c, int tipo_mb, bool skip)
+{
+    mbinfo_t *m = c->m;
+    iniciar_mb(h, m);
+    mvc_t k[2];
+    bool inter = !skip && h->tipo == 0 && tipo_mb < 5;
+    if (h->tipo == 0 && !skip && tipo_mb >= 5) tipo_mb -= 5;
+    bool intra = !skip && !inter;
+    int cbp = 0, modo16 = -1, modo_croma = 0;
+    if (intra && tipo_mb == 25) { pcm(h, c, m, b); return 0; }
+    if (intra) {
+        m->intra = 1;
+        if (tipo_mb == 0) {
+            m->i4x4 = 1;
+            for (int i = 0; i < 16; i++) {
+                int bx = blk_x[i], by = blk_y[i];
+                int ma, mb;
+                bool oka, okb;
+                if (bx > 0) { ma = m->modo4[by * 4 + bx - 1]; oka = true; }
+                else if (c->a) { ma = c->a->i4x4 ? c->a->modo4[by * 4 + 3] : 2; oka = true; }
+                else { ma = 2; oka = false; }
+                if (by > 0) { mb = m->modo4[(by - 1) * 4 + bx]; okb = true; }
+                else if (c->b) { mb = c->b->i4x4 ? c->b->modo4[12 + bx] : 2; okb = true; }
+                else { mb = 2; okb = false; }
+                int pred = (oka && okb) ? (ma < mb ? ma : mb) : 2;
+                int modo;
+                if (ler_bit(b)) modo = pred;
+                else { int r = (int)ler_bits(b, 3); modo = r < pred ? r : r + 1; }
+                m->modo4[by * 4 + bx] = (int8_t)modo;
+            }
+        } else {
+            m->i16 = 1;
+            modo16 = (tipo_mb - 1) % 4;
+            cbp = (((tipo_mb - 1) / 4) % 3) << 4;
+            if (tipo_mb >= 13) cbp |= 15;
+        }
+        modo_croma = (int)ue(b);
+        sem_movimento(m);
+    } else {
+        mvc_preencher(c, &k[0], 0);
+        mvc_preencher(c, &k[1], 1);
+        for (int y = 1; y < 5; y++) for (int x = 1; x < 5; x++) k[1].ref[y][x] = REF_INTRA;
+        int nref = h->num_ref[0];
+        if (skip) {
+            int mx, my;
+            m->skip = 1;
+            mv_skip_p(&k[0], &mx, &my);
+            mvc_escrever(&k[0], 0, 0, 4, 4, 0, mx, my);
+        } else if (tipo_mb < 3) {
+            int np = tipo_mb == 0 ? 1 : 2;
+            int ri[2] = { 0, 0 };
+            for (int p = 0; p < np; p++)
+                if (nref > 1) ri[p] = nref == 2 ? !ler_bit(b) : (int)ue(b);
+            for (int p = 0; p < np; p++) {
+                int bx, by, w, hh, forma;
+                if (tipo_mb == 0) { bx = 0; by = 0; w = 4; hh = 4; forma = 0; }
+                else if (tipo_mb == 1) { bx = 0; by = p * 2; w = 4; hh = 2; forma = 1 + p; }
+                else { bx = p * 2; by = 0; w = 2; hh = 4; forma = 3 + p; }
+                int mx, my;
+                prever_mv(&k[0], bx, by, w, ri[p], forma, &mx, &my);
+                mx += se(b); my += se(b);
+                mvc_escrever(&k[0], bx, by, w, hh, ri[p], mx, my);
+            }
+        } else {
+            int sub[4], ri[4] = { 0, 0, 0, 0 };
+            for (int i = 0; i < 4; i++) sub[i] = (int)ue(b) & 3;
+            if (nref > 1 && tipo_mb != 4)
+                for (int i = 0; i < 4; i++) ri[i] = nref == 2 ? !ler_bit(b) : (int)ue(b);
+            for (int i = 0; i < 4; i++) {
+                int bx0 = (i & 1) * 2, by0 = (i >> 1) * 2;
+                int n = sub[i] == 0 ? 1 : sub[i] == 3 ? 4 : 2;
+                for (int s = 0; s < n; s++) {
+                    int bx = bx0, by = by0, w = 2, hh = 2;
+                    if (sub[i] == 1) { hh = 1; by += s; }
+                    else if (sub[i] == 2) { w = 1; bx += s; }
+                    else if (sub[i] == 3) { w = 1; hh = 1; bx += s & 1; by += s >> 1; }
+                    int mx, my;
+                    prever_mv(&k[0], bx, by, w, ri[i], 0, &mx, &my);
+                    mx += se(b); my += se(b);
+                    mvc_escrever(&k[0], bx, by, w, hh, ri[i], mx, my);
+                }
+            }
+        }
+        guardar_movimento(h, m, k);
+        reconstruir_inter(h, c, k);
+    }
+    if (!skip && modo16 < 0) {
+        uint32_t cod = ue(b);
+        if (cod > 47) return -1;
+        cbp = intra ? cbp_intra[cod] : cbp_inter[cod];
+    }
+    if (cbp || modo16 >= 0) {
+        int d = se(b);
+        if (d < -26 || d > 25) return -1;
+        h->qp = (h->qp + d + 52) % 52;
+    }
+    m->qp = (int8_t)h->qp;
+    m->qpc = (int8_t)qp_croma[clip(h->qp + h->croma_qp_off, 0, 51)];
+    m->cbp = (int8_t)cbp; m->modo_croma = (int8_t)modo_croma;
+    if (skip) return 0;
+    coef_t kf;
+    memset(&kf, 0, sizeof kf);
+    if (modo16 >= 0) {
+        int16_t dc[16];
+        memset(dc, 0, sizeof dc);
+        if (residuo(b, nc_luma(c, 0, 0), dc, 0, 16) < 0) return -1;
+        for (int i = 0; i < 16; i++) kf.dc[i] = dc[i];
+        if (cbp & 15)
+            for (int i = 0; i < 16; i++) {
+                int bx = blk_x[i], by = blk_y[i];
+                int16_t t[16];
+                memset(t, 0, sizeof t);
+                int n = residuo(b, nc_luma(c, bx, by), t, 0, 15);
+                if (n < 0) return -1;
+                m->nz[by * 4 + bx] = (uint8_t)n;
+                for (int j = 0; j < 15; j++) kf.lum[by * 4 + bx][zigzag[j + 1]] = t[j];
+            }
+    } else {
+        for (int i = 0; i < 16; i++) {
+            if (!(cbp & (1 << (i >> 2)))) continue;
+            int bx = blk_x[i], by = blk_y[i];
+            int16_t t[16];
+            memset(t, 0, sizeof t);
+            int n = residuo(b, nc_luma(c, bx, by), t, 0, 16);
+            if (n < 0) return -1;
+            m->nz[by * 4 + bx] = (uint8_t)n;
+            for (int j = 0; j < 16; j++) kf.lum[by * 4 + bx][zigzag[j]] = t[j];
+        }
+    }
+    if (cbp & 0x30) {
+        for (int comp = 0; comp < 2; comp++) {
+            int16_t cdc[4] = { 0, 0, 0, 0 };
+            if (residuo(b, -1, cdc, 0, 4) < 0) return -1;
+            for (int i = 0; i < 4; i++) kf.cdc[comp][i] = cdc[i];
+        }
+        if (cbp & 0x20)
+            for (int comp = 0; comp < 2; comp++)
+                for (int i = 0; i < 4; i++) {
+                    int16_t t[16];
+                    memset(t, 0, sizeof t);
+                    int n = residuo(b, nc_croma(c, comp, i & 1, i >> 1), t, 0, 15);
+                    if (n < 0) return -1;
+                    m->nz[16 + comp * 4 + i] = (uint8_t)n;
+                    for (int j = 0; j < 15; j++) kf.cro[comp][i][zigzag[j + 1]] = t[j];
+                }
+    }
+    aplicar_residuo(h, c, m, intra, modo16, modo_croma, cbp, &kf);
     return 0;
 }
 
@@ -1212,15 +1488,522 @@ static void filtrar_borda(uint8_t *p, int passo_borda, int passo_amostra, int n,
         }
     }
 }
+/* ------------------------------------------------------------------ CABAC */
+
+typedef struct {
+    bits_t *b;
+    uint32_t faixa, desl;
+    uint8_t st[460];        /* estado*2 + MPS */
+} cabac_t;
+
+static void cabac_iniciar(h264_t *h, cabac_t *k, bits_t *b)
+{
+    k->b = b;
+    const int8_t (*tab)[2] = h->tipo == 2 ? cabac_init_I : h->cabac_init == 0 ? cabac_init_PB0 : h->cabac_init == 1 ? cabac_init_PB1 : cabac_init_PB2;
+    int qp = clip(h->qp, 0, 51);
+    for (int i = 0; i < 460; i++) {
+        int pre = clip(((tab[i][0] * qp) >> 4) + tab[i][1], 1, 126);
+        k->st[i] = (uint8_t)(pre <= 63 ? (63 - pre) << 1 : ((pre - 64) << 1) | 1);
+    }
+    k->faixa = 510;
+    k->desl = ler_bits(b, 9);
+}
+
+static inline int cab(cabac_t *k, int ctx)
+{
+    uint8_t s = k->st[ctx];
+    int estado = s >> 1, mps = s & 1;
+    uint32_t lps = cabac_lps[estado][(k->faixa >> 6) & 3];
+    int bin;
+    k->faixa -= lps;
+    if (k->desl >= k->faixa) {
+        bin = !mps;
+        k->desl -= k->faixa;
+        k->faixa = lps;
+        if (!estado) mps = !mps;
+        estado = cabac_trans_lps[estado];
+    } else {
+        bin = mps;
+        if (estado < 62) estado++;
+    }
+    k->st[ctx] = (uint8_t)(estado << 1 | mps);
+    while (k->faixa < 256) { k->faixa <<= 1; k->desl = (k->desl << 1) | (uint32_t)ler_bit(k->b); }
+    return bin;
+}
+
+static inline int cab_bypass(cabac_t *k)
+{
+    k->desl = (k->desl << 1) | (uint32_t)ler_bit(k->b);
+    if (k->desl >= k->faixa) { k->desl -= k->faixa; return 1; }
+    return 0;
+}
+
+static inline int cab_fim(cabac_t *k)
+{
+    k->faixa -= 2;
+    if (k->desl >= k->faixa) return 1;
+    while (k->faixa < 256) { k->faixa <<= 1; k->desl = (k->desl << 1) | (uint32_t)ler_bit(k->b); }
+    return 0;
+}
+
+/* tipo do MB intra (I: base 3; sufixo em P: 17, em B: 32) -> 0 I_NxN, 1..24 I_16x16, 25 I_PCM */
+static int cab_intra(cabac_t *k, int base, bool fatia_i, ctx_t *c)
+{
+    if (fatia_i) {
+        int inc = (c->a && !c->a->i4x4) + (c->b && !c->b->i4x4);
+        if (!cab(k, base + inc)) return 0;
+        base += 2;
+    } else if (!cab(k, base)) return 0;
+    if (cab_fim(k)) return 25;
+    int t = 1;
+    t += 12 * cab(k, base + 1);
+    if (cab(k, base + 2)) t += 4 + 4 * cab(k, base + 2 + fatia_i);
+    t += 2 * cab(k, base + 3 + fatia_i);
+    t += cab(k, base + 3 + 2 * fatia_i);
+    return t;
+}
+
+static int cab_mvd(cabac_t *k, int base, int soma)
+{
+    int inc = soma < 3 ? 0 : soma > 32 ? 2 : 1;
+    if (!cab(k, base + inc)) return 0;
+    int v = 1, ctx = base + 3;
+    while (v < 9 && cab(k, ctx)) { if (v < 4) ctx++; v++; }
+    if (v >= 9) {
+        int e = 3;
+        while (cab_bypass(k)) { v += 1 << e; e++; if (e > 24) break; }
+        while (e--) v += cab_bypass(k) << e;
+    }
+    return cab_bypass(k) ? -v : v;
+}
+
+static const uint8_t cbf_off[5] = { 0, 4, 8, 12, 16 };
+static const uint8_t sig_off[5] = { 0, 15, 29, 44, 47 };
+static const uint8_t lev_off[5] = { 0, 10, 20, 30, 39 };
+
+/* Bloco residual; coef na ordem de varredura. Devolve quantos não nulos, ou 0 se coded_block_flag = 0. */
+static int cab_residuo(cabac_t *k, int cat, int inc_cbf, int *coef, int max)
+{
+    if (!cab(k, 85 + cbf_off[cat] + inc_cbf)) return 0;
+    int sig[16], ns = 0, i;
+    for (i = 0; i < max - 1; i++) {
+        int ci = cat == 3 ? (i < 2 ? i : 2) : i;
+        if (cab(k, 105 + sig_off[cat] + ci)) {
+            sig[ns++] = i;
+            if (cab(k, 166 + sig_off[cat] + ci)) break;
+        }
+    }
+    if (i == max - 1) sig[ns++] = max - 1;
+    int gt1 = 0, eq1 = 0;
+    for (int j = ns - 1; j >= 0; j--) {
+        int ctx = 227 + lev_off[cat] + (gt1 ? 0 : (1 + eq1 < 4 ? 1 + eq1 : 4));
+        int v;
+        if (!cab(k, ctx)) { v = 1; eq1++; }
+        else {
+            int c2 = 227 + lev_off[cat] + 5 + (gt1 < 4 - (cat == 3) ? gt1 : 4 - (cat == 3));
+            v = 2;
+            while (v < 15 && cab(k, c2)) v++;
+            if (v >= 15) {
+                int e = 0;
+                while (cab_bypass(k)) { e++; if (e > 20) break; }
+                int x = 1;
+                while (e--) x = (x << 1) | cab_bypass(k);
+                v = 14 + x;
+            }
+            gt1++;
+        }
+        coef[sig[j]] = cab_bypass(k) ? -v : v;
+    }
+    return ns;
+}
+
+/* coded_block_flag dos vizinhos */
+static int cbf_luma(ctx_t *c, int bx, int by, bool intra)
+{
+    mbinfo_t *m = c->m;
+    if (bx < 0) { m = c->a; bx += 4; }
+    else if (by < 0) { m = c->b; by += 4; }
+    if (!m) return intra;
+    if (m->intra == 2) return 1;
+    return m->nz[by * 4 + bx] != 0;
+}
+static int cbf_croma_ac(ctx_t *c, int comp, int bx, int by, bool intra)
+{
+    mbinfo_t *m = c->m;
+    if (bx < 0) { m = c->a; bx += 2; }
+    else if (by < 0) { m = c->b; by += 2; }
+    if (!m) return intra;
+    if (m->intra == 2) return 1;
+    if ((m->cbp >> 4) != 2) return 0;
+    return m->nz[16 + comp * 4 + by * 2 + bx] != 0;
+}
+static int cbf_dc(mbinfo_t *n, int bit, bool intra, bool luma)
+{
+    if (!n) return intra;
+    if (n->intra == 2) return 1;
+    if (luma && !n->i16) return 0;
+    if (!luma && !(n->cbp & 0x30)) return 0;
+    return (n->dc >> bit) & 1;
+}
+
+static const uint8_t b_parte[23][2] = {   /* pred por partição: 1 L0, 2 L1, 3 Bi */
+    {0,0},{1,0},{2,0},{3,0},{1,1},{1,1},{2,2},{2,2},{1,2},{1,2},{2,1},{2,1},{1,3},{1,3},{2,3},{2,3},{3,1},{3,1},{3,2},{3,2},{3,3},{3,3},{0,0} };
+static const uint8_t b_sub[13][2] = {      /* pred, forma (0 8x8, 1 8x4, 2 4x8, 3 4x4) */
+    {0,0},{1,0},{2,0},{3,0},{1,1},{1,2},{2,1},{2,2},{3,1},{3,2},{1,3},{2,3},{3,3} };
+
+static int cab_ref(cabac_t *k, mvc_t *kk, int bx, int by)
+{
+    int ra = kk->ref[by + 1][bx], rb = kk->ref[by][bx + 1];
+    int inc = (ra > 0 && !kk->dir[by + 1][bx]) + 2 * (rb > 0 && !kk->dir[by][bx + 1]);
+    int r = 0;
+    while (cab(k, 54 + inc)) { r++; inc = (inc >> 2) + 4; if (r > 31) break; }
+    return r;
+}
+
+/* lê mvd de uma partição e grava mv + |mvd| no cache */
+static void cab_mv(cabac_t *k, mvc_t *kk, int l, int bx, int by, int w, int hh, int forma, int ref)
+{
+    (void)l;
+    int px, py;
+    prever_mv(kk, bx, by, w, ref, forma, &px, &py);
+    int sx = kk->mvd[by + 1][bx][0] + kk->mvd[by][bx + 1][0];
+    int sy = kk->mvd[by + 1][bx][1] + kk->mvd[by][bx + 1][1];
+    int dx = cab_mvd(k, 40, sx), dy = cab_mvd(k, 47, sy);
+    mvc_escrever(kk, bx, by, w, hh, ref, px + dx, py + dy);
+    int ax = absi(dx), ay = absi(dy);
+    for (int y = by; y < by + hh; y++)
+        for (int x = bx; x < bx + w; x++) { kk->mvd[y + 1][x + 1][0] = (uint8_t)(ax > 255 ? 255 : ax); kk->mvd[y + 1][x + 1][1] = (uint8_t)(ay > 255 ? 255 : ay); }
+}
+
+static int qpd_ant;   /* o MB anterior teve mb_qp_delta != 0 */
+
+static int decodificar_mb_cabac(h264_t *h, cabac_t *k, ctx_t *c, bits_t *b)
+{
+    mbinfo_t *m = c->m;
+    iniciar_mb(h, m);
+    mvc_t kk[2];
+    int fatia = h->tipo;   /* 0 P, 1 B, 2 I */
+    bool skip = false;
+    if (fatia != 2) {
+        int base = fatia == 0 ? 11 : 24;
+        int inc = (c->a && !c->a->skip) + (c->b && !c->b->skip);
+        skip = cab(k, base + inc);
+    }
+    int tipo = 0;
+    bool intra = false;
+    if (!skip) {
+        if (fatia == 2) { tipo = cab_intra(k, 3, true, c); intra = true; }
+        else if (fatia == 0) {
+            if (!cab(k, 14)) {
+                if (!cab(k, 15)) tipo = 3 * cab(k, 16);
+                else tipo = 2 - cab(k, 17);
+            } else { tipo = cab_intra(k, 17, false, c); intra = true; }
+        } else {
+            int inc = (c->a && !(c->a->skip || c->a->direto)) + (c->b && !(c->b->skip || c->b->direto));
+            if (!cab(k, 27 + inc)) tipo = 0;
+            else if (!cab(k, 27 + 3)) tipo = 1 + cab(k, 27 + 5);
+            else {
+                int bits = cab(k, 27 + 4) << 3;
+                bits |= cab(k, 27 + 5) << 2;
+                bits |= cab(k, 27 + 5) << 1;
+                bits |= cab(k, 27 + 5);
+                if (bits < 8) tipo = bits + 3;
+                else if (bits == 13) { tipo = cab_intra(k, 32, false, c); intra = true; }
+                else if (bits == 14) tipo = 11;
+                else if (bits == 15) tipo = 22;
+                else { bits = (bits << 1) | cab(k, 27 + 5); tipo = bits - 4; }
+            }
+        }
+    }
+    int cbp = 0, modo16 = -1, modo_croma = 0;
+    if (intra && getenv_dbg_mb == -3 && h->poc == dbg_poc) DBG("%sI", c->mbx ? "" : "\n");
+    if (intra && tipo == 25) {
+        /* I_PCM: os bytes começam alinhados depois do decodificador aritmético */
+        pcm(h, c, m, b);
+        cabac_iniciar(h, k, b);
+        qpd_ant = 0;
+        return 0;
+    }
+    if (intra) {
+        m->intra = 1;
+        if (tipo == 0) {
+            m->i4x4 = 1;
+            for (int i = 0; i < 16; i++) {
+                int bx = blk_x[i], by = blk_y[i];
+                int ma, mb;
+                bool oka, okb;
+                if (bx > 0) { ma = m->modo4[by * 4 + bx - 1]; oka = true; }
+                else if (c->a) { ma = c->a->i4x4 ? c->a->modo4[by * 4 + 3] : 2; oka = true; }
+                else { ma = 2; oka = false; }
+                if (by > 0) { mb = m->modo4[(by - 1) * 4 + bx]; okb = true; }
+                else if (c->b) { mb = c->b->i4x4 ? c->b->modo4[12 + bx] : 2; okb = true; }
+                else { mb = 2; okb = false; }
+                int pred = (oka && okb) ? (ma < mb ? ma : mb) : 2;
+                int modo;
+                if (cab(k, 68)) modo = pred;
+                else { int r = cab(k, 69); r |= cab(k, 69) << 1; r |= cab(k, 69) << 2; modo = r < pred ? r : r + 1; }
+                m->modo4[by * 4 + bx] = (int8_t)modo;
+            }
+        } else {
+            m->i16 = 1;
+            modo16 = (tipo - 1) % 4;
+            cbp = (((tipo - 1) / 4) % 3) << 4;
+            if (tipo >= 13) cbp |= 15;
+        }
+        {
+            int inc = (c->a && c->a->intra == 1 && c->a->modo_croma) + (c->b && c->b->intra == 1 && c->b->modo_croma);
+            if (!cab(k, 64 + inc)) modo_croma = 0;
+            else if (!cab(k, 67)) modo_croma = 1;
+            else if (!cab(k, 67)) modo_croma = 2;
+            else modo_croma = 3;
+        }
+        sem_movimento(m);
+    } else {
+        mvc_preencher(c, &kk[0], 0);
+        mvc_preencher(c, &kk[1], 1);
+        if (fatia == 0) for (int y = 1; y < 5; y++) for (int x = 1; x < 5; x++) kk[1].ref[y][x] = REF_INTRA;
+        if (skip) {
+            m->skip = 1;
+            if (fatia == 0) { int mx, my; mv_skip_p(&kk[0], &mx, &my); mvc_escrever(&kk[0], 0, 0, 4, 4, 0, mx, my); }
+            else { m->direto = 1; prever_direto(h, c, kk, 0xFFFF); for (int y = 1; y < 5; y++) for (int x = 1; x < 5; x++) kk[0].dir[y][x] = 1; }
+        } else if (fatia == 0) {
+            int nref = h->num_ref[0];
+            if (tipo < 3) {
+                int np = tipo == 0 ? 1 : 2, ri[2] = { 0, 0 };
+                int pb[2][4] = { { 0, 0, 4, 4 }, { 0, 0, 0, 0 } };
+                for (int p = 0; p < np; p++) {
+                    int bx, by, w, hh;
+                    if (tipo == 0) { bx = 0; by = 0; w = 4; hh = 4; }
+                    else if (tipo == 1) { bx = 0; by = p * 2; w = 4; hh = 2; }
+                    else { bx = p * 2; by = 0; w = 2; hh = 4; }
+                    pb[p][0] = bx; pb[p][1] = by; pb[p][2] = w; pb[p][3] = hh;
+                    if (nref > 1) ri[p] = cab_ref(k, &kk[0], bx, by);
+                    mvc_escrever(&kk[0], bx, by, w, hh, ri[p], 0, 0);
+                }
+                for (int p = 0; p < np; p++) {
+                    int forma = tipo == 0 ? 0 : tipo == 1 ? 1 + p : 3 + p;
+                    /* o vetor do vizinho dentro do MB ainda não existe: limpa a ref antes de prever */
+                    mvc_escrever(&kk[0], pb[p][0], pb[p][1], pb[p][2], pb[p][3], REF_NADA, 0, 0);
+                    cab_mv(k, &kk[0], 0, pb[p][0], pb[p][1], pb[p][2], pb[p][3], forma, ri[p]);
+                }
+            } else {
+                int sub[4], ri[4] = { 0, 0, 0, 0 };
+                for (int i = 0; i < 4; i++) {
+                    if (cab(k, 21)) sub[i] = 0;
+                    else if (!cab(k, 22)) sub[i] = 1;
+                    else sub[i] = cab(k, 23) ? 2 : 3;
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (nref > 1 && tipo != 4) ri[i] = cab_ref(k, &kk[0], (i & 1) * 2, (i >> 1) * 2);
+                    mvc_escrever(&kk[0], (i & 1) * 2, (i >> 1) * 2, 2, 2, ri[i], 0, 0);
+                }
+                for (int i = 0; i < 4; i++) mvc_escrever(&kk[0], (i & 1) * 2, (i >> 1) * 2, 2, 2, REF_NADA, 0, 0);
+                for (int i = 0; i < 4; i++) {
+                    int bx0 = (i & 1) * 2, by0 = (i >> 1) * 2;
+                    int n = sub[i] == 0 ? 1 : sub[i] == 3 ? 4 : 2;
+                    for (int s = 0; s < n; s++) {
+                        int bx = bx0, by = by0, w = 2, hh = 2;
+                        if (sub[i] == 1) { hh = 1; by += s; }
+                        else if (sub[i] == 2) { w = 1; bx += s; }
+                        else if (sub[i] == 3) { w = 1; hh = 1; bx += s & 1; by += s >> 1; }
+                        cab_mv(k, &kk[0], 0, bx, by, w, hh, 0, ri[i]);
+                    }
+                }
+            }
+        } else {
+            /* fatia B */
+            if (tipo == 0) {
+                m->direto = 1;
+                prever_direto(h, c, kk, 0xFFFF);
+                for (int y = 1; y < 5; y++) for (int x = 1; x < 5; x++) kk[0].dir[y][x] = 1;
+            } else if (tipo < 22) {
+                int np = tipo <= 3 ? 1 : 2, ri[2][2] = { { -1, -1 }, { -1, -1 } };
+                int pb[2][4];
+                for (int p = 0; p < np; p++) {
+                    if (tipo <= 3) { pb[p][0] = 0; pb[p][1] = 0; pb[p][2] = 4; pb[p][3] = 4; }
+                    else if (tipo % 2 == 0) { pb[p][0] = 0; pb[p][1] = p * 2; pb[p][2] = 4; pb[p][3] = 2; }
+                    else { pb[p][0] = p * 2; pb[p][1] = 0; pb[p][2] = 2; pb[p][3] = 4; }
+                }
+                for (int l = 0; l < 2; l++)
+                    for (int p = 0; p < np; p++) {
+                        int pred = b_parte[tipo][p];
+                        if (!(pred & (1 << l))) { mvc_escrever(&kk[l], pb[p][0], pb[p][1], pb[p][2], pb[p][3], REF_INTRA, 0, 0); continue; }
+                        ri[l][p] = h->num_ref[l] > 1 ? cab_ref(k, &kk[l], pb[p][0], pb[p][1]) : 0;
+                        mvc_escrever(&kk[l], pb[p][0], pb[p][1], pb[p][2], pb[p][3], ri[l][p], 0, 0);
+                    }
+                for (int l = 0; l < 2; l++)
+                    for (int p = 0; p < np; p++) if (ri[l][p] >= 0) mvc_escrever(&kk[l], pb[p][0], pb[p][1], pb[p][2], pb[p][3], REF_NADA, 0, 0);
+                for (int l = 0; l < 2; l++)
+                    for (int p = 0; p < np; p++) {
+                        if (ri[l][p] < 0) continue;
+                        int forma = tipo <= 3 ? 0 : tipo % 2 == 0 ? 1 + p : 3 + p;
+                        cab_mv(k, &kk[l], l, pb[p][0], pb[p][1], pb[p][2], pb[p][3], forma, ri[l][p]);
+                    }
+            } else {
+                int sub[4], ri[2][4];
+                for (int i = 0; i < 4; i++) {
+                    int t;
+                    if (!cab(k, 36)) t = 0;
+                    else if (!cab(k, 37)) t = 1 + cab(k, 39);
+                    else {
+                        t = 3;
+                        if (cab(k, 38)) {
+                            if (cab(k, 39)) { t = 11 + cab(k, 39); goto achou; }
+                            t += 4;
+                        }
+                        t += 2 * cab(k, 39);
+                        t += cab(k, 39);
+                    }
+                achou:
+                    sub[i] = t;
+                }
+                /* diretos primeiro (usam só os vizinhos de fora, como no 16x16) */
+                unsigned dirs = 0;
+                for (int i = 0; i < 4; i++) if (!sub[i]) dirs |= 0x33u << ((i & 1) * 2 + (i >> 1) * 8);
+                mvc_t salvo[2]; salvo[0] = kk[0]; salvo[1] = kk[1];
+                if (dirs) {
+                    prever_direto(h, c, kk, dirs);
+                    for (int b2 = 0; b2 < 16; b2++) if (dirs & (1u << b2)) kk[0].dir[(b2 >> 2) + 1][(b2 & 3) + 1] = kk[1].dir[(b2 >> 2) + 1][(b2 & 3) + 1] = 1;
+                }
+                (void)salvo;
+                for (int l = 0; l < 2; l++)
+                    for (int i = 0; i < 4; i++) {
+                        ri[l][i] = -1;
+                        if (!sub[i]) continue;
+                        int bx = (i & 1) * 2, by = (i >> 1) * 2;
+                        if (!(b_sub[sub[i]][0] & (1 << l))) { mvc_escrever(&kk[l], bx, by, 2, 2, REF_INTRA, 0, 0); continue; }
+                        ri[l][i] = h->num_ref[l] > 1 ? cab_ref(k, &kk[l], bx, by) : 0;
+                        mvc_escrever(&kk[l], bx, by, 2, 2, ri[l][i], 0, 0);
+                    }
+                for (int l = 0; l < 2; l++)
+                    for (int i = 0; i < 4; i++) if (ri[l][i] >= 0) mvc_escrever(&kk[l], (i & 1) * 2, (i >> 1) * 2, 2, 2, REF_NADA, 0, 0);
+                for (int l = 0; l < 2; l++)
+                    for (int i = 0; i < 4; i++) {
+                        if (ri[l][i] < 0) continue;
+                        int bx0 = (i & 1) * 2, by0 = (i >> 1) * 2, f = b_sub[sub[i]][1];
+                        int n = f == 0 ? 1 : f == 3 ? 4 : 2;
+                        for (int s = 0; s < n; s++) {
+                            int bx = bx0, by = by0, w = 2, hh = 2;
+                            if (f == 1) { hh = 1; by += s; }
+                            else if (f == 2) { w = 1; bx += s; }
+                            else if (f == 3) { w = 1; hh = 1; bx += s & 1; by += s >> 1; }
+                            cab_mv(k, &kk[l], l, bx, by, w, hh, 0, ri[l][i]);
+                        }
+                    }
+            }
+        }
+        guardar_movimento(h, m, kk);
+        if (getenv_dbg_mb == -3 && h->poc == dbg_poc) DBG("%s%s", c->mbx ? "" : "\n", skip ? "d" : tipo == 0 ? "D" : tipo == 1 ? "<" : tipo == 2 ? ">" : tipo == 3 ? "B" : tipo == 22 ? "X" : fatia == 0 ? "P" : "p");
+        if (getenv_dbg_mb == c->idx) {
+            DBG("POC %d MB %d tipo %d skip %d fatia %d:", h->poc, c->idx, tipo, skip, fatia);
+            for (int l = 0; l < 2; l++) for (int i = 0; i < 16; i += 1) DBG(" L%d[%d,%d r%d]", l, m->mv[l][i][0], m->mv[l][i][1], m->refidx[l][(i >> 3) * 2 + ((i & 3) >> 1)]);
+            DBG("\n");
+        }
+        reconstruir_inter(h, c, kk);
+    }
+    if (skip) {
+        m->qp = (int8_t)h->qp;
+        m->qpc = (int8_t)qp_croma[clip(h->qp + h->croma_qp_off, 0, 51)];
+        qpd_ant = 0;
+        return 0;
+    }
+    /* coded_block_pattern */
+    if (modo16 < 0) {
+        int ca = c->a ? (c->a->intra == 2 ? 0x2F : c->a->cbp) : 0x0F, cb = c->b ? (c->b->intra == 2 ? 0x2F : c->b->cbp) : 0x0F;
+        int l = 0;
+        l |= cab(k, 73 + !(ca & 2) + 2 * !(cb & 4));
+        l |= cab(k, 73 + !(l & 1) + 2 * !(cb & 8)) << 1;
+        l |= cab(k, 73 + !(ca & 8) + 2 * !(l & 1)) << 2;
+        l |= cab(k, 73 + !(l & 4) + 2 * !(l & 2)) << 3;
+        int cca = c->a ? (c->a->intra == 2 ? 2 : (c->a->cbp >> 4) & 3) : 0, ccb = c->b ? (c->b->intra == 2 ? 2 : (c->b->cbp >> 4) & 3) : 0;
+        int cr = 0;
+        if (cab(k, 77 + (cca > 0) + 2 * (ccb > 0))) cr = 1 + cab(k, 77 + 4 + (cca == 2) + 2 * (ccb == 2));
+        cbp = l | cr << 4;
+    }
+    m->cbp = (int8_t)cbp; m->modo_croma = (int8_t)modo_croma;
+    if (cbp || modo16 >= 0) {
+        int v = 0;
+        if (cab(k, 60 + qpd_ant)) {
+            v = 1;
+            int ctx = 62;
+            while (cab(k, ctx)) { ctx = 63; v++; if (v > 104) break; }
+        }
+        int d = (v & 1) ? (v + 1) >> 1 : -(v >> 1);
+        h->qp = ((h->qp + d) % 52 + 52) % 52;
+        qpd_ant = d != 0;
+        m->qpd = (int8_t)(d != 0);
+    } else qpd_ant = 0;
+    m->qp = (int8_t)h->qp;
+    m->qpc = (int8_t)qp_croma[clip(h->qp + h->croma_qp_off, 0, 51)];
+    coef_t kf;
+    memset(&kf, 0, sizeof kf);
+    int t[16];
+    if (modo16 >= 0) {
+        memset(t, 0, sizeof t);
+        int inc = cbf_dc(c->a, 0, true, true) + 2 * cbf_dc(c->b, 0, true, true);
+        if (cab_residuo(k, 0, inc, t, 16)) m->dc |= 1;
+        for (int i = 0; i < 16; i++) kf.dc[i] = t[i];
+        if (cbp & 15)
+            for (int i = 0; i < 16; i++) {
+                int bx = blk_x[i], by = blk_y[i];
+                memset(t, 0, sizeof t);
+                int inc2 = cbf_luma(c, bx - 1, by, true) + 2 * cbf_luma(c, bx, by - 1, true);
+                m->nz[by * 4 + bx] = (uint8_t)cab_residuo(k, 1, inc2, t, 15);
+                for (int j = 0; j < 15; j++) kf.lum[by * 4 + bx][zigzag[j + 1]] = t[j];
+            }
+    } else {
+        for (int i = 0; i < 16; i++) {
+            if (!(cbp & (1 << (i >> 2)))) continue;
+            int bx = blk_x[i], by = blk_y[i];
+            memset(t, 0, sizeof t);
+            int inc = cbf_luma(c, bx - 1, by, intra) + 2 * cbf_luma(c, bx, by - 1, intra);
+            m->nz[by * 4 + bx] = (uint8_t)cab_residuo(k, 2, inc, t, 16);
+            for (int j = 0; j < 16; j++) kf.lum[by * 4 + bx][zigzag[j]] = t[j];
+        }
+    }
+    if (cbp & 0x30) {
+        for (int comp = 0; comp < 2; comp++) {
+            memset(t, 0, sizeof t);
+            int inc = cbf_dc(c->a, 1 + comp, intra, false) + 2 * cbf_dc(c->b, 1 + comp, intra, false);
+            if (cab_residuo(k, 3, inc, t, 4)) m->dc |= (uint8_t)(2 << comp);
+            for (int i = 0; i < 4; i++) kf.cdc[comp][i] = t[i];
+        }
+        if (cbp & 0x20)
+            for (int comp = 0; comp < 2; comp++)
+                for (int i = 0; i < 4; i++) {
+                    int bx = i & 1, by = i >> 1;
+                    memset(t, 0, sizeof t);
+                    int inc = cbf_croma_ac(c, comp, bx - 1, by, intra) + 2 * cbf_croma_ac(c, comp, bx, by - 1, intra);
+                    m->nz[16 + comp * 4 + i] = (uint8_t)cab_residuo(k, 4, inc, t, 15);
+                    for (int j = 0; j < 15; j++) kf.cro[comp][i][zigzag[j + 1]] = t[j];
+                }
+    }
+    aplicar_residuo(h, c, m, intra, modo16, modo_croma, cbp, &kf);
+    return 0;
+}
+
+static int mvdif(const int16_t *a, const int16_t *b) { return absi(a[0] - b[0]) >= 4 || absi(a[1] - b[1]) >= 4; }
 
 static int calc_bs(mbinfo_t *p, int bp, mbinfo_t *q, int bq, bool borda_mb)
 {
     if (p->intra || q->intra) return borda_mb ? 4 : 3;
     if (p->nz[bp] || q->nz[bq]) return 2;
-    int rp = p->ref[(bp >> 3) * 2 + ((bp & 3) >> 1)], rq = q->ref[(bq >> 3) * 2 + ((bq & 3) >> 1)];
-    if (rp != rq) return 1;
-    if (absi(p->mv[bp][0] - q->mv[bq][0]) >= 4 || absi(p->mv[bp][1] - q->mv[bq][1]) >= 4) return 1;
-    return 0;
+    int b8p = (bp >> 3) * 2 + ((bp & 3) >> 1), b8q = (bq >> 3) * 2 + ((bq & 3) >> 1);
+    int p0 = p->ref[0][b8p], p1 = p->ref[1][b8p], q0 = q->ref[0][b8q], q1 = q->ref[1][b8q];
+    int np = (p0 >= 0) + (p1 >= 0), nq = (q0 >= 0) + (q1 >= 0);
+    if (np != nq) return 1;
+    if (np == 1) {
+        int lp = p0 >= 0 ? 0 : 1, lq = q0 >= 0 ? 0 : 1;
+        if (p->ref[lp][b8p] != q->ref[lq][b8q]) return 1;
+        return mvdif(p->mv[lp][bp], q->mv[lq][bq]);
+    }
+    if (!((p0 == q0 && p1 == q1) || (p0 == q1 && p1 == q0))) return 1;
+    if (p0 != p1) {
+        if (p0 == q0) return mvdif(p->mv[0][bp], q->mv[0][bq]) || mvdif(p->mv[1][bp], q->mv[1][bq]);
+        return mvdif(p->mv[0][bp], q->mv[1][bq]) || mvdif(p->mv[1][bp], q->mv[0][bq]);
+    }
+    return (mvdif(p->mv[0][bp], q->mv[0][bq]) || mvdif(p->mv[1][bp], q->mv[1][bq])) &&
+           (mvdif(p->mv[0][bp], q->mv[1][bq]) || mvdif(p->mv[1][bp], q->mv[0][bq]));
 }
 
 typedef struct { int modo, alfa, beta; } desbloq_t;
@@ -1231,6 +2014,7 @@ static void desbloquear(h264_t *h, const desbloq_t *dbf)
     for (int my = 0; my < h->alt_mb; my++)
         for (int mx = 0; mx < h->larg_mb; mx++) {
             mbinfo_t *m = &h->mb[my * h->larg_mb + mx];
+            if (m->fatia < 0) continue;
             const desbloq_t *f = &dbf[m->fatia & 255];
             if (f->modo == 1) continue;
             for (int dir = 0; dir < 2; dir++)
@@ -1240,6 +2024,7 @@ static void desbloquear(h264_t *h, const desbloq_t *dbf)
                         if (dir == 0 && mx == 0) continue;
                         if (dir == 1 && my == 0) continue;
                         p = dir == 0 ? m - 1 : m - h->larg_mb;
+                        if (p->fatia < 0) continue;
                         if (f->modo == 2 && p->fatia != m->fatia) continue;
                     }
                     int bs[4];
@@ -1270,98 +2055,160 @@ static void desbloquear(h264_t *h, const desbloq_t *dbf)
 
 static desbloq_t dbf_fatias[256];
 
+static void aplicar_mmco(h264_t *h)
+{
+    int maxf = 1 << h->log2_frame_num;
+    for (int i = 0; i < h->n_mmco; i++) {
+        int op = h->mmco[i][0], v = h->mmco[i][1];
+        if (op == 1) {
+            int num = h->atual->frame_num - v;
+            for (int j = 0; j < N_QUADROS; j++) {
+                quadro_t *q = &h->q[j];
+                if (!q->ref || q == h->atual) continue;
+                int pn = q->frame_num > h->atual->frame_num ? q->frame_num - maxf : q->frame_num;
+                if (pn == num) q->ref = false;
+            }
+        } else if (op == 5) {
+            for (int j = 0; j < N_QUADROS; j++) if (&h->q[j] != h->atual) h->q[j].ref = false;
+            h->geracao++;
+            h->atual->ordem = h->geracao * 2000000;
+            h->poc_msb_ant = 0; h->poc_lsb_ant = 0;
+        }
+    }
+}
+
 static void fechar_quadro(h264_t *h)
 {
     if (!h->quadro_aberto) return;
     desbloquear(h, dbf_fatias);
     if (h->nal_ref) {
+        if (h->adaptativo) aplicar_mmco(h);
         h->atual->ref = true;
-        janela_deslizante(h);
+        if (!h->adaptativo) janela_deslizante(h);
     }
+    h->atual->saida = true;
     h->quadro_aberto = false;
+}
+
+static mbinfo_t *vizinho(h264_t *h, int x, int y);
+
+static void ler_pesos(h264_t *h, bits_t *b)
+{
+    h->log2_peso[0] = (int)ue(b);
+    h->log2_peso[1] = (int)ue(b);
+    for (int l = 0; l < (h->tipo == 1 ? 2 : 1); l++)
+        for (int i = 0; i < h->num_ref[l]; i++) {
+            h->tem_peso[l][i] = false;
+            h->peso[l][i][0].w = (int16_t)(1 << h->log2_peso[0]); h->peso[l][i][0].o = 0;
+            for (int cp = 1; cp < 3; cp++) { h->peso[l][i][cp].w = (int16_t)(1 << h->log2_peso[1]); h->peso[l][i][cp].o = 0; }
+            if (ler_bit(b)) { h->peso[l][i][0].w = (int16_t)se(b); h->peso[l][i][0].o = (int16_t)se(b); h->tem_peso[l][i] = true; }
+            if (ler_bit(b)) {
+                for (int cp = 1; cp < 3; cp++) { h->peso[l][i][cp].w = (int16_t)se(b); h->peso[l][i][cp].o = (int16_t)se(b); }
+                h->tem_peso[l][i] = true;
+            }
+        }
 }
 
 static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
 {
     if (!h->sps_ok || !h->pps_ok) return H264_SEM_SUPORTE;
     int primeiro = (int)ue(b);
-    int tipo = (int)ue(b) % 5;
-    if (tipo != 0 && tipo != 2) return H264_SEM_SUPORTE;
+    int t = (int)ue(b) % 5;
+    int tipo = t == 0 ? 0 : t == 1 ? 1 : t == 2 ? 2 : -1;
+    if (tipo < 0) return H264_SEM_SUPORTE;
     ue(b);
     int frame_num = (int)ler_bits(b, h->log2_frame_num);
     bool idr = tipo_nal == 5;
+    h->tipo = tipo;
+    h->nal_ref = nal_ref;
+    h->idr = idr;
+    if (tipo == 1) h->viu_b = true;
+    if (idr) ue(b);
+    int lsb = 0, delta_inf = 0;
+    if (h->poc_tipo == 0) {
+        lsb = (int)ler_bits(b, h->log2_poc_lsb);
+        if (h->poc_inferior) delta_inf = se(b);
+    } else if (h->poc_tipo == 1 && !h->delta_poc_zero) {
+        se(b);
+        if (h->poc_inferior) se(b);
+    }
     if (primeiro == 0) {
         fechar_quadro(h);
-        if (idr) for (int i = 0; i < MAX_REF + 2; i++) h->q[i].ref = false;
+        if (idr) { for (int i = 0; i < N_QUADROS; i++) h->q[i].ref = false; h->geracao++; }
+        h->frame_num = frame_num;
+        calc_poc(h, lsb, delta_inf);
         quadro_t *livre = NULL;
-        for (int i = 0; i < MAX_REF + 2; i++)
-            if (!h->q[i].ref && &h->q[i] != h->atual) { livre = &h->q[i]; break; }
+        for (int i = 0; i < N_QUADROS; i++)
+            if (!h->q[i].ref && !h->q[i].saida && &h->q[i] != h->atual) { livre = &h->q[i]; break; }
+        if (!livre)   /* fila de saída cheia: descarta o mais antigo */
+            for (int i = 0; i < N_QUADROS; i++) if (!h->q[i].ref && &h->q[i] != h->atual) { livre = &h->q[i]; break; }
         if (!livre) livre = &h->q[0];
         h->atual = livre;
+        h->mb = livre->mb;
         livre->frame_num = frame_num;
+        livre->poc = h->poc;
+        livre->ordem = h->geracao * 2000000 + h->poc;
         livre->id = ++h->prox_id;
         livre->ref = false;
+        livre->saida = false;
         h->quadro_aberto = true;
         h->fatia_atual = 0;
         for (int i = 0; i < h->larg_mb * h->alt_mb; i++) h->mb[i].fatia = -1;
     } else if (!h->quadro_aberto) return H264_ERRO;
     else h->fatia_atual++;
-    h->tipo = tipo;
     h->frame_num = frame_num;
-    h->nal_ref = nal_ref;
-    h->idr = idr;
-    if (idr) ue(b);
-    if (h->poc_tipo == 0) {
-        ler_bits(b, h->log2_poc_lsb);
-        if (h->poc_inferior) se(b);
-    } else if (h->poc_tipo == 1 && !h->delta_poc_zero) {
-        se(b);
-        if (h->poc_inferior) se(b);
-    }
     if (h->redundante) ue(b);
-    h->num_ref_ativas = h->ref_ativas_padrao;
-    if (tipo == 0) {
-        if (ler_bit(b)) h->num_ref_ativas = (int)ue(b) + 1;
-        if (h->num_ref_ativas > MAX_REF) return H264_ERRO;
-        montar_lista(h);
-        modificar_lista(h, b);
-        if (!h->lista[0]) {            /* começou sem referência: usa cinza */
-            h->lista[0] = h->atual;
+    if (tipo == 1) h->direto_espacial = ler_bit(b);
+    h->num_ref[0] = h->ref_padrao[0];
+    h->num_ref[1] = h->ref_padrao[1];
+    if (tipo != 2) {
+        if (ler_bit(b)) {
+            h->num_ref[0] = (int)ue(b) + 1;
+            if (tipo == 1) h->num_ref[1] = (int)ue(b) + 1;
+        }
+        if (h->num_ref[0] > MAX_REF || h->num_ref[1] > MAX_REF) return H264_ERRO;
+        montar_listas(h);
+        modificar_lista(h, b, 0);
+        if (tipo == 1) modificar_lista(h, b, 1);
+        completar_listas(h);
+        if (!h->lista[0][0]) {            /* começou sem referência: usa cinza */
+            for (int l = 0; l < 2; l++) for (int i = 0; i <= MAX_REF; i++) h->lista[l][i] = h->atual;
             memset(h->atual->y, 128, h->larg * h->alt * 3 / 2);
         }
-        if (h->ponderada) {
-            ue(b); ue(b);
-            for (int i = 0; i < h->num_ref_ativas; i++) {
-                if (ler_bit(b)) { se(b); se(b); }
-                if (ler_bit(b)) { se(b); se(b); se(b); se(b); }
-            }
+        if (tipo == 1 && !h->lista[1][0]) for (int i = 0; i <= MAX_REF; i++) h->lista[1][i] = h->lista[0][0];
+        if (getenv_dbg_mb == -2 && primeiro == 0) {
+            DBG("POC %d tipo %d ref %d num %d/%d L0:", h->poc, tipo, nal_ref, h->num_ref[0], h->num_ref[1]);
+            for (int i = 0; i < h->num_ref[0]; i++) DBG(" %d", h->lista[0][i] ? h->lista[0][i]->poc : -99);
+            DBG(" L1:");
+            for (int i = 0; i < h->num_ref[1] && tipo == 1; i++) DBG(" %d", h->lista[1][i] ? h->lista[1][i]->poc : -99);
+            DBG(" refs:");
+            for (int i = 0; i < N_QUADROS; i++) if (h->q[i].ref) DBG(" %d", h->q[i].poc);
+            DBG("\n");
         }
+        memset(h->tem_peso, 0, sizeof h->tem_peso);
+        if ((h->ponderada && tipo == 0) || (h->bipred == 1 && tipo == 1)) ler_pesos(h, b);
     }
     if (nal_ref) {
-        if (idr) { ler_bit(b); ler_bit(b); }
-        else if (ler_bit(b)) {
-            int maxf = 1 << h->log2_frame_num;
-            for (;;) {
-                int op = (int)ue(b);
-                if (op == 0) break;
-                if (op == 1 || op == 3) {
-                    int dif = (int)ue(b) + 1;
-                    if (op == 1) {
-                        int num = h->frame_num - dif;
-                        for (int i = 0; i < MAX_REF + 2; i++) {
-                            quadro_t *q = &h->q[i];
-                            if (!q->ref || q == h->atual) continue;
-                            int pn = q->frame_num > h->frame_num ? q->frame_num - maxf : q->frame_num;
-                            if (pn == num) q->ref = false;
-                        }
-                    }
+        if (idr) { ler_bit(b); ler_bit(b); if (primeiro == 0) h->adaptativo = false; }
+        else {
+            bool ad = ler_bit(b);
+            int n = 0;
+            if (ad)
+                for (;;) {
+                    int op = (int)ue(b);
+                    if (op == 0) break;
+                    if (op > 6) return H264_ERRO;
+                    int v = 0;
+                    if (op == 1 || op == 3) v = (int)ue(b) + 1;
+                    if (op == 2) ue(b);
+                    if (op == 3 || op == 6) ue(b);
+                    if (op == 4) ue(b);
+                    if (n < 32) { h->mmco[n][0] = op; h->mmco[n][1] = v; n++; }
                 }
-                if (op == 2 || op == 3 || op == 6 || op == 4) ue(b);
-                if (op == 5) for (int i = 0; i < MAX_REF + 2; i++) if (&h->q[i] != h->atual) h->q[i].ref = false;
-                if (op > 6) return H264_ERRO;
-            }
+            if (primeiro == 0) { h->adaptativo = ad; h->n_mmco = n; }
         }
-    }
+    } else if (primeiro == 0) h->adaptativo = false;
+    if (h->cabac && tipo != 2) h->cabac_init = (int)ue(b);
     h->qp = h->qp_inicial + se(b);
     desbloq_t *f = &dbf_fatias[h->fatia_atual & 255];
     f->modo = 0; f->alfa = 0; f->beta = 0;
@@ -1371,6 +2218,25 @@ static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
     }
     /* dados da fatia */
     int total = h->larg_mb * h->alt_mb, mb = primeiro;
+    if (h->cabac) {
+        if (tipo == 1 && !h->cabac) return H264_SEM_SUPORTE;
+        b->pos = (b->pos + 7) & ~7u;
+        cabac_t k;
+        cabac_iniciar(h, &k, b);
+        qpd_ant = 0;
+        while (mb < total) {
+            ctx_t c = { mb % h->larg_mb, mb / h->larg_mb, mb, &h->mb[mb], 0, 0, 0, 0 };
+            c.a = vizinho(h, c.mbx - 1, c.mby); c.b = vizinho(h, c.mbx, c.mby - 1);
+            c.c = vizinho(h, c.mbx + 1, c.mby - 1); c.d = vizinho(h, c.mbx - 1, c.mby - 1);
+            h->mb[mb].fatia = h->fatia_atual;
+            if (decodificar_mb_cabac(h, &k, &c, b) < 0) return H264_ERRO;
+            mb++;
+            if (cab_fim(&k)) break;
+            if (b->pos > b->fim + 16) return H264_ERRO;
+        }
+        return 0;
+    }
+    if (tipo == 1) return H264_SEM_SUPORTE;   /* B com CAVLC: não implementado */
     while (mb < total) {
         if (tipo == 0) {
             int corrida = (int)ue(b);
@@ -1389,7 +2255,6 @@ static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
         c.c = vizinho(h, c.mbx + 1, c.mby - 1); c.d = vizinho(h, c.mbx - 1, c.mby - 1);
         h->mb[mb].fatia = h->fatia_atual;
         int tipo_mb = (int)ue(b);
-        DBG("mb %d tipo_mb %d pos %u qp %d\n", mb, tipo_mb, b->pos, h->qp);
         if (tipo_mb > (tipo == 0 ? 30 : 25)) return H264_ERRO;
         if (decodificar_mb(h, b, &c, tipo_mb, false) < 0) { DBG("mb %d tipo %d fatia %d pos %u/%u\n", mb, tipo_mb, tipo, b->pos, b->fim); return H264_ERRO; }
         mb++;
@@ -1398,6 +2263,48 @@ static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
     }
     return 0;
 }
+
+/* ---------------------------------------------------------- NAL / API */
+
+int h264_amostra(h264_t *h, const uint8_t *d, int n, int tam_len)
+{
+    int pos = 0, r = 0;
+    while (pos + tam_len <= n) {
+        uint32_t l = 0;
+        for (int i = 0; i < tam_len; i++) l = (l << 8) | d[pos + i];
+        pos += tam_len;
+        if (l > (uint32_t)(n - pos)) return H264_ERRO;
+        int e = h264_nal(h, d + pos, (int)l);
+        if (e < 0) r = e;
+        pos += (int)l;
+    }
+    fechar_quadro(h);
+    return r;
+}
+
+/* Próximo quadro na ordem de exibição. Com quadros B, segura alguns até saber a ordem. */
+bool h264_imagem(h264_t *h, h264_imagem_t *im)
+{
+    int pend = 0;
+    quadro_t *q = NULL;
+    for (int i = 0; i < N_QUADROS; i++)
+        if (h->q[i].saida) { pend++; if (!q || h->q[i].ordem < q->ordem) q = &h->q[i]; }
+    int atraso = h->viu_b || h->perfil != 66 ? h->reordenar : 0;
+    if (!q || (pend <= atraso && !h->esvaziar)) return false;
+    q->saida = false;
+    int cx = h->corte[0], cy = h->corte[2];
+    im->larg = h->larg - h->corte[0] - h->corte[1];
+    im->alt = h->alt - h->corte[2] - h->corte[3];
+    im->passo_y = h->passo;
+    im->passo_c = h->passo_c;
+    im->y = q->y + cy * h->passo + cx;
+    im->u = q->u + (cy / 2) * h->passo_c + cx / 2;
+    im->v = q->v + (cy / 2) * h->passo_c + cx / 2;
+    im->erros = h->erros;
+    return true;
+}
+
+void h264_esvaziar(h264_t *h) { fechar_quadro(h); h->esvaziar = true; }
 
 /* ---------------------------------------------------------- NAL / API */
 
@@ -1435,22 +2342,6 @@ int h264_nal(h264_t *h, const uint8_t *d, int n)
     }
 }
 
-int h264_amostra(h264_t *h, const uint8_t *d, int n, int tam_len)
-{
-    int pos = 0, r = 0;
-    while (pos + tam_len <= n) {
-        uint32_t l = 0;
-        for (int i = 0; i < tam_len; i++) l = (l << 8) | d[pos + i];
-        pos += tam_len;
-        if (l > (uint32_t)(n - pos)) return H264_ERRO;
-        int e = h264_nal(h, d + pos, (int)l);
-        if (e < 0) r = e;
-        pos += (int)l;
-    }
-    fechar_quadro(h);
-    return r;
-}
-
 int h264_config(h264_t *h, const uint8_t *avcc, int n, int *tam_len)
 {
     if (n < 7) return H264_ERRO;
@@ -1471,21 +2362,6 @@ int h264_config(h264_t *h, const uint8_t *avcc, int n, int *tam_len)
     return 0;
 }
 
-bool h264_imagem(h264_t *h, h264_imagem_t *im)
-{
-    if (!h->atual) return false;
-    quadro_t *q = h->atual;
-    int cx = h->corte[0], cy = h->corte[2];
-    im->larg = h->larg - h->corte[0] - h->corte[1];
-    im->alt = h->alt - h->corte[2] - h->corte[3];
-    im->passo_y = h->passo;
-    im->passo_c = h->passo_c;
-    im->y = q->y + cy * h->passo + cx;
-    im->u = q->u + (cy / 2) * h->passo_c + cx / 2;
-    im->v = q->v + (cy / 2) * h->passo_c + cx / 2;
-    im->erros = h->erros;
-    return true;
-}
 #ifdef H264_HOST
-int h264_dbg_mb(int m) { getenv_dbg_mb = m; return 0; }
+int h264_dbg_mb(int m) { getenv_dbg_mb = m; if (getenv("POC")) dbg_poc = atoi(getenv("POC")); return 0; }
 #endif

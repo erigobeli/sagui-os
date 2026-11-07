@@ -20,5 +20,6 @@ int     h264_config(h264_t *h, const uint8_t *avcc, int n, int *tam_len);
 /* Uma amostra do MP4 (um quadro): NALs com prefixo de tamanho. */
 int     h264_amostra(h264_t *h, const uint8_t *d, int n, int tam_len);
 int     h264_nal(h264_t *h, const uint8_t *nal, int n);
-bool    h264_imagem(h264_t *h, h264_imagem_t *im);   /* último quadro decodificado */
+bool    h264_imagem(h264_t *h, h264_imagem_t *im);   /* próximo quadro na ordem de exibição (false: ainda não) */
+void    h264_esvaziar(h264_t *h);                     /* fim do vídeo: libera os quadros retidos */
 #endif

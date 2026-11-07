@@ -1335,6 +1335,17 @@ static uint8_t *js_baixar(const char *u, unsigned *n)
     return baixar_imagem(end, n);
 }
 
+/* O player de uma página (YouTube) deu src a um <video>: abre o tocador. */
+static void abrir_video_da_pagina(void)
+{
+    const char *u = js_video();
+    if (!u || !(comeca_com(u, "https://") || comeca_com(u, "http://"))) return;
+    char *args[] = { "video", (char *)u, NULL };
+    int pid = executar("/bin/video", args);
+    registrar("cipo: video da pagina (%d bytes) pid %d\n", (int)tam_texto(u), pid);
+    if (pid > 0) rodape("Vídeo aberto no tocador");
+}
+
 static char *rodar_scripts(char *h, int *n)
 {
     static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta };
@@ -1342,6 +1353,7 @@ static char *rodar_scripts(char *h, int *n)
     rodape("Rodando scripts...");
     int t = 0;
     char *novo = js_pagina(h, *n, url_atual, &ganchos, &t);
+    abrir_video_da_pagina();
     if (!novo) return h;
     *n = t;
     return novo;
@@ -2175,6 +2187,7 @@ static void clique_js(int id)
 {
     int n = 0;
     char *h = js_clicar(id, &n);
+    abrir_video_da_pagina();
     if (!h) return;
     inicio_pagina = tempo_ms();
     limpar_pagina();

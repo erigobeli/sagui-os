@@ -41,7 +41,7 @@ struct obj {
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
 typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador; } fdef;
-struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; i64 n; fdef *f; };
+struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; i64 n; fdef *f; const char *fonte; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
        K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD,
@@ -212,10 +212,15 @@ static void lancar_fatal(const char *m) { registrar("js: abortado: %s\n", m); fa
 static val chamar(val f, val este, val *a, int n);
 static val construir(val f, val *a, int n);
 static val get(val b, str *k);
+static no *no_atual;   /* último acesso a membro: dá o trecho do código nas mensagens */
 static __attribute__((noreturn)) void erro(const char *tipo, const char *m, const char *x)
 {
-    char b[160];
+    char b[240];
     formatar_texto(b, sizeof b, "%s%s", m, x ? x : "");
+    if (no_atual && no_atual->fonte && comeca_com(m, "Cannot read")) {
+        int k = (int)tam_texto(b);
+        if (k < 160) { b[k++] = ' '; b[k++] = '['; const char *q = no_atual->fonte - 40; for (int z = 0; z < 60 && q[z] && k < 236; z++) b[k++] = q[z] == '\n' ? ' ' : q[z]; b[k++] = ']'; b[k] = 0; }
+    }
     val a = vT(b), c = get(vO(global), I(tipo));
     if (c.t != OB) { exc = a; lancar(a); }
     lancar(construir(c, &a, 1));
@@ -640,7 +645,7 @@ static int aceita_kw(int k) { if (kw(k)) { prox(); return 1; } return 0; }
 
 /* ------------------------------------------------------------ sintaxe */
 static fdef *cf; static int nfuncs, vem_async, vem_gerador;
-static no *N(int k) { no *x = novo(sizeof(no)); x->k = (short)k; return x; }
+static no *N(int k) { no *x = novo(sizeof(no)); x->k = (short)k; x->fonte = L.src && L.ini >= 0 && L.ini < L.tam ? L.src + L.ini : NULL; return x; }
 static no *N2(int k, no *a, no *b) { no *x = N(k); x->a = a; x->b = b; return x; }
 static no *expr(void), *atrib(int sem_in), *stmt(void), *funcao(str *nome, int metodo, int seta);
 static no *expr_in(int sem_in);
@@ -1258,7 +1263,7 @@ static val executar_fn(obj *o, val este, val *a, int n, val novo_t)
     env *e = novo_env(o->e, d->nv + 4);
     quadro q, *ant = qa;
     if (d->seta) qa = o->q;
-    else { q.este = este; q.func = o; q.novo = novo_t; qa = &q; }
+    else { q.este = este.t == U || este.t == NUL ? vO(global) : este; q.func = o; q.novo = novo_t; qa = &q; }   /* modo não estrito: this = janela */
     int i = 0;
     for (no *p = d->params; p; p = p->prox, i++) {
         if (p->a->k == K_SPREAD) { obj *r = novo_arr(0); for (int j = i; j < n; j++) arr_push(r, a[j]); ligar(p->a->a, vO(r), e, 1); break; }
@@ -1573,7 +1578,7 @@ static val ev(no *x, env *e)
         if (x->a->k == K_SUPER) { obj *c = casa_atual(); return c && c->proto ? get_o(c->proto, intern(x->s), qa->este) : vU(); }
         val o = ev(x->a, e);
         if (x->op && (o.t == U || o.t == NUL)) return vU();
-        if (o.t == U || o.t == NUL) { if (x->a->k == K_MEM || x->a->k == K_ID) { /* mensagem igual */ } }
+        no_atual = x;
         return get(o, x->s);
     }
     case K_IDX: {
@@ -1596,13 +1601,31 @@ static val ev(no *x, env *e)
             else {
                 este = ev(c->a, e);
                 if (c->op && (este.t == U || este.t == NUL)) return vU();
+                no_atual = c;
                 f = get(este, c->s);
             }
         } else if (c->k == K_IDX) { este = ev(c->a, e); if (c->op && (este.t == U || este.t == NUL)) return vU(); f = get_i(este, ev(c->b, e)); }
         else f = ev(c, e);
         if (x->op && (f.t == U || f.t == NUL)) return vU();
         int n = avaliar_args(x->b, e, &a);
-        if (f.t != OB || f.o->cl != C_FN) erro("TypeError", c->k == K_MEM || c->k == K_ID ? c->s->s : "expressao", " is not a function");
+        if (f.t != OB || f.o->cl != C_FN) {
+            /* diz em que tipo de objeto a função faltou (ajuda a achar o que implementar) */
+            char dica[240] = " is not a function";
+            if (c->k == K_MEM || c->k == K_IDX) {
+                const char *tipo = este.t == ST ? "string" : este.t == NU ? "number" : este.t == U ? "undefined" : este.t == NUL ? "null" : este.t == BO ? "boolean" :
+                                   este.o->cl == C_ARR ? "Array" : este.o->cl == C_TA ? "TypedArray" : este.o->cl == C_BUF ? "ArrayBuffer" : este.o->cl == C_EL ? "Element" : este.o->cl == C_FN ? "Function" : "Object";
+                val cn = este.t == OB ? get(este, s_constructor) : vU();
+                val nm = cn.t == OB ? get(cn, I("name")) : vU();
+                const char *fn = qa && qa->func && qa->func->fn && qa->func->fn->f && qa->func->fn->f->nome ? qa->func->fn->f->nome->s : "?";
+                int np = este.t == OB ? este.o->np : -1;
+                const char *k0 = este.t == OB && este.o->np > 0 ? este.o->p[0].k->s : "";
+                char trecho[72] = "";
+                if (x->fonte) { int k = 0; const char *q = x->fonte - 40; for (int z = 0; z < 70 && q[z]; z++) trecho[k++] = q[z] == '\n' ? ' ' : q[z]; trecho[k] = 0; }
+                formatar_texto(dica, sizeof dica, " is not a function (em %s %s, %d props, 1a %s) [%s]", tipo, nm.t == ST ? nm.s->s : "", np, k0, trecho);
+                (void)fn;
+            }
+            erro("TypeError", c->k == K_MEM || c->k == K_ID ? c->s->s : "expressao", dica);
+        }
         return chamar(f, este, a, n);
     }
     case K_NEW: { val f = ev(x->a, e), *a; int n = avaliar_args(x->b, e, &a); return construir(f, a, n); }

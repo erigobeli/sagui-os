@@ -1,3 +1,4 @@
+static str *video_src;   /* último src dado a um <video> pelo JavaScript */
 /* js_nativo.h - biblioteca nativa, expressões regulares e DOM do motor (js.c). */
 #define ARG(i) ((i) < n ? a[i] : vU())
 
@@ -1003,7 +1004,13 @@ static int el_set(obj *o, str *k, val v)
     case D_INNER: { str *s = to_str(v); limpar(d); html_ler(s->s, s->n, d); sujo = 1; return 1; }
     case D_ID: attr_por(d, I("id"), to_str(v)); sujo = 1; return 1;
     case D_CLASS: attr_por(d, I("class"), to_str(v)); sujo = 1; return 1;
-    case D_VALUE: case D_HREF: case D_SRC: case D_ALT: case D_NAMEA: case D_TYPEA: attr_por(d, I(dnomes[k->dom]), to_str(v)); sujo = 1; return 1;
+    case D_VALUE: case D_HREF: case D_SRC: case D_ALT: case D_NAMEA: case D_TYPEA:
+        if (k->dom == D_SRC && d->tipo == 1 && (d->tag == I("video") || d->tag == I("audio") || d->tag == I("source"))) {
+            str *u = to_str(v);
+            registrar("js: video src (%d)\n", u->n);
+            video_src = u;
+        }
+        attr_por(d, I(dnomes[k->dom]), to_str(v)); sujo = 1; return 1;
     case D_CHECKED: if (to_bool(v)) attr_por(d, I("checked"), I("")); return 1;
     case D_TITLE:
         if (d->tipo == 9) {
@@ -1101,13 +1108,13 @@ static dn *por_id(dn *d, str *id)
     return NULL;
 }
 static val n_byid(val este, val *a, int n) { (void)este; return embrulhar(por_id(raiz, to_str(ARG(0)))); }
-static val n_create_el(val este, val *a, int n) { (void)este; str *t = to_str(ARG(0)); return embrulhar(d_novo(1, baixo_n(t->s, t->n))); }
+static val n_create_el(val este, val *a, int n) { (void)este; str *t = to_str(ARG(0)); if (t->n == 5 && (t->s[0] | 32) == 'v' && (t->s[1] | 32) == 'i' && (t->s[2] | 32) == 'd') registrar("js: criou <video>\n"); return embrulhar(d_novo(1, baixo_n(t->s, t->n))); }
 static val n_create_txt(val este, val *a, int n) { (void)este; dn *t = d_novo(3, NULL); t->txt = escapar(to_str(ARG(0))); return embrulhar(t); }
 static val n_append(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), NULL); sujo = 1; return a[0]; }
 static val n_insert(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), ARG(1).t == OB ? de_val(a[1]) : NULL); sujo = 1; return a[0]; }
 static val n_remove_ch(val este, val *a, int n) { (void)este; d_tirar(de_val(ARG(0))); sujo = 1; return a[0]; }
 static val n_getattr(val este, val *a, int n) { str *t = to_str(ARG(0)), *v = attr(de_val(este), baixo_n(t->s, t->n)); return v ? vS(v) : vNul(); }
-static val n_setattr(val este, val *a, int n) { str *t = to_str(ARG(0)); attr_por(de_val(este), baixo_n(t->s, t->n), to_str(ARG(1))); sujo = 1; return vU(); }
+static val n_setattr(val este, val *a, int n) { str *t = to_str(ARG(0)); dn *d = de_val(este); if (t->n == 3 && !memcmp(t->s, "src", 3) && (d->tag == I("video") || d->tag == I("source"))) { registrar("js: video src attr\n"); video_src = to_str(ARG(1)); } attr_por(d, baixo_n(t->s, t->n), to_str(ARG(1))); sujo = 1; return vU(); }
 static val n_rmattr(val este, val *a, int n)
 {
     dn *d = de_val(este); str *t = to_str(ARG(0)), *k = baixo_n(t->s, t->n);
@@ -1281,6 +1288,7 @@ static void na_pilha(void (*f)(void))
 }
 void js_fim(void)
 {
+    video_src = NULL;
     while (blocos) { bloco *b = blocos; blocos = b->prox; libera(b); }
     ar = NULL; ar_u = ar_c = ar_total = 0;
     tab = NULL; tab_c = tab_n = 0; tb = NULL; tb_c = 0;
@@ -1305,4 +1313,14 @@ char *js_clicar(int id, int *saida_tam)
     na_pilha(clique_seguro);
     *saida_tam = saida_n;
     return saida;
+}
+
+/* src que o JavaScript deu a um <video> (o player do YouTube monta a URL do formato 18); NULL se nenhum. Limpa ao ler. */
+const char *js_video(void)
+{
+    static char u[4096];
+    if (!video_src) return NULL;
+    copia_texto(u, video_src->s, sizeof u);
+    video_src = NULL;
+    return u;
 }
