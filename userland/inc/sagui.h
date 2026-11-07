@@ -110,14 +110,13 @@ bool tls_ativo(int fd);
 const char *tls_erro(void);
 bool tls_certificado_recusado(void);
 typedef struct {
-    void (*escrever)(const char *t);                       /* document.write */
+    uint8_t *(*baixar)(const char *url, unsigned *n);      /* devolve bloco de aloca */
     void (*titulo)(const char *t);                         /* document.title = */
-    void (*definir)(const char *id, const char *t);        /* elemento.textContent = */
-    int  (*ler)(const char *id, char *d, int max);
     void (*alerta)(const char *t);
 } js_hooks_t;
-bool js_executar(const char *codigo, int n, const js_hooks_t *h);
-void js_reiniciar(void);
+char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
+char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */
+void js_fim(void);
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);   /* PNG e JPEG */
 int  http_pedir(const char *host, int porta, const char *caminho);   /* manda o GET; devolve o descritor */
 int  http_cabecalho(int fd, char *buf, int max, int *extra);         /* tamanho do cabeçalho; *extra = corpo que já veio */

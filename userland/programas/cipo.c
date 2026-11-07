@@ -121,8 +121,10 @@ static char para_latin1(uint32_t c)
 {
     if (c < 0x80 || (c >= 0xA0 && c < 0x100)) return c == 0xA0 ? ' ' : (char)c;
     switch (c) {
-    case 0x2018: case 0x2019: case 0x201A: case 0x2032: return '\'';
-    case 0x201C: case 0x201D: case 0x201E: case 0x2033: return '"';
+    /* Nunca aspas ASCII: o texto pode estar dentro de um script. */
+    case 0x2018: case 0x2019: case 0x201A: case 0x2032: return (char)0xB4;
+    case 0x201C: case 0x201E: case 0x2033: return (char)0xAB;
+    case 0x201D: return (char)0xBB;
     case 0x2013: case 0x2014: case 0x2212: return '-';
     case 0x2022: case 0x2026: case 0x00B7: return (char)0xB7;
     case 0x20AC: return 'E';
@@ -234,7 +236,7 @@ static bool juntar_url(const char *base, const char *rel, char *saida, int max)
 {
     while (*rel == ' ' || *rel == '\n' || *rel == '\t') rel++;
     if (!*rel || *rel == '#' || comeca_com(rel, "javascript:") || comeca_com(rel, "mailto:")) return false;
-    if (comeca_com(rel, "http://") || comeca_com(rel, "https://") || comeca_com(rel, "sobre:")) {
+    if (comeca_com(rel, "http://") || comeca_com(rel, "https://") || comeca_com(rel, "sobre:") || comeca_com(rel, "sagui-js:")) {
         copia_texto(saida, rel, (size_t)max);
         return true;
     }
@@ -1307,79 +1309,10 @@ static void achar_titulo(const char *h, int n)
 static void ler_html(const char *h, int n);
 
 /* ---- JavaScript ----
- * Os scripts rodam antes da diagramação, mexendo direto no texto do HTML:
- * document.write entra no lugar do <script>, e getElementById troca o miolo
- * do elemento. Por isso eventos e mudanças depois de carregar não existem. */
-#define SCRIPT_MAX (24 * 1024)
-#define HTML_MAX (6 * 1024 * 1024)
-
-static char *js_h;
-static int js_n, js_cap, js_saida;   /* js_saida: onde document.write escreve */
-
-static bool js_trocar(int ini, int fim, const char *t, int n)
-{
-    if (js_n - (fim - ini) + n + 1 > js_cap) return false;
-    memmove(js_h + ini + n, js_h + fim, (size_t)(js_n - fim));
-    memcpy(js_h + ini, t, (size_t)n);
-    js_n += n - (fim - ini);
-    js_h[js_n] = 0;
-    return true;
-}
-
-static void js_escrever(const char *t)
-{
-    int n = (int)tam_texto(t);
-    if (js_trocar(js_saida, js_saida, t, n)) js_saida += n;
-}
-
+ * O motor (libsagui/js.c) monta um DOM do HTML, roda os scripts e devolve o
+ * HTML resultante. Elementos com clique viram links sagui-js:N, que voltam
+ * para o motor sem passar pela rede. */
 static void js_titulo(const char *t) { copia_texto(titulo_js, t, sizeof titulo_js); }
-
-/* Acha o miolo de <tag id="...">...</tag>, contando as tags iguais aninhadas. */
-static bool js_elemento(const char *id, int *ini, int *fim)
-{
-    char a1[80], a2[80];
-    formatar_texto(a1, sizeof a1, "id=\"%s\"", id);
-    formatar_texto(a2, sizeof a2, "id='%s'", id);
-    int t = (int)tam_texto(a1);
-    for (int i = 0; i + t < js_n; i++) {
-        if (memcmp(js_h + i, a1, (size_t)t) != 0 && memcmp(js_h + i, a2, (size_t)t) != 0) continue;
-        int o = i;
-        while (o > 0 && js_h[o] != '<') o--;
-        char nome[16];
-        int k = 0;
-        for (int p = o + 1; k < 15 && letra(js_h[p]); p++) nome[k++] = js_h[p];
-        nome[k] = 0;
-        int c = i;
-        while (c < js_n && js_h[c] != '>') c++;
-        *ini = ++c;
-        int prof = 1;
-        for (int p = c; p + k + 2 < js_n; p++) {
-            if (js_h[p] != '<') continue;
-            bool fecha = js_h[p + 1] == '/';
-            if (igual_sem_caixa(js_h + p + 1 + fecha, nome, k) && !letra(js_h[p + 1 + fecha + k])) prof += fecha ? -1 : 1;
-            if (!prof) { *fim = p; return true; }
-        }
-        return false;
-    }
-    return false;
-}
-
-static void js_definir(const char *id, const char *t)
-{
-    int a, b;
-    if (!js_elemento(id, &a, &b)) return;
-    int n = (int)tam_texto(t);
-    if (js_trocar(a, b, t, n) && a < js_saida) js_saida += n - (b - a);
-}
-
-static int js_ler(const char *id, char *d, int max)
-{
-    int a, b;
-    if (!js_elemento(id, &a, &b)) return 0;
-    int n = b - a < max - 1 ? b - a : max - 1;
-    memcpy(d, js_h + a, (size_t)n);
-    return n;
-}
 
 /* Sem caixa modal: um site com alert em laço travaria o Cipó. Vai para o rodapé. */
 static void js_alerta(const char *t)
@@ -1388,46 +1321,24 @@ static void js_alerta(const char *t)
     formatar_texto(alerta_js, sizeof alerta_js, "Alerta da página: %s", t);
 }
 
-/* Roda os <script> sem src, na ordem. Devolve o HTML novo (ou o mesmo). */
+static uint8_t *js_baixar(const char *u, unsigned *n)
+{
+    char end[URL_MAX];
+    if (!juntar_url(url_atual, u, end, sizeof end)) return NULL;
+    rodape("Baixando scripts...");
+    return baixar_imagem(end, n);
+}
+
 static char *rodar_scripts(char *h, int *n)
 {
-    static const js_hooks_t ganchos = { js_escrever, js_titulo, js_definir, js_ler, js_alerta };
+    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta };
     if (!achar_tag(h, *n, "<script")) return h;
-    js_cap = *n * 2 + 65536;
-    if (js_cap > HTML_MAX) js_cap = HTML_MAX;
-    js_h = aloca((size_t)js_cap);
-    if (!js_h) return h;
-    memcpy(js_h, h, (size_t)*n);
-    js_n = *n;
-    js_h[js_n] = 0;
-    js_reiniciar();
-    int feitos = 0, parados = 0;
-    for (int i = 0; ; ) {
-        const char *p = achar_tag(js_h + i, js_n - i, "<script");
-        if (!p) break;
-        int ini = (int)(p - js_h), c = ini;
-        while (c < js_n && js_h[c] != '>') c++;
-        const char *f = achar_tag(js_h + c, js_n - c, "</script");
-        if (!f) break;
-        int fim = (int)(f - js_h), depois = fim;
-        while (depois < js_n && js_h[depois] != '>') depois++;
-        depois++;
-        char tipo[40] = "", src_s[8];
-        bool externo = atributo(js_h + ini + 7, c - ini - 7, "src", src_s, sizeof src_s);
-        atributo(js_h + ini + 7, c - ini - 7, "type", tipo, sizeof tipo);
-        bool roda = !externo && fim - c - 1 <= SCRIPT_MAX && (!tipo[0] || comeca_com(tipo, "text/javascript"));
-        if (!roda) { i = depois; continue; }
-        static char codigo[SCRIPT_MAX + 1];
-        int nc = fim - c - 1;
-        memcpy(codigo, js_h + c + 1, (size_t)nc);
-        js_trocar(ini, depois, "", 0);
-        js_saida = ini;
-        if (js_executar(codigo, nc, &ganchos)) feitos++; else parados++;
-        i = js_saida;
-    }
-    registrar("cipo: js %d scripts, %d parados\n", feitos, parados);
-    *n = js_n;
-    return js_h;
+    rodape("Rodando scripts...");
+    int t = 0;
+    char *novo = js_pagina(h, *n, url_atual, &ganchos, &t);
+    if (!novo) return h;
+    *n = t;
+    return novo;
 }
 
 static void ler_pagina(const char *h, int n)
@@ -1925,7 +1836,7 @@ static void desenhar_barra(void)
 static const char pagina_inicio[] =
     "<title>Início</title><h1>Cipó, o navegador do SaguiOS</h1>"
     "<p>Digite um endereço lá em cima e aperte Enter, ou escolha um site abaixo. O Cipó mostra texto e "
-    "imagens PNG e JPEG; não roda JavaScript nem CSS. No <b>https://</b> a conexão é cifrada, mas a "
+    "imagens e CSS, e roda JavaScript sem vídeo. No <b>https://</b> a conexão é cifrada, mas a "
     "identidade do site <b>não</b> é verificada: não digite senhas.</p>"
     "<h3>Para começar</h3><ul>"
     "<li><a href=\"https://pt.wikipedia.org/\">pt.wikipedia.org</a>: a Wikipédia em português</li>"
@@ -2003,6 +1914,7 @@ static void carregar(const char *pedido)
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
     inicio_pagina = tempo_ms();
+    js_fim();
     nota_busca[0] = 0;
     trocar_busca(url, sizeof url);
     /* Sem esquema, tenta HTTPS primeiro e cai para HTTP se não der. */
@@ -2134,7 +2046,7 @@ static void carregar(const char *pedido)
                     registrar("cipo: pagina so com JavaScript (%d bytes, %d letras)\n", tam, letras);
                     limpar_pagina();
                     pagina_de_erro("Esta página só existe com JavaScript completo",
-                                   "O site monta tudo por JavaScript, e o Cipó só roda um pedaço pequeno da linguagem. Vídeos também não tocam aqui.");
+                                   "O site monta a página com recursos de JavaScript que o motor do Cipó ainda não tem. Vídeos também não tocam aqui.");
                     copia_texto(titulo, t, sizeof titulo);
                 }
             } else {
@@ -2160,6 +2072,21 @@ static void carregar(const char *pedido)
     formatar_texto(t, sizeof t, "Cipó - %s", titulo);
     titulo_janela(j->id, t);
     registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, qtd_alvos);
+    rodape(texto_pronto());
+    desenhar_pagina();
+}
+
+/* Clique num elemento com evento: o motor roda o evento e devolve a página. */
+static void clique_js(int id)
+{
+    int n = 0;
+    char *h = js_clicar(id, &n);
+    if (!h) return;
+    inicio_pagina = tempo_ms();
+    limpar_pagina();
+    ler_pagina(h, n);
+    libera(h);
+    registrar("cipo: clique js %d (%d linhas)\n", id, linhas);
     rodape(texto_pronto());
     desenhar_pagina();
 }
@@ -2273,7 +2200,8 @@ int principal(int argc, char **argv)
             if (a >= 0 && alvos[a].tipo == A_LINK) {
                 char url[URL_MAX];
                 copia_texto(url, textos + alvos[a].url, sizeof url);
-                navegar(url);
+                if (comeca_com(url, "sagui-js:")) clique_js(texto_para_int(url + 9));
+                else navegar(url);
             } else if (a >= 0 && alvos[a].tipo == A_CAMPO) {
                 enviar_formulario(&alvos[a]);
             }
