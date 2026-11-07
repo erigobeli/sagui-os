@@ -66,6 +66,11 @@ def main():
     print(f"  wav: {seg:.1f} s com som, {freq:.0f} Hz")
     verificar(seg > SEGUNDOS * 0.9, "tocou quase todo o áudio")
     verificar(400 < freq < 480, "o som é o tom de 440 Hz do arquivo")
+    # Pelo Cipó: o tipo video/mp4 abre o tocador numa janela própria.
+    img = imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/teste.mp4", ["--vesa"])
+    with Maquina("h46c", "ide", imagem=img, extras=extras[:4]) as m:
+        m.esperar_serial("video: fim", 150)
+        verificar("cipo: video http://10.0.2.2" in m.serial(), "o Cip\u00f3 mandou o MP4 para o tocador")
     return 0
 
 

@@ -199,7 +199,8 @@ int principal(int argc, char **argv)
                 continue;
             }
             int aceitos = tocar_pcm((uint8_t *)pcm + pcm_feito, pcm_bytes - pcm_feito, aac_taxa(a));
-            if (aceitos <= 0) break;
+            if (aceitos < 0) { registrar("video: sem placa de som, segue sem audio"); a = NULL; break; }
+            if (aceitos == 0) break;
             pcm_feito += aceitos;
             trabalhou = true;
         }

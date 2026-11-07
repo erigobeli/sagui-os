@@ -1986,6 +1986,15 @@ static void carregar(const char *pedido)
             http_campo(cab, "Content-Type", tipo, sizeof tipo);
             for (char *p = tipo; *p; p++) *p = minuscula(*p);
             html = comeca_com(tipo, "text/html") || comeca_com(tipo, "application/xhtml");
+            if (comeca_com(tipo, "video/mp4") || comeca_com(tipo, "audio/mp4")) {
+                http_fechar(fd);
+                char *args[] = { "video", url, NULL };
+                int pid = executar("/bin/video", args);
+                registrar("cipo: video %s pid %d\n", url, pid);
+                erro = pid > 0 ? "Vídeo aberto no tocador" : "Não consegui abrir o tocador de vídeo";
+                formatar_texto(detalhe, sizeof detalhe, "%s", pid > 0 ? "O vídeo toca numa janela própria, enquanto baixa." : nome_erro(pid));
+                break;
+            }
             if (!html && !comeca_com(tipo, "text/")) {
                 http_fechar(fd);
                 erro = "Tipo de arquivo que o Cipó não mostra";
