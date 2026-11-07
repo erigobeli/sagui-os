@@ -1558,6 +1558,10 @@ static val ev(no *x, env *e)
 }
 static int laco(int c, str *meu)
 {
+    if (!(++passos & 1023)) {   /* laço sem chamadas também respeita os limites de tempo */
+        if (t_suave && tempo_ms() > t_suave) erro("Error", "limite de tempo", NULL);
+        if (tempo_ms() > t_limite) lancar_fatal("tempo");
+    }
     /* 0 segue, 1 sai normal, 2 propaga */
     if (c == C_BRK) { if (!rot || rot == meu) { rot = NULL; return 1; } return 2; }
     if (c == C_CONT) { if (!rot || rot == meu) { rot = NULL; return 0; } return 2; }

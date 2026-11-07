@@ -51,6 +51,8 @@ typedef struct {
     const char *areas;      /* grid-template-areas (texto cru) */
     const char *area;       /* grid-area: nome */
     uint8_t opaco0;         /* opacity: 0 */
+    const char *bg_url;     /* background-image: url() */
+    uint8_t bg_tam;         /* 0 natural, 1 cobre/estica, 2 contém */
     int16_t z;
 } estilo_t;
 
@@ -76,6 +78,8 @@ typedef struct no_m {
     int max_c, min_c;               /* medidas intrínsecas (cache), -1 = não medido */
     struct frag *frags, *frags_fim;  /* linhas de texto deste bloco */
     int ordem_doc;
+    int colapso;                    /* margem de cima do primeiro filho que vazou para fora */
+    int bg_img;                     /* índice da imagem de fundo, -1 */
 } no_m;
 
 /* ================================================================ CSS */
@@ -124,7 +128,7 @@ typedef struct {
 
 typedef struct { int x, y, l, a; int alvo; } regiao_t;
 
-typedef struct { char *url; uint32_t *px; int l, a; uint8_t tentou; } imagem_m;
+typedef struct { char *url; uint32_t *px; int l, a; uint8_t tentou, alfa; } imagem_m;
 
 struct motor {
     motor_ganchos_t g;
@@ -497,8 +501,8 @@ static void ler_html_m(motor_t *m, const char *h, int n)
             i = q < n ? q + 1 : n;
             continue;
         }
-        if (igual(nome, "svg") || igual(nome, "math")) {   /* pula o conteúdo */
-            int prof = 1, q = i;
+        if (igual(nome, "svg") || igual(nome, "math")) {   /* guarda o conteúdo cru (o SVG é desenhado depois) */
+            int prof = 1, q = i, ini_svg = i;
             if (!auto_fecha)
                 while (q < n && prof) {
                     if (h[q] == '<') {
@@ -507,7 +511,9 @@ static void ler_html_m(motor_t *m, const char *h, int n)
                     }
                     q++;
                 }
+            int fim_svg = q > ini_svg ? q - 1 : ini_svg;
             while (q < n && h[q - 1] != '>') q++;
+            if (igual(nome, "svg") && !auto_fecha && fim_svg > ini_svg) { e->t = m_dup(m, h + ini_svg, fim_svg - ini_svg); e->nt = fim_svg - ini_svg; }
             i = q;
             continue;
         }
@@ -528,7 +534,7 @@ enum {
     PR_FLEX, PR_FDIR, PR_FWRAP, PR_FFLOW, PR_JUSTIFY, PR_AITEMS, PR_ASELF, PR_GROW, PR_SHRINK, PR_BASIS, PR_GAP, PR_RGAP, PR_CGAP, PR_ORDER,
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
-    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK,
+    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -541,7 +547,7 @@ static const char *const nomes_prop[] = {
     "grid-template-columns", "grid-column", "grid-column-start", "grid-column-end", "grid-row", "top", "right", "bottom", "left", "inset", "text-transform", "vertical-align", "z-index",
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
-    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block",
+    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size",
 };
 
 static int achar_prop(const char *p, int n)
@@ -1312,7 +1318,7 @@ static void borda_lado(estilo_t *e, int lado, const char *v)
         uint32_t cc;
         if (x >= 0) w = x;
         else if ((t[i] == 4 && igual_n(p[i], "none", 4)) || (t[i] == 6 && igual_n(p[i], "hidden", 6))) nenhuma = true;
-        else if (ler_cor(p[i], t[i], &cc, e->cor)) c = cc;
+        else if (ler_cor(p[i], t[i], &cc, e->cor)) c = cc ? cc : 1;   /* 1 = transparente */
         else tem_estilo = true;
     }
     if (k == 1 && t[0] == 1 && p[0][0] == '0') w = 0;
@@ -1487,20 +1493,36 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_BTW: case PR_BRW: case PR_BBW: case PR_BLW: { int w = largura_borda(v, nv, e->tam); if (w >= 0) e->borda[prop - PR_BTW] = (int16_t)w; break; }
     case PR_BCOLOR: {
         int k = palavras(v, nv, p, t, 4); uint32_t cc[4];
-        for (int i = 0; i < k; i++) if (!ler_cor(p[i], t[i], &cc[i], e->cor)) return;
+        for (int i = 0; i < k; i++) { if (!ler_cor(p[i], t[i], &cc[i], e->cor)) return; if (!cc[i]) cc[i] = 1; }
         if (!k) break;
         if (k == 1) cc[1] = cc[2] = cc[3] = cc[0]; else if (k == 2) { cc[2] = cc[0]; cc[3] = cc[1]; } else if (k == 3) cc[3] = cc[1];
         for (int i = 0; i < 4; i++) e->cor_borda[i] = cc[i];
         break;
     }
-    case PR_BTC: case PR_BRC: case PR_BBC: case PR_BLC: if (ler_cor(v, nv, &c, e->cor)) e->cor_borda[prop - PR_BTC] = c; break;
+    case PR_BTC: case PR_BRC: case PR_BBC: case PR_BLC: if (ler_cor(v, nv, &c, e->cor)) e->cor_borda[prop - PR_BTC] = c ? c : 1; break;
     case PR_BSTYLE: if (igual(v, "none") || igual(v, "hidden")) for (int i = 0; i < 4; i++) e->borda[i] = 0;
         else for (int i = 0; i < 4; i++) if (!e->borda[i] && !e->cor_borda[i]) { e->borda[i] = 3; e->cor_borda[i] = 0xFF000000u | e->cor; }
         break;
     case PR_RADIUS: if (ler_medida_m(v, palavras(v, nv, p, t, 1) ? t[0] : nv, &md)) e->raio = (int16_t)(md.u == U_PCT ? (md.v >= 5000 ? 999 : md.v / 10) : px_de(&md, e->tam)); break;
     case PR_COLOR: if (ler_cor(v, nv, &c, e->cor)) e->cor = c & 0xFFFFFF; break;
     case PR_BGCOLOR: if (ler_cor(v, nv, &c, e->cor)) e->fundo = (c >> 24) >= 0x40 ? c : 0; break;
+    case PR_BGIMAGE: case PR_BGSIZE:
+        if (prop == PR_BGSIZE) { e->bg_tam = strstr_m(v, "contain") ? 2 : (strstr_m(v, "cover") || strstr_m(v, "100%")) ? 1 : 0; break; }
+        /* fallthrough */
     case PR_BG: {
+        {
+            const char *u = v;
+            for (; *u; u++) if (igual_n(u, "url(", 4)) break;
+            if (*u) {
+                u += 4;
+                while (*u == ' ' || *u == '"' || *u == '\'') u++;
+                const char *f = u;
+                while (*f && *f != ')' && *f != '"' && *f != '\'') f++;
+                if (f > u && !igual_n(u, "data:", 5)) e->bg_url = m_dup(m, u, (int)(f - u));
+            } else if (prop == PR_BGIMAGE && strstr_m(v, "none")) e->bg_url = NULL;
+            if (prop == PR_BG) { if (strstr_m(v, "cover")) e->bg_tam = 1; else if (strstr_m(v, "contain")) e->bg_tam = 2; }
+            if (prop == PR_BGIMAGE) break;
+        }
         if (nv == 4 && igual_n(v, "none", 4)) { e->fundo = 0; break; }
         int k = palavras(v, nv, p, t, 6);
         for (int i = 0; i < k; i++) if (ler_cor(p[i], t[i], &c, e->cor)) { e->fundo = (c >> 24) >= 0x40 ? c : 0; break; }
@@ -1752,10 +1774,20 @@ static void estilizar(motor_t *m, no_m *n)
     if (pn && igual(pn->tag, "details") && !atributo_m(pn, "open") && !igual(n->tag, "summary")) e->display = D_NONE;
 }
 
+static int imagem_idx(motor_t *m, const char *url)
+{
+    for (int i = 0; i < m->n_imgs; i++) if (igual(m->imgs[i].url, url)) return i;
+    if (m->n_imgs >= 96) return -1;
+    m->imgs[m->n_imgs].url = m_dup(m, url, (int)tam_texto(url));
+    return m->n_imgs++;
+}
+
 static void estilizar_tudo(motor_t *m, no_m *n)
 {
     for (; n; n = n->prox) {
         estilizar(m, n);
+        n->bg_img = -1;
+        if (!n->texto && n->e.bg_url) { char u[600]; juntar(m->url, n->e.bg_url, u, sizeof u); n->bg_img = imagem_idx(m, u); }
         if (n->e.display == D_NONE) continue;
         if (n->filho) estilizar_tudo(m, n->filho);
     }
@@ -1849,7 +1881,7 @@ static bool eh_atomico(no_m *n)
     uint8_t d = n->e.display;
     if (d == D_IBLOCK || d == D_IFLEX) return true;
     if (d == D_INLINE && (igual(n->tag, "img") || igual(n->tag, "input") || igual(n->tag, "button") || igual(n->tag, "select") ||
-                          igual(n->tag, "textarea") || igual(n->tag, "video") || igual(n->tag, "iframe") || igual(n->tag, "canvas"))) return true;
+                          igual(n->tag, "textarea") || igual(n->tag, "video") || igual(n->tag, "iframe") || igual(n->tag, "canvas") || igual(n->tag, "svg"))) return true;
     if (d == D_INLINE && (n->e.fundo || n->e.borda[0] || n->e.borda[3] || n->e.pad[3].v > 0) && !igual(n->tag, "a") ? false : false) return true;
     return false;
 }
@@ -1913,6 +1945,13 @@ static bool tamanho_natural(no_m *n, int *l, int *a)
     if (igual(n->tag, "img")) {
         tamanho_img(n, l, a);
         if (!*l && !*a) { const char *alt = atributo_m(n, "alt"); if (alt && alt[0] && n->img < 0) { *l = (int)tam_texto(alt) * larg_letra(e); *a = altura_linha(e); } }
+        return true;
+    }
+    if (igual(n->tag, "svg")) {
+        int u; const char *v;
+        *l = *a = e->tam;
+        if ((v = atributo_m(n, "width"))) { int x = num100(v, (int)tam_texto(v), &u) / 100; if (u && !strstr_m(v, "%")) *l = x; }
+        if ((v = atributo_m(n, "height"))) { int x = num100(v, (int)tam_texto(v), &u) / 100; if (u && !strstr_m(v, "%")) *a = x; }
         return true;
     }
     if (igual(n->tag, "video") || igual(n->tag, "iframe") || igual(n->tag, "canvas") || igual(n->tag, "embed") || igual(n->tag, "object")) {
@@ -2478,15 +2517,24 @@ static int fluxo(no_m *n, int cw, int *usado)
         }
         caixa_modelo(c, cw);
         int mt = c->mt;
+        /* primeiro filho sem nada antes: a margem dele vaza para o pai (se o pai não tiver borda/padding em cima) */
+        bool vaza = primeiro && y == n->bl[0] + n->pl[0] && !n->bl[0] && !n->pl[0] && !novo_contexto(n) && n->pai && n->pai->pai &&
+                    n->e.display == D_BLOCK && mt > 0;
         int col = primeiro && (n->bl[0] + n->pl[0]) == 0 && n->pai && n->e.display != D_FLEX ? 0 : 1;
         (void)col;
         int dy = mt > marg_ant ? mt - marg_ant : 0;
         if (mt < 0) dy = mt;
+        if (vaza) { n->colapso = mt; dy = 0; }
         int bw = cw - c->ml - c->mr;
         int w = -1;
         if (!novo_contexto(c)) { ctx_herdado = ctx; her_dx = x0 + c->ml; her_dy = y + dy; }
         layout_no(c, cw, -1, -1);
         ctx_herdado = NULL;
+        if (c->colapso > 0 && !vaza) {   /* o filho devolveu margem: soma à dele, colapsando */
+            int ef = c->mt > c->colapso ? c->mt : c->colapso;
+            int dy2 = ef > marg_ant ? ef - marg_ant : 0;
+            if (dy2 > dy) dy = dy2;
+        }
         w = c->l;
         (void)bw;
         /* margens automáticas: centraliza */
@@ -3005,6 +3053,7 @@ static void layout_conteudo(no_m *n, int cw, int ch)
 {
     estilo_t *e = &n->e;
     n->frags = n->frags_fim = NULL;
+    n->colapso = 0;
     int usado = 0, h;
     int nl, na;
     if (tamanho_natural(n, &nl, &na)) {
@@ -3141,6 +3190,405 @@ static int alvo_form(no_m *n, int tipo)
     return mo->n_alvos++;
 }
 
+
+/* ================================================================ SVG
+ * Desenha os <svg> embutidos: path (M L H V C S Q T A Z), rect, circle,
+ * ellipse, polygon, polyline e line, com fill (e stroke simples em polyline/
+ * line), grupos com fill herdado e transform translate/scale. Preenchimento
+ * com regra não-zero e cobertura 4x16 por pixel. Ponto fixo: 1/64 px. */
+
+#define SVG_F 64
+typedef struct { int x0, y0, x1, y1; } aresta_t;
+static aresta_t *svg_ar; static int svg_n, svg_cap;
+static int svg_mx[2], svg_tx, svg_ty;   /* escala x256 e translação (1/64 px) */
+
+static void svg_aresta(int x0, int y0, int x1, int y1)
+{
+    if (y0 == y1) return;
+    if (svg_n == svg_cap) {
+        int nc = svg_cap ? svg_cap * 2 : 1024;
+        aresta_t *q = m_novo(mo, nc * (int)sizeof(aresta_t));
+        if (!q) return;
+        if (svg_n) memcpy(q, svg_ar, (size_t)svg_n * sizeof(aresta_t));
+        svg_ar = q; svg_cap = nc;
+    }
+    svg_ar[svg_n].x0 = x0; svg_ar[svg_n].y0 = y0; svg_ar[svg_n].x1 = x1; svg_ar[svg_n].y1 = y1;
+    svg_n++;
+}
+
+/* número SVG em x256 */
+static const char *svg_num(const char *s, int *v)
+{
+    while (*s == ' ' || *s == ',' || *s == '\n' || *s == '\t' || *s == '\r') s++;
+    int neg = 0, i = 0, f = 0, d = 0, esc = 256;
+    if (*s == '-' || *s == '+') { neg = *s == '-'; s++; }
+    while (eh_dig(*s)) { if (i < 1000000) i = i * 10 + (*s - '0'); s++; d++; }
+    if (*s == '.') { s++; while (eh_dig(*s)) { if (esc > 1) { esc /= 10; f += (*s - '0') * esc; } s++; d++; } }
+    if (*s == 'e' || *s == 'E') { s++; int en = 0, eneg = 0; if (*s == '-' || *s == '+') { eneg = *s == '-'; s++; } while (eh_dig(*s)) en = en * 10 + (*s++ - '0'); int x = i * 256 + f * 256 / 256; for (int k = 0; k < en; k++) x = eneg ? x / 10 : x * 10; *v = neg ? -x : x; return s; }
+    *v = d ? (neg ? -(i * 256 + f) : i * 256 + f) : 0;
+    if (f && esc < 256) { int frac = f * 256 / 256; (void)frac; }
+    return d ? s : NULL;
+}
+
+/* x256 do usuário -> 1/64 px do dispositivo */
+static int svg_dx(int x) { return (int)(((int64_t)x * svg_mx[0]) >> 10) + svg_tx; }
+static int svg_dy(int y) { return (int)(((int64_t)y * svg_mx[1]) >> 10) + svg_ty; }
+
+static int px_ant, py_ant, mov_x, mov_y;
+static void svg_linha(int x, int y) { svg_aresta(svg_dx(px_ant), svg_dy(py_ant), svg_dx(x), svg_dy(y)); px_ant = x; py_ant = y; }
+
+static void svg_cubica(int x1, int y1, int x2, int y2, int x3, int y3)
+{
+    int x0 = px_ant, y0 = py_ant;
+    int n = 12;
+    for (int i = 1; i <= n; i++) {
+        int t = i * 256 / n, u = 256 - t;
+        int64_t a = (int64_t)u * u * u, b = 3LL * u * u * t, c = 3LL * u * t * t, d = (int64_t)t * t * t;
+        int x = (int)((a * x0 + b * x1 + c * x2 + d * x3) >> 24);
+        int y = (int)((a * y0 + b * y1 + c * y2 + d * y3) >> 24);
+        svg_linha(x, y);
+    }
+}
+static void svg_quad(int x1, int y1, int x2, int y2)
+{
+    int x0 = px_ant, y0 = py_ant;
+    int n = 10;
+    for (int i = 1; i <= n; i++) {
+        int t = i * 256 / n, u = 256 - t;
+        int x = (int)(((int64_t)u * u * x0 + 2LL * u * t * x1 + (int64_t)t * t * x2) >> 16);
+        int y = (int)(((int64_t)u * u * y0 + 2LL * u * t * y1 + (int64_t)t * t * y2) >> 16);
+        svg_linha(x, y);
+    }
+}
+
+/* arco: aproxima com uma curva que passa pelo meio do arco (sem trigonometria) */
+static void svg_arco(int rx, int ry, int grande, int varre, int x, int y)
+{
+    int x0 = px_ant, y0 = py_ant;
+    int mx = (x0 + x) / 2, my = (y0 + y) / 2;
+    int dx = x - x0, dy = y - y0;
+    /* normal à corda, com tamanho de "flecha" ~ r - sqrt(r^2 - (c/2)^2) */
+    int64_t c2 = ((int64_t)dx * dx + (int64_t)dy * dy) / 4;
+    int r = rx > ry ? rx : ry;
+    int64_t r2 = (int64_t)r * r;
+    int64_t h2 = r2 > c2 ? r2 - c2 : 0;
+    int h = 0; while ((int64_t)(h + 1) * (h + 1) <= h2 && h < 4000000) h += (h2 > (int64_t)(h + 64) * (h + 64)) ? 64 : 1;
+    int flecha = grande ? r + h : r - h;
+    int len = 0; int64_t l2 = 4 * c2; while ((int64_t)(len + 1) * (len + 1) <= l2 && len < 8000000) len += (l2 > (int64_t)(len + 64) * (len + 64)) ? 64 : 1;
+    if (!len) return;
+    int nx = -dy, ny = dx;
+    int sinal = (grande ^ varre) ? 1 : -1;
+    int cx = mx + (int)((int64_t)nx * flecha / len) * sinal, cy = my + (int)((int64_t)ny * flecha / len) * sinal;
+    /* curva quadrática cujo ponto do meio é (cx, cy): controle = 2*meio - (ini+fim)/2 */
+    svg_quad(2 * cx - mx, 2 * cy - my, x, y);
+}
+
+static void svg_path(const char *d)
+{
+    char cmd = 0;
+    int qx = 0, qy = 0;   /* último controle (para S/T) */
+    char ult = 0;
+    const char *p = d;
+    while (p && *p) {
+        while (*p == ' ' || *p == ',' || *p == '\n' || *p == '\t' || *p == '\r') p++;
+        if (!*p) break;
+        if (eh_letra(*p)) { cmd = *p++; }
+        else if (!cmd) break;
+        int rel = cmd >= 'a';
+        char C = (char)(rel ? cmd - 32 : cmd);
+        int bx = rel ? px_ant : 0, by = rel ? py_ant : 0;
+        int v[7];
+        const char *q = p;
+        switch (C) {
+        case 'M':
+            if (!(q = svg_num(q, &v[0])) || !(q = svg_num(q, &v[1]))) return;
+            px_ant = mov_x = bx + v[0]; py_ant = mov_y = by + v[1];
+            cmd = rel ? 'l' : 'L';
+            break;
+        case 'L':
+            if (!(q = svg_num(q, &v[0])) || !(q = svg_num(q, &v[1]))) return;
+            svg_linha(bx + v[0], by + v[1]);
+            break;
+        case 'H': if (!(q = svg_num(q, &v[0]))) return; svg_linha((rel ? px_ant : 0) + v[0], py_ant); break;
+        case 'V': if (!(q = svg_num(q, &v[0]))) return; svg_linha(px_ant, (rel ? py_ant : 0) + v[0]); break;
+        case 'C':
+            for (int i = 0; i < 6; i++) if (!(q = svg_num(q, &v[i]))) return;
+            qx = bx + v[2]; qy = by + v[3];
+            svg_cubica(bx + v[0], by + v[1], bx + v[2], by + v[3], bx + v[4], by + v[5]);
+            break;
+        case 'S': {
+            for (int i = 0; i < 4; i++) if (!(q = svg_num(q, &v[i]))) return;
+            int c1x = (ult == 'C' || ult == 'S') ? 2 * px_ant - qx : px_ant, c1y = (ult == 'C' || ult == 'S') ? 2 * py_ant - qy : py_ant;
+            qx = bx + v[0]; qy = by + v[1];
+            svg_cubica(c1x, c1y, bx + v[0], by + v[1], bx + v[2], by + v[3]);
+            break;
+        }
+        case 'Q':
+            for (int i = 0; i < 4; i++) if (!(q = svg_num(q, &v[i]))) return;
+            qx = bx + v[0]; qy = by + v[1];
+            svg_quad(bx + v[0], by + v[1], bx + v[2], by + v[3]);
+            break;
+        case 'T': {
+            for (int i = 0; i < 2; i++) if (!(q = svg_num(q, &v[i]))) return;
+            int cx = (ult == 'Q' || ult == 'T') ? 2 * px_ant - qx : px_ant, cy = (ult == 'Q' || ult == 'T') ? 2 * py_ant - qy : py_ant;
+            qx = cx; qy = cy;
+            svg_quad(cx, cy, bx + v[0], by + v[1]);
+            break;
+        }
+        case 'A': {
+            for (int i = 0; i < 7; i++) {
+                if (i == 3 || i == 4) {   /* bandeiras podem vir coladas: "0 01 5 5" ou "011" */
+                    while (*q == ' ' || *q == ',') q++;
+                    if (*q != '0' && *q != '1') return;
+                    v[i] = *q++ - '0';
+                    continue;
+                }
+                if (!(q = svg_num(q, &v[i]))) return;
+            }
+            svg_arco(v[0] < 0 ? -v[0] : v[0], v[1] < 0 ? -v[1] : v[1], v[3], v[4], bx + v[5], by + v[6]);
+            break;
+        }
+        case 'Z': svg_linha(mov_x, mov_y); cmd = 0; q = p; break;
+        default: return;
+        }
+        ult = C;
+        if (q == p && C != 'Z') return;
+        p = q;
+    }
+}
+
+static void svg_fechar_sub(void) { if (px_ant != mov_x || py_ant != mov_y) svg_linha(mov_x, mov_y); }
+
+/* rasteriza as arestas em px (l x a) com a cor (regra não-zero) */
+static void svg_preencher(uint32_t *px, int l, int a, uint32_t cor)
+{
+    if (!svg_n) return;
+    int *cob = m_novo(mo, (l + 2) * (int)sizeof(int));
+    int *xs = m_novo(mo, svg_n * 2 * (int)sizeof(int));
+    if (!cob || !xs) return;
+    for (int y = 0; y < a; y++) {
+        memset(cob, 0, (size_t)(l + 2) * sizeof(int));
+        bool algo = false;
+        for (int sub = 0; sub < 4; sub++) {
+            int sy = y * SVG_F + sub * (SVG_F / 4) + SVG_F / 8;
+            int k = 0;
+            for (int i = 0; i < svg_n; i++) {
+                aresta_t *e = &svg_ar[i];
+                int ya = e->y0, yb = e->y1, dir = 1;
+                if (ya > yb) { int t = ya; ya = yb; yb = t; dir = -1; }
+                if (sy < ya || sy >= yb) continue;
+                int x = e->x0 + (int)((int64_t)(sy - e->y0) * (e->x1 - e->x0) / (e->y1 - e->y0));
+                xs[k++] = x * 2 + (dir > 0 ? 1 : 0);   /* bit 0 = direção */
+            }
+            if (k < 2) continue;
+            for (int i = 1; i < k; i++) { int v = xs[i], j = i - 1; while (j >= 0 && (xs[j] >> 1) > (v >> 1)) { xs[j + 1] = xs[j]; j--; } xs[j + 1] = v; }
+            int w = 0;
+            for (int i = 0; i + 1 < k; i++) {
+                w += (xs[i] & 1) ? 1 : -1;
+                if (!w) continue;
+                int xa = (xs[i] >> 1), xb = (xs[i + 1] >> 1);
+                if (xa < 0) xa = 0;
+                if (xb > l * SVG_F) xb = l * SVG_F;
+                if (xb <= xa) continue;
+                algo = true;
+                int pa = xa / SVG_F, pb = xb / SVG_F;
+                if (pa == pb) { cob[pa] += xb - xa; continue; }
+                cob[pa] += SVG_F - xa % SVG_F;
+                for (int q = pa + 1; q < pb; q++) cob[q] += SVG_F;
+                if (pb < l) cob[pb] += xb % SVG_F;
+            }
+        }
+        if (!algo) continue;
+        uint32_t *lin = px + y * l;
+        uint32_t ca = cor >> 24;
+        for (int x = 0; x < l; x++) {
+            if (!cob[x]) continue;
+            int al = cob[x] * 255 / (4 * SVG_F);
+            if (al > 255) al = 255;
+            al = (int)(al * ca / 255);
+            uint32_t ant = lin[x], aa = ant >> 24;
+            /* "sobre" com alfa (fundo transparente começa com 0) */
+            uint32_t na = (uint32_t)al + aa * (255 - (uint32_t)al) / 255;
+            if (!na) continue;
+            uint32_t r = (((cor >> 16) & 255) * (uint32_t)al + ((ant >> 16) & 255) * aa * (255 - (uint32_t)al) / 255) / na;
+            uint32_t g = (((cor >> 8) & 255) * (uint32_t)al + ((ant >> 8) & 255) * aa * (255 - (uint32_t)al) / 255) / na;
+            uint32_t b = ((cor & 255) * (uint32_t)al + (ant & 255) * aa * (255 - (uint32_t)al) / 255) / na;
+            lin[x] = (na << 24) | (r << 16) | (g << 8) | b;
+        }
+    }
+}
+
+static bool svg_attr(const char *tag, int n, const char *nome, char *v, int max)
+{
+    int ln = (int)tam_texto(nome);
+    for (int i = 0; i + ln < n; i++) {
+        if ((i == 0 || tag[i - 1] == ' ' || tag[i - 1] == '\n' || tag[i - 1] == '\t') && igual_n(tag + i, nome, ln) && tag[i + ln] == '=') {
+            int k = i + ln + 1;
+            char q = tag[k];
+            if (q != '"' && q != '\'') return false;
+            k++;
+            int j = 0;
+            while (k < n && tag[k] != q && j < max - 1) v[j++] = tag[k++];
+            v[j] = 0;
+            return true;
+        }
+    }
+    /* style="fill:..." */
+    if (igual(nome, "fill") || igual(nome, "stroke")) {
+        char st[256];
+        if (svg_attr(tag, n, "style", st, sizeof st)) {
+            const char *f = st;
+            for (; *f; f++) if (igual_n(f, nome, ln) && f[ln] == ':') {
+                f += ln + 1;
+                while (*f == ' ') f++;
+                int j = 0;
+                while (*f && *f != ';' && j < max - 1) v[j++] = *f++;
+                v[j] = 0;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static int svg_val(const char *tag, int n, const char *nome, int padrao)
+{
+    char v[32];
+    if (!svg_attr(tag, n, nome, v, sizeof v)) return padrao;
+    int x;
+    return svg_num(v, &x) ? x : padrao;
+}
+
+/* Desenha o SVG do nó num quadro l x a (pixels com alfa). */
+static uint32_t *svg_desenhar(no_m *n, int l, int a)
+{
+    if (l <= 0 || a <= 0 || l > 2000 || a > 2000) return NULL;
+    uint32_t *px = aloca((size_t)l * (size_t)a * 4);
+    if (!px) return NULL;
+    memset(px, 0, (size_t)l * (size_t)a * 4);
+    /* viewBox */
+    int vb[4] = { 0, 0, 0, 0 };
+    const char *vbs = atributo_m(n, "viewbox");
+    if (!vbs) vbs = atributo_m(n, "viewBox");
+    if (vbs) { const char *q = vbs; for (int i = 0; i < 4 && q; i++) q = svg_num(q, &vb[i]); }
+    if (vb[2] <= 0 || vb[3] <= 0) { vb[0] = vb[1] = 0; vb[2] = l * 256; vb[3] = a * 256; }
+    /* escala uniforme (xMidYMid meet): x256 -> 1/64 px, guardada x1024 */
+    int64_t sx = (int64_t)l * SVG_F * 1024 * 256 / vb[2], sy = (int64_t)a * SVG_F * 1024 * 256 / vb[3];
+    int64_t es = sx < sy ? sx : sy;
+    int base_tx = (int)((l * SVG_F - (es * vb[2] >> 18)) / 2) - (int)((es * vb[0]) >> 18);
+    int base_ty = (int)((a * SVG_F - (es * vb[3] >> 18)) / 2) - (int)((es * vb[1]) >> 18);
+    const char *s = n->t; int ns = n->nt;
+    uint32_t cor_atual = 0xFF000000u | n->e.cor;
+    /* pilha de grupos: fill e translação */
+    uint32_t fill_g[16]; int tx_g[16], ty_g[16], sc_g[16], ng = 0, pula = 0;
+    fill_g[0] = cor_atual; tx_g[0] = 0; ty_g[0] = 0; sc_g[0] = 1024;
+    { char v[48]; const char *sf = NULL;
+      for (atr_t *at = n->atr; at; at = at->prox) if (igual(at->nome, "fill")) sf = at->valor;
+      if (sf) { uint32_t c; if (igual(sf, "none")) fill_g[0] = 0; else if (ler_cor(sf, (int)tam_texto(sf), &c, n->e.cor)) fill_g[0] = c; }
+      (void)v; }
+    for (int i = 0; i < ns;) {
+        if (s[i] != '<') { i++; continue; }
+        int k = i + 1;
+        bool fecha = s[k] == '/';
+        if (fecha) k++;
+        int t0 = k;
+        while (k < ns && (eh_letra(s[k]) || eh_dig(s[k]) || s[k] == '-' || s[k] == ':')) k++;
+        int tn = k - t0;
+        const char *tag = s + t0;
+        int fim = k;
+        while (fim < ns && s[fim] != '>') { if (s[fim] == '"' || s[fim] == '\'') { char q = s[fim++]; while (fim < ns && s[fim] != q) fim++; } fim++; }
+        bool auto_f = fim > 0 && s[fim - 1] == '/';
+        const char *at = s + k; int na = fim - k;
+        i = fim + 1;
+        if (tn == 0 || s[t0] == '!' ) continue;
+        bool eh_g = tn == 1 && tag[0] == 'g';
+        bool esconde = (tn == 4 && igual_n(tag, "defs", 4)) || (tn == 8 && igual_n(tag, "clipPath", 8)) || (tn == 4 && igual_n(tag, "mask", 4)) ||
+                       (tn == 6 && igual_n(tag, "symbol", 6)) || (tn == 5 && igual_n(tag, "title", 5)) || (tn == 5 && igual_n(tag, "style", 5)) ||
+                       (tn == 14 && igual_n(tag, "linearGradient", 14)) || (tn == 14 && igual_n(tag, "radialGradient", 14)) || (tn == 7 && igual_n(tag, "pattern", 7)) || (tn == 6 && igual_n(tag, "filter", 6));
+        if (fecha) {
+            if (esconde && pula) pula--;
+            else if (eh_g && ng) ng--;
+            continue;
+        }
+        if (esconde) { if (!auto_f) pula++; continue; }
+        if (pula) continue;
+        uint32_t fill = fill_g[ng];
+        char v[1024];
+        if (svg_attr(at, na, "fill", v, sizeof v)) {
+            uint32_t c;
+            if (igual(v, "none")) fill = 0;
+            else if (comeca_com(v, "url(")) fill = cor_atual;
+            else if (ler_cor(v, (int)tam_texto(v), &c, n->e.cor)) fill = c;
+        }
+        int op = svg_val(at, na, "opacity", 256);
+        int fop = svg_val(at, na, "fill-opacity", 256);
+        if (op < 256 || fop < 256) { uint32_t al = (fill >> 24) * (uint32_t)(op < 256 ? op : 256) / 256 * (uint32_t)(fop < 256 ? fop : 256) / 256; fill = (al << 24) | (fill & 0xFFFFFF); }
+        int gtx = tx_g[ng], gty = ty_g[ng], gsc = sc_g[ng];
+        if (svg_attr(at, na, "transform", v, sizeof v)) {
+            const char *tt = v;
+            for (; *tt; tt++) {
+                if (igual_n(tt, "translate(", 10)) { int a2 = 0, b2 = 0; const char *q = svg_num(tt + 10, &a2); if (q) svg_num(q, &b2); gtx += a2; gty += b2; }
+                if (igual_n(tt, "scale(", 6)) { int a2 = 256; svg_num(tt + 6, &a2); gsc = gsc * a2 / 256; }
+                if (igual_n(tt, "matrix(", 7)) { int m6[6] = { 256, 0, 0, 256, 0, 0 }; const char *q = tt + 7; for (int z = 0; z < 6 && q; z++) q = svg_num(q, &m6[z]); gsc = gsc * m6[0] / 256; gtx += m6[4]; gty += m6[5]; }
+            }
+        }
+        if (eh_g) {
+            if (!auto_f && ng < 15) { ng++; fill_g[ng] = fill; tx_g[ng] = gtx; ty_g[ng] = gty; sc_g[ng] = gsc; }
+            continue;
+        }
+        if (!(fill >> 24)) {
+            /* sem preenchimento: linhas com stroke viram contorno fino */
+            if (!svg_attr(at, na, "stroke", v, sizeof v) || igual(v, "none")) continue;
+            uint32_t c;
+            if (!ler_cor(v, (int)tam_texto(v), &c, n->e.cor)) c = cor_atual;
+            fill = c;
+            if (!((tn == 4 && igual_n(tag, "line", 4)) || (tn == 8 && igual_n(tag, "polyline", 8)) || (tn == 4 && igual_n(tag, "path", 4)) ||
+                  (tn == 6 && igual_n(tag, "circle", 6)) || (tn == 4 && igual_n(tag, "rect", 4)))) continue;
+            /* contorno: desenha o caminho como linhas de 1,5 px (aproximado como preenchimento de faixa) */
+        }
+        svg_mx[0] = svg_mx[1] = (int)(es * gsc / 1024 / 256);
+        svg_tx = base_tx + (int)((es * gtx) >> 18); svg_ty = base_ty + (int)((es * gty) >> 18);
+        svg_n = 0;
+        px_ant = py_ant = mov_x = mov_y = 0;
+        if (tn == 4 && igual_n(tag, "path", 4)) {
+            if (svg_attr(at, na, "d", v, sizeof v)) {
+                /* subcaminhos: fecha cada um */
+                svg_path(v);
+                svg_fechar_sub();
+            }
+        } else if (tn == 4 && igual_n(tag, "rect", 4)) {
+            int x = svg_val(at, na, "x", 0), y = svg_val(at, na, "y", 0), w = svg_val(at, na, "width", 0), h = svg_val(at, na, "height", 0);
+            px_ant = mov_x = x; py_ant = mov_y = y;
+            svg_linha(x + w, y); svg_linha(x + w, y + h); svg_linha(x, y + h); svg_linha(x, y);
+        } else if ((tn == 6 && igual_n(tag, "circle", 6)) || (tn == 7 && igual_n(tag, "ellipse", 7))) {
+            int cx = svg_val(at, na, "cx", 0), cy = svg_val(at, na, "cy", 0);
+            int rx = tn == 6 ? svg_val(at, na, "r", 0) : svg_val(at, na, "rx", 0), ry = tn == 6 ? rx : svg_val(at, na, "ry", 0);
+            /* 4 cúbicas (k = 0,5523) */
+            int kx = rx * 141 / 256, ky = ry * 141 / 256;
+            px_ant = mov_x = cx + rx; py_ant = mov_y = cy;
+            svg_cubica(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry);
+            svg_cubica(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy);
+            svg_cubica(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry);
+            svg_cubica(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy);
+        } else if ((tn == 7 && igual_n(tag, "polygon", 7)) || (tn == 8 && igual_n(tag, "polyline", 8))) {
+            if (svg_attr(at, na, "points", v, sizeof v)) {
+                const char *q = v; int x, y, pri = 1;
+                while (q && (q = svg_num(q, &x)) && (q = svg_num(q, &y))) {
+                    if (pri) { px_ant = mov_x = x; py_ant = mov_y = y; pri = 0; } else svg_linha(x, y);
+                }
+                svg_fechar_sub();
+            }
+        } else if (tn == 4 && igual_n(tag, "line", 4)) {
+            int x1 = svg_val(at, na, "x1", 0), y1 = svg_val(at, na, "y1", 0), x2 = svg_val(at, na, "x2", 0), y2 = svg_val(at, na, "y2", 0);
+            int w = svg_val(at, na, "stroke-width", 256) / 2 + 64;
+            px_ant = mov_x = x1 - w; py_ant = mov_y = y1 - w;
+            svg_linha(x2 + w, y2 - w); svg_linha(x2 + w, y2 + w); svg_linha(x1 - w, y1 + w); svg_linha(x1 - w, y1 - w);
+        } else continue;
+        svg_preencher(px, l, a, fill);
+    }
+    return px;
+}
+
 typedef struct { no_m *n; int sx, sy; int clip[4]; int cb[4]; } adiado_t;
 static adiado_t adiados[512]; static int n_adiados;
 
@@ -3199,6 +3647,24 @@ static void desenhar_caixa(no_m *n, int x, int y)
         c.tipo = C_RET; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.cor = e->fundo; c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
         cmd_novo(&c);
     }
+    if (n->bg_img >= 0 && mo->imgs[n->bg_img].px && n->l > 0 && n->a > 0) {
+        imagem_m *im = &mo->imgs[n->bg_img];
+        cmd_t c; memset(&c, 0, sizeof c);
+        c.tipo = C_IMG; c.img = n->bg_img;
+        int l = im->l, a = im->a;
+        if (e->bg_tam == 1) { l = n->l; a = n->a; }
+        else if (e->bg_tam == 2 || l > n->l || a > n->a) {
+            if (l * n->a > a * n->l) { a = a * n->l / (l ? l : 1); l = n->l; } else { l = l * n->a / (a ? a : 1); a = n->a; }
+        }
+        c.x = x + (n->l - l) / 2; c.y = y + (n->a - a) / 2; c.l = l; c.a = a; c.raio = e->raio;
+        int salvo[4]; memcpy(salvo, mo->clip, sizeof salvo);
+        if (x > mo->clip[0]) mo->clip[0] = x;
+        if (y > mo->clip[1]) mo->clip[1] = y;
+        if (x + n->l < mo->clip[2]) mo->clip[2] = x + n->l;
+        if (y + n->a < mo->clip[3]) mo->clip[3] = y + n->a;
+        cmd_novo(&c);
+        memcpy(mo->clip, salvo, sizeof salvo);
+    }
     if (n->bl[0] || n->bl[1] || n->bl[2] || n->bl[3]) {
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_BORDA; c.x = x; c.y = y; c.l = n->l; c.a = n->a;
@@ -3222,6 +3688,21 @@ static void controle(no_m *n, int x, int y)
             const char *alt = atributo_m(n, "alt");
             if (alt && alt[0] && cl > 8) texto_cmd(cx, cy, cl, ca, alt, (int)tam_texto(alt) < cl / larg_letra(e) ? (int)tam_texto(alt) : cl / larg_letra(e), e, 0x6A737C);
         }
+        regiao(x, y, n->l, n->a, n->alvo);
+        return;
+    }
+    if (igual(n->tag, "svg")) {
+        if (!n->t || cl <= 0 || ca <= 0) return;
+        if (n->img < 0 || mo->imgs[n->img].l != cl || mo->imgs[n->img].a != ca) {
+            if (n->img < 0) { if (mo->n_imgs >= 96) return; n->img = mo->n_imgs++; mo->imgs[n->img].url = (char *)"svg"; mo->imgs[n->img].tentou = 1; mo->imgs[n->img].alfa = 1; }
+            imagem_m *im = &mo->imgs[n->img];
+            if (im->px) libera(im->px);
+            im->px = svg_desenhar(n, cl, ca);
+            im->l = cl; im->a = ca;
+        }
+        cmd_t c; memset(&c, 0, sizeof c);
+        c.tipo = C_IMG; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.img = n->img;
+        cmd_novo(&c);
         regiao(x, y, n->l, n->a, n->alvo);
         return;
     }
@@ -3460,6 +3941,7 @@ static void limpar_layout(no_m *n)
 {
     for (no_m *q = n; q; q = proximo_no(q)) {
         q->max_c = q->min_c = -1;
+        q->colapso = 0;
         q->alvo = -1;
         q->x = q->y = q->l = q->a = 0;
         q->frags = q->frags_fim = NULL;
@@ -3648,8 +4130,9 @@ void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
                 uint32_t *d = px + (yy - y) * passo;
                 for (int xx = xa; xx < xb; xx++) {
                     uint32_t p = src[(xx - c->x) * im->l / c->l];
+                    if (!im->alfa) { d[xx] = p & 0xFFFFFF; continue; }   /* JPEG/PNG já vêm compostos sobre branco */
                     uint32_t al = p >> 24;
-                    d[xx] = al == 0 && (p & 0xFFFFFF) ? p & 0xFFFFFF : al >= 250 || al == 0 ? p & 0xFFFFFF : misturar(d[xx], p);
+                    if (al) d[xx] = al >= 250 ? p & 0xFFFFFF : misturar(d[xx], p);
                 }
             }
             break;
@@ -3692,4 +4175,14 @@ static void dump(no_m *n, int prof, int ox, int oy, int max_prof)
     }
 }
 void motor_dump(motor_t *m, int max_prof) { dump(m->raiz, 0, 0, 0, max_prof); }
+#endif
+#ifdef MOTOR_HOST
+void motor_dump_cmds(motor_t *m, int y0, int y1)
+{
+    for (int i = 0; i < m->n_cmds; i++) {
+        cmd_t *c = &m->cmds[i];
+        if (c->y + c->a < y0 || c->y > y1) continue;
+        fprintf(stderr, "cmd %d t%d [%d,%d %dx%d] cor %08x clip[%d,%d,%d,%d] %.*s\n", i, c->tipo, c->x, c->y, c->l, c->a, c->cor, c->cx0, c->cy0, c->cx1, c->cy1, c->tipo == C_TEXTO ? (c->nt > 30 ? 30 : c->nt) : 0, c->t ? c->t : "");
+    }
+}
 #endif
