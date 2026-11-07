@@ -65,6 +65,7 @@ def main():
     open(os.path.join(pasta, "sem.html"), "w").write(HTML.replace('href="s.css"', 'href="vazia.css"'))
     open(os.path.join(pasta, "vazia.css"), "w").write("")
     open(os.path.join(pasta, "caixas.html"), "w").write(CAIXAS)
+    open(os.path.join(pasta, "app.html"), "w").write("<html><head><title>App</title></head><body><div>Carregando</div><script>var a='" + "x" * 80000 + "';</script></body></html>")
     open(os.path.join(pasta, "oculta.html"), "w").write(ESCONDIDA)
     open(os.path.join(pasta, "s.css"), "w").write(CSS)
     open(os.path.join(pasta, "t.css"), "w").write(".app { display: none }")
@@ -124,6 +125,10 @@ def main():
         verificar(any(c == (20, 60, 200) for c in linha), "coluna azul ao lado, na mesma altura")
         fundo = cor_do_pixel(png, jx + 8, jy + 300)[:3]
         verificar(fundo == (240, 230, 200), f"fundo do body pintado ({fundo})")
+    with Maquina("h42-a", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/app.html", ["--vesa"]), extras=extras) as m:
+        m.esperar_serial('cipo: pronto "App"', 120)
+        verificar("pagina so com JavaScript" in m.serial(), "casca de aplicativo mostra a explicação, não tela branca")
+
     with Maquina("h42-o", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/oculta.html", ["--vesa"]), extras=extras) as m:
         m.esperar_serial('cipo: pronto "Oculta"', 120)
         s = m.serial()

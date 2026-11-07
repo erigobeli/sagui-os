@@ -2125,9 +2125,14 @@ static void carregar(const char *pedido)
                 }
                 if (novo != corpo) libera(novo);
                 if (titulo_js[0]) copia_texto(titulo, titulo_js, sizeof titulo);
-                if (!linhas) {
+                /* Casca de aplicativo: muito HTML e script, quase nenhum texto para ler. */
+                int letras = 0;
+                for (int i = 0; i < qtd_segs; i++) if (!(segs[i].estilo & (E_IMAGEM | E_LINHA))) letras += segs[i].n;
+                if (!linhas || (tam > 50000 && letras < 200 && !qtd_imagens)) {
                     char t[96];
                     copia_texto(t, titulo, sizeof t);
+                    registrar("cipo: pagina so com JavaScript (%d bytes, %d letras)\n", tam, letras);
+                    limpar_pagina();
                     pagina_de_erro("Esta página só existe com JavaScript completo",
                                    "O site monta tudo por JavaScript, e o Cipó só roda um pedaço pequeno da linguagem. Vídeos também não tocam aqui.");
                     copia_texto(titulo, t, sizeof titulo);
