@@ -1,7 +1,7 @@
 #!/bin/sh
 # Codifica áudio de teste com o AAC do ffmpeg em várias opções e compara com aac.c.
 cd "$(dirname "$0")"
-gcc -O2 -DH264_HOST -w -o /tmp/v/ta teste_aac.c ../../userland/libsagui/aac.c ../../userland/libsagui/mp4.c -lm || exit 1
+gcc -O2 -DH264_HOST -I../../userland/inc -w -o /tmp/v/ta teste_aac.c ../../userland/libsagui/aac.c ../../userland/libsagui/mp4.c -lm || exit 1
 for o in "-aac_pns 0 -aac_is 0 -aac_tns 0 -aac_ms 0" "-aac_pns 0 -aac_is 0 -aac_tns 0" "-aac_pns 0 -aac_is 0" "-aac_pns 0" ""; do
   for r in 44100 22050 48000 32000; do
     for ch in 2 1; do

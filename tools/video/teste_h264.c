@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "../../userland/libsagui/h264.h"
-#include "../../userland/libsagui/mp4.h"
+#include "../../userland/inc/h264.h"
+#include "../../userland/inc/mp4.h"
 
 int main(int argc, char **argv)
 {

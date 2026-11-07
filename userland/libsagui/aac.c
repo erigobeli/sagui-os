@@ -231,17 +231,17 @@ typedef struct {
     uint32_t pos, fim;
 } bits_t;
 
-static inline uint32_t espiar(const bits_t *b, int n)
+static inline uint32_t esp(const bits_t *b, int n)
 {
     uint32_t i = b->pos >> 3, s = b->pos & 7;
     uint32_t v = ((uint32_t)b->d[i] << 24) | ((uint32_t)b->d[i + 1] << 16) | ((uint32_t)b->d[i + 2] << 8) | b->d[i + 3];
     if (s) v = (v << s) | (b->d[i + 4] >> (8 - s));
     return v >> (32 - n);
 }
-static inline uint32_t ler(bits_t *b, int n)
+static inline uint32_t lb(bits_t *b, int n)
 {
     if (!n) return 0;
-    uint32_t v = espiar(b, n);
+    uint32_t v = esp(b, n);
     b->pos += n;
     return v;
 }
@@ -249,9 +249,9 @@ static inline uint32_t ler(bits_t *b, int n)
 static int huff(bits_t *b, int c)
 {
     const huff_t *h = &hf[c];
-    uint32_t e = h->dir[espiar(b, HB)];
+    uint32_t e = h->dir[esp(b, HB)];
     if (e) { b->pos += e >> 16; return (int)(e & 0xFFFF); }
-    uint32_t v = espiar(b, 24);
+    uint32_t v = esp(b, 24);
     for (int i = 0; i < h->qtd; i++) {
         int l = (int)(h->cod[i] >> 24);
         if (l > HB && (v >> (24 - l)) == (h->cod[i] & 0xFFFFFF)) { b->pos += l; return i; }
@@ -302,12 +302,12 @@ struct aac {
 
 static int ler_ics_info(aac_t *a, bits_t *b, ics_info_t *i)
 {
-    ler(b, 1);
-    i->seq = (int)ler(b, 2);
-    i->forma = (int)ler(b, 1);
+    lb(b, 1);
+    i->seq = (int)lb(b, 2);
+    i->forma = (int)lb(b, 1);
     if (i->seq == CURTAS) {
-        i->max_sfb = (int)ler(b, 4);
-        int g = (int)ler(b, 7);
+        i->max_sfb = (int)lb(b, 4);
+        int g = (int)lb(b, 7);
         i->n_jan = 8;
         i->n_grupos = 1;
         i->grupo_tam[0] = 1;
@@ -317,11 +317,11 @@ static int ler_ics_info(aac_t *a, bits_t *b, ics_info_t *i)
         }
         if (i->max_sfb > a->nswb_c) return -1;
     } else {
-        i->max_sfb = (int)ler(b, 6);
+        i->max_sfb = (int)lb(b, 6);
         i->n_jan = 1;
         i->n_grupos = 1;
         i->grupo_tam[0] = 1;
-        if (ler(b, 1)) return -1;    /* predição: não é LC */
+        if (lb(b, 1)) return -1;    /* predição: não é LC */
         if (i->max_sfb > a->nswb_l) return -1;
     }
     return 0;
@@ -330,7 +330,7 @@ static int ler_ics_info(aac_t *a, bits_t *b, ics_info_t *i)
 static int ler_ics(aac_t *a, bits_t *b, canal_t *c, bool janela_comum)
 {
     ics_info_t *in = &c->info;
-    c->global = (int)ler(b, 8);
+    c->global = (int)lb(b, 8);
     if (!janela_comum && ler_ics_info(a, b, in) < 0) return -1;
     bool curta = in->seq == CURTAS;
     const uint16_t *swb = curta ? a->swb_c : a->swb_l;
@@ -339,9 +339,9 @@ static int ler_ics(aac_t *a, bits_t *b, canal_t *c, bool janela_comum)
     for (int g = 0; g < in->n_grupos; g++) {
         int k = 0;
         while (k < in->max_sfb) {
-            int cb = (int)ler(b, 4), len = 0, inc;
+            int cb = (int)lb(b, 4), len = 0, inc;
             if (cb == 12) return -1;
-            do { inc = (int)ler(b, bits_len); len += inc; } while (inc == esc && b->pos < b->fim);
+            do { inc = (int)lb(b, bits_len); len += inc; } while (inc == esc && b->pos < b->fim);
             if (k + len > in->max_sfb) return -1;
             for (int i = 0; i < len; i++) c->cb[g][k++] = (uint8_t)cb;
         }
@@ -356,7 +356,7 @@ static int ler_ics(aac_t *a, bits_t *b, canal_t *c, bool janela_comum)
             if (cb == 0) c->sf[g][k] = 0;
             else if (cb == 14 || cb == 15) { is += huff(b, 0) - 60; c->sf[g][k] = is; }
             else if (cb == 13) {
-                if (primeiro_ruido) { nrg += (int)ler(b, 9) - 256; primeiro_ruido = false; }
+                if (primeiro_ruido) { nrg += (int)lb(b, 9) - 256; primeiro_ruido = false; }
                 else nrg += huff(b, 0) - 60;
                 c->sf[g][k] = nrg;
             } else {
@@ -367,32 +367,32 @@ static int ler_ics(aac_t *a, bits_t *b, canal_t *c, bool janela_comum)
         }
     /* pulsos */
     int n_pulsos = 0, pulso_ini = 0, pulso_off[4], pulso_amp[4];
-    if (ler(b, 1)) {
+    if (lb(b, 1)) {
         if (curta) return -1;
-        n_pulsos = (int)ler(b, 2) + 1;
-        pulso_ini = (int)ler(b, 6);
-        for (int i = 0; i < n_pulsos; i++) { pulso_off[i] = (int)ler(b, 5); pulso_amp[i] = (int)ler(b, 4); }
+        n_pulsos = (int)lb(b, 2) + 1;
+        pulso_ini = (int)lb(b, 6);
+        for (int i = 0; i < n_pulsos; i++) { pulso_off[i] = (int)lb(b, 5); pulso_amp[i] = (int)lb(b, 4); }
     }
     /* TNS */
-    c->tns_presente = (int)ler(b, 1);
+    c->tns_presente = (int)lb(b, 1);
     if (c->tns_presente) {
         for (int w = 0; w < in->n_jan; w++) {
-            c->tns_n[w] = (int)ler(b, curta ? 1 : 2);
+            c->tns_n[w] = (int)lb(b, curta ? 1 : 2);
             if (!c->tns_n[w]) continue;
-            int res = (int)ler(b, 1);
+            int res = (int)lb(b, 1);
             c->tns_res[w] = res;
             for (int f = 0; f < c->tns_n[w]; f++) {
-                c->tns_tam[w][f] = (int)ler(b, curta ? 4 : 6);
-                int ordem = (int)ler(b, curta ? 3 : 5);
+                c->tns_tam[w][f] = (int)lb(b, curta ? 4 : 6);
+                int ordem = (int)lb(b, curta ? 3 : 5);
                 if (ordem > (curta ? 7 : 12)) return -1;
                 c->tns_ordem[w][f] = ordem;
                 if (!ordem) continue;
-                c->tns_dir[w][f] = (int)ler(b, 1);
-                int comp = (int)ler(b, 1), nb = res + 3 - comp;
+                c->tns_dir[w][f] = (int)lb(b, 1);
+                int comp = (int)lb(b, 1), nb = res + 3 - comp;
                 double iq = ((1 << (res + 2)) - 0.5) / (PI / 2), iqm = ((1 << (res + 2)) + 0.5) / (PI / 2);
                 float tmp[20];
                 for (int i = 0; i < ordem; i++) {
-                    int v = (int)ler(b, nb);
+                    int v = (int)lb(b, nb);
                     if (v & (1 << (nb - 1))) v -= 1 << nb;
                     tmp[i] = (float)m_sin(v / (v >= 0 ? iq : iqm));
                 }
@@ -408,7 +408,7 @@ static int ler_ics(aac_t *a, bits_t *b, canal_t *c, bool janela_comum)
             }
         }
     }
-    if (ler(b, 1)) return -1;    /* controle de ganho: não é LC */
+    if (lb(b, 1)) return -1;    /* controle de ganho: não é LC */
     /* espectro */
     memset(c->q, 0, sizeof c->q);
     int jan = 0;
@@ -429,13 +429,13 @@ static int ler_ics(aac_t *a, bits_t *b, canal_t *c, bool janela_comum)
                         int off = mod / 2;
                         for (int i = 0; i < dim; i++) v[i] -= off;
                     } else {
-                        for (int i = 0; i < dim; i++) if (v[i] && ler(b, 1)) v[i] = -v[i];
+                        for (int i = 0; i < dim; i++) if (v[i] && lb(b, 1)) v[i] = -v[i];
                         if (cb == 11)
                             for (int i = 0; i < 2; i++) {
                                 if (v[i] != 16 && v[i] != -16) continue;
                                 int n = 0;
-                                while (ler(b, 1)) { n++; if (n > 8) return -1; }
-                                int m = (1 << (n + 4)) + (int)ler(b, n + 4);
+                                while (lb(b, 1)) { n++; if (n > 8) return -1; }
+                                int m = (1 << (n + 4)) + (int)lb(b, n + 4);
                                 v[i] = v[i] < 0 ? -m : m;
                             }
                     }
@@ -635,10 +635,10 @@ int aac_quadro(aac_t *a, const uint8_t *d, int n, int16_t *saida)
     int canais = 0;
     for (;;) {
         if (b.pos + 3 > b.fim) break;
-        int id = (int)ler(&b, 3);
+        int id = (int)lb(&b, 3);
         if (id == 7) break;
         if (id == 0 || id == 3) {           /* SCE, LFE */
-            ler(&b, 4);
+            lb(&b, 4);
             if (canais >= 2) return AAC_ERRO;
             canal_t *c = &a->ch[canais];
             if (ler_ics(a, &b, c, false) < 0) return AAC_ERRO;
@@ -647,17 +647,17 @@ int aac_quadro(aac_t *a, const uint8_t *d, int n, int16_t *saida)
             banco_filtros(a, canais, canais ? pcm_r : pcm_l);
             canais++;
         } else if (id == 1) {               /* CPE */
-            ler(&b, 4);
+            lb(&b, 4);
             if (canais) return AAC_ERRO;
-            int comum = (int)ler(&b, 1), ms_p = 0;
+            int comum = (int)lb(&b, 1), ms_p = 0;
             static uint8_t ms[8][64];
             if (comum) {
                 if (ler_ics_info(a, &b, &a->ch[0].info) < 0) return AAC_ERRO;
                 a->ch[1].info = a->ch[0].info;
-                ms_p = (int)ler(&b, 2);
+                ms_p = (int)lb(&b, 2);
                 if (ms_p == 1)
                     for (int g = 0; g < a->ch[0].info.n_grupos; g++)
-                        for (int k = 0; k < a->ch[0].info.max_sfb; k++) ms[g][k] = (uint8_t)ler(&b, 1);
+                        for (int k = 0; k < a->ch[0].info.max_sfb; k++) ms[g][k] = (uint8_t)lb(&b, 1);
                 if (ms_p == 3) return AAC_ERRO;
             }
             for (int i = 0; i < 2; i++)
@@ -671,14 +671,14 @@ int aac_quadro(aac_t *a, const uint8_t *d, int n, int16_t *saida)
             banco_filtros(a, 1, pcm_r);
             canais = 2;
         } else if (id == 4) {               /* DSE */
-            ler(&b, 4);
-            int alinha = (int)ler(&b, 1), cnt = (int)ler(&b, 8);
-            if (cnt == 255) cnt += (int)ler(&b, 8);
+            lb(&b, 4);
+            int alinha = (int)lb(&b, 1), cnt = (int)lb(&b, 8);
+            if (cnt == 255) cnt += (int)lb(&b, 8);
             if (alinha) b.pos = (b.pos + 7) & ~7u;
             b.pos += cnt * 8;
         } else if (id == 6) {               /* FIL */
-            int cnt = (int)ler(&b, 4);
-            if (cnt == 15) cnt += (int)ler(&b, 8) - 1;
+            int cnt = (int)lb(&b, 4);
+            if (cnt == 15) cnt += (int)lb(&b, 8) - 1;
             b.pos += cnt * 8;
         } else return AAC_SEM_SUPORTE;      /* CCE, PCE */
         if (b.pos > b.fim) return AAC_ERRO;

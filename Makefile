@@ -113,6 +113,7 @@ $(B)/userland/libsagui/%.asm.o: userland/libsagui/%.asm
 	$(AS) -f elf32 -o $@ $<
 
 # Programas que usam ponto flutuante.
+$(B)/userland/libsagui/aac.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
 $(B)/userland/testes/fpu.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=387 -fno-tree-vectorize
 
 $(B)/userland/libsagui/js.o: userland/libsagui/js_base.h userland/libsagui/js_nativo.h

@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "../../userland/libsagui/aac.h"
-#include "../../userland/libsagui/mp4.h"
+#include "../../userland/inc/aac.h"
+#include "../../userland/inc/mp4.h"
 
 int main(int argc, char **argv)
 {

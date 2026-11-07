@@ -91,7 +91,7 @@ static const uint8_t *descritor(const uint8_t *d, const uint8_t *fim, int tag, u
     return NULL;
 }
 
-static bool montar(const trilha_t *t, mp4_amostra_t **saida, int *qtd)
+static bool montar_tabela(const trilha_t *t, mp4_amostra_t **saida, int *qtd)
 {
     if (!t->stsz || !t->stco || !t->stsc || !t->stts) return false;
     uint32_t fixo = be32(t->stsz + 4), n = be32(t->stsz + 8);
@@ -161,13 +161,13 @@ int mp4_ler(const uint8_t *d, uint32_t n, mp4_t *m)
                 if (!tr.stco) { tr.stco = achar(stbl, c, "co64", &e); tr.co64 = true; }
             }
             if (tr.tipo == 1 && !m->video && tr.avcc) {
-                if (montar(&tr, &m->video, &m->n_video)) {
+                if (montar_tabela(&tr, &m->video, &m->n_video)) {
                     m->escala_video = tr.escala;
                     m->larg = tr.larg; m->alt = tr.alt;
                     m->avcc = tr.avcc; m->avcc_n = tr.avcc_n;
                 }
             } else if (tr.tipo == 2 && !m->audio && tr.esds) {
-                if (montar(&tr, &m->audio, &m->n_audio)) {
+                if (montar_tabela(&tr, &m->audio, &m->n_audio)) {
                     m->escala_audio = tr.escala;
                     m->canais = tr.canais; m->taxa = tr.taxa;
                     uint32_t l;
