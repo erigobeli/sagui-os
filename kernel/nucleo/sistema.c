@@ -17,6 +17,7 @@
 #include "texto.h"
 #include "som.h"
 
+#include "ac97.h"
 static const chamada_t tabela[SIS_MAX] = {
     [SIS_EXECUTAR] = sis_executar,       [SIS_ESPERAR] = sis_esperar,
     [SIS_SAIR] = sis_sair,               [SIS_PID] = sis_pid,
@@ -45,6 +46,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_TECLAS_SEGURADAS] = sis_teclas_seguradas,
     [SIS_PING] = sis_ping,               [SIS_RESOLVER] = sis_resolver,
     [SIS_CONECTAR] = sis_conectar,
+    [SIS_PCM] = sis_pcm,
 };
 
 bool usuario_ok(const void *p, uint32_t n, bool escrita)

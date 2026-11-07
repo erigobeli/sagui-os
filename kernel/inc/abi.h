@@ -62,7 +62,8 @@
 #define SIS_PING           61   /* (ip, prazo_ms) -> milissegundos até a resposta */
 #define SIS_RESOLVER       62   /* (nome, &ip) -> 0; pergunta ao DNS */
 #define SIS_CONECTAR       63   /* (ip, porta) -> descritor de uma conexão TCP (ler/escrever/fechar) */
-#define SIS_MAX            64
+#define SIS_PCM            64   /* (amostras, bytes, taxa) -> bytes aceitos; 0 bytes para */
+#define SIS_MAX            65
 
 /* Erros (sempre negativos) */
 #define ERRO_INVALIDO      -1

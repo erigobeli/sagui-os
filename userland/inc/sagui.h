@@ -82,6 +82,7 @@ int  montar(const char *nome);                     /* "usb0" -> /usb */
 int  desmontar(const char *nome);
 
 /* ---- som (bônus B3): volta na hora, o kernel toca em segundo plano ---- */
+int  tocar_pcm(const void *amostras, int bytes, int taxa);   /* 16 bits estéreo; devolve bytes aceitos */
 int  tocar(const nota_t *notas, int n, int modo);  /* modo BIP_SUBSTITUIR ou BIP_ENFILEIRAR */
 int  bip(int freq, int ms);
 void silenciar(void);

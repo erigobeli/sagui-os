@@ -7,6 +7,7 @@
  * G470 o mapa de memória grande empurrava a saudação para fora (erro 1). */
 #include "bootinfo.h"
 #include "console.h"
+#include "ac97.h"
 #include "texto.h"
 #include "cpu.h"
 #include "relogio.h"
@@ -272,6 +273,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     }
     /* D032: placa de rede; o endereço vem por DHCP em segundo plano. */
     {
+        ac97_iniciar();
         const char *placa = rede_iniciar();
         if (placa) {
             char linha[96];

@@ -77,6 +77,7 @@ bool texto_para_ip(const char *s, uint32_t *ip)
 }
 
 int  teclas_seguradas(unsigned char mapa[32]) { return chamar(SIS_TECLAS_SEGURADAS, (unsigned)mapa, 0, 0); }
+int  tocar_pcm(const void *p, int n, int taxa) { return chamar(SIS_PCM, (unsigned)p, (unsigned)n, (unsigned)taxa); }
 void silenciar(void)                  { chamar(SIS_BIP, 0, 0, 0); }
 int  criar_janela(const char *t, int l, int a, uint32_t **px)
                                       { return chamar(SIS_CRIAR_JANELA, (unsigned)t, (unsigned)(l | (a << 16)), (unsigned)px); }
