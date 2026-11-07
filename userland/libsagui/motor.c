@@ -53,6 +53,7 @@ typedef struct {
     uint8_t opaco0;         /* opacity: 0 */
     const char *bg_url;     /* background-image: url() */
     uint8_t bg_tam;         /* 0 natural, 1 cobre/estica, 2 contém */
+    uint8_t mascara;        /* mask-image: o fundo é a cor de um ícone que não desenhamos */
     int16_t z;
 } estilo_t;
 
@@ -534,7 +535,7 @@ enum {
     PR_FLEX, PR_FDIR, PR_FWRAP, PR_FFLOW, PR_JUSTIFY, PR_AITEMS, PR_ASELF, PR_GROW, PR_SHRINK, PR_BASIS, PR_GAP, PR_RGAP, PR_CGAP, PR_ORDER,
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
-    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE,
+    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -547,7 +548,7 @@ static const char *const nomes_prop[] = {
     "grid-template-columns", "grid-column", "grid-column-start", "grid-column-end", "grid-row", "top", "right", "bottom", "left", "inset", "text-transform", "vertical-align", "z-index",
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
-    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size",
+    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image",
 };
 
 static int achar_prop(const char *p, int n)
@@ -1649,6 +1650,7 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         if (prop == PR_MINLINE || prop == PR_PINLINE) { alvo[3] = q[0]; alvo[1] = q[1]; } else { alvo[0] = q[0]; alvo[2] = q[1]; }
         break;
     }
+    case PR_MASK: e->mascara = !strstr_m(v, "none"); break;
     case PR_OPACITY: { int u; int x = num100(v, nv, &u); if (u) e->opaco0 = x <= 0; break; }
     case PR_TTRANSFORM: e->maiusc = igual(v, "uppercase") ? 1 : igual(v, "lowercase") ? 2 : igual(v, "capitalize") ? 3 : 0; break;
     case PR_VALIGN: e->vert = igual(v, "middle") ? 1 : igual(v, "top") ? 2 : igual(v, "bottom") ? 3 : 0; break;
@@ -2943,7 +2945,8 @@ static int grid(no_m *n, int cw)
 static int tabela(no_m *n, int cw)
 {
     /* linhas */
-    no_m *linhas[1024]; no_m *grupo_de[1024]; int nl = 0;
+    no_m **linhas = m_novo(mo, 1024 * (int)sizeof(no_m *)), **grupo_de = m_novo(mo, 1024 * (int)sizeof(no_m *)); int nl = 0;
+    if (!linhas || !grupo_de) return 0;
     no_m *legenda = NULL;
     for (no_m *c = n->filho; c && nl < 1024; c = c->prox) {
         if (c->texto || c->e.display == D_NONE) continue;
@@ -3198,6 +3201,16 @@ static int alvo_form(no_m *n, int tipo)
  * com regra não-zero e cobertura 4x16 por pixel. Ponto fixo: 1/64 px. */
 
 #define SVG_F 64
+/* a / b com a de 64 bits, sem __divdi3 */
+static int64_t div64(int64_t a, int b)
+{
+    if (!b) return 0;
+    int neg = (a < 0) ^ (b < 0);
+    uint64_t ua = (uint64_t)(a < 0 ? -a : a), q = 0, r = 0;
+    uint32_t ub = (uint32_t)(b < 0 ? -b : b);
+    for (int i = 63; i >= 0; i--) { r = (r << 1) | ((ua >> i) & 1); if (r >= ub) { r -= ub; q |= (uint64_t)1 << i; } }
+    return neg ? -(int64_t)q : (int64_t)q;
+}
 typedef struct { int x0, y0, x1, y1; } aresta_t;
 static aresta_t *svg_ar; static int svg_n, svg_cap;
 static int svg_mx[2], svg_tx, svg_ty;   /* escala x256 e translação (1/64 px) */
@@ -3278,7 +3291,7 @@ static void svg_arco(int rx, int ry, int grande, int varre, int x, int y)
     if (!len) return;
     int nx = -dy, ny = dx;
     int sinal = (grande ^ varre) ? 1 : -1;
-    int cx = mx + (int)((int64_t)nx * flecha / len) * sinal, cy = my + (int)((int64_t)ny * flecha / len) * sinal;
+    int cx = mx + muldiv(nx, flecha, len) * sinal, cy = my + muldiv(ny, flecha, len) * sinal;
     /* curva quadrática cujo ponto do meio é (cx, cy): controle = 2*meio - (ini+fim)/2 */
     svg_quad(2 * cx - mx, 2 * cy - my, x, y);
 }
@@ -3377,7 +3390,7 @@ static void svg_preencher(uint32_t *px, int l, int a, uint32_t cor)
                 int ya = e->y0, yb = e->y1, dir = 1;
                 if (ya > yb) { int t = ya; ya = yb; yb = t; dir = -1; }
                 if (sy < ya || sy >= yb) continue;
-                int x = e->x0 + (int)((int64_t)(sy - e->y0) * (e->x1 - e->x0) / (e->y1 - e->y0));
+                int x = e->x0 + muldiv(sy - e->y0, e->x1 - e->x0, e->y1 - e->y0);
                 xs[k++] = x * 2 + (dir > 0 ? 1 : 0);   /* bit 0 = direção */
             }
             if (k < 2) continue;
@@ -3473,7 +3486,7 @@ static uint32_t *svg_desenhar(no_m *n, int l, int a)
     if (vbs) { const char *q = vbs; for (int i = 0; i < 4 && q; i++) q = svg_num(q, &vb[i]); }
     if (vb[2] <= 0 || vb[3] <= 0) { vb[0] = vb[1] = 0; vb[2] = l * 256; vb[3] = a * 256; }
     /* escala uniforme (xMidYMid meet): x256 -> 1/64 px, guardada x1024 */
-    int64_t sx = (int64_t)l * SVG_F * 1024 * 256 / vb[2], sy = (int64_t)a * SVG_F * 1024 * 256 / vb[3];
+    int64_t sx = div64((int64_t)l * SVG_F * 1024 * 256, vb[2]), sy = div64((int64_t)a * SVG_F * 1024 * 256, vb[3]);
     int64_t es = sx < sy ? sx : sy;
     int base_tx = (int)((l * SVG_F - (es * vb[2] >> 18)) / 2) - (int)((es * vb[0]) >> 18);
     int base_ty = (int)((a * SVG_F - (es * vb[3] >> 18)) / 2) - (int)((es * vb[1]) >> 18);
@@ -3546,7 +3559,7 @@ static uint32_t *svg_desenhar(no_m *n, int l, int a)
                   (tn == 6 && igual_n(tag, "circle", 6)) || (tn == 4 && igual_n(tag, "rect", 4)))) continue;
             /* contorno: desenha o caminho como linhas de 1,5 px (aproximado como preenchimento de faixa) */
         }
-        svg_mx[0] = svg_mx[1] = (int)(es * gsc / 1024 / 256);
+        svg_mx[0] = svg_mx[1] = (int)((es * gsc) >> 18);
         svg_tx = base_tx + (int)((es * gtx) >> 18); svg_ty = base_ty + (int)((es * gty) >> 18);
         svg_n = 0;
         px_ant = py_ant = mov_x = mov_y = 0;
@@ -3642,7 +3655,7 @@ static void desenhar_caixa(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
     if (e->visivel || e->opaco0) return;
-    if (e->fundo) {
+    if (e->fundo && !e->mascara) {
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_RET; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.cor = e->fundo; c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
         cmd_novo(&c);
@@ -3950,7 +3963,30 @@ static void limpar_layout(no_m *n)
 
 static int largura_regras = -1;
 
+static int layout_interno(motor_t *m, int largura, int altura_tela);
+static motor_t *arg_m; static int arg_l, arg_a, arg_r;
+static void layout_na_pilha(void) { arg_r = layout_interno(arg_m, arg_l, arg_a); }
+
+/* O layout é recursivo e a pilha dos programas é pequena: roda numa própria. */
 int motor_layout(motor_t *m, int largura, int altura_tela)
+{
+#ifdef MOTOR_HOST
+    return layout_interno(m, largura, altura_tela);
+#else
+    static char *pilha;
+    enum { PILHA_MOTOR = 2 * 1024 * 1024 };
+    if (!pilha) pilha = aloca(PILHA_MOTOR);
+    if (!pilha) return layout_interno(m, largura, altura_tela);
+    arg_m = m; arg_l = largura; arg_a = altura_tela;
+    char *topo = pilha + PILHA_MOTOR - 16;
+    void (*f)(void) = layout_na_pilha;
+    __asm__ volatile("movl %%esp, %%ebx\n\tmovl %0, %%esp\n\tcall *%1\n\tmovl %%ebx, %%esp"
+                     :: "r"(topo), "r"(f) : "ebx", "eax", "ecx", "edx", "memory", "cc");
+    return arg_r;
+#endif
+}
+
+static int layout_interno(motor_t *m, int largura, int altura_tela)
 {
     mo = m;
     if (!m->raiz) return 0;
@@ -4186,3 +4222,10 @@ void motor_dump_cmds(motor_t *m, int y0, int y1)
     }
 }
 #endif
+
+int motor_links(motor_t *m)
+{
+    int k = 0;
+    for (int i = 0; i < m->n_alvos; i++) if (m->alvos[i].tipo == MA_LINK) k++;
+    return k;
+}

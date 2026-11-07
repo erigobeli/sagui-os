@@ -60,10 +60,15 @@ static void lancar_fatal(const char *m);
 
 static unsigned t_suave;   /* limite que vira exceção comum (para testar funções desconhecidas) */
 static unsigned cont_novo;
+static val vT(const char *s);
+static __attribute__((noreturn)) void lancar(val v);
+/* limite de __tentar: lança um texto simples (construir um Error rodaria JS e checaria o limite de novo) */
+static int no_limite;
+static __attribute__((noreturn, noinline)) void limite_suave(void) { no_limite = 1; val v = vT("limite de tempo"); no_limite = 0; lancar(v); }
 static __attribute__((noreturn)) void erro(const char *tipo, const char *m, const char *x);
 static void *novo(unsigned n)
 {
-    if (t_suave && !(++cont_novo & 0x3FFF) && tempo_ms() > t_suave) erro("Error", "limite de tempo", NULL);
+    if (t_suave && !no_limite && !(++cont_novo & 0x3FFF) && tempo_ms() > t_suave) limite_suave();
     n = (n + 3) & ~3u;
     if (n > ar_c - ar_u) {
         unsigned t = n + 16 > (2u << 20) ? n + 16 : (2u << 20);
@@ -1190,7 +1195,7 @@ static void ligar(no *p, val v, env *e, int d)
 static void chk(void)
 {
     char c;
-    if (t_suave && !(passos & 1023) && tempo_ms() > t_suave) erro("Error", "limite de tempo", NULL);
+    if (t_suave && !(passos & 1023) && tempo_ms() > t_suave) limite_suave();
     if (&c < lim_pilha) erro("RangeError", "Maximum call stack size exceeded", NULL);
     if (!(++passos & 8191) && tempo_ms() > t_limite) lancar_fatal("tempo");
 }
@@ -1559,7 +1564,7 @@ static val ev(no *x, env *e)
 static int laco(int c, str *meu)
 {
     if (!(++passos & 1023)) {   /* laço sem chamadas também respeita os limites de tempo */
-        if (t_suave && tempo_ms() > t_suave) erro("Error", "limite de tempo", NULL);
+        if (t_suave && tempo_ms() > t_suave) limite_suave();
         if (tempo_ms() > t_limite) lancar_fatal("tempo");
     }
     /* 0 segue, 1 sai normal, 2 propaga */

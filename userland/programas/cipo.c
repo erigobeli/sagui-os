@@ -1364,6 +1364,8 @@ static void ler_pagina(const char *h, int n)
         unsigned t0 = tempo_ms();
         motor_ler(motor, h, n, url_atual);
         registrar("cipo: motor leu em %u ms\n", tempo_ms() - t0);
+        copia_texto(titulo, motor_titulo(motor), sizeof titulo);
+        return;   /* o motor substitui o leitor antigo */
     }
     const char *m = achar_tag(h, n, "<main");
     const char *f = m ? achar_tag(m, n - (int)(m - h), "</main") : NULL;
@@ -1798,6 +1800,7 @@ static void desenhar_barra_rolagem(void)
 static void motor_diagramar(void)
 {
     if (!motor) return;
+    registrar("cipo: motor diagramando\n");
     unsigned t0 = tempo_ms();
     motor_altura = motor_layout(motor, LARG - ROLAGEM, AREA_A);
     linhas = (motor_altura + LINHA_A - 1) / LINHA_A + 1;
@@ -2091,6 +2094,20 @@ static void carregar(const char *pedido)
                 titulo_js[0] = alerta_js[0] = 0;
                 char *novo = rodar_scripts(corpo, &tam);
                 ler_pagina(novo, tam);
+                if (motor) {
+                    motor_diagramar();
+                    if (motor_altura < 40 && tam > 20000) {
+                        char tt[96];
+                        copia_texto(tt, titulo, sizeof tt);
+                        registrar("cipo: pagina so com JavaScript (%d bytes, altura %d)\n", tam, motor_altura);
+                        limpar_pagina();
+                        pagina_de_erro("Esta página só existe com JavaScript completo",
+                                       "O site monta a página com recursos de JavaScript que o motor do Cipó ainda não tem.");
+                        copia_texto(titulo, tt, sizeof titulo);
+                    }
+                    if (novo != corpo) libera(novo);
+                    if (titulo_js[0]) copia_texto(titulo, titulo_js, sizeof titulo);
+                } else {
                 if (linhas < 3 && css_escondeu) {   /* o site revela isso por JavaScript */
                     registrar("cipo: css escondeu a pagina, lendo sem display:none\n");
                     limpar_pagina();
@@ -2111,6 +2128,7 @@ static void carregar(const char *pedido)
                     pagina_de_erro("Esta página só existe com JavaScript completo",
                                    "O site monta a página com recursos de JavaScript que o motor do Cipó ainda não tem. Vídeos também não tocam aqui.");
                     copia_texto(titulo, t, sizeof titulo);
+                }
                 }
             } else {
                 estilo = E_PRE;
@@ -2134,11 +2152,7 @@ static void carregar(const char *pedido)
     char t[48];   /* o kernel recusa título maior que a moldura guarda */
     formatar_texto(t, sizeof t, "Cipó - %s", titulo);
     titulo_janela(j->id, t);
-    if (motor) {
-        const char *mt = motor_titulo(motor);
-        if (mt[0] && !titulo_js[0]) { copia_texto(titulo, mt, sizeof titulo); formatar_texto(t, sizeof t, "Cipó - %s", titulo); titulo_janela(j->id, t); }
-        motor_diagramar();
-    }
+    if (motor && !motor_altura) motor_diagramar();
     rodape(texto_pronto());
     desenhar_pagina();
     /* imagens chegam depois do texto, umas poucas por vez */
@@ -2148,7 +2162,7 @@ static void carregar(const char *pedido)
         desenhar_pagina();
     }
     if (motor) rodape(texto_pronto());
-    registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, qtd_alvos);
+    registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, motor ? motor_links(motor) : qtd_alvos);
 }
 
 /* Clique num elemento com evento: o motor roda o evento e devolve a página. */
