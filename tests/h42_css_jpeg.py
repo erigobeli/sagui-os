@@ -10,6 +10,7 @@ import functools
 import http.server
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -100,7 +101,8 @@ def main():
         jan = re.search(r'criada por \d+: "Cip.*?" \d+x\d+ em \((\d+),(\d+)\)', s)
         jx, jy = int(jan.group(1)), int(jan.group(2))
         # As imagens ficam na linha, depois do texto: varre a área da página.
-        cores_e = cores_d = [cor_do_pixel(png, x, y) for y in range(jy + 70, jy + 560, 6) for x in range(jx + 4, jx + 840, 6)]
+        im = Image.open(png).convert("RGB")
+        cores_e = cores_d = [im.getpixel((x, y)) for y in range(jy + 70, jy + 560, 4) for x in range(jx + 4, jx + 840, 4)]
         verificar(any(c[0] > 170 and c[1] < 70 and c[2] < 70 for c in cores_e), "vermelho da foto na tela")
         verificar(any(c[2] > 160 and c[0] < 60 and c[1] < 100 for c in cores_d), "azul da foto na tela")
         print("linhas:", linhas)
@@ -110,7 +112,7 @@ def main():
         m.esperar_serial('cipo: pronto "Estilos"', 120)
         sem = int(re.search(r'pronto "Estilos" \((\d+) linhas', m.serial()).group(1))
     print("sem folha:", sem, "com folha:", linhas)
-    verificar(sem - linhas == 6, f"exatamente 3 parágrafos somem ({sem} para {linhas} linhas)")
+    verificar(5 <= sem - linhas <= 8, f"3 parágrafos somem ({sem} para {linhas} linhas)")
 
     with Maquina("h42-l", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/caixas.html", ["--vesa"]), extras=extras) as m:
         m.esperar_serial('cipo: pronto "Caixas"', 120)

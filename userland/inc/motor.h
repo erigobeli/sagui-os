@@ -41,5 +41,6 @@ const char *motor_titulo(motor_t *m);
 uint32_t motor_fundo(motor_t *m);
 /* Estatísticas para o log: nós, caixas, comandos de pintura. */
 void     motor_numeros(motor_t *m, int *nos, int *cmds, int *imgs);
-int      motor_links(motor_t *m);   /* quantos links a página tem */
+int      motor_links(motor_t *m);
+void     motor_sem_esconder(motor_t *m, bool sim);   /* ignora display:none do autor */   /* quantos links a página tem */
 #endif

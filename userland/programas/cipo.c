@@ -2096,6 +2096,11 @@ static void carregar(const char *pedido)
                 ler_pagina(novo, tam);
                 if (motor) {
                     motor_diagramar();
+                    if (motor_altura < 60 && tam > 60) {   /* o site revela o conteúdo por JavaScript */
+                        registrar("cipo: css escondeu a pagina, lendo sem display:none\n");
+                        motor_sem_esconder(motor, true);
+                        motor_diagramar();
+                    }
                     if (motor_altura < 40 && tam > 20000) {
                         char tt[96];
                         copia_texto(tt, titulo, sizeof tt);
@@ -2288,6 +2293,7 @@ int principal(int argc, char **argv)
             }
             if (motor && e.y >= TOPO && e.y < ALT - RODAPE && e.x < LARG - ROLAGEM) {
                 const motor_alvo_t *ma = motor_alvo(motor, e.x, e.y - TOPO + topo * LINHA_A);
+                registrar("cipo: clique em %d,%d -> %s\n", e.x, e.y - TOPO + topo * LINHA_A, ma && ma->href ? ma->href : "nada");
                 if (ma && ma->tipo == MA_LINK) {
                     char url[URL_MAX];
                     copia_texto(url, ma->href, sizeof url);

@@ -319,6 +319,127 @@ static val n_parsefloat(val este, val *a, int n)
     return vN(neg ? -r : r);
 }
 static val n_isnan(val este, val *a, int n) { (void)este; return vB(to_num(ARG(0)) == NANV); }
+
+/* ---- ArrayBuffer e typed arrays ---- */
+static obj *buf_novo(int n, val proto)
+{
+    if (n < 0) n = 0;
+    if (n > 64 * 1024 * 1024) erro("RangeError", "Array buffer allocation failed", NULL);
+    obj *b = novo_obj(proto.t == OB ? proto.o : p_obj);
+    b->cl = C_BUF;
+    b->mem = novo((unsigned)n + 8);
+    memset(b->mem, 0, (size_t)n + 8);
+    b->mem_n = n;
+    return b;
+}
+static val n_novo_buf(val este, val *a, int n) { (void)este; return vO(buf_novo(to_i(ARG(0)), ARG(1))); }
+static val n_buf_slice(val este, val *a, int n)
+{
+    if (este.t != OB || este.o->cl != C_BUF) erro("TypeError", "not an ArrayBuffer", NULL);
+    obj *b = este.o; int t = b->mem_n;
+    int i = n > 0 && a[0].t != U ? to_i(a[0]) : 0, f = n > 1 && a[1].t != U ? to_i(a[1]) : t;
+    if (i < 0) i += t; if (f < 0) f += t;
+    if (i < 0) i = 0; if (f > t) f = t; if (f < i) f = i;
+    obj *r = buf_novo(f - i, vO(b->proto));
+    memcpy(r->mem, b->mem + i, (size_t)(f - i));
+    return vO(r);
+}
+/* __novo_ta(tipo, arg, deslocamento, tamanho, proto) */
+static val n_novo_ta(val este, val *a, int n)
+{
+    (void)este;
+    int tipo = to_i(ARG(0));
+    if (tipo < 0 || tipo > 8) tipo = 1;
+    val x = ARG(1), proto = ARG(4);
+    obj *o = novo_obj(proto.t == OB ? proto.o : p_obj);
+    o->cl = C_TA; o->vtipo = tipo;
+    int es = ta_tam[tipo];
+    if (x.t == OB && x.o->cl == C_BUF) {
+        int off = ARG(2).t == U ? 0 : to_i(ARG(2));
+        int len = ARG(3).t == U ? (x.o->mem_n - off) / es : to_i(ARG(3));
+        if (off < 0 || off > x.o->mem_n || len < 0 || off + len * es > x.o->mem_n) erro("RangeError", "Invalid typed array length", NULL);
+        o->vbuf = x.o; o->voff = off; o->vlen = len;
+        return vO(o);
+    }
+    if (x.t == U || x.t == NUL || x.t == NU || x.t == BO || x.t == ST) {
+        int len = x.t == NU ? to_i(x) : 0;
+        if (len < 0) erro("RangeError", "Invalid typed array length", NULL);
+        o->vbuf = buf_novo(len * es, vU()); o->vlen = len;
+        return vO(o);
+    }
+    /* cópia de array, typed array ou iterável */
+    val v = x;
+    if (x.o->cl != C_ARR && x.o->cl != C_TA) v = para_vetor(x);
+    int len = v.o->cl == C_TA ? v.o->vlen : v.o->na;
+    o->vbuf = buf_novo(len * es, vU()); o->vlen = len;
+    for (int i = 0; i < len; i++) ta_gravar(o, i, v.o->cl == C_TA ? ta_ler(v.o, i) : v.o->a[i]);
+    return vO(o);
+}
+/* __ta_info(t): [tipo, buffer, deslocamento, tamanho] ou null */
+static val n_ta_info(val este, val *a, int n)
+{
+    (void)este;
+    val x = ARG(0);
+    if (x.t != OB || x.o->cl != C_TA) return vNul();
+    obj *r = novo_arr(4);
+    arr_push(r, vI(x.o->vtipo)); arr_push(r, vO(x.o->vbuf)); arr_push(r, vI(x.o->voff)); arr_push(r, vI(x.o->vlen));
+    return vO(r);
+}
+/* __ta_copiar(destino, origem, deslocamento): rápido entre typed arrays */
+static val n_ta_copiar(val este, val *a, int n)
+{
+    (void)este;
+    val d = ARG(0), o = ARG(1); int off = to_i(ARG(2));
+    if (d.t != OB || d.o->cl != C_TA) return vU();
+    if (o.t == OB && o.o->cl == C_TA) {
+        int len = o.o->vlen;
+        if (off < 0 || off + len > d.o->vlen) erro("RangeError", "offset is out of bounds", NULL);
+        if (d.o->vtipo == o.o->vtipo) { int es = ta_tam[d.o->vtipo]; memmove(d.o->vbuf->mem + d.o->voff + off * es, o.o->vbuf->mem + o.o->voff, (size_t)(len * es)); return vU(); }
+        for (int i = 0; i < len; i++) ta_gravar(d.o, off + i, ta_ler(o.o, i));
+        return vU();
+    }
+    val v = para_vetor(o);
+    if (off < 0 || off + v.o->na > d.o->vlen) erro("RangeError", "offset is out of bounds", NULL);
+    for (int i = 0; i < v.o->na; i++) ta_gravar(d.o, off + i, v.o->a[i]);
+    return vU();
+}
+/* UTF-8: texto (Latin-1 interno) -> bytes e volta */
+static val n_utf8_cod(val este, val *a, int n)
+{
+    (void)este;
+    str *t = to_str(ARG(0));
+    obj *o = novo_obj(ARG(1).t == OB ? ARG(1).o : p_obj);
+    o->cl = C_TA; o->vtipo = 1;
+    int k = 0;
+    for (int i = 0; i < t->n; i++) k += (uint8_t)t->s[i] >= 0x80 ? 2 : 1;
+    o->vbuf = buf_novo(k, vU()); o->vlen = k;
+    uint8_t *p = o->vbuf->mem; k = 0;
+    for (int i = 0; i < t->n; i++) {
+        uint8_t c = (uint8_t)t->s[i];
+        if (c < 0x80) p[k++] = c; else { p[k++] = (uint8_t)(0xC0 | c >> 6); p[k++] = (uint8_t)(0x80 | (c & 63)); }
+    }
+    return vO(o);
+}
+static val n_utf8_dec(val este, val *a, int n)
+{
+    (void)este;
+    val x = ARG(0);
+    const uint8_t *p; int len;
+    if (x.t == OB && x.o->cl == C_TA) { p = x.o->vbuf->mem + x.o->voff; len = x.o->vlen * ta_tam[x.o->vtipo]; }
+    else if (x.t == OB && x.o->cl == C_BUF) { p = x.o->mem; len = x.o->mem_n; }
+    else return vT("");
+    char *b = novo((unsigned)len + 1); int k = 0;
+    for (int i = 0; i < len;) {
+        uint8_t c = p[i];
+        uint32_t cp; int ext = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : 0;
+        if (i + ext >= len + (ext ? 0 : 1)) { b[k++] = '?'; break; }
+        cp = ext == 0 ? c : ext == 1 ? c & 31 : ext == 2 ? c & 15 : c & 7;
+        for (int e = 1; e <= ext; e++) cp = cp << 6 | (p[i + e] & 63);
+        i += ext + 1;
+        b[k++] = cp < 0x100 ? (char)cp : '?';
+    }
+    return vS(novo_str(b, k));
+}
 static val n_log(val este, val *a, int n) { (void)este; registrar("js: %s\n", to_str(ARG(0))->s); return vU(); }
 static val n_eval(val este, val *a, int n) { (void)este; str *s = to_str(ARG(0)); return avaliar(s->s, s->n); }
 static val n_now(val este, val *a, int n) { (void)este; (void)a; (void)n; return vN((i64)(1798761600000ULL + tempo_ms()) << FR); }
@@ -809,9 +930,9 @@ static dn *prox_el(dn *d, int ant) { while (d && d->tipo != 1) d = ant ? d->ant 
 static void limpar(dn *d) { while (d->pri) d_tirar(d->pri); }
 static void por_texto(dn *d, str *t) { limpar(d); if (t->n) { dn *x = d_novo(3, NULL); x->txt = t; d_por(d, x, NULL); } sujo = 1; }
 enum { D_NADA, D_TYPE, D_NAME, D_TAG, D_PAI, D_PAIEL, D_PRI, D_ULT, D_PROX, D_ANT, D_PRIEL, D_ULTEL, D_PROXEL, D_ANTEL, D_FILHOS, D_NOS, D_TEXTO, D_INNERT, D_INNER, D_OUTER,
-       D_ID, D_CLASS, D_VALUE, D_HREF, D_SRC, D_DATA, D_NVALUE, D_TITLE, D_BODY, D_HEAD, D_DOCEL, D_STYLE, D_NCHILD, D_DOC, D_ALT, D_NAMEA, D_TYPEA, D_CHECKED };
+       D_ID, D_CLASS, D_VALUE, D_HREF, D_SRC, D_DATA, D_NVALUE, D_TITLE, D_BODY, D_HEAD, D_DOCEL, D_STYLE, D_NCHILD, D_DOC, D_ALT, D_NAMEA, D_TYPEA, D_CHECKED, D_CWIN, D_CDOC, D_DEFVIEW };
 static const char *const dnomes[] = { "", "nodeType", "nodeName", "tagName", "parentNode", "parentElement", "firstChild", "lastChild", "nextSibling", "previousSibling", "firstElementChild", "lastElementChild", "nextElementSibling", "previousElementSibling", "children", "childNodes", "textContent", "innerText", "innerHTML", "outerHTML",
-    "id", "className", "value", "href", "src", "data", "nodeValue", "title", "body", "head", "documentElement", "style", "childElementCount", "ownerDocument", "alt", "name", "type", "checked" };
+    "id", "className", "value", "href", "src", "data", "nodeValue", "title", "body", "head", "documentElement", "style", "childElementCount", "ownerDocument", "alt", "name", "type", "checked", "contentWindow", "contentDocument", "defaultView" };
 static val filhos(dn *d, int so_el)
 {
     obj *r = novo_arr(0);
@@ -864,6 +985,9 @@ static int el_get(obj *o, str *k, val *r)
     case D_HEAD: { dn *t = por_tag(raiz, I("head")); *r = embrulhar(t ? t : raiz); break; }
     case D_DOCEL: { dn *t = por_tag(raiz, I("html")); *r = embrulhar(t ? t : raiz); break; }
     case D_DOC: *r = embrulhar(raiz); break;
+    /* iframes compartilham a janela e o documento da página */
+    case D_CWIN: case D_DEFVIEW: if (k->dom == D_DEFVIEW && d->tipo != 9) return 0; *r = vO(global); break;
+    case D_CDOC: *r = embrulhar(raiz); break;
     case D_STYLE: { val s = vO(novo_obj(p_obj)); por_prop(o, s_style, s); *r = s; break; }
     default: return 0;
     }
@@ -1034,7 +1158,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(NANV)); por_prop(global, I("Infinity"), vN(INFV)); por_prop(global, I("undefined"), vU());

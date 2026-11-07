@@ -28,13 +28,15 @@ typedef struct { str *k; val v; } prop;
 typedef struct no no;
 typedef struct env env;
 typedef val (*nat)(val este, val *a, int n);
-enum { C_OBJ, C_ARR, C_FN, C_EL };
+enum { C_OBJ, C_ARR, C_FN, C_EL, C_BUF, C_TA };
 typedef struct dn dn;
 struct obj {
     int cl; obj *proto; prop *p; int np, cp; int *idx, cidx;
     val *a; int na, ca;
     no *fn; env *e; nat f; struct quadro *q; obj *casa; val ligado_este; obj *ligado; val *ligados; int nlig;
     no *campos; dn *d;
+    uint8_t *mem; int mem_n;            /* ArrayBuffer */
+    struct obj *vbuf; int voff, vlen, vtipo;   /* typed array: buffer, deslocamento, elementos, tipo */
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
@@ -401,6 +403,36 @@ static int el_get(obj *o, str *k, val *r);
 static int el_set(obj *o, str *k, val v);
 static str *s_length, *s_prototype, *s_constructor, *s_arguments;
 
+/* typed arrays: 0 Int8, 1 Uint8, 2 Uint8Clamped, 3 Int16, 4 Uint16, 5 Int32, 6 Uint32, 7 Float32, 8 Float64 */
+static const int ta_tam[9] = { 1, 1, 1, 2, 2, 4, 4, 4, 8 };
+static i64 to_num(val v);
+static int para_i32(i64 n);
+static val vN(i64 n);
+static val ta_ler(obj *o, int i)
+{
+    uint8_t *p = o->vbuf->mem + o->voff + i * ta_tam[o->vtipo];
+    switch (o->vtipo) {
+    case 0: return vI((int8_t)p[0]);
+    case 1: case 2: return vI(p[0]);
+    case 3: return vI((int16_t)(p[0] | p[1] << 8));
+    case 4: return vI(p[0] | p[1] << 8);
+    case 5: return vI((int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24));
+    case 6: { uint32_t u = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; return vN((i64)u << FR); }
+    case 7: { int32_t q; memcpy(&q, p, 4); return vN((i64)q << (FR - 10)); }   /* ponto fixo guardado x1024 */
+    default: { i64 q; memcpy(&q, p, 8); return vN(q); }
+    }
+}
+static void ta_gravar(obj *o, int i, val v)
+{
+    uint8_t *p = o->vbuf->mem + o->voff + i * ta_tam[o->vtipo];
+    i64 n = to_num(v);
+    if (o->vtipo == 2) { i64 x = (n + (UM >> 1)) >> FR; p[0] = (uint8_t)(x < 0 ? 0 : x > 255 ? 255 : x); return; }
+    if (o->vtipo == 7) { int32_t q = (int32_t)(n >> (FR - 10)); memcpy(p, &q, 4); return; }
+    if (o->vtipo == 8) { memcpy(p, &n, 8); return; }
+    uint32_t u = (uint32_t)para_i32(n);
+    for (int b = 0; b < ta_tam[o->vtipo]; b++) p[b] = (uint8_t)(u >> (8 * b));
+}
+
 static val get_o(obj *o, str *k, val este)
 {
     for (obj *c = o; c; c = c->proto) {
@@ -430,6 +462,17 @@ static val get(val b, str *k)
         if (k == s_length) return vI(o->na);
         int i = indice(k);
         if (i >= 0) return i < o->na ? o->a[i] : vU();
+    } else if (o->cl == C_TA) {
+        if (k == s_length) return vI(o->vlen);
+        int i = indice(k);
+        if (i >= 0) return i < o->vlen ? ta_ler(o, i) : vU();
+        if (!achar(o, k)) {
+            if (k == I("byteLength")) return vI(o->vlen * ta_tam[o->vtipo]);
+            if (k == I("byteOffset")) return vI(o->voff);
+            if (k == I("buffer")) return vO(o->vbuf);
+        }
+    } else if (o->cl == C_BUF) {
+        if (k == I("byteLength") && !achar(o, k)) return vI(o->mem_n);
     } else if (o->cl == C_EL) {
         val r;
         if (!achar(o, k) && el_get(o, k, &r)) return r;
@@ -446,6 +489,11 @@ static void put(val b, str *k, val v)
     if (b.t == U || b.t == NUL) erro("TypeError", "Cannot set properties of null: ", k->s);
     if (b.t != OB) return;
     obj *o = b.o;
+    if (o->cl == C_TA) {
+        int i = indice(k);
+        if (i >= 0) { if (i < o->vlen) ta_gravar(o, i, v); return; }
+        if (k == s_length) return;
+    }
     if (o->cl == C_ARR) {
         if (k == s_length) { int n = to_i(v); if (n < o->na) o->na = n < 0 ? 0 : n; else while (o->na < n && n < 1000000) arr_push(o, vU()); return; }
         int i = indice(k);
@@ -465,11 +513,13 @@ static val get_i(val b, val k)
 {
     if (k.t == NU && b.t == OB && b.o->cl == C_ARR && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; return i < b.o->na ? b.o->a[(int)i] : vU(); }
     if (k.t == NU && b.t == ST && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; return i < b.s->n ? vS(intern_n(b.s->s + (int)i, 1)) : vU(); }
+    if (k.t == NU && b.t == OB && b.o->cl == C_TA && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; return i < b.o->vlen ? ta_ler(b.o, (int)i) : vU(); }
     return get(b, chave(k));
 }
 static void put_i(val b, val k, val v)
 {
     if (k.t == NU && b.t == OB && b.o->cl == C_ARR && k.n >= 0 && !(k.n & (UM - 1)) && (k.n >> FR) < b.o->na) { b.o->a[(int)(k.n >> FR)] = v; return; }
+    if (k.t == NU && b.t == OB && b.o->cl == C_TA && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; if (i < b.o->vlen) ta_gravar(b.o, (int)i, v); return; }
     put(b, chave(k), v);
 }
 

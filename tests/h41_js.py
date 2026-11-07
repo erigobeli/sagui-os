@@ -52,6 +52,9 @@ document.addEventListener("DOMContentLoaded", () => {
   var gx = conta(3); gx.next(); var pego = 0; try { gx.throw(new Error("x")); } catch (e) { pego = 1; }
   var gr = conta(9); gr.next(); var rt = gr.return(7);
   console.log("t7 " + r.join(",") + " " + sp.join("+") + " " + pego + " " + rt.value + rt.done);
+  var bf = new ArrayBuffer(8), u8 = new Uint8Array(bf), u32 = new Uint32Array(bf); u8[0] = 1; u8[1] = 1; u8[4] = 300;
+  var dv = new DataView(bf); dv.setUint16(6, 513); var te = new TextEncoder().encode("a\u00e7");
+  console.log("t8 " + u32[0] + " " + u8[4] + " " + u8.length + " " + dv.getUint8(6) + " " + te.length + " " + new TextDecoder().decode(te).length + " " + u8.subarray(4, 6).length + " " + new Int8Array([200])[0]);
 });
 var cl = 0;
 document.getElementById("b").addEventListener("click", () => { cl++; document.getElementById("b").textContent = "clicou " + cl; console.log("t6 " + cl); });
@@ -87,9 +90,10 @@ def main():
         verificar("js: t4 5" in s, "async e promessas")
         verificar("js: t5 1 app BODY" in s, "DOM e eventos de carga")
         verificar("js: t7 0,1,4,true, 2+4+6 1 7true" in s, "geradores: next, yield*, throw e return")
-        m.clique(197, 158)
+        verificar("js: t8 257 44 8 2 3 2 2 -56" in s, "ArrayBuffer, typed arrays, DataView e UTF-8")
+        m.clique(200, 167)
         m.esperar_serial("cipo: clique js 0", 20)
-        m.clique(197, 158)
+        m.clique(200, 167)
         m.esperar_serial("js: t6 2", 20)
         time.sleep(1)
         s = m.serial()

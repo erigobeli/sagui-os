@@ -52,6 +52,7 @@ typedef struct {
     const char *area;       /* grid-area: nome */
     uint8_t opaco0;         /* opacity: 0 */
     const char *bg_url;     /* background-image: url() */
+    const char *conteudo;   /* content */
     uint8_t bg_tam;         /* 0 natural, 1 cobre/estica, 2 contém */
     uint8_t mascara;        /* mask-image: o fundo é a cor de um ícone que não desenhamos */
     int16_t z;
@@ -80,6 +81,8 @@ typedef struct no_m {
     struct frag *frags, *frags_fim;  /* linhas de texto deste bloco */
     int ordem_doc;
     int colapso;                    /* margem de cima do primeiro filho que vazou para fora */
+    uint8_t pseudo;                 /* nó gerado por ::before/::after */
+    struct no_m *ps[2];
     int bg_img;                     /* índice da imagem de fundo, -1 */
 } no_m;
 
@@ -95,6 +98,7 @@ typedef struct {
     int nth_a, nth_b; uint8_t tem_nth;
     char comb;          /* combinador À ESQUERDA deste composto: ' ', '>', '+', '~', 0 */
     const char *nao_tag, *nao_classe;
+    uint8_t pseudo;     /* 1 ::before, 2 ::after */
 } composto_t;
 
 typedef struct {
@@ -150,6 +154,7 @@ struct motor {
     uint32_t fundo;
     int clip[4];
     int folhas;
+    bool sem_esconder;      /* ignora display:none do autor (páginas que só aparecem por JS) */
 };
 
 /* ================================================================ arena */
@@ -535,7 +540,7 @@ enum {
     PR_FLEX, PR_FDIR, PR_FWRAP, PR_FFLOW, PR_JUSTIFY, PR_AITEMS, PR_ASELF, PR_GROW, PR_SHRINK, PR_BASIS, PR_GAP, PR_RGAP, PR_CGAP, PR_ORDER,
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
-    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK,
+    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -548,7 +553,7 @@ static const char *const nomes_prop[] = {
     "grid-template-columns", "grid-column", "grid-column-start", "grid-column-end", "grid-row", "top", "right", "bottom", "left", "inset", "text-transform", "vertical-align", "z-index",
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
-    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image",
+    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content",
 };
 
 static int achar_prop(const char *p, int n)
@@ -821,6 +826,8 @@ static bool ler_composto(motor_t *m, const char **ps, const char *f, composto_t 
                 while (s < f && prof) { if (*s == '(') prof++; else if (*s == ')') prof--; s++; }
                 na = (int)(s - arg) - 1;
             }
+            if (np == 6 && igual_n(p0, "before", 6)) { c->pseudo = 1; algo = true; continue; }
+            if (np == 5 && igual_n(p0, "after", 5)) { c->pseudo = 2; algo = true; continue; }
             if (elem) { c->nunca = 1; algo = true; continue; }
             if (np == 11 && igual_n(p0, "first-child", 11)) c->primeiro = 1;
             else if (np == 10 && igual_n(p0, "last-child", 10)) c->ultimo = 1;
@@ -1650,6 +1657,7 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         if (prop == PR_MINLINE || prop == PR_PINLINE) { alvo[3] = q[0]; alvo[1] = q[1]; } else { alvo[0] = q[0]; alvo[2] = q[1]; }
         break;
     }
+    case PR_CONTENT: e->conteudo = v; break;
     case PR_MASK: e->mascara = !strstr_m(v, "none"); break;
     case PR_OPACITY: { int u; int x = num100(v, nv, &u); if (u) e->opaco0 = x <= 0; break; }
     case PR_TTRANSFORM: e->maiusc = igual(v, "uppercase") ? 1 : igual(v, "lowercase") ? 2 : igual(v, "capitalize") ? 3 : 0; break;
@@ -1703,6 +1711,7 @@ static void estilizar(motor_t *m, no_m *n)
     if (n->texto) { n->e.display = n->texto == 2 ? D_NONE : D_INLINE; return; }
     if (!pn || igual(n->tag, "#anon")) { n->e.display = D_BLOCK; return; }
     static achado_t ach[512];
+    static achado_t achps[2][64]; int nps[2] = { 0, 0 };
     int na = 0;
     /* regras candidatas */
     int *listas[16]; int tams[16]; int nl = 0;
@@ -1725,7 +1734,18 @@ static void estilizar(motor_t *m, no_m *n)
     for (int l = 0; l < nl; l++)
         for (int k = 0; k < tams[l]; k++) {
             regra_m *r = &m->regras[listas[l][k]];
-            if (!bate_de(&r->sel, 0, n)) continue;
+            uint8_t ps = r->sel.c[0].pseudo;
+            if (ps) r->sel.c[0].pseudo = 0;
+            bool bate = bate_de(&r->sel, 0, n);
+            r->sel.c[0].pseudo = ps;
+            if (!bate) continue;
+            if (ps) {
+                for (int d = 0; d < r->nd && nps[ps - 1] < 64; d++) {
+                    achado_t *a = &achps[ps - 1][nps[ps - 1]++];
+                    a->d = &r->d[d]; a->espec = (r->ordem < ua_fim ? 0 : 2000000) + r->sel.espec; a->ordem = r->ordem;
+                }
+                continue;
+            }
             int origem = r->ordem < ua_fim ? 0 : 1;
             for (int d = 0; d < r->nd && na < 512; d++) {
                 ach[na].d = &r->d[d];
@@ -1763,6 +1783,8 @@ static void estilizar(motor_t *m, no_m *n)
     for (int q = 0; q < na; q++) {
         if (q == i) presentacionais(m, n);
         int p = ach[q].d->prop;
+        if (m->sem_esconder && ach[q].espec >= 2000000 && ((p == PR_DISPLAY && strstr_m(ach[q].d->valor, "none")) ||
+            (p == PR_VISIBILITY && strstr_m(ach[q].d->valor, "hidden")) || (p == PR_OPACITY && ach[q].d->valor[0] == '0'))) continue;
         if (p != PR_FSIZE && p != PR_CUSTOM && p != PR_FONT) aplicar(m, n, p, ach[q].d->valor, pe);
     }
     if (i == na) presentacionais(m, n);
@@ -1774,6 +1796,60 @@ static void estilizar(motor_t *m, no_m *n)
     if (igual(n->tag, "html") || igual(n->tag, "body")) { if (e->display != D_NONE && e->display != D_FLEX && e->display != D_GRID) e->display = D_BLOCK; }
     if (e->display == D_LIST && !e->lista && !atributo_m(n, "style") && pe && pe->lista) e->lista = pe->lista;
     if (pn && igual(pn->tag, "details") && !atributo_m(pn, "open") && !igual(n->tag, "summary")) e->display = D_NONE;
+    /* ::before e ::after viram filhos gerados */
+    for (int k = 0; k < 2; k++) {
+        if (!nps[k] && !n->ps[k]) continue;
+        no_m *g = n->ps[k];
+        if (!g) {
+            g = m_novo(m, sizeof(no_m));
+            if (!g) continue;
+            copia_texto(g->tag, k ? "::after" : "::before", sizeof g->tag);
+            g->pseudo = 1; g->img = -1; g->alvo = -1; g->max_c = g->min_c = -1; g->bg_img = -1;
+            g->pai = n;
+            if (k == 0) { g->prox = n->filho; if (n->filho) n->filho->ant = g; else n->ult = g; n->filho = g; }
+            else { g->ant = n->ult; if (n->ult) n->ult->prox = g; else n->filho = g; n->ult = g; }
+            n->ps[k] = g;
+        }
+        estilo_inicial(&g->e, e);
+        for (int i = 1; i < nps[k]; i++) { achado_t x = achps[k][i]; int j = i - 1; while (j >= 0 && comparar_achado(&achps[k][j], &x) > 0) { achps[k][j + 1] = achps[k][j]; j--; } achps[k][j + 1] = x; }
+        for (int i = 0; i < nps[k]; i++) if (achps[k][i].d->prop == PR_FSIZE) aplicar(m, g, PR_FSIZE, achps[k][i].d->valor, e);
+        for (int i = 0; i < nps[k]; i++) if (achps[k][i].d->prop != PR_FSIZE && achps[k][i].d->prop != PR_CUSTOM) aplicar(m, g, achps[k][i].d->prop, achps[k][i].d->valor, e);
+        const char *ct = g->e.conteudo;
+        if (!nps[k] || !ct || igual(ct, "none") || igual(ct, "normal")) { g->e.display = D_NONE; continue; }
+        if (g->e.flutua || g->e.position == P_ABSOLUTE || g->e.position == P_FIXED) if (g->e.display == D_INLINE) g->e.display = D_BLOCK;
+        /* texto: 'abc', "abc", attr(x); o resto (counter, url, ícones de fonte) é ignorado */
+        char buf[128]; int bk = 0;
+        for (const char *q = ct; *q && bk < 120;) {
+            if (*q == '"' || *q == '\'') {
+                char aspa = *q++;
+                while (*q && *q != aspa && bk < 120) {
+                    if (*q == '\\' && q[1]) {   /* \201C, \a etc.: só ASCII/Latin-1 */
+                        q++;
+                        unsigned cp = 0; int dg = 0;
+                        while (dg < 6 && ((*q >= '0' && *q <= '9') || ((*q | 32) >= 'a' && (*q | 32) <= 'f'))) { cp = cp * 16 + (unsigned)(eh_dig(*q) ? *q - '0' : (*q | 32) - 'a' + 10); q++; dg++; }
+                        if (*q == ' ' && dg) q++;
+                        char l1 = dg ? para_l1(cp) : *q++;
+                        if (l1 && (uint8_t)l1 >= 32) buf[bk++] = l1;
+                        continue;
+                    }
+                    buf[bk++] = *q++;
+                }
+                if (*q) q++;
+            } else if (igual_n(q, "attr(", 5)) {
+                q += 5; const char *a0 = q; while (*q && *q != ')') q++;
+                char nm[32]; int tn = (int)(q - a0) < 31 ? (int)(q - a0) : 31; memcpy(nm, a0, (size_t)tn); nm[tn] = 0;
+                const char *av = atributo_m(n, nm);
+                while (av && *av && bk < 120) buf[bk++] = *av++;
+                if (*q) q++;
+            } else q++;
+        }
+        buf[bk] = 0;
+        if (!g->filho && bk) {
+            no_m *t = m_novo(m, sizeof(no_m));
+            if (t) { t->texto = 1; t->pai = g; t->img = -1; t->alvo = -1; t->bg_img = -1; g->filho = g->ult = t; }
+        }
+        if (g->filho) { g->filho->t = m_dup(m, buf, bk); g->filho->nt = bk; g->filho->e.display = bk ? D_INLINE : D_NONE; }
+    }
 }
 
 static int imagem_idx(motor_t *m, const char *url)
@@ -1787,6 +1863,7 @@ static int imagem_idx(motor_t *m, const char *url)
 static void estilizar_tudo(motor_t *m, no_m *n)
 {
     for (; n; n = n->prox) {
+        if (n->pseudo) { n->bg_img = -1; if (n->e.bg_url) { char u[600]; juntar(m->url, n->e.bg_url, u, sizeof u); n->bg_img = imagem_idx(m, u); } continue; }
         estilizar(m, n);
         n->bg_img = -1;
         if (!n->texto && n->e.bg_url) { char u[600]; juntar(m->url, n->e.bg_url, u, sizeof u); n->bg_img = imagem_idx(m, u); }
@@ -3777,6 +3854,9 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     int salvo[4];
     memcpy(salvo, mo->clip, sizeof salvo);
     if (tem_caixa) {
+        /* botão (ou outro átomo) cujo conteúdo é um link: a caixa inteira é clicável */
+        if (n->alvo < 0 && eh_atomico(n))
+            for (no_m *c = n->filho; c; c = c->prox) if (!c->texto && igual(c->tag, "a")) { int al = alvo_link(c); if (al >= 0) { n->alvo = al; break; } }
         desenhar_caixa(n, x, y);
         if (n->alvo >= 0 && (eh_atomico(n) || eh_bloco(e->display))) regiao(x, y, n->l, n->a, n->alvo);
         controle(n, x, y);
@@ -3853,8 +3933,14 @@ static void achatar_adiados(int ini)
 
 static char *folhas_txt[64]; static int folhas_n[64]; static int n_folhas;
 
+static int largura_regras = -1;
+
 motor_t *motor_novo(const motor_ganchos_t *g)
 {
+    /* estado estático vinha da arena do motor anterior: zera */
+    itens = NULL; n_itens = cap_itens = 0;
+    svg_ar = NULL; svg_n = svg_cap = 0;
+    largura_regras = -1; n_folhas = 0; n_adiados = 0;
     motor_t *m = aloca(sizeof(motor_t));
     if (!m) return NULL;
     memset(m, 0, sizeof *m);
@@ -3961,7 +4047,6 @@ static void limpar_layout(no_m *n)
     }
 }
 
-static int largura_regras = -1;
 
 static int layout_interno(motor_t *m, int largura, int altura_tela);
 static motor_t *arg_m; static int arg_l, arg_a, arg_r;
@@ -3996,7 +4081,11 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
         if (m->cap_baldes) memset(m->baldes, 0, sizeof(balde_t) * (size_t)m->cap_baldes);
         ler_folha(m, folha_padrao, (int)sizeof folha_padrao - 1, 0);
         ua_fim = m->n_regras;
-        for (int i = 0; i < n_folhas; i++) ler_folha(m, folhas_txt[i], folhas_n[i], 0);
+        for (int i = 0; i < n_folhas; i++) {
+            int antes = m->n_regras;
+            ler_folha(m, folhas_txt[i], folhas_n[i], 0);
+            if (largura_regras < 0) registrar("cipo: css %d regras\n", m->n_regras - antes);
+        }
         largura_regras = largura;
         estilizar_tudo(m, m->raiz);
         normalizar(m, m->raiz);
@@ -4229,3 +4318,5 @@ int motor_links(motor_t *m)
     for (int i = 0; i < m->n_alvos; i++) if (m->alvos[i].tipo == MA_LINK) k++;
     return k;
 }
+
+void motor_sem_esconder(motor_t *m, bool sim) { m->sem_esconder = sim; largura_regras = -1; m->n_regras = 0; }
