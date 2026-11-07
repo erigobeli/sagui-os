@@ -21,7 +21,10 @@ bool gcm_decifrar(const aes_t *a, const uint8_t iv[12], const uint8_t *aad, unsi
 void x25519(uint8_t saida[32], const uint8_t escalar[32], const uint8_t ponto[32]);
 
 /* certificado.c: devolvem NULL se está tudo certo, ou o motivo da recusa. */
-const char *cert_cadeia(const uint8_t *msg, unsigned n, const char *host);
+const char *cert_cadeia(const uint8_t *msg, unsigned n, const char *host, bool v13);
+const char *cert_prova12(const uint8_t *msg, unsigned n, const uint8_t *dados, unsigned nd);
+void p256_publica(const uint8_t priv[32], uint8_t pub[65]);
+bool p256_comum(const uint8_t priv[32], const uint8_t *q, unsigned nq, uint8_t saida[32]);
 const char *cert_prova(const uint8_t *msg, unsigned n, const uint8_t transcricao[32]);
 
 #endif

@@ -334,6 +334,80 @@ static bool ecdsa(int qual, const uint8_t *q, unsigned nq, const uint8_t *h, int
     return comparar(x, rr, nl) == 0;
 }
 
+/* ---- ECDH em P-256, para TLS 1.2 ---- */
+static void p256_preparar(void)
+{
+    uint32_t t[NL];
+    memset(t, 0, sizeof t);
+    de_hexa(t, 8, curvas[0][0]);
+    mont_preparar(&cp, t, 8);
+}
+
+/* o = k * p, em Montgomery. */
+static void ec_vezes(ponto_t *o, const uint8_t k[32], const ponto_t *p)
+{
+    ponto_t a;
+    memset(&a, 0, sizeof a);
+    for (int i = 0; i < 256; i++) {
+        ponto_t c = a;
+        ec_dobrar(&a, &c);
+        if (k[i / 8] >> (7 - i % 8) & 1) { c = a; ec_somar(&a, &c, p); }
+    }
+    *o = a;
+}
+
+static void ec_afim(const ponto_t *p, uint8_t *x, uint8_t *y)
+{
+    uint32_t e[EL], z[EL], um[EL], dois[EL], v[EL];
+    memset(um, 0, sizeof um); um[0] = 1;
+    memset(dois, 0, sizeof dois); dois[0] = 2;
+    subtrair(e, cp.m, dois, 8);
+    mpot(&cp, z, p->z, e, 256);
+    mmul(&cp, e, z, z);
+    mmul(&cp, v, p->x, e); mmul(&cp, v, v, um);
+    para_bytes(x, 32, v);
+    if (y) { mmul(&cp, e, e, z); mmul(&cp, v, p->y, e); mmul(&cp, v, v, um); para_bytes(y, 32, v); }
+}
+
+void p256_publica(const uint8_t priv[32], uint8_t pub[65])
+{
+    ponto_t g, r;
+    uint32_t um[EL];
+    p256_preparar();
+    memset(&g, 0, sizeof g);
+    memset(um, 0, sizeof um); um[0] = 1;
+    de_hexa(g.x, 8, curvas[0][2]); de_hexa(g.y, 8, curvas[0][3]);
+    mmul(&cp, g.x, g.x, cp.r2); mmul(&cp, g.y, g.y, cp.r2); mmul(&cp, g.z, um, cp.r2);
+    ec_vezes(&r, priv, &g);
+    pub[0] = 4;
+    ec_afim(&r, pub + 1, pub + 33);
+}
+
+/* Segredo comum. Recusa ponto fora da curva: y² = x³ - 3x + b. */
+bool p256_comum(const uint8_t priv[32], const uint8_t *q, unsigned nq, uint8_t saida[32])
+{
+    ponto_t p, r;
+    uint32_t um[EL], b[EL], t[EL], u[EL];
+    if (nq != 65 || q[0] != 4) return false;
+    p256_preparar();
+    memset(&p, 0, sizeof p);
+    memset(um, 0, sizeof um); um[0] = 1;
+    de_bytes(p.x, 8, q + 1, 32); de_bytes(p.y, 8, q + 33, 32);
+    if (comparar(p.x, cp.m, 8) >= 0 || comparar(p.y, cp.m, 8) >= 0) return false;
+    mmul(&cp, p.x, p.x, cp.r2); mmul(&cp, p.y, p.y, cp.r2); mmul(&cp, p.z, um, cp.r2);
+    de_hexa(b, 8, "5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b");
+    mmul(&cp, b, b, cp.r2);
+    mmul(&cp, t, p.x, p.x); mmul(&cp, t, t, p.x);
+    msub(&cp, t, t, p.x); msub(&cp, t, t, p.x); msub(&cp, t, t, p.x);
+    madd(&cp, t, t, b);
+    mmul(&cp, u, p.y, p.y);
+    if (comparar(t, u, 8) != 0) return false;
+    ec_vezes(&r, priv, &p);
+    if (zerado(r.z, 8)) return false;
+    ec_afim(&r, saida, NULL);
+    return true;
+}
+
 /* ---- DER ---- */
 static const uint8_t *der(const uint8_t *p, const uint8_t *fim, int *tag, const uint8_t **c, unsigned *n)
 {
@@ -625,7 +699,7 @@ static bool na_validade(const cert_t *x, const char *agora)
     return true;
 }
 
-const char *cert_cadeia(const uint8_t *m, unsigned n, const char *host)
+const char *cert_cadeia(const uint8_t *m, unsigned n, const char *host, bool v13)
 {
     data_t d;
     char agora[16];
@@ -638,19 +712,19 @@ const char *cert_cadeia(const uint8_t *m, unsigned n, const char *host)
     agora[14] = 0;
     carregar_raizes();
     if (!raizes_n) return "lista de autoridades ausente";
-    unsigned k = 1u + cadeia[0];
+    unsigned k = v13 ? 1u + cadeia[0] : 0;
     if (k + 3 > n) return "certificado malformado";
     k += 3;
     qtd_certs = 0;
     while (k + 3 <= n && qtd_certs < MAX_CERTS) {
         unsigned t = (unsigned)cadeia[k] << 16 | (unsigned)cadeia[k + 1] << 8 | cadeia[k + 2];
         k += 3;
-        if (k + t + 2 > n) return "certificado malformado";
+        if (k + t + (v13 ? 2 : 0) > n) return "certificado malformado";
         if (!ler_cert(cadeia + k, t, &certs[qtd_certs])) {
             if (!qtd_certs) return "certificado com formato ou chave não aceitos";
         } else qtd_certs++;
         k += t;
-        k += 2u + ((unsigned)cadeia[k] << 8 | cadeia[k + 1]);
+        if (v13) k += 2u + ((unsigned)cadeia[k] << 8 | cadeia[k + 1]);
     }
     if (!qtd_certs) return "o servidor não mandou certificado";
     const cert_t *x = &certs[0];
@@ -685,5 +759,28 @@ const char *cert_prova(const uint8_t *m, unsigned n, const uint8_t transcricao[3
     if (!hl) return "assinatura do servidor de tipo não aceito";
     resumo(hl, conteudo, sizeof conteudo, h);
     bool ok = alg >> 8 == 8 ? k->tipo == 1 && rsa_pss(k->n, k->nn, k->e, m + 4, t, h, hl) : assinatura_ecdsa(k, h, hl, m + 4, t);
+    return ok ? NULL : "a assinatura do servidor não confere";
+}
+
+/* TLS 1.2: m = algoritmo, tamanho e assinatura sobre "dados" (ServerKeyExchange). */
+const char *cert_prova12(const uint8_t *m, unsigned n, const uint8_t *dados, unsigned nd)
+{
+    uint8_t h[64];
+    if (n < 4 || !qtd_certs) return "prova do servidor malformada";
+    unsigned alg = (unsigned)m[0] << 8 | m[1], t = (unsigned)m[2] << 8 | m[3];
+    if (t + 4 > n) return "prova do servidor malformada";
+    int hl = 0;
+    switch (alg) {
+    case 0x0401: case 0x0403: case 0x0804: hl = 32; break;
+    case 0x0501: case 0x0503: case 0x0805: hl = 48; break;
+    case 0x0601: case 0x0806: hl = 64; break;
+    default: return "assinatura do servidor de tipo não aceito";
+    }
+    resumo(hl, dados, nd, h);
+    const chave_t *k = &certs[0].chave;
+    bool ok;
+    if (alg >> 8 == 8) ok = k->tipo == 1 && rsa_pss(k->n, k->nn, k->e, m + 4, t, h, hl);
+    else if ((alg & 255) == 1) ok = k->tipo == 1 && rsa_pkcs1(k->n, k->nn, k->e, m + 4, t, h, hl);
+    else ok = assinatura_ecdsa(k, h, hl, m + 4, t);
     return ok ? NULL : "a assinatura do servidor não confere";
 }

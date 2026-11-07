@@ -4,7 +4,7 @@ H39: criptografia, HTTPS e imagens no Cipó.
 
 Critério: as primitivas passam nos vetores das especificações; o Cipó abre por
 TLS 1.3 uma página de um servidor local e mostra um PNG e um JPEG; um
-servidor só com TLS 1.2 dá erro claro.
+servidor só com TLS 1.2 também abre.
 """
 import functools
 import http.server
@@ -24,7 +24,7 @@ HTML = """<html><head><title>Fotos</title></head><body><h1>Seguro</h1>
 <img src="a.png" alt="png"><p>meio</p><img src="b.jpg" alt="jpeg"></body></html>"""
 
 
-def servidor(pasta, versao):
+def servidor(pasta, versao, curva=None):
     chave, cert = os.path.join(pasta, "k.pem"), os.path.join(pasta, "c.pem")
     if not os.path.exists(cert):
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", chave, "-out", cert,
@@ -35,6 +35,8 @@ def servidor(pasta, versao):
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(cert, chave)
     ctx.minimum_version = ctx.maximum_version = versao
+    if curva:
+        ctx.set_ecdh_curve(curva)
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
@@ -82,12 +84,15 @@ def main():
         verificar(True, "endereço digitado sem esquema abre por HTTPS")
     srv.shutdown()
 
-    srv = servidor(pasta, ssl.TLSVersion.TLSv1_2)
-    porta = srv.server_address[1]
-    with Maquina("h39-12", "ide", imagem=imagem_de_teste(f"/bin/cipo https://10.0.2.2:{porta}/", ["--vesa"]), extras=extras) as m:
-        m.esperar_serial("cipo: erro:", 60)
-        verificar(True, "servidor só com TLS 1.2 mostra erro, sem travar")
-    srv.shutdown()
+    for nome, curva in (("x25519", "X25519"), ("p256", "prime256v1")):
+        srv = servidor(pasta, ssl.TLSVersion.TLSv1_2, curva)
+        porta = srv.server_address[1]
+        with Maquina("h39-12" + nome, "ide", imagem=imagem_com_raizes(f"/bin/cipo https://10.0.2.2:{porta}/", [raiz], ["--vesa"]), extras=extras) as m:
+            m.esperar_serial('cipo: pronto "Fotos"', 60)
+            s = m.serial()
+            verificar("TLS 1.2, certificado verificado" in s, f"TLS 1.2 com {nome} abre, com certificado verificado")
+            verificar(len(re.findall(r"cipo: imagem 120x60", s)) == 2, f"imagens por TLS 1.2 com {nome}")
+        srv.shutdown()
     return 0
 
 

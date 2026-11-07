@@ -29,7 +29,7 @@ HTML = """<html><head><title>Estilos</title><link rel="stylesheet" href="s.css">
 <p id="volta" class="fora">fica-peso</p>
 <p class="dobra">fica-ordem</p>
 <a class="botao:hover">fica-pseudo</a>
-<img src="p.jpg" alt="progressivo"></body></html>"""
+<img src="p.jpg" alt="progressivo"><img src="w.webp" alt="webp"><img src="g.gif" alt="gif"></body></html>"""
 
 CSS = """/* comentário */
 .caixa .alvo { display: none }
@@ -72,6 +72,8 @@ def main():
     foto = Image.new("RGB", (161, 83), (20, 60, 200))
     foto.paste((210, 30, 30), (0, 0, 80, 83))
     foto.save(os.path.join(pasta, "p.jpg"), quality=90, progressive=True, subsampling=2)
+    Image.new("RGB", (150, 70), (30, 160, 60)).save(os.path.join(pasta, "w.webp"), quality=80)
+    Image.new("RGB", (140, 66), (230, 200, 20)).save(os.path.join(pasta, "g.gif"))
     pedidos = []
 
     class Trat(http.server.SimpleHTTPRequestHandler):
@@ -90,6 +92,8 @@ def main():
         verificar("/s.css" in pedidos, "baixou a folha externa")
         verificar("/nao.css" not in pedidos, "pulou a folha de impressão")
         verificar("cipo: imagem 161x83" in s, "JPEG progressivo decodificado")
+        verificar("cipo: imagem 150x70" in s, "WebP decodificado")
+        verificar("cipo: imagem 140x66" in s, "GIF decodificado")
         linhas = int(re.search(r'pronto "Estilos" \((\d+) linhas', s).group(1))
         png = m.captura("H42-cipo-css-jpeg")
         jan = re.search(r'criada por \d+: "Cip.*?" \d+x\d+ em \((\d+),(\d+)\)', s)
