@@ -38,11 +38,11 @@ struct obj {
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
-typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc; } fdef;
+typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador; } fdef;
 struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; i64 n; fdef *f; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
-       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT,
+       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD,
        S_VAR, S_DECL, S_EXP, S_BLOCK, S_IF, S_FOR, S_FORIN, S_WHILE, S_DO, S_RET, S_BRK, S_CONT, S_THROW, S_TRY, S_SWITCH, S_CASE, S_LABEL, S_FUNC, S_CLASS, S_VAZIO };
 enum { KW_NADA, KW_VAR, KW_LET, KW_CONST, KW_FUNCTION, KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_DO, KW_BREAK, KW_CONTINUE, KW_NEW, KW_DELETE, KW_TYPEOF,
        KW_VOID, KW_THIS, KW_NULL, KW_TRUE, KW_FALSE, KW_IN, KW_INSTANCEOF, KW_THROW, KW_TRY, KW_CATCH, KW_FINALLY, KW_SWITCH, KW_CASE, KW_DEFAULT, KW_CLASS, KW_EXTENDS,
@@ -192,6 +192,8 @@ typedef struct salto { void *b[5]; struct salto *ant; } salto;
 static salto *topo_s;
 static val exc; static int fatal, prof;
 static char *lim_pilha;
+static int gerador_entrando;
+static val produzir(val v, int delega);
 static unsigned t_limite; static unsigned passos;
 
 static __attribute__((noinline, noreturn)) void lancar(val v) { exc = v; __builtin_longjmp(topo_s->b, 1); }
@@ -578,7 +580,7 @@ static void exige(int t) { if (L.tk != t) sintaxe("sintaxe"); prox(); }
 static int aceita_kw(int k) { if (kw(k)) { prox(); return 1; } return 0; }
 
 /* ------------------------------------------------------------ sintaxe */
-static fdef *cf; static int nfuncs, vem_async;
+static fdef *cf; static int nfuncs, vem_async, vem_gerador;
 static no *N(int k) { no *x = novo(sizeof(no)); x->k = (short)k; return x; }
 static no *N2(int k, no *a, no *b) { no *x = N(k); x->a = a; x->b = b; return x; }
 static no *expr(void), *atrib(int sem_in), *stmt(void), *funcao(str *nome, int metodo, int seta);
@@ -648,7 +650,7 @@ static no *objeto(void)
                 if (L.tk == ',' || L.tk == ':' || L.tk == '(' || L.tk == '}' || L.tk == '=') L = sv;
                 else mod = m;
             }
-            if (aceita('*')) sintaxe("gerador");
+            if (aceita('*')) vem_gerador = 1;
             int era_id = L.tk == T_ID; str *nm = L.s;
             chave_prop(pr);
             if (mod == KW_GET) pr->op = 1; else if (mod == KW_SET) pr->op = 2;
@@ -726,7 +728,7 @@ static no *primario(void)
     switch (s->kw) {
     case KW_FUNCTION: {
         prox();
-        if (aceita('*')) sintaxe("gerador");
+        if (aceita('*')) vem_gerador = 1;
         str *nm = NULL;
         if (L.tk == T_ID) { nm = L.s; prox(); }
         return funcao(nm, 0, 0);
@@ -734,7 +736,7 @@ static no *primario(void)
     case KW_ASYNC: {
         lex_t sv = L;
         prox();
-        if (!L.nl && kw(KW_FUNCTION)) { no *r; prox(); if (aceita('*')) sintaxe("gerador"); str *nm = NULL; if (L.tk == T_ID) { nm = L.s; prox(); } vem_async = 1; r = funcao(nm, 0, 0); return r; }
+        if (!L.nl && kw(KW_FUNCTION)) { no *r; prox(); if (aceita('*')) vem_gerador = 1; str *nm = NULL; if (L.tk == T_ID) { nm = L.s; prox(); } vem_async = 1; r = funcao(nm, 0, 0); return r; }
         if (!L.nl && L.tk == '(') { prox(); if (e_seta()) { vem_async = 1; return funcao(NULL, 0, 1); } }
         else if (!L.nl && L.tk == T_ID) { lex_t s2 = L; prox(); if (L.tk == OP(O_SETA)) { L = s2; vem_async = 1; return funcao(NULL, 0, 2); } }
         L = sv;
@@ -844,8 +846,18 @@ static no *binario(int m, int sem_in)
         else { a = N2(K_BIN, a, b); a->op = w == KW_IN ? 'i' : w ? 'o' : (short)t; }
     }
 }
+static str *s_yield;
 static no *atrib(int sem_in)
 {
+    if (!s_yield) s_yield = I("yield");
+    if (cf && cf->gerador && L.tk == T_ID && L.s == s_yield) {
+        prox();
+        no *y = N(K_YIELD);
+        if (!L.nl && aceita('*')) y->op = 1;
+        if (y->op || (!L.nl && L.tk != ')' && L.tk != ']' && L.tk != '}' && L.tk != ',' && L.tk != ';' && L.tk != ':' && L.tk != T_FIM))
+            y->a = atrib(sem_in);
+        return y;
+    }
     no *a = binario(1, sem_in);
     int t = L.tk;
     if (t == '?') {
@@ -893,7 +905,7 @@ static no *funcao(str *nome, int metodo, int seta)
 {
     (void)metodo;
     no *f = N(K_FUNC); fdef *d = novo(sizeof(fdef)), *ant = cf;
-    f->f = d; d->nome = nome; d->seta = !!seta; d->assinc = vem_async; vem_async = 0;
+    f->f = d; d->nome = nome; d->seta = !!seta; d->assinc = vem_async; vem_async = 0; d->gerador = vem_gerador; vem_gerador = 0;
     nfuncs++;
     cf = d;
     if (seta != 3) {
@@ -937,6 +949,7 @@ static no *classe(void)
             if (w == KW_STATIC) est = 1; else mod = w;
         }
         if (L.tk == '#') { prox(); }
+        if (aceita('*')) vem_gerador = 1;
         chave_prop(m);
         m->op = mod == KW_GET ? 1 : mod == KW_SET ? 2 : 0;
         m->n = est;
@@ -980,7 +993,7 @@ static no *stmt(void)
         /* fallthrough */
         case KW_FUNCTION: {
             prox();
-            if (aceita('*')) sintaxe("gerador");
+            if (aceita('*')) vem_gerador = 1;
             if (L.tk != T_ID) sintaxe("nome da funcao");
             str *nm = L.s; prox();
             x = N(S_FUNC); x->s = nm; x->a = funcao(nm, 0, 0);
@@ -1170,15 +1183,20 @@ static void ligar(no *p, val v, env *e, int d)
     }
     atribuir(p, v, e, d);
 }
+static unsigned t_suave;   /* limite que vira exceção comum (para testar funções desconhecidas) */
 static void chk(void)
 {
     char c;
+    if (t_suave && !(passos & 1023) && tempo_ms() > t_suave) erro("Error", "limite de tempo", NULL);
     if (&c < lim_pilha) erro("RangeError", "Maximum call stack size exceeded", NULL);
     if (!(++passos & 8191) && tempo_ms() > t_limite) lancar_fatal("tempo");
 }
+static val novo_gerador(obj *o, val este, val *a, int n);
 static val executar_fn(obj *o, val este, val *a, int n, val novo_t)
 {
     fdef *d = o->fn->f;
+    if (d->gerador && !gerador_entrando) return novo_gerador(o, este, a, n);
+    gerador_entrando = 0;
     env *e = novo_env(o->e, d->nv + 4);
     quadro q, *ant = qa;
     if (d->seta) qa = o->q;
@@ -1531,6 +1549,7 @@ static val ev(no *x, env *e)
     }
     case K_NEW: { val f = ev(x->a, e), *a; int n = avaliar_args(x->b, e, &a); return construir(f, a, n); }
     case K_AWAIT: return aguardar(ev(x->a, e));
+    case K_YIELD: return produzir(x->a ? ev(x->a, e) : vU(), x->op);
     default: return vU();
     }
 }
@@ -1703,6 +1722,199 @@ static val aguardar(val v)
 {
     val f = get(vO(global), I("__esperar"));
     return chamar(f, vU(), &v, 1);
+}
+
+
+/* ---- geradores: cada um roda numa pilha própria; yield troca de pilha ---- */
+#define GER_PILHA (192 * 1024)
+typedef struct ger {
+    obj *fo; val este; val *args; int n;
+    char *pilha;
+    void *esp_g, *esp_c;   /* pilhas salvas do gerador e de quem chamou */
+    int estado;            /* 0 novo, 1 parado, 2 rodando, 3 fim */
+    int modo; val troca;   /* o que o next/throw/return mandou */
+    int res_tipo; val res; /* 0 yield, 1 fim, 2 exceção */
+    salto *g_topo; quadro *g_qa; int g_prof; char *g_lim;   /* estado do intérprete dentro do gerador */
+} ger;
+static ger **gers; static int n_gers, c_gers;
+static ger *ger_rodando, *ger_novo;
+static obj *ger_retorno;   /* exceção especial usada por return() */
+
+/* Troca de pilha: salva ebp/ebx/esi/edi e esp em *salvar e continua em novo. */
+void ger_troca(void **salvar, void *novo);
+__asm__(".text\n.globl ger_troca\nger_troca:\n"
+        "\tmovl 4(%esp), %eax\n\tmovl 8(%esp), %edx\n"
+        "\tpushl %ebp\n\tpushl %ebx\n\tpushl %esi\n\tpushl %edi\n"
+        "\tmovl %esp, (%eax)\n\tmovl %edx, %esp\n"
+        "\tpopl %edi\n\tpopl %esi\n\tpopl %ebx\n\tpopl %ebp\n\tret\n");
+
+static val novo_gerador(obj *o, val este, val *a, int n)
+{
+    ger *g = novo(sizeof(ger));
+    memset(g, 0, sizeof *g);
+    g->fo = o; g->este = este; g->n = n;
+    g->args = novo((unsigned)(n + 1) * sizeof(val));
+    if (n) memcpy(g->args, a, (size_t)n * sizeof(val));
+    if (n_gers == c_gers) {
+        c_gers = c_gers ? c_gers * 2 : 64;
+        ger **ng = novo((unsigned)c_gers * sizeof(ger *));
+        if (n_gers) memcpy(ng, gers, (size_t)n_gers * sizeof(ger *));
+        gers = ng;
+    }
+    gers[n_gers] = g;
+    val id = vI(n_gers++);
+    return chamar(get(vO(global), I("__gerador")), vU(), &id, 1);
+}
+
+static __attribute__((noinline, noreturn)) void ger_entrada(void)
+{
+    ger *g = ger_novo;
+    lim_pilha = g->pilha + 8192;
+    salto b; b.ant = NULL;
+    topo_s = &b;
+    if (__builtin_setjmp(b.b)) {
+        g = ger_rodando;
+        if (!fatal && exc.t == OB && exc.o == ger_retorno) { g->res_tipo = 1; g->res = g->troca; }
+        else { g->res_tipo = 2; g->res = exc; }
+    } else {
+        gerador_entrando = 1;
+        g->res = executar_fn(g->fo, g->este, g->args, g->n, vU());
+        g->res_tipo = 1;
+    }
+    g->estado = 3;
+    void *lixo;
+    ger_troca(&lixo, g->esp_c);
+    __builtin_unreachable();
+}
+
+static __attribute__((noinline)) void retomar(ger *g)
+{
+    salto *c_topo = topo_s; quadro *c_qa = qa; int c_prof = prof;
+    char *c_lim = lim_pilha; ger *c_ger = ger_rodando;
+    ger_rodando = g;
+    if (g->estado == 0) {
+        g->pilha = aloca(GER_PILHA);
+        if (!g->pilha) { g->estado = 3; g->res_tipo = 2; g->res = vT("sem memoria para gerador"); ger_rodando = c_ger; return; }
+        uint32_t *t = (uint32_t *)(g->pilha + GER_PILHA - 64);
+        t[0] = 0; t[1] = 0; t[2] = 0; t[3] = 0;          /* edi esi ebx ebp */
+        t[4] = (uint32_t)ger_entrada;                     /* ret */
+        t[5] = 0;
+        g->esp_g = t;
+        ger_novo = g;
+    } else {
+        topo_s = g->g_topo; qa = g->g_qa; prof = g->g_prof; lim_pilha = g->g_lim;
+    }
+    g->estado = 2;
+    ger_troca(&g->esp_c, g->esp_g);
+    topo_s = c_topo; qa = c_qa; prof = c_prof; lim_pilha = c_lim; ger_rodando = c_ger;
+}
+
+static __attribute__((noinline)) val produzir_um(val v)
+{
+    ger *g = ger_rodando;
+    if (!g) erro("SyntaxError", "yield fora de gerador", NULL);
+    g->res = v; g->res_tipo = 0;
+    g->g_topo = topo_s; g->g_qa = qa; g->g_prof = prof; g->g_lim = lim_pilha;
+    g->estado = 1;
+    ger_troca(&g->esp_g, g->esp_c);
+    g = ger_rodando;
+    if (g->modo == 1) lancar(g->troca);
+    if (g->modo == 2) { if (!ger_retorno) ger_retorno = novo_obj(p_obj); lancar(vO(ger_retorno)); }
+    return g->troca;
+}
+
+static val produzir(val v, int delega)
+{
+    if (!delega) return produzir_um(v);
+    val arr = para_vetor(v);
+    for (int i = 0; i < arr.o->na; i++) produzir_um(arr.o->a[i]);
+    return vU();
+}
+
+
+static int contar_nos(no *x, int prof_)
+{
+    int c = 0;
+    for (; x && c < 100000; x = x->prox) {
+        c++;
+        if (prof_ < 200) c += contar_nos(x->a, prof_ + 1) + contar_nos(x->b, prof_ + 1) + contar_nos(x->c, prof_ + 1) + contar_nos(x->d, prof_ + 1);
+    }
+    return c;
+}
+/* __escopo(f): [[nome, função, nº de parâmetros], ...] das variáveis do escopo onde f nasceu. */
+static val n_escopo(val este, val *a, int n)
+{
+    (void)este;
+    obj *r = novo_arr(16);
+    if (n < 1 || a[0].t != OB || a[0].o->cl != C_FN || !a[0].o->e) return vO(r);
+    env *e = a[0].o->e;
+    for (int i = 0; i < e->n; i++) {
+        val v = e->v[i];
+        if (v.t != OB || v.o->cl != C_FN || !v.o->fn) continue;
+        int np = 0;
+        for (no *q = v.o->fn->f->params; q; q = q->prox) np++;
+        int ns = contar_nos(v.o->fn->f->corpo, 0);
+        obj *t = novo_arr(4);
+        arr_push(t, vS(e->k[i])); arr_push(t, v); arr_push(t, vI(np)); arr_push(t, vI(ns));
+        arr_push(r, vO(t));
+    }
+    return vO(r);
+}
+static val n_limite(val este, val *a, int n)
+{
+    (void)este;
+    t_suave = n > 0 && a[0].t == NU ? tempo_ms() + (unsigned)(a[0].n >> FR) : 0;
+    if (t_limite < tempo_ms() + 5000) t_limite = tempo_ms() + 5000;   /* ferramenta de diagnóstico: estende a página */
+    return vU();
+}
+/* __tentar(f, arg, ms): chama f(arg) com limite de tempo; [true, valor] ou [false, erro]. */
+static val r_tentar;
+static __attribute__((noinline)) int tentar_chamada(val f, val arg, unsigned ms)
+{
+    salto b; salto *volatile ant = topo_s; quadro *volatile q = qa; volatile int p = prof;
+    b.ant = ant;
+    if (__builtin_setjmp(b.b)) { topo_s = ant; qa = q; prof = p; t_suave = 0; return 0; }
+    topo_s = &b;
+    t_suave = tempo_ms() + ms;
+    if (t_limite < t_suave + 5000) t_limite = t_suave + 5000;
+    r_tentar = chamar(f, vU(), &arg, 1);
+    t_suave = 0;
+    topo_s = ant;
+    return 1;
+}
+static val n_tentar(val este, val *a, int n)
+{
+    (void)este;
+    obj *r = novo_arr(2);
+    if (n < 3) return vO(r);
+    int ok = tentar_chamada(a[0], a[1], (unsigned)(a[2].n >> FR));
+    if (!ok && fatal) __builtin_longjmp(topo_s->b, 1);
+    arr_push(r, vB(ok)); arr_push(r, ok ? r_tentar : exc);
+    return vO(r);
+}
+/* __gnext(id, modo, valor) -> [done, value] */
+static val n_gnext(val este, val *a, int n)
+{
+    (void)este;
+    int id = n > 0 ? (int)(to_num(a[0]) >> FR) : -1, modo = n > 1 ? (int)(to_num(a[1]) >> FR) : 0;
+    val v = n > 2 ? a[2] : vU();
+    if (id < 0 || id >= n_gers) erro("TypeError", "gerador invalido", NULL);
+    ger *g = gers[id];
+    obj *r = novo_arr(2);
+    if (g->estado == 2) erro("TypeError", "Generator is already running", NULL);
+    if (g->estado == 0 && modo) g->estado = 3;
+    if (g->estado == 3) {
+        if (modo == 1) lancar(v);
+        arr_push(r, vB(1)); arr_push(r, modo == 2 ? v : vU());
+        return vO(r);
+    }
+    g->modo = modo; g->troca = v;
+    retomar(g);
+    if (fatal) __builtin_longjmp(topo_s->b, 1);
+    if (g->estado == 3 && g->pilha) { libera(g->pilha); g->pilha = NULL; }
+    if (g->res_tipo == 2) lancar(g->res);
+    arr_push(r, vB(g->res_tipo == 1)); arr_push(r, g->res);
+    return vO(r);
 }
 
 #include "js_nativo.h"

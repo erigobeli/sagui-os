@@ -46,6 +46,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const el = document.createElement("p"); el.textContent = "criado <ok>"; el.className = "c1"; el.classList.add("c2");
   document.querySelector("#app").appendChild(el);
   console.log("t5 " + document.querySelectorAll("p.c1.c2").length + " " + el.parentNode.id + " " + document.body.tagName);
+  function* conta(n) { for (var i = 0; i < n; i++) { var x = yield i; if (x) i += x; } return "fim"; }
+  var g = conta(5), r = [g.next().value, g.next().value, g.next(2).value, g.next().done, g.next().value];
+  var o = { *pares() { yield 2; yield* [4, 6]; } }, sp = [...o.pares()];
+  var gx = conta(3); gx.next(); var pego = 0; try { gx.throw(new Error("x")); } catch (e) { pego = 1; }
+  var gr = conta(9); gr.next(); var rt = gr.return(7);
+  console.log("t7 " + r.join(",") + " " + sp.join("+") + " " + pego + " " + rt.value + rt.done);
 });
 var cl = 0;
 document.getElementById("b").addEventListener("click", () => { cl++; document.getElementById("b").textContent = "clicou " + cl; console.log("t6 " + cl); });
@@ -80,6 +86,7 @@ def main():
         verificar("js: t3 0.30 3.5 2 -2 123 undefined nn 2" in s, "números e operadores novos")
         verificar("js: t4 5" in s, "async e promessas")
         verificar("js: t5 1 app BODY" in s, "DOM e eventos de carga")
+        verificar("js: t7 0,1,4,true, 2+4+6 1 7true" in s, "geradores: next, yield*, throw e return")
         m.clique(197, 158)
         m.esperar_serial("cipo: clique js 0", 20)
         m.clique(197, 158)

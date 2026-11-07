@@ -19,6 +19,10 @@
  *   3. desenhar é só pintar os segmentos das linhas visíveis. */
 #include "sagui.h"
 #include "gui.h"
+#include "motor.h"
+
+static motor_t *motor;           /* motor de páginas novo: pinta e trata cliques */
+static int motor_altura;
 
 #define LARG_INICIO 860
 #define ALT_INICIO  600
@@ -496,6 +500,7 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
 /* <img>: baixa, reduz para caber na página e reserva as linhas. */
 static bool colocar_imagem(const char *url, int larg_css)
 {
+    if (motor) return false;   /* o motor baixa as imagens depois da primeira pintura */
     if (qtd_imagens == MAX_IMAGENS) return false;
     if (tempo_ms() - inicio_pagina > 15000) return false;   /* página cheia de fotos não prende o navegador */
     char st[100];
@@ -1244,6 +1249,7 @@ static void fechar_implicito(const char *nome)
 /* <link rel=stylesheet>: baixa e lê, dentro de um limite de tempo e de arquivos. */
 static void folha_externa(const char *a, int n)
 {
+    if (motor) return;
     char v[URL_MAX], end[URL_MAX];
     if (sem_esconder || qtd_folhas >= 6 || tempo_ms() - inicio_pagina > 10000) return;
     if (!atributo(a, n, "rel", v, sizeof v) || !igual_sem_caixa(v, "stylesheet", 10)) return;
@@ -1341,8 +1347,17 @@ static char *rodar_scripts(char *h, int *n)
     return novo;
 }
 
+static uint8_t *js_baixar(const char *u, unsigned *n);
 static void ler_pagina(const char *h, int n)
 {
+    static const motor_ganchos_t g = { js_baixar, imagem_decodificar };
+    if (motor) motor_fim(motor);
+    motor = motor_novo(&g);
+    if (motor) {
+        unsigned t0 = tempo_ms();
+        motor_ler(motor, h, n, url_atual);
+        registrar("cipo: motor leu em %u ms\n", tempo_ms() - t0);
+    }
     const char *m = achar_tag(h, n, "<main");
     const char *f = m ? achar_tag(m, n - (int)(m - h), "</main") : NULL;
     if (!m) { ler_html(h, n); return; }
@@ -1685,6 +1700,8 @@ static void ler_html(const char *h, int n)
 
 static void limpar_pagina(void)
 {
+    if (motor) { motor_fim(motor); motor = NULL; }
+    motor_altura = 0;
     qtd_segs = qtd_alvos = qtd_textos = qtd_forms = 0;
     for (int i = 0; i < qtd_imagens; i++) libera(imagens[i].px);
     qtd_imagens = 0;
@@ -1758,8 +1775,38 @@ static void texto_grande(int x, int y, const char *t, int n, uint32_t cor)
     }
 }
 
+static void desenhar_barra_rolagem(void)
+{
+    int bx = LARG - ROLAGEM;
+    g_retangulo(j, bx, TOPO, ROLAGEM, AREA_A, 0xE6E9EC);
+    g_retangulo(j, bx, TOPO, 1, AREA_A, COR_BORDA);
+    if (linhas > VISIVEIS) {
+        int a = AREA_A * VISIVEIS / linhas;
+        if (a < 20) a = 20;
+        int y = TOPO + (AREA_A - a) * topo / (linhas - VISIVEIS);
+        g_retangulo(j, bx + 3, y + 2, ROLAGEM - 5, a - 4, 0x8A939C);
+    }
+}
+
+static void motor_diagramar(void)
+{
+    if (!motor) return;
+    unsigned t0 = tempo_ms();
+    motor_altura = motor_layout(motor, LARG - ROLAGEM, AREA_A);
+    linhas = (motor_altura + LINHA_A - 1) / LINHA_A + 1;
+    int nos, cmds, imgs;
+    motor_numeros(motor, &nos, &cmds, &imgs);
+    registrar("cipo: motor %d nos, %d comandos, %d imagens, altura %d, %u ms\n", nos, cmds, imgs, motor_altura, tempo_ms() - t0);
+}
+
 static void desenhar_pagina(void)
 {
+    if (motor) {
+        motor_pintar(motor, j->px + TOPO * j->larg, LARG - ROLAGEM, j->larg, topo * LINHA_A, AREA_A);
+        desenhar_barra_rolagem();
+        jan_mostrar_area(j, 0, TOPO, LARG, AREA_A);
+        return;
+    }
     g_retangulo(j, 0, TOPO, LARG - ROLAGEM, AREA_A, fundo_pagina);
     for (int i = 0; i < qtd_rets; i++) {
         const ret_t *q = &rets[i];
@@ -2080,9 +2127,21 @@ static void carregar(const char *pedido)
     char t[48];   /* o kernel recusa título maior que a moldura guarda */
     formatar_texto(t, sizeof t, "Cipó - %s", titulo);
     titulo_janela(j->id, t);
+    if (motor) {
+        const char *mt = motor_titulo(motor);
+        if (mt[0] && !titulo_js[0]) { copia_texto(titulo, mt, sizeof titulo); formatar_texto(t, sizeof t, "Cipó - %s", titulo); titulo_janela(j->id, t); }
+        motor_diagramar();
+    }
     registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, qtd_alvos);
     rodape(texto_pronto());
     desenhar_pagina();
+    /* imagens chegam depois do texto, umas poucas por vez */
+    while (motor && motor_imagens(motor, 3)) {
+        rodape("Carregando imagens...");
+        motor_diagramar();
+        desenhar_pagina();
+    }
+    if (motor) rodape(texto_pronto());
 }
 
 /* Clique num elemento com evento: o motor roda o evento e devolve a página. */
@@ -2095,6 +2154,7 @@ static void clique_js(int id)
     limpar_pagina();
     ler_pagina(h, n);
     libera(h);
+    motor_diagramar();
     registrar("cipo: clique js %d (%d linhas)\n", id, linhas);
     rodape(texto_pronto());
     desenhar_pagina();
@@ -2205,6 +2265,27 @@ int principal(int argc, char **argv)
                 rolar((e.y - TOPO) * (linhas - VISIVEIS) / AREA_A);
                 continue;
             }
+            if (motor && e.y >= TOPO && e.y < ALT - RODAPE && e.x < LARG - ROLAGEM) {
+                const motor_alvo_t *ma = motor_alvo(motor, e.x, e.y - TOPO + topo * LINHA_A);
+                if (ma && ma->tipo == MA_LINK) {
+                    char url[URL_MAX];
+                    copia_texto(url, ma->href, sizeof url);
+                    if (comeca_com(url, "sagui-js:")) clique_js(texto_para_int(url + 9));
+                    else if (!comeca_com(url, "javascript:") && !comeca_com(url, "mailto:")) navegar(url);
+                } else if (ma && (ma->tipo == MA_CAMPO || ma->tipo == MA_BOTAO)) {
+                    char texto[120] = "";
+                    if (pedir_texto("Cipó", "Digite o texto e aperte Enter:", texto, sizeof texto)) {
+                        char url[URL_MAX], q[400];
+                        codificar(texto, q, sizeof q);
+                        const char *b = ma->href;
+                        int k = formatar_texto(url, sizeof url, "%s", b);
+                        for (int i = 0; url[i]; i++) if (url[i] == '?' || url[i] == '#') { url[i] = 0; k = i; break; }
+                        formatar_texto(url + k, sizeof url - (size_t)k, "?%s%s%s=%s", ma->fixos ? ma->fixos : "", ma->fixos && ma->fixos[0] ? "&" : "", ma->nome, q);
+                        navegar(url);
+                    }
+                }
+                continue;
+            }
             int a = alvo_em(e.x, e.y);
             if (a >= 0 && alvos[a].tipo == A_LINK) {
                 char url[URL_MAX];
@@ -2214,6 +2295,13 @@ int principal(int argc, char **argv)
             } else if (a >= 0 && alvos[a].tipo == A_CAMPO) {
                 enviar_formulario(&alvos[a]);
             }
+            continue;
+        }
+        if (e.tipo == EV_MOVER && motor) {
+            const motor_alvo_t *ma = e.y >= TOPO && e.y < ALT - RODAPE ? motor_alvo(motor, e.x, e.y - TOPO + topo * LINHA_A) : NULL;
+            if (ma && ma->tipo == MA_LINK) rodape(ma->href);
+            else if (ma) rodape("Formulário: clique para digitar");
+            else rodape(texto_pronto());
             continue;
         }
         if (e.tipo == EV_MOVER) {
