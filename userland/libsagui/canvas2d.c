@@ -1165,3 +1165,40 @@ void tela2d_escrever(int id, const uint8_t *rgba, int w, int h, int dx, int dy, 
         }
     versao++;
 }
+
+/* ------------------------------------------------------------ arco do SVG
+ * SVG 1.1, apêndice F.6.5: dos extremos e bandeiras para centro e ângulos;
+ * devolve os pontos do arco (sem o inicial) para o motor, que não usa ponto
+ * flutuante. Coordenadas inteiras na escala que o motor usar. */
+int svg_arco_pontos(int x1, int y1, int rx_, int ry_, int rot100, int grande, int varre, int x2, int y2, int *xs, int *ys, int max)
+{
+    if (max < 1) return 0;
+    if ((x1 == x2 && y1 == y2)) return 0;
+    double rx = rx_ < 0 ? -rx_ : rx_, ry = ry_ < 0 ? -ry_ : ry_;
+    if (rx == 0 || ry == 0) { xs[0] = x2; ys[0] = y2; return 1; }
+    double phi = rot100 / 100.0 * PI / 180, cf = c_cos(phi), sf = c_sin(phi);
+    double dx = (x1 - x2) / 2.0, dy = (y1 - y2) / 2.0;
+    double xp = cf * dx + sf * dy, yp = -sf * dx + cf * dy;
+    double lam = xp * xp / (rx * rx) + yp * yp / (ry * ry);
+    if (lam > 1) { double s = c_sqrt(lam); rx *= s; ry *= s; }
+    double num = rx * rx * ry * ry - rx * rx * yp * yp - ry * ry * xp * xp, den = rx * rx * yp * yp + ry * ry * xp * xp;
+    double coef = den > 0 && num > 0 ? c_sqrt(num / den) : 0;
+    if (grande == varre) coef = -coef;
+    double cxp = coef * rx * yp / ry, cyp = -coef * ry * xp / rx;
+    double cx = cf * cxp - sf * cyp + (x1 + x2) / 2.0, cy = sf * cxp + cf * cyp + (y1 + y2) / 2.0;
+    double ux = (xp - cxp) / rx, uy = (yp - cyp) / ry, vx = (-xp - cxp) / rx, vy = (-yp - cyp) / ry;
+    double t1 = c_atan2(uy, ux), dt = c_atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+    if (!varre && dt > 0) dt -= 2 * PI;
+    else if (varre && dt < 0) dt += 2 * PI;
+    /* segmentos: erro de corda abaixo de ~1/4 da unidade de tela */
+    double r = rx > ry ? rx : ry;
+    int n = (int)(c_abs(dt) * c_sqrt(r) / 2) + 2;
+    if (n > max) n = max;
+    for (int i = 1; i <= n; i++) {
+        double a = t1 + dt * i / n, ca = c_cos(a), sa = c_sin(a);
+        double x = cx + rx * ca * cf - ry * sa * sf, y = cy + rx * ca * sf + ry * sa * cf;
+        xs[i - 1] = i == n ? x2 : (int)(x < 0 ? x - 0.5 : x + 0.5);
+        ys[i - 1] = i == n ? y2 : (int)(y < 0 ? y - 0.5 : y + 0.5);
+    }
+    return n;
+}

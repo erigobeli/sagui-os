@@ -161,6 +161,9 @@ bool     fonte_tem(fonte_t *f, unsigned cp);
 int      fonte_ascendente(fonte_t *f, int px);
 int      fonte_descendente(fonte_t *f, int px);
 const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy);
+/* Fonte variável: instância com os eixos dados (tag OpenType, valor x 100); a base continua dona das tabelas. */
+fonte_t *fonte_instancia(fonte_t *b, const uint32_t *tags, const int *valores100, int n);
+bool     fonte_variavel(fonte_t *f);
 char *js_tique(int ms, int *saida_n);   /* timers depois do load; HTML novo se o DOM mudou */
 int   js_vivo(void);
 int   js_ativo(void);                     /* a página tem JavaScript rodando */

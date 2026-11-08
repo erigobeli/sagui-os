@@ -9,6 +9,7 @@
 #include <time.h>
 #define aloca malloc
 #define libera free
+#define realoca realloc
 static inline size_t tam_texto(const char *s) { return strlen(s); }
 static inline int compara_texto(const char *a, const char *b) { return strcmp(a, b); }
 static inline char *copia_texto(char *d, const char *s, size_t m) { if (!m) return d; strncpy(d, s, m - 1); d[m - 1] = 0; return d; }
@@ -27,6 +28,9 @@ bool     fonte_tem(fonte_t *f, unsigned cp);
 int      fonte_ascendente(fonte_t *f, int px);
 int      fonte_descendente(fonte_t *f, int px);
 const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy);
+/* Fonte variável: instância com os eixos dados (tag OpenType, valor x 100); a base continua dona das tabelas. */
+fonte_t *fonte_instancia(fonte_t *b, const uint32_t *tags, const int *valores100, int n);
+bool     fonte_variavel(fonte_t *f);
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
 /* UTF-8: lê um caractere (byte inválido vale por si: cp = byte) e escreve um. */
 static inline int utf8_ler(const char *p, int resto, uint32_t *cp)

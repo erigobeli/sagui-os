@@ -66,7 +66,9 @@ def main():
         m.clique(jx + 864 - 2 - 40 + 8, jy + 12)                  # maximizar
         m.esperar_serial("maximizada: 1020x718", 10)
         time.sleep(3)
-        verificar(len(re.findall(r'cipo: pronto "P.gina A"', m.serial())) == 4, "maximizado, diagrama a página de novo")
+        s = m.serial()
+        verificar("rediagramou em 1006x" in s and len(re.findall(r'cipo: pronto "P.gina A"', s)) == 3,
+                  "maximizado, diagrama a página de novo (sem baixar outra vez)")
         m.captura("H37-cipo-maximizado")
     srv.shutdown()
     return 0

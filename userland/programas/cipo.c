@@ -1401,8 +1401,12 @@ static uint8_t *js_baixar(const char *u, unsigned *n)
 {
     char end[URL_MAX];
     if (!juntar_url(url_atual, u, end, sizeof end)) return NULL;
+    char antes[sizeof rodape_texto];
+    copia_texto(antes, rodape_texto, sizeof antes);
     rodape("Baixando scripts...");
-    return baixar_imagem(end, n);
+    uint8_t *d = baixar_imagem(end, n);
+    rodape(antes);   /* depois, o rodapé volta ao que era */
+    return d;
 }
 
 /* O player de uma página (YouTube) deu src a um <video>: abre o tocador. */
@@ -2232,6 +2236,7 @@ static void carregar(const char *pedido)
             corpo = converter_corpo(corpo, &tam);
             if (html) {
                 titulo_js[0] = alerta_js[0] = 0;
+                int tam_doc = tam;   /* o documento como veio (a serialização tira os scripts) */
                 char *novo = rodar_scripts(corpo, &tam);
                 ler_pagina(novo, tam);
                 if (motor) {
@@ -2241,10 +2246,10 @@ static void carregar(const char *pedido)
                         motor_sem_esconder(motor, true);
                         motor_diagramar();
                     }
-                    if (motor_altura < 40 && tam > 20000) {
+                    if (motor_altura < 40 && tam_doc > 20000) {
                         char tt[96];
                         copia_texto(tt, titulo, sizeof tt);
-                        registrar("cipo: pagina so com JavaScript (%d bytes, altura %d)\n", tam, motor_altura);
+                        registrar("cipo: pagina so com JavaScript (%d bytes, altura %d)\n", tam_doc, motor_altura);
                         limpar_pagina();
                         pagina_de_erro("Esta página só existe com JavaScript completo",
                                        "O site monta a página com recursos de JavaScript que o motor do Cipó ainda não tem.");
@@ -2542,6 +2547,7 @@ int principal(int argc, char **argv)
                     if (rol_px > max_px()) rol_px = max_px();
                     desenhar_pagina();
                 }
+                registrar("cipo: rediagramou em %dx%d sem baixar de novo\n", LARG - ROLAGEM, AREA_A);
             } else {
                 char url[URL_MAX];
                 copia_texto(url, url_atual, sizeof url);
@@ -2649,7 +2655,8 @@ int principal(int argc, char **argv)
         }
         if (e.tipo == EV_MOVER && motor) {
             const motor_alvo_t *ma = e.y >= TOPO && e.y < ALT - RODAPE ? motor_alvo(motor, e.x, e.y - TOPO + rol_px) : NULL;
-            if (ma && ma->tipo == MA_LINK) rodape(ma->href);
+            if (ma && ma->tipo == MA_LINK && !comeca_com(ma->href, "sagui-js:")) rodape(ma->href);   /* clique só de script: sem endereço, como no Chrome */
+            else if (ma && ma->tipo == MA_LINK) rodape(texto_pronto());
             else if (ma) rodape(ma->tipo == MA_CAMPO ? "Campo de texto" : "Enviar formulário");
             else rodape(texto_pronto());
             continue;

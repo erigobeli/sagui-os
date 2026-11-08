@@ -64,6 +64,10 @@ typedef struct {
     int16_t z; uint8_t z_def;           /* z-index; z_def = não é auto */
     const char *tf_txt;                 /* transform (texto; resolvido no achatamento, % depende da caixa) */
     int8_t fam;                         /* font-family: família de @font-face, -1 = fonte do sistema */
+    uint16_t pesonum;                   /* font-weight numérico (1..1000); peso = pesonum >= 600 */
+    uint16_t largura;                   /* font-stretch em décimos de % (1000 = normal) */
+    const char *fvs;                    /* font-variation-settings (texto), NULL = normal */
+    int16_t ls64;                       /* letter-spacing em 1/64 px (herdado; em vira px no elemento que declara) */
 } estilo_t;
 
 typedef struct atr { char *nome, *valor; struct atr *prox; } atr_t;
@@ -145,6 +149,7 @@ typedef struct {
     int32_t q[6]; int ol, oa;  /* C_IMGR: tela -> imagem (16.16) e tamanho original */
     struct grad_m *grad;       /* C_GRAD */
     int cam;        /* 0 ou índice+1 em camadas (fixed/sticky seguem a rolagem) */
+    int16_t ls64;   /* C_TEXTO: letter-spacing (1/64 px) */
 } cmd_t;
 
 /* Contexto de empilhamento (CSS 2.1, Apêndice E). real = 0: pseudo-contexto
@@ -180,7 +185,10 @@ struct motor {
     camada_t cams[64]; int n_cams;
     /* @font-face: famílias (nome) e faces (url, peso, itálico, fonte carregada) */
     char fams[16][40]; int n_fams;
-    struct { int8_t fam; uint8_t peso, italico, tentou; char *url; fonte_t *f; } faces[40]; int n_faces;
+    struct { int8_t fam; uint8_t peso, italico, tentou; char *url; fonte_t *f;
+             uint16_t p_min, p_max, l_min, l_max;   /* faixas do @font-face: peso, largura (décimos de %) */
+             uint8_t quer;                          /* o casamento de fontes escolheu esta face: baixar */
+             struct { uint16_t w, l; unsigned fvs; fonte_t *f; } inst[24]; int n_inst; } faces[40]; int n_faces;
     unsigned fam_usada;     /* famílias que algum texto pediu (motor_imagens baixa as fontes delas) */
     int rolagem;            /* y da última pintura (para fixed/sticky nos cliques) */
     no_m *foco;             /* campo de texto com foco */
@@ -554,7 +562,7 @@ enum {
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
-    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY,
+    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -568,7 +576,7 @@ static const char *const nomes_prop[] = {
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
-    "background-position", "background-repeat", "background-position-x", "background-position-y",
+    "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing",
 };
 
 static int achar_prop(const char *p, int n)
@@ -1102,6 +1110,8 @@ static void ler_regra(motor_t *m, const char *sel, int ns, const char *d, int nd
 /* Folha de estilo. As regras dentro de @media só entram se a mídia vale
  * para a largura atual (o motor relê as folhas quando a largura muda). */
 static int ler_peso(const char *v);
+static int ler_peso_de(const char *v, int pai);
+static int ler_largura(const char *v);
 /* primeiro url(...) do valor; aceita aspas (data: com aspas do outro tipo dentro) */
 static const char *ler_url(const char *v, int *n)
 {
@@ -1121,7 +1131,7 @@ static void juntar(const char *base, const char *rel, char *s, int max);
 /* @font-face: guarda família, peso, estilo e a melhor fonte de src (woff2 > woff > ttf) */
 static void ler_font_face(motor_t *m, const char *s, int n)
 {
-    char fam[40] = ""; int peso = 0, ital = 0, util = 1;
+    char fam[40] = ""; int peso = 0, ital = 0, util = 1, p_min = 400, p_max = 400, l_min = 1000, l_max = 1000;
     const char *melhor = NULL; int mn = 0, mnota = -1;
     int i = 0;
     while (i < n) {
@@ -1140,9 +1150,18 @@ static void ler_font_face(motor_t *m, const char *s, int n)
             if (a < b && (s[a] == '"' || s[a] == '\'')) { a++; if (b > a && (s[b - 1] == '"' || s[b - 1] == '\'')) b--; }
             int k = b - a < 39 ? b - a : 39; memcpy(fam, s + a, (size_t)k); fam[k] = 0;
         } else if (nk == 11 && igual_n(ch, "font-weight", 11)) {
-            char w[16]; int k = v1 - v0 < 15 ? v1 - v0 : 15; memcpy(w, s + v0, (size_t)k); w[k] = 0;
-            for (int j = 0; j < k; j++) if (w[j] == ' ') { w[j] = 0; break; }   /* faixa "100 900": vale o começo */
-            int pw = ler_peso(w); if (pw > 0) peso = 1;
+            char w[32]; int k = v1 - v0 < 31 ? v1 - v0 : 31; memcpy(w, s + v0, (size_t)k); w[k] = 0;
+            while (k && eh_esp(w[k - 1])) w[--k] = 0;
+            char *sp = acha_char(w, ' ');
+            if (sp) { *sp = 0; int a = ler_peso_de(w, 400), b = ler_peso_de(sp + 1, 400); if (a > 0 && b > 0) { p_min = a < b ? a : b; p_max = a < b ? b : a; } }
+            else { int a = ler_peso_de(w, 400); if (a > 0) p_min = p_max = a; }
+            peso = p_min >= 600;
+        } else if (nk == 12 && igual_n(ch, "font-stretch", 12)) {
+            char w[40]; int k = v1 - v0 < 39 ? v1 - v0 : 39; memcpy(w, s + v0, (size_t)k); w[k] = 0;
+            while (k && eh_esp(w[k - 1])) w[--k] = 0;
+            char *sp = acha_char(w, ' ');
+            if (sp) { *sp = 0; int a = ler_largura(w), b = ler_largura(sp + 1); if (a > 0 && b > 0) { l_min = a < b ? a : b; l_max = a < b ? b : a; } }
+            else { int a = ler_largura(w); if (a > 0) l_min = l_max = a; }
         } else if (nk == 10 && igual_n(ch, "font-style", 10)) ital = igual_n(s + v0, "italic", 6) || igual_n(s + v0, "oblique", 7);
         else if (nk == 13 && igual_n(ch, "unicode-range", 13)) {
             /* só as faces que cobrem o latim básico (A = U+41) */
@@ -1181,8 +1200,13 @@ static void ler_font_face(motor_t *m, const char *s, int n)
     char rel[400], u[600];
     int k = mn < 399 ? mn : 399; memcpy(rel, melhor, (size_t)k); rel[k] = 0;
     juntar(base_folha ? base_folha : m->url, rel, u, sizeof u);
-    for (int q = 0; q < m->n_faces; q++) if (m->faces[q].fam == f && m->faces[q].peso == peso && m->faces[q].italico == ital) return;
+    for (int q = 0; q < m->n_faces; q++)
+        if (m->faces[q].fam == f && m->faces[q].p_min == p_min && m->faces[q].p_max == p_max && m->faces[q].italico == ital &&
+            m->faces[q].l_min == l_min && m->faces[q].l_max == l_max) return;
+    memset(&m->faces[m->n_faces], 0, sizeof m->faces[0]);
     m->faces[m->n_faces].fam = (int8_t)f; m->faces[m->n_faces].peso = (uint8_t)peso; m->faces[m->n_faces].italico = (uint8_t)ital;
+    m->faces[m->n_faces].p_min = (uint16_t)p_min; m->faces[m->n_faces].p_max = (uint16_t)p_max;
+    m->faces[m->n_faces].l_min = (uint16_t)l_min; m->faces[m->n_faces].l_max = (uint16_t)l_max;
     m->faces[m->n_faces].url = m_dup(m, u, (int)tam_texto(u)); m->faces[m->n_faces].f = NULL; m->faces[m->n_faces].tentou = 0;
     m->n_faces++;
 }
@@ -1463,7 +1487,8 @@ static void estilo_inicial(estilo_t *e, const estilo_t *pai)
         e->cor = pai->cor; e->tam = pai->tam; e->peso = pai->peso; e->italico = pai->italico; e->alinha = pai->alinha;
         e->branco = pai->branco; e->lista = pai->lista; e->visivel = pai->visivel; e->linha = pai->linha; e->maiusc = pai->maiusc;
         e->sublinha = pai->sublinha; e->risca = pai->risca; e->fam = pai->fam;
-    } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; }
+        e->pesonum = pai->pesonum; e->largura = pai->largura; e->fvs = pai->fvs; e->ls64 = pai->ls64;
+    } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; e->pesonum = 400; e->largura = 1000; }
 }
 
 static int px_de(const medida_t *m, int tam)
@@ -1563,12 +1588,26 @@ static int achar_familia(motor_t *m, const char *v)
     return -1;
 }
 
-static int ler_peso(const char *v)
+/* font-weight numérico (CSS Fonts 4): normal 400, bold 700, bolder/lighter pela tabela do pai */
+static int ler_peso_de(const char *v, int pai)
 {
-    if (igual(v, "bold") || igual(v, "bolder")) return 1;
-    if (igual(v, "normal") || igual(v, "lighter")) return 0;
+    if (igual(v, "normal")) return 400;
+    if (igual(v, "bold")) return 700;
+    if (igual(v, "bolder")) return pai < 350 ? 400 : pai < 550 ? 700 : pai < 900 ? 900 : pai;
+    if (igual(v, "lighter")) return pai < 100 ? pai : pai < 550 ? 100 : pai < 750 ? 400 : 700;
     int u; int x = num100(v, (int)tam_texto(v), &u);
-    if (u) return x >= 60000 ? 1 : 0;
+    if (u && x >= 100 && x <= 100000) return x / 100;
+    return -1;
+}
+static int ler_peso(const char *v) { int w = ler_peso_de(v, 400); return w < 0 ? -1 : w >= 600; }
+/* font-stretch: palavra-chave ou porcentagem, em décimos de % */
+static int ler_largura(const char *v)
+{
+    static const struct { const char *n; int l; } kw[] = { {"ultra-condensed",500},{"extra-condensed",625},{"condensed",750},{"semi-condensed",875},
+        {"normal",1000},{"semi-expanded",1125},{"expanded",1250},{"extra-expanded",1500},{"ultra-expanded",2000} };
+    for (unsigned i = 0; i < sizeof kw / sizeof kw[0]; i++) if (igual(v, kw[i].n)) return kw[i].l;
+    int u; int x = num100(v, (int)tam_texto(v), &u);
+    if (u && strstr_m(v, "%") && x > 0) return x / 10;
     return -1;
 }
 
@@ -1763,19 +1802,32 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         break;
     }
     case PR_FSIZE: tamanho_fonte(e, v, pai); break;
-    case PR_FWEIGHT: { int w = ler_peso(v); if (w >= 0) e->peso = (uint8_t)w; break; }
+    case PR_FWEIGHT: { int w = ler_peso_de(v, pai ? pai->pesonum : 400); if (w >= 0) { e->pesonum = (uint16_t)w; e->peso = w >= 600; } break; }
+    case PR_FSTRETCH: { int l = ler_largura(v); if (l > 0) e->largura = (uint16_t)l; break; }
+    case PR_FVS: e->fvs = igual(v, "normal") ? NULL : m_dup(m, v, nv); break;
+    case PR_LSPACING:
+        if (igual(v, "normal")) e->ls64 = 0;
+        else if (ler_medida_m(v, nv, &md) && md.u != U_PCT && md.u != U_AUTO) {
+            /* em/rem em 1/64 px: v vem em centésimos */
+            int x = md.u == U_EM ? md.v * e->tam * 64 / 100 : md.u == U_REM ? md.v * 16 * 64 / 100 : md.u == U_PX ? md.v * 64 : 0;
+            e->ls64 = (int16_t)(x < -32000 ? -32000 : x > 32000 ? 32000 : x);
+        }
+        break;
     case PR_FSTYLE: e->italico = igual(v, "italic") || igual(v, "oblique"); break;
     case PR_FFAMILY: { int f = achar_familia(m, v); if (f != -2) e->fam = (int8_t)f; break; }
     case PR_FONT: {
         { int f = achar_familia(m, v); if (f != -2) e->fam = (int8_t)f; }
+        e->pesonum = 400; e->peso = 0; e->largura = 1000; e->italico = 0;
         int k = palavras(v, nv, p, t, 6);
         for (int i = 0; i < k; i++) {
             char w[24]; int tw = t[i] < 23 ? t[i] : 23;
             memcpy(w, p[i], (size_t)tw); w[tw] = 0;
             char *barra = acha_char(w, '/');
             if (barra) *barra = 0;
-            if (ler_peso(w) >= 0 && !eh_dig(w[0])) e->peso = (uint8_t)ler_peso(w);
-            else if (eh_dig(w[0]) && ler_peso(w) >= 0 && !barra && tw == 3 && w[1] == '0' && w[2] == '0') e->peso = (uint8_t)ler_peso(w);
+            int pw = ler_peso_de(w, pai ? pai->pesonum : 400);
+            if (pw >= 0 && !eh_dig(w[0]) && !igual(w, "normal")) { e->pesonum = (uint16_t)pw; e->peso = pw >= 600; }
+            else if (eh_dig(w[0]) && pw >= 0 && !barra && !acha_char(w, '%') && tw == 3 && w[1] == '0' && w[2] == '0') { e->pesonum = (uint16_t)pw; e->peso = pw >= 600; }
+            else if (ler_largura(w) > 0 && !eh_dig(w[0]) && !igual(w, "normal")) e->largura = (uint16_t)ler_largura(w);
             else if (igual(w, "italic")) e->italico = 1;
             else if (ler_medida_m(w, (int)tam_texto(w), &md) && md.u != U_PX) tamanho_fonte(e, w, pai);
             else if (ler_medida_m(w, (int)tam_texto(w), &md) && md.u == U_PX && md.v > 0) tamanho_fonte(e, w, pai);
@@ -2011,7 +2063,9 @@ static void estilizar(motor_t *m, no_m *n)
     }
     if (i == na) presentacionais(m, n);
     estilo_t *e = &n->e;
-    if (e->flutua || e->position == P_ABSOLUTE || e->position == P_FIXED) {
+    /* "blockification" (CSS Display 3, 2.7): float, absoluto e filho de flex/grid viram bloco */
+    bool item = pe && (pe->display == D_FLEX || pe->display == D_IFLEX || pe->display == D_GRID);
+    if (e->flutua || e->position == P_ABSOLUTE || e->position == P_FIXED || item) {
         if (e->display == D_INLINE || e->display == D_IBLOCK || e->display == D_ROW || e->display == D_CELL) e->display = D_BLOCK;
         else if (e->display == D_IFLEX) e->display = D_FLEX;
     }
@@ -2038,7 +2092,10 @@ static void estilizar(motor_t *m, no_m *n)
         for (int i = 0; i < nps[k]; i++) if (achps[k][i].d->prop != PR_FSIZE && achps[k][i].d->prop != PR_CUSTOM) aplicar(m, g, achps[k][i].d->prop, achps[k][i].d->valor, e);
         const char *ct = g->e.conteudo;
         if (!nps[k] || !ct || igual(ct, "none") || igual(ct, "normal")) { g->e.display = D_NONE; continue; }
-        if (g->e.flutua || g->e.position == P_ABSOLUTE || g->e.position == P_FIXED) if (g->e.display == D_INLINE) g->e.display = D_BLOCK;
+        if (g->e.flutua || g->e.position == P_ABSOLUTE || g->e.position == P_FIXED || e->display == D_FLEX || e->display == D_IFLEX || e->display == D_GRID) {
+            if (g->e.display == D_INLINE || g->e.display == D_IBLOCK) g->e.display = D_BLOCK;
+            else if (g->e.display == D_IFLEX) g->e.display = D_FLEX;
+        }
         /* texto: 'abc', "abc", attr(x); o resto (counter, url, ícones de fonte) é ignorado */
         char buf[128]; int bk = 0;
         for (const char *q = ct; *q && bk < 120;) {
@@ -2248,6 +2305,7 @@ static void tamanho_img(no_m *n, int *l, int *a)
 
 /* tamanho natural de controles e mídia */
 static int larg_texto(const estilo_t *e, const char *t, int n);
+#define SELECT_SETA 20   /* espaço da seta do <select> (como o Chromium) */
 static bool tamanho_natural(no_m *n, int *l, int *a)
 {
     estilo_t *e = &n->e;
@@ -2293,10 +2351,16 @@ static bool tamanho_natural(no_m *n, int *l, int *a)
         return true;
     }
     if (igual(n->tag, "select")) {
-        int mx = 4;
-        for (no_m *o = n->filho; o; o = o->prox) if (igual(o->tag, "option") && o->filho && o->filho->texto && o->filho->nt > mx) mx = o->filho->nt;
-        if (mx > 40) mx = 40;
-        *l = (mx + 2) * larg_letra(e); *a = altura_linha(e);
+        /* a opção mais larga (inclusive dentro de optgroup) mais o espaço da seta */
+        int mx = 0;
+        no_m *pilha[16]; int np = 0;
+        for (no_m *o = n->filho; o || np;) {
+            if (!o) { o = pilha[--np]->prox; continue; }
+            if (!o->texto && igual(o->tag, "optgroup") && o->filho && np < 16) { pilha[np++] = o; o = o->filho; continue; }
+            if (!o->texto && igual(o->tag, "option") && o->filho && o->filho->texto) { int w = larg_texto(e, o->filho->t, o->filho->nt); if (w > mx) mx = w; }
+            o = o->prox;
+        }
+        *l = mx + SELECT_SETA; *a = altura_linha(e);
         return true;
     }
     return false;
@@ -2305,17 +2369,91 @@ static bool tamanho_natural(no_m *n, int *l, int *a)
 /* ------------------------------------------------- medidas intrínsecas */
 
 /* Fonte da web do estilo: a face carregada mais parecida (peso, itálico); NULL usa o bitmap. */
+/* Distância de uma faixa ao valor pedido, na ordem de preferência do CSS Fonts 4 (5.2):
+ * dentro da faixa = 0; senão, para o peso: até 500 procura primeiro abaixo, acima
+ * de 500 primeiro acima (400..500 é caso à parte); para a largura, até 100% primeiro
+ * as mais estreitas. Quanto menor, melhor. */
+static int dist_peso(int w, int a, int b)
+{
+    if (w >= a && w <= b) return 0;
+    if (w >= 400 && w <= 500) {
+        if (a > w && a <= 500) return a - w;          /* até 500, para cima */
+        if (b < w) return 1000 + (w - b);             /* depois para baixo */
+        return 2000 + (a - w);                        /* por fim, acima de 500 */
+    }
+    if (w < 400) return b < w ? w - b : 1000 + (a - w);
+    return a > w ? a - w : 1000 + (w - b);
+}
+static int dist_largura(int l, int a, int b)
+{
+    if (l >= a && l <= b) return 0;
+    if (l <= 1000) return b < l ? l - b : 10000 + (a - l);
+    return a > l ? a - l : 10000 + (l - b);
+}
+/* font-variation-settings: "wght" 600, "wdth" 115 ... */
+static int ler_fvs(const char *v, uint32_t *tags, int *vals, int max)
+{
+    int n = 0;
+    while (v && *v && n < max) {
+        while (*v && (*v == ' ' || *v == ',')) v++;
+        if (*v != '"' && *v != '\'') break;
+        char q = *v++;
+        if (!v[0] || !v[1] || !v[2] || !v[3] || v[4] != q) break;
+        tags[n] = (uint32_t)(uint8_t)v[0] << 24 | (uint32_t)(uint8_t)v[1] << 16 | (uint32_t)(uint8_t)v[2] << 8 | (uint8_t)v[3];
+        v += 5;
+        while (*v == ' ') v++;
+        int u; const char *f = v;
+        while (*f && *f != ',') f++;
+        char b[24]; int k = (int)(f - v) < 23 ? (int)(f - v) : 23; memcpy(b, v, (size_t)k); b[k] = 0;
+        int x = num100(b, k, &u);
+        if (!u) break;
+        vals[n++] = x;
+        v = f;
+    }
+    return n;
+}
 static fonte_t *fonte_de(const estilo_t *e)
 {
     if (e->fam < 0 || !mo) return NULL;
     mo->fam_usada |= 1u << e->fam;
-    int melhor = -1, nota = -1;
+    int melhor = -1; long nota = 0x7FFFFFFF;
+    int w = e->pesonum ? e->pesonum : 400, l = e->largura ? e->largura : 1000;
+    /* casa pelos descritores entre todas as faces (como o navegador) e só baixa a escolhida */
     for (int i = 0; i < mo->n_faces; i++) {
-        if (mo->faces[i].fam != e->fam || !mo->faces[i].f) continue;
-        int n = (mo->faces[i].peso == (e->peso ? 1 : 0) ? 2 : 0) + (mo->faces[i].italico == e->italico ? 1 : 0);
-        if (n > nota) { nota = n; melhor = i; }
+        if (mo->faces[i].fam != e->fam || (mo->faces[i].tentou && !mo->faces[i].f)) continue;
+        /* largura pesa mais que estilo, que pesa mais que peso (cabe em 32 bits) */
+        long n = (long)dist_largura(l, mo->faces[i].l_min, mo->faces[i].l_max) * 10000L +
+                 (mo->faces[i].italico == e->italico ? 0 : 5000L) + dist_peso(w, mo->faces[i].p_min, mo->faces[i].p_max);
+        if (n < nota) { nota = n; melhor = i; }
     }
-    return melhor >= 0 ? mo->faces[melhor].f : NULL;
+    if (melhor < 0) return NULL;
+    fonte_t *f = mo->faces[melhor].f;
+    if (!f) { mo->faces[melhor].quer = 1; return NULL; }   /* até chegar, a fonte de reserva */
+    if (!fonte_variavel(f)) return f;
+    /* fonte variável: instância com o peso e a largura pedidos (presos à faixa da face) e o font-variation-settings por cima */
+    typeof(mo->faces[0]) *F = &mo->faces[melhor];
+    int ww = w < F->p_min ? F->p_min : w > F->p_max ? F->p_max : w;
+    int ll = l < F->l_min ? F->l_min : l > F->l_max ? F->l_max : l;
+    unsigned h = 0;
+    for (const char *p = e->fvs; p && *p; p++) h = h * 31 + (uint8_t)*p;
+    for (int i = 0; i < F->n_inst; i++) if (F->inst[i].w == ww && F->inst[i].l == ll && F->inst[i].fvs == h) return F->inst[i].f;
+    uint32_t tags[12]; int vals[12], n = 0;
+    tags[n] = 0x77676874; vals[n++] = ww * 100;          /* wght */
+    tags[n] = 0x77647468; vals[n++] = ll * 10;           /* wdth (%) */
+    n += ler_fvs(e->fvs, tags + n, vals + n, 10);        /* os de depois valem mais */
+    /* a ordem importa: font-variation-settings substitui wght/wdth */
+    uint32_t t2[12]; int v2[12], n2 = 0;
+    for (int i = 0; i < n; i++) {
+        int k = 0; while (k < n2 && t2[k] != tags[i]) k++;
+        t2[k] = tags[i]; v2[k] = vals[i]; if (k == n2) n2++;
+    }
+    /* as instâncias vivem até o fim da página: os comandos de texto apontam para elas */
+    if (F->n_inst >= 24) return f;
+    fonte_t *inst = fonte_instancia(f, t2, v2, n2);
+    if (!inst) return f;
+    int k = F->n_inst++;
+    F->inst[k].w = (uint16_t)ww; F->inst[k].l = (uint16_t)ll; F->inst[k].fvs = h; F->inst[k].f = inst;
+    return inst;
 }
 /* Maiúscula/minúscula de um código (Latin-1, Latin Extended-A, grego, cirílico). */
 static uint32_t cp_maiusc(uint32_t c)
@@ -2363,7 +2501,7 @@ static int larg_texto(const estilo_t *e, const char *t, int n)
     for (int i = 0; i < n;) {
         uint32_t cp;
         i += prox_car(e, t, i, n, &cp);
-        s += f ? fonte_avanco(f, cp, e->tam) : 64 * larg_letra(e);
+        s += (f ? fonte_avanco(f, cp, e->tam) : 64 * larg_letra(e)) + e->ls64;
     }
     return (s + 32) / 64;
 }
@@ -2463,8 +2601,10 @@ static void medir(no_m *n)
             int a2 = medir_max(c), b2 = medir_min(c);
             if (e->dir & 1) { if (a2 > mx) mx = a2; }
             else mx += a2 + (k ? vao : 0);
-            if (b2 > mn) mn = b2;
-            if (!(e->dir & 1) && !e->quebra) { /* sem quebra: o mínimo é a soma dos mínimos encolhíveis */ }
+            /* CSS Flexbox 9.9.1: numa linha só (row, nowrap) o min-content é a soma
+             * das contribuições dos itens mais os gaps; com quebra ou em coluna, a maior */
+            if (!(e->dir & 1) && !e->quebra) mn += b2 + (k ? vao : 0);
+            else if (b2 > mn) mn = b2;
             k++;
         }
     } else if (e->display == D_GRID) {
@@ -3602,7 +3742,7 @@ static void texto_cmd(int x, int y, int l, int a, const char *t, int nt, const e
 {
     cmd_t c; memset(&c, 0, sizeof c);
     c.tipo = C_TEXTO; c.x = x; c.y = y; c.l = l; c.a = a; c.t = t; c.nt = nt;
-    c.tam = e->tam; c.cor = cor; c.peso = e->peso; c.italico = e->italico;
+    c.tam = e->tam; c.cor = cor; c.peso = e->peso; c.italico = e->italico; c.ls64 = e->ls64;
     c.sublinha = (uint8_t)(e->sublinha | (e->risca << 1));
     c.raio = e->maiusc;
     c.fo = fonte_de(e);
@@ -3747,26 +3887,13 @@ static void svg_quad(int x1, int y1, int x2, int y2)
     }
 }
 
-/* arco: aproxima com uma curva que passa pelo meio do arco (sem trigonometria) */
-static void svg_arco(int rx, int ry, int grande, int varre, int x, int y)
+/* arco: conversão exata do SVG (F.6.5), feita em canvas2d.c (que tem ponto flutuante) */
+int svg_arco_pontos(int x1, int y1, int rx, int ry, int rot100, int grande, int varre, int x2, int y2, int *xs, int *ys, int max);
+static void svg_arco(int rx, int ry, int rot100, int grande, int varre, int x, int y)
 {
-    int x0 = px_ant, y0 = py_ant;
-    int mx = (x0 + x) / 2, my = (y0 + y) / 2;
-    int dx = x - x0, dy = y - y0;
-    /* normal à corda, com tamanho de "flecha" ~ r - sqrt(r^2 - (c/2)^2) */
-    int64_t c2 = ((int64_t)dx * dx + (int64_t)dy * dy) / 4;
-    int r = rx > ry ? rx : ry;
-    int64_t r2 = (int64_t)r * r;
-    int64_t h2 = r2 > c2 ? r2 - c2 : 0;
-    int h = 0; while ((int64_t)(h + 1) * (h + 1) <= h2 && h < 4000000) h += (h2 > (int64_t)(h + 64) * (h + 64)) ? 64 : 1;
-    int flecha = grande ? r + h : r - h;
-    int len = 0; int64_t l2 = 4 * c2; while ((int64_t)(len + 1) * (len + 1) <= l2 && len < 8000000) len += (l2 > (int64_t)(len + 64) * (len + 64)) ? 64 : 1;
-    if (!len) return;
-    int nx = -dy, ny = dx;
-    int sinal = (grande ^ varre) ? 1 : -1;
-    int cx = mx + muldiv(nx, flecha, len) * sinal, cy = my + muldiv(ny, flecha, len) * sinal;
-    /* curva quadrática cujo ponto do meio é (cx, cy): controle = 2*meio - (ini+fim)/2 */
-    svg_quad(2 * cx - mx, 2 * cy - my, x, y);
+    int xs[256], ys[256];
+    int n = svg_arco_pontos(px_ant, py_ant, rx, ry, rot100, grande, varre, x, y, xs, ys, 256);
+    for (int i = 0; i < n; i++) svg_linha(xs[i], ys[i]);
 }
 
 static void svg_path(const char *d)
@@ -3831,7 +3958,7 @@ static void svg_path(const char *d)
                 }
                 if (!(q = svg_num(q, &v[i]))) return;
             }
-            svg_arco(v[0] < 0 ? -v[0] : v[0], v[1] < 0 ? -v[1] : v[1], v[3], v[4], bx + v[5], by + v[6]);
+            svg_arco(v[0] < 0 ? -v[0] : v[0], v[1] < 0 ? -v[1] : v[1], v[2] * 100 / 256, v[3], v[4], bx + v[5], by + v[6]);
             break;
         }
         case 'Z': svg_linha(mov_x, mov_y); cmd = 0; q = p; break;
@@ -4543,6 +4670,14 @@ static void controle(no_m *n, int x, int y)
             for (no_m *q = n->filho; q; q = q->prox) if (!q->texto && igual(q->tag, "option")) { if (!o || atributo_m(q, "selected")) o = q; }
             if (o && o->filho && o->filho->texto) txt = o->filho->t;
             tipo_alvo = 0;
+            /* seta: um "v" de 8 x 4 px no espaço reservado à direita */
+            int sx = cx + cl - SELECT_SETA + 6, sy = cy + ca / 2 - 2;
+            for (int k = 0; k < 4; k++) {
+                cmd_t c; memset(&c, 0, sizeof c);
+                c.tipo = C_RET; c.x = sx + k; c.y = sy + k; c.l = 8 - 2 * k; c.a = 1; c.cor = 0xFF000000u | e->cor;
+                if (c.l > 0) { cmd_t c2 = c; c2.l = 2; cmd_novo(&c2); c2.x = sx + 8 - k - 2; cmd_novo(&c2); }
+            }
+            cl -= SELECT_SETA;
         } else if (n == mo->foco) txt = atributo_m(n, "value");
         else if (n->filho && n->filho->texto) txt = n->filho->t;
         if (!txt && n == mo->foco) txt = "";
@@ -5003,7 +5138,10 @@ void motor_fim(motor_t *m)
 {
     if (!m) return;
     for (int i = 0; i < m->n_imgs; i++) if (m->imgs[i].px) libera(m->imgs[i].px);
-    for (int i = 0; i < m->n_faces; i++) if (m->faces[i].f) fonte_fechar(m->faces[i].f);
+    for (int i = 0; i < m->n_faces; i++) {
+        for (int j = 0; j < m->faces[i].n_inst; j++) if (m->faces[i].inst[j].f) fonte_fechar(m->faces[i].inst[j].f);
+        if (m->faces[i].f) fonte_fechar(m->faces[i].f);
+    }
     while (m->blocos) { bloco_m *b = m->blocos; m->blocos = b->prox; libera(b); }
     libera(m);
     n_folhas = 0;
@@ -5217,7 +5355,7 @@ int motor_imagens(motor_t *m, int max)
     int k = 0;
     /* fontes da web das famílias que o texto usa: chegam antes das imagens (mudam a diagramação) */
     for (int i = 0; i < m->n_faces && k < max; i++) {
-        if (m->faces[i].tentou || !(m->fam_usada & (1u << m->faces[i].fam)) || !m->g.baixar) continue;
+        if (m->faces[i].tentou || !m->faces[i].quer || !m->g.baixar) continue;
         m->faces[i].tentou = 1;
         k++;
         unsigned n = 0;
@@ -5426,6 +5564,63 @@ static void poly_px(alvo_px_t *t, const cmd_t *c)
 }
 
 /* texto com fonte da web: glifos com antialias, avanço em 1/64 px */
+/* Bordas como no navegador: cada lado é um trapézio (os cantos se dividem na
+ * diagonal proporcional às larguras, o que faz os "triângulos de CSS"), com
+ * cantos arredondados (anel entre a curva de fora e a de dentro) e antialias
+ * por 16 amostras nos pixels da borda. Em 1/8 de pixel, sem ponto flutuante. */
+static bool dentro_arred(int X, int Y, int x0, int y0, int x1, int y1, int rx, int ry)
+{
+    if (X < x0 || X >= x1 || Y < y0 || Y >= y1) return false;
+    if (rx <= 0 || ry <= 0) return true;
+    int cx = X < x0 + rx ? x0 + rx : X >= x1 - rx ? x1 - rx : X, cy = Y < y0 + ry ? y0 + ry : Y >= y1 - ry ? y1 - ry : Y;
+    if (cx == X || cy == Y) return true;
+    int64_t dx = X - cx, dy = Y - cy;
+    return dx * dx * ry * ry + dy * dy * rx * rx <= (int64_t)rx * rx * ry * ry;
+}
+static void borda_px(alvo_px_t *t, cmd_t *c)
+{
+    int l = c->l, a = c->a, r = c->raio;
+    if (l <= 0 || a <= 0) return;
+    if (r * 2 > l) r = l / 2;
+    if (r * 2 > a) r = a / 2;
+    int bw[4] = { c->bw[0], c->bw[1], c->bw[2], c->bw[3] };   /* cima, direita, baixo, esquerda */
+    int L = l * 8, A = a * 8, R8 = r * 8;
+    int ix0 = bw[3] * 8, iy0 = bw[0] * 8, ix1 = L - bw[1] * 8, iy1 = A - bw[2] * 8;
+    int rxi = R8 - bw[3] * 8 > R8 - bw[1] * 8 ? R8 - bw[3] * 8 : R8 - bw[1] * 8, ryi = R8 - bw[0] * 8 > R8 - bw[2] * 8 ? R8 - bw[0] * 8 : R8 - bw[2] * 8;
+    int fx = bw[3] > r ? bw[3] : r, fd = bw[1] > r ? bw[1] : r, fy = bw[0] > r ? bw[0] : r, fb = bw[2] > r ? bw[2] : r;
+    int ya = c->y < t->c1 ? t->c1 : c->y, yb = c->y + a > t->c3 ? t->c3 : c->y + a;
+    for (int yy = ya; yy < yb; yy++) {
+        int yr = yy - c->y;
+        bool linha_toda = yr < fy || yr >= a - fb;
+        for (int xr = 0; xr < l; xr++) {
+            if (!linha_toda && xr >= fx && xr < l - fd) { xr = l - fd - 1; continue; }   /* miolo: pula para a borda direita */
+            int xx = c->x + xr;
+            if (xx < t->c0 || xx >= t->c2) continue;
+            int cob[4] = { 0, 0, 0, 0 };
+            for (int j = 0; j < 4; j++)
+                for (int i = 0; i < 4; i++) {
+                    int X = xr * 8 + 2 * i + 1, Y = yr * 8 + 2 * j + 1;
+                    if (!dentro_arred(X, Y, 0, 0, L, A, R8, R8)) continue;
+                    if (ix1 > ix0 && iy1 > iy0 && dentro_arred(X, Y, ix0, iy0, ix1, iy1, rxi, ryi)) continue;
+                    /* lado cuja distância relativa (d / largura) é a menor */
+                    int lado = -1; int64_t num = 0, den = 1;
+                    int d[4] = { Y, L - X, A - Y, X };
+                    for (int s2 = 0; s2 < 4; s2++) {
+                        if (!bw[s2]) continue;
+                        if (lado < 0 || (int64_t)d[s2] * den < num * bw[s2]) { lado = s2; num = d[s2]; den = bw[s2]; }
+                    }
+                    if (lado >= 0) cob[lado]++;
+                }
+            for (int s2 = 0; s2 < 4; s2++) {
+                if (!cob[s2]) continue;
+                uint32_t k = c->bc[s2];
+                unsigned al = (k >> 24) * (unsigned)cob[s2] / 16;
+                if (al) ponto(t, xx, yy, (al << 24) | (k & 0xFFFFFF));
+            }
+        }
+    }
+}
+
 static void texto_ttf(alvo_px_t *t, cmd_t *c)
 {
     fonte_t *f = c->fo;
@@ -5438,7 +5633,7 @@ static void texto_ttf(alvo_px_t *t, cmd_t *c)
         uint32_t ch;
         i += prox_car(&e, c->t, i, c->nt, &ch);
         int x = (x64 + 32) >> 6;
-        x64 += fonte_avanco(f, ch, px);
+        x64 += fonte_avanco(f, ch, px) + c->ls64;
         if (ch == ' ' || ch == 0xA0 || x > t->c2) continue;
         int l, a, ox, oy;
         const uint8_t *g = fonte_glifo(f, ch, px, &l, &a, &ox, &oy);
@@ -5459,10 +5654,10 @@ static void texto_px(alvo_px_t *t, cmd_t *c)
     if (c->fo) { texto_ttf(t, c); return; }
     int tam = c->tam < 6 ? 6 : c->tam;
     int lw = (tam + 1) / 2, lh = tam;
-    int x = c->x;
+    int x = c->x, x64 = c->x * 64;
     bool negrito = c->peso && tam >= 10;
     estilo_t es; memset(&es, 0, sizeof es); es.maiusc = (uint8_t)c->raio;
-    for (int i = 0; i < c->nt; x += lw) {
+    for (int i = 0; i < c->nt; x64 += lw * 64 + c->ls64, x = (x64 + 32) >> 6) {
         uint32_t cp;
         i += prox_car(&es, c->t, i, c->nt, &cp);
         if (cp == ' ' || cp == 0xA0 || cp == 0x200B || cp == 0xFEFF) continue;
@@ -5560,12 +5755,7 @@ void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
         if (t.c0 >= t.c2 || t.c1 >= t.c3) continue;
         switch (c->tipo) {
         case C_RET: ret(&t, c->x, c->y, c->l, c->a, c->cor, c->raio); break;
-        case C_BORDA:
-            if (c->bw[0]) ret(&t, c->x + (c->raio ? c->raio : 0), c->y, c->l - 2 * (c->raio ? c->raio : 0), c->bw[0], c->bc[0], 0);
-            if (c->bw[2]) ret(&t, c->x + (c->raio ? c->raio : 0), c->y + c->a - c->bw[2], c->l - 2 * (c->raio ? c->raio : 0), c->bw[2], c->bc[2], 0);
-            if (c->bw[3]) ret(&t, c->x, c->y + (c->raio ? c->raio : 0), c->bw[3], c->a - 2 * (c->raio ? c->raio : 0), c->bc[3], 0);
-            if (c->bw[1]) ret(&t, c->x + c->l - c->bw[1], c->y + (c->raio ? c->raio : 0), c->bw[1], c->a - 2 * (c->raio ? c->raio : 0), c->bc[1], 0);
-            break;
+        case C_BORDA: borda_px(&t, c); break;
         case C_TEXTO: texto_px(&t, c); break;
         case C_POLY: poly_px(&t, c); break;
         case C_GRAD: {
@@ -6010,7 +6200,8 @@ bool motor_estilo_de(motor_t *m, int k, const char *prop, char *o, int max)
     else if (igual(prop, "margin-top")) PX(n->mt); else if (igual(prop, "margin-right")) PX(n->mr);
     else if (igual(prop, "margin-bottom")) PX(n->mb); else if (igual(prop, "margin-left")) PX(n->ml);
     else if (igual(prop, "font-size")) PX(e->tam);
-    else if (igual(prop, "font-weight")) formatar_texto(o, (size_t)max, "%d", e->peso ? e->peso : 400);
+    else if (igual(prop, "font-weight")) formatar_texto(o, (size_t)max, "%d", e->pesonum ? e->pesonum : 400);
+    else if (igual(prop, "font-stretch")) formatar_texto(o, (size_t)max, "%d%%", (e->largura ? e->largura : 1000) / 10);
     else if (igual(prop, "font-style")) copia_texto(o, e->italico ? "italic" : "normal", (size_t)max);
     else if (igual(prop, "line-height")) { if (e->linha.u == U_AUTO) copia_texto(o, "normal", (size_t)max); else PX(altura_linha(e)); }
     else if (igual(prop, "color")) cor_txt(0xFF000000u | e->cor, o, max);

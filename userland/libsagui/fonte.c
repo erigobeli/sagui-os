@@ -35,6 +35,12 @@ struct fonte {
     fpt *gpts; uint16_t *gends;
     gcache cache[CACHE_G];
     unsigned cache_bytes;
+    /* variações (OpenType Font Variations: fvar, avar, gvar) */
+    const uint8_t *fvar, *avar, *gvar; unsigned n_fvar, n_avar, n_gvar;
+    int neixos; uint32_t eixo_tag[16]; float eixo_min[16], eixo_def[16], eixo_max[16];
+    float coord[16]; int variada;          /* coordenadas normalizadas desta instância */
+    int16_t *aw_var;                        /* avanços desta instância; -32768 = ainda não calculado */
+    struct fonte *base;                     /* instância: as tabelas são da base */
 };
 
 static void *guardar(fonte_t *f, unsigned n)
@@ -49,7 +55,8 @@ void fonte_fechar(fonte_t *f)
 {
     if (!f) return;
     for (int i = 0; i < CACHE_G; i++) if (f->cache[i].cob) libera(f->cache[i].cob);
-    for (int i = 0; i < f->nblocos; i++) libera(f->blocos[i]);
+    if (f->aw_var) libera(f->aw_var);
+    if (!f->base) for (int i = 0; i < f->nblocos; i++) libera(f->blocos[i]);
     libera(f);
 }
 
@@ -488,6 +495,7 @@ static fonte_t *montar_fonte(fonte_t *f, tabela *t, int nt)
     const tabela *head = achar(t, nt, TAG('h','e','a','d')), *hhea = achar(t, nt, TAG('h','h','e','a')), *maxp = achar(t, nt, TAG('m','a','x','p'));
     const tabela *hmtx = achar(t, nt, TAG('h','m','t','x')), *cmap = achar(t, nt, TAG('c','m','a','p')), *glyf = achar(t, nt, TAG('g','l','y','f')), *loca = achar(t, nt, TAG('l','o','c','a'));
     const tabela *cff = achar(t, nt, TAG('C','F','F',' '));
+    const tabela *fvar = achar(t, nt, TAG('f','v','a','r')), *avar = achar(t, nt, TAG('a','v','a','r')), *gvar = achar(t, nt, TAG('g','v','a','r'));
     if (!head || head->n < 54 || !hhea || hhea->n < 36 || !maxp || maxp->n < 6 || !hmtx || !cmap || (!glyf && !cff)) goto ruim;
     f->upem = (int)u16(head->p + 18);
     f->loca_longo = s16(head->p + 50);
@@ -498,6 +506,21 @@ static fonte_t *montar_fonte(fonte_t *f, tabela *t, int nt)
     if (!ler_cmap(f, cmap->p, cmap->n)) goto ruim;
     if (hmtx->transf) { f->aw = hmtx->p + 1; f->aw_passo = 2; if (hmtx->n < 1 + (unsigned)f->nhm * 2) goto ruim; }
     else { f->aw = hmtx->p; f->aw_passo = 4; if (hmtx->n < (unsigned)f->nhm * 4) goto ruim; }
+    if (fvar && fvar->n >= 16) {
+        const uint8_t *p = fvar->p;
+        unsigned off = u16(p + 4), na = u16(p + 8), tam = u16(p + 10);
+        for (unsigned i = 0; i < na && i < 16 && off + (i + 1) * tam <= fvar->n && tam >= 20; i++) {
+            const uint8_t *e = p + off + i * tam;
+            f->eixo_tag[i] = u32(e);
+            f->eixo_min[i] = (float)(int32_t)u32(e + 4) / 65536.0f;
+            f->eixo_def[i] = (float)(int32_t)u32(e + 8) / 65536.0f;
+            f->eixo_max[i] = (float)(int32_t)u32(e + 12) / 65536.0f;
+            f->neixos = (int)i + 1;
+        }
+        f->fvar = fvar->p; f->n_fvar = fvar->n;
+        if (avar) { f->avar = avar->p; f->n_avar = avar->n; }
+        if (gvar && glyf) { f->gvar = gvar->p; f->n_gvar = gvar->n; }
+    }
     if (!glyf) { if (!cff_abrir(f, cff->p, cff->n)) goto ruim; }
     else if (glyf->transf) { if (!woff2_glyf(f, glyf->p, glyf->n)) goto ruim; }
     else {
@@ -540,7 +563,8 @@ fonte_t *fonte_abrir(const uint8_t *d, unsigned n)
             unsigned off = u32(e + 4), clen = u32(e + 8), olen = u32(e + 12);
             if (off > n || clen > n - off || olen > (8u << 20)) continue;
             bool util = tag == TAG('c','m','a','p') || tag == TAG('h','e','a','d') || tag == TAG('h','h','e','a') || tag == TAG('h','m','t','x') ||
-                        tag == TAG('m','a','x','p') || tag == TAG('g','l','y','f') || tag == TAG('l','o','c','a') || tag == TAG('C','F','F',' ');
+                        tag == TAG('m','a','x','p') || tag == TAG('g','l','y','f') || tag == TAG('l','o','c','a') || tag == TAG('C','F','F',' ') ||
+                        tag == TAG('f','v','a','r') || tag == TAG('a','v','a','r') || tag == TAG('g','v','a','r');
             if (!util) continue;
             uint8_t *c = guardar(f, olen);
             if (!c) { fonte_fechar(f); return NULL; }
@@ -603,6 +627,193 @@ static void por_ponto(contorno *k, int x, int y, int on, const afim *m)
     q->on = (uint8_t)on;
 }
 
+/* ------------------------------------------------------------ variações */
+static int16_t f2d14(const uint8_t *p) { return (int16_t)s16(p); }
+
+/* pontos empacotados: devolve quantos (0 = todos) e preenche idx */
+static const uint8_t *ler_pontos(const uint8_t *p, const uint8_t *fim, uint16_t *idx, int *n, int max)
+{
+    if (p >= fim) { *n = -1; return p; }
+    int c = *p++;
+    if (c & 0x80) { if (p >= fim) { *n = -1; return p; } c = (c & 0x7F) << 8 | *p++; }
+    if (!c) { *n = 0; return p; }
+    int k = 0, v = 0;
+    while (k < c) {
+        if (p >= fim) { *n = -1; return p; }
+        int ctl = *p++, run = (ctl & 0x7F) + 1, words = ctl & 0x80;
+        for (int i = 0; i < run && k < c; i++) {
+            if (words) { if (p + 2 > fim) { *n = -1; return p; } v += (int)u16(p); p += 2; }
+            else { if (p >= fim) { *n = -1; return p; } v += *p++; }
+            if (k < max) idx[k] = (uint16_t)v;
+            k++;
+        }
+    }
+    *n = c > max ? max : c;
+    return p;
+}
+static const uint8_t *ler_deltas(const uint8_t *p, const uint8_t *fim, int16_t *d, int n)
+{
+    int k = 0;
+    while (k < n) {
+        if (p >= fim) { while (k < n) d[k++] = 0; return p; }
+        int ctl = *p++, run = (ctl & 0x3F) + 1;
+        for (int i = 0; i < run && k < n; i++) {
+            if (ctl & 0x80) d[k++] = 0;
+            else if (ctl & 0x40) { if (p + 2 > fim) return p; d[k++] = (int16_t)s16(p); p += 2; }
+            else { if (p >= fim) return p; d[k++] = (int8_t)*p++; }
+        }
+    }
+    return p;
+}
+/* escalar da região (peak/intermediate) nas coordenadas da instância */
+static float escalar(const fonte_t *f, const uint8_t *pico, const uint8_t *ini, const uint8_t *fim_)
+{
+    /* OpenType "Algorithm for calculating scalars": sem região intermediária,
+     * ela vai de 0 ao pico */
+    float s = 1;
+    for (int i = 0; i < f->neixos; i++) {
+        float pk = f2d14(pico + i * 2) / 16384.0f, v = f->coord[i];
+        if (pk == 0) continue;
+        float a = pk < 0 ? pk : 0, b = pk < 0 ? 0 : pk;
+        if (ini) {
+            a = f2d14(ini + i * 2) / 16384.0f; b = f2d14(fim_ + i * 2) / 16384.0f;
+            if (a > pk || pk > b || (a < 0 && b > 0)) continue;   /* região inválida: o eixo não pesa */
+        }
+        if (v == 0) return 0;
+        if (v < a || v > b) return 0;
+        if (v == pk) continue;
+        if (v < pk) s *= (v - a) / (pk - a); else s *= (b - v) / (b - pk);
+    }
+    return s;
+}
+/* IUP: deltas de pontos não citados, por contorno, a partir dos citados vizinhos */
+static void iup(const float *orig, float *dlt, const uint8_t *tocado, int ini, int fim)
+{
+    int prim = -1;
+    for (int i = ini; i <= fim; i++) if (tocado[i]) { prim = i; break; }
+    if (prim < 0) return;
+    int n = fim - ini + 1;
+    int a = prim;
+    do {
+        int b = a;
+        do { b = b == fim ? ini : b + 1; } while (!tocado[b]);
+        /* pontos entre a e b (cíclico) */
+        for (int i = a == fim ? ini : a + 1; i != b; i = i == fim ? ini : i + 1) {
+            float c1 = orig[a], c2 = orig[b], d1 = dlt[a], d2 = dlt[b], c = orig[i];
+            if (c1 == c2) dlt[i] = d1 == d2 ? d1 : 0;
+            else {
+                float lo = c1 < c2 ? c1 : c2, hi = c1 < c2 ? c2 : c1, dlo = c1 < c2 ? d1 : d2, dhi = c1 < c2 ? d2 : d1;
+                if (c <= lo) dlt[i] = dlo;
+                else if (c >= hi) dlt[i] = dhi;
+                else dlt[i] = d1 + (c - c1) * (d2 - d1) / (c2 - c1);
+            }
+        }
+        a = b;
+    } while (a != prim);
+    (void)n;
+}
+/* soma os deltas de todas as tuplas do glifo em dx/dy (n pontos, já com os 4 fantasmas) */
+static void gvar_deltas(const fonte_t *f, unsigned gid, int n, const float *ox, const float *oy, const uint16_t *ends, int nc, float *dx, float *dy)
+{
+    for (int i = 0; i < n; i++) dx[i] = dy[i] = 0;
+    if (!f->gvar || !f->variada || f->n_gvar < 20) return;
+    const uint8_t *g = f->gvar;
+    unsigned neixos = u16(g + 4), nshared = u16(g + 6), off_sh = u32(g + 8), ngl = u16(g + 12), fl = u16(g + 14), off_dados = u32(g + 16);
+    if ((int)neixos != f->neixos || gid >= ngl) return;
+    unsigned o0, o1;
+    if (fl & 1) { if (20 + (gid + 2) * 4 > f->n_gvar) return; o0 = u32(g + 20 + gid * 4); o1 = u32(g + 24 + gid * 4); }
+    else { if (20 + (gid + 2) * 2 > f->n_gvar) return; o0 = u16(g + 20 + gid * 2) * 2u; o1 = u16(g + 22 + gid * 2) * 2u; }
+    if (o1 <= o0 || off_dados + o1 > f->n_gvar) return;
+    const uint8_t *d = g + off_dados + o0, *dfim = g + off_dados + o1;
+    if (d + 4 > dfim) return;
+    unsigned cnt = u16(d), doff = u16(d + 2);
+    const uint8_t *h = d + 4, *ser = d + doff;
+    int ntup = (int)(cnt & 0x0FFF);
+    static uint16_t comp_idx[MAXP + 8], priv_idx[MAXP + 8];
+    static int16_t ddx[MAXP + 8], ddy[MAXP + 8];
+    static float tx[MAXP + 8], ty[MAXP + 8];
+    static uint8_t toc[MAXP + 8];
+    int ncomp = -1;
+    if (cnt & 0x8000) ser = ler_pontos(ser, dfim, comp_idx, &ncomp, MAXP + 8);
+    if (n > MAXP + 8) return;
+    for (int t = 0; t < ntup; t++) {
+        if (h + 4 > dfim) return;
+        unsigned tam = u16(h), ti = u16(h + 2);
+        h += 4;
+        const uint8_t *pico, *ini = NULL, *fimr = NULL;
+        if (ti & 0x8000) { pico = h; h += neixos * 2; }
+        else { if ((ti & 0x0FFF) >= nshared || off_sh + ((ti & 0x0FFF) + 1) * neixos * 2 > f->n_gvar) return; pico = g + off_sh + (ti & 0x0FFF) * neixos * 2; }
+        if (ti & 0x4000) { ini = h; fimr = h + neixos * 2; h += neixos * 4; }
+        if (h > dfim) return;
+        const uint8_t *dados = ser, *dfim_t = ser + tam;
+        ser += tam;
+        if (dfim_t > dfim) return;
+        float esc = escalar(f, pico, ini, fimr);
+        if (esc == 0) continue;
+        uint16_t *idx = comp_idx; int np = ncomp;
+        if (ti & 0x2000) { dados = ler_pontos(dados, dfim_t, priv_idx, &np, MAXP + 8); idx = priv_idx; }
+        if (np < 0) continue;
+        int todos = np == 0, m = todos ? n : np;
+        dados = ler_deltas(dados, dfim_t, ddx, m);
+        ler_deltas(dados, dfim_t, ddy, m);
+        if (todos) { for (int i = 0; i < n; i++) { dx[i] += esc * ddx[i]; dy[i] += esc * ddy[i]; } continue; }
+        for (int i = 0; i < n; i++) { tx[i] = ty[i] = 0; toc[i] = 0; }
+        for (int i = 0; i < m; i++) if (idx[i] < n) { tx[idx[i]] = ddx[i]; ty[idx[i]] = ddy[i]; toc[idx[i]] = 1; }
+        if (ends) {   /* glifo simples: infere os não citados dentro de cada contorno */
+            int c0 = 0;
+            for (int c = 0; c < nc; c++) {
+                int c1 = ends[c];
+                if (c1 >= n - 4) break;
+                iup(ox, tx, toc, c0, c1); iup(oy, ty, toc, c0, c1);
+                c0 = c1 + 1;
+            }
+        }
+        for (int i = 0; i < n; i++) { dx[i] += esc * tx[i]; dy[i] += esc * ty[i]; }
+    }
+}
+
+/* Instância de uma fonte variável: eixos pelo tag (wght, wdth, slnt, ital, opsz...). */
+fonte_t *fonte_instancia(fonte_t *b, const uint32_t *tags, const int *valores100, int n)
+{
+    if (!b) return NULL;
+    if (b->base) b = b->base;
+    fonte_t *f = aloca(sizeof(fonte_t));
+    if (!f) return NULL;
+    memcpy(f, b, sizeof *f);
+    memset(f->cache, 0, sizeof f->cache);
+    f->cache_bytes = 0; f->nblocos = 0; f->base = b; f->aw_var = NULL; f->variada = 0;
+    for (int i = 0; i < f->neixos; i++) {
+        float v = f->eixo_def[i];
+        for (int k = 0; k < n; k++) if (tags[k] == f->eixo_tag[i]) v = (float)valores100[k] / 100.0f;
+        if (v < f->eixo_min[i]) v = f->eixo_min[i];
+        if (v > f->eixo_max[i]) v = f->eixo_max[i];
+        float c = 0;
+        if (v < f->eixo_def[i] && f->eixo_def[i] > f->eixo_min[i]) c = -(f->eixo_def[i] - v) / (f->eixo_def[i] - f->eixo_min[i]);
+        else if (v > f->eixo_def[i] && f->eixo_max[i] > f->eixo_def[i]) c = (v - f->eixo_def[i]) / (f->eixo_max[i] - f->eixo_def[i]);
+        /* avar: mapa por trechos lineares */
+        if (f->avar && f->n_avar >= 8) {
+            const uint8_t *p = f->avar + 8, *fim = f->avar + f->n_avar;
+            for (int e = 0; e < i && p + 2 <= fim; e++) p += 2 + u16(p) * 4;
+            if (p + 2 <= fim) {
+                int nm = (int)u16(p); p += 2;
+                for (int j = 1; j < nm && p + j * 4 + 4 <= fim; j++) {
+                    float a0 = f2d14(p + (j - 1) * 4) / 16384.0f, b0 = f2d14(p + (j - 1) * 4 + 2) / 16384.0f;
+                    float a1 = f2d14(p + j * 4) / 16384.0f, b1 = f2d14(p + j * 4 + 2) / 16384.0f;
+                    if (c >= a0 && c <= a1) { c = a1 == a0 ? b0 : b0 + (c - a0) * (b1 - b0) / (a1 - a0); break; }
+                }
+            }
+        }
+        f->coord[i] = c;
+        if (c != 0) f->variada = 1;
+    }
+    if (f->variada && f->ngl > 0) {
+        f->aw_var = aloca((unsigned)f->ngl * sizeof(int16_t));
+        if (f->aw_var) for (int i = 0; i < f->ngl; i++) f->aw_var[i] = -32768;
+    }
+    return f;
+}
+bool fonte_variavel(fonte_t *f) { return f && f->neixos > 0; }
+
 static void glifo_contorno(const fonte_t *f, unsigned gid, contorno *k, const afim *m, int prof)
 {
     if (gid >= (unsigned)f->ngl || prof > 6) return;
@@ -611,7 +822,17 @@ static void glifo_contorno(const fonte_t *f, unsigned gid, contorno *k, const af
         const gdec *G = &f->gd[gid];
         if (G->tipo == 1) {
             int base = k->np;
-            for (unsigned i = 0; i < G->npts; i++) { const fpt *p = &f->gpts[G->pts + i]; por_ponto(k, p->x, p->y, p->on, m); }
+            if (f->variada && G->npts + 4 <= MAXP) {
+                static float ox[MAXP + 8], oy[MAXP + 8], dx[MAXP + 8], dy[MAXP + 8];
+                static uint16_t en[MAXP];
+                int np = (int)G->npts;
+                for (int i = 0; i < np; i++) { ox[i] = f->gpts[G->pts + i].x; oy[i] = f->gpts[G->pts + i].y; }
+                for (int i = np; i < np + 4; i++) ox[i] = oy[i] = 0;
+                for (unsigned c = 0; c < G->ncont && c < MAXP; c++) en[c] = f->gends[G->ends + c];
+                gvar_deltas(f, gid, np + 4, ox, oy, en, (int)G->ncont, dx, dy);
+                for (int i = 0; i < np; i++) por_ponto(k, (int)(ox[i] + dx[i] + (dx[i] < 0 ? -0.5f : 0.5f)), (int)(oy[i] + dy[i] + (dy[i] < 0 ? -0.5f : 0.5f)), f->gpts[G->pts + i].on, m);
+            } else
+                for (unsigned i = 0; i < G->npts; i++) { const fpt *p = &f->gpts[G->pts + i]; por_ponto(k, p->x, p->y, p->on, m); }
             for (unsigned c = 0; c < G->ncont && k->nc < MAXP; c++) k->ends[k->nc++] = (uint16_t)(base + f->gends[G->ends + c]);
             return;
         }
@@ -652,15 +873,44 @@ static void glifo_contorno(const fonte_t *f, unsigned gid, contorno *k, const af
                 vx[i] = (int16_t)x;
             }
             int y = 0;
+            static int16_t vy[MAXP];
             for (int i = 0; i < np; i++) {
                 if (fl[i] & 4) { if (qx >= gfim) return; int v = *qx++; y += (fl[i] & 32) ? v : -v; }
                 else if (!(fl[i] & 32)) { if (qx + 2 > gfim) return; y += s16(qx); qx += 2; }
-                por_ponto(k, vx[i], y, fl[i] & 1, m);
+                vy[i] = (int16_t)y;
             }
+            if (f->variada && np + 4 <= MAXP) {
+                static float ox[MAXP + 8], oy[MAXP + 8], dx[MAXP + 8], dy[MAXP + 8];
+                static uint16_t en[MAXP];
+                for (int i = 0; i < np; i++) { ox[i] = vx[i]; oy[i] = vy[i]; }
+                for (int i = np; i < np + 4; i++) ox[i] = oy[i] = 0;
+                for (int c = 0; c < nc; c++) en[c] = (uint16_t)u16(e + c * 2);
+                gvar_deltas(f, gid, np + 4, ox, oy, en, nc, dx, dy);
+                for (int i = 0; i < np; i++) por_ponto(k, (int)(ox[i] + dx[i] + (dx[i] < 0 ? -0.5f : 0.5f)), (int)(oy[i] + dy[i] + (dy[i] < 0 ? -0.5f : 0.5f)), fl[i] & 1, m);
+            } else
+                for (int i = 0; i < np; i++) por_ponto(k, vx[i], vy[i], fl[i] & 1, m);
             return;
         }
     }
-    /* composição */
+    /* composição; numa instância variável, os deltas deslocam cada componente */
+    float cdx[64], cdy[64];
+    int ncomp = 0;
+    for (int i = 0; i < 64; i++) cdx[i] = cdy[i] = 0;
+    if (f->variada) {
+        const uint8_t *q = comp;
+        for (;;) {
+            if (q + 4 > cfim || ncomp >= 60) break;
+            unsigned fl = u16(q);
+            q += 4 + ((fl & 1) ? 4 : 2) + ((fl & 8) ? 2 : (fl & 0x40) ? 4 : (fl & 0x80) ? 8 : 0);
+            ncomp++;
+            if (!(fl & 0x20)) break;
+        }
+        static float zx[72], zy[72], ddx[72], ddy[72];
+        for (int i = 0; i < ncomp + 4; i++) zx[i] = zy[i] = 0;
+        gvar_deltas(f, gid, ncomp + 4, zx, zy, NULL, 0, ddx, ddy);
+        for (int i = 0; i < ncomp; i++) { cdx[i] = ddx[i]; cdy[i] = ddy[i]; }
+    }
+    int ci = 0;
     const uint8_t *q = comp;
     for (;;) {
         if (q + 4 > cfim) return;
@@ -672,7 +922,11 @@ static void glifo_contorno(const fonte_t *f, unsigned gid, contorno *k, const af
         if (fl & 8) { t.a = t.d = s16(q); q += 2; }
         else if (fl & 0x40) { t.a = s16(q); t.d = s16(q + 2); q += 4; }
         else if (fl & 0x80) { t.a = s16(q); t.b = s16(q + 2); t.c = s16(q + 4); t.d = s16(q + 6); q += 8; }
-        if (fl & 2) { t.dx = a1; t.dy = a2; }
+        if (fl & 2) {
+            t.dx = a1; t.dy = a2;
+            if (ci < 64) { t.dx += (int)(cdx[ci] + (cdx[ci] < 0 ? -0.5f : 0.5f)); t.dy += (int)(cdy[ci] + (cdy[ci] < 0 ? -0.5f : 0.5f)); }
+        }
+        ci++;
         /* compõe com a transformação de fora */
         afim r;
         r.a = (int)(((long long)t.a * m->a + (long long)t.b * m->c) / 16384);
@@ -861,11 +1115,56 @@ static const uint8_t *guardar_cache(fonte_t *f, gcache *c, unsigned gid, int px,
 }
 
 /* avanço em 1/64 de pixel */
+/* número de pontos do glifo (simples) ou de componentes (composto), para os fantasmas do gvar */
+static int pontos_glifo(const fonte_t *f, unsigned gid)
+{
+    const uint8_t *comp = NULL, *cfim = NULL;
+    if (f->gd) {
+        const gdec *G = &f->gd[gid];
+        if (G->tipo == 1) return (int)G->npts;
+        if (G->tipo != 2) return 0;
+        comp = G->comp; cfim = comp + 65536;
+    } else {
+        unsigned o0, o1;
+        if (f->loca_longo) { if ((gid + 2) * 4 > f->n_loca) return 0; o0 = u32(f->loca + gid * 4); o1 = u32(f->loca + gid * 4 + 4); }
+        else { if ((gid + 2) * 2 > f->n_loca) return 0; o0 = u16(f->loca + gid * 2) * 2; o1 = u16(f->loca + gid * 2 + 2) * 2; }
+        if (o1 <= o0 || o1 > f->n_glyf || o1 - o0 < 10) return 0;
+        const uint8_t *g = f->glyf + o0;
+        int nc = s16(g);
+        if (nc >= 0) return nc ? (int)u16(g + 10 + (nc - 1) * 2) + 1 : 0;
+        comp = g + 10; cfim = f->glyf + o1;
+    }
+    int n = 0;
+    for (const uint8_t *q = comp;;) {
+        if (q + 4 > cfim || n > 60) break;
+        unsigned fl = u16(q);
+        q += 4 + ((fl & 1) ? 4 : 2) + ((fl & 8) ? 2 : (fl & 0x40) ? 4 : (fl & 0x80) ? 8 : 0);
+        n++;
+        if (!(fl & 0x20)) break;
+    }
+    return n;
+}
+
 int fonte_avanco(fonte_t *f, unsigned cp, int px)
 {
     unsigned gid = gid_de(f, cp);
     unsigned i = gid < (unsigned)f->nhm ? gid : (unsigned)f->nhm - 1;
     unsigned aw = u16(f->aw + i * (unsigned)f->aw_passo);
+    if (f->aw_var && gid < (unsigned)f->ngl) {   /* instância: o fantasma 2 menos o 1 dá o avanço */
+        if (f->aw_var[gid] == -32768) {
+            int np = pontos_glifo(f, gid);
+            static float zx[MAXP + 8], zy[MAXP + 8], dx[MAXP + 8], dy[MAXP + 8];
+            int v = (int)aw;
+            if (np + 4 <= MAXP) {
+                for (int j = 0; j < np + 4; j++) zx[j] = zy[j] = 0;
+                gvar_deltas(f, gid, np + 4, zx, zy, NULL, 0, dx, dy);
+                float d = dx[np + 1] - dx[np];
+                v += (int)(d + (d < 0 ? -0.5f : 0.5f));
+            }
+            f->aw_var[gid] = (int16_t)(v < 0 ? 0 : v > 32767 ? 32767 : v);
+        }
+        aw = (unsigned)f->aw_var[gid];
+    }
     if (px > 500) px = 500;
     return (int)(aw * (unsigned)px * 64u / (unsigned)f->upem);   /* sem divisão de 64 bits (não há libgcc) */
 }
