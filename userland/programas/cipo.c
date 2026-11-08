@@ -136,32 +136,27 @@ static char para_latin1(uint32_t c)
     }
 }
 
-/* Converte o corpo para Latin-1, se for UTF-8 válido; senão já é Latin-1.
- * Caracteres acima de U+00FF viram sequências largas (podem crescer: 2 bytes
- * UTF-8 viram 4), então devolve um bloco novo quando precisa. */
+/* O motor trabalha em UTF-8. Corpo em UTF-8 válido fica como está; senão é
+ * Latin-1 (ou Windows-1252) e vira UTF-8 num bloco novo. */
 static char *converter_corpo(char *s, int *tam)
 {
-    int n = *tam, extra_total = 0;
+    int n = *tam, cresce = 0;
+    bool valido = true;
     for (int i = 0; i < n;) {
-        uint8_t c = (uint8_t)s[i];
-        int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
-        if (extra < 0 || (extra && i + extra >= n)) return s;   /* não é UTF-8: já é Latin-1 */
-        for (int k = 1; k <= extra; k++) if (((uint8_t)s[i + k] & 0xC0) != 0x80) return s;
-        if (extra == 1 && (c & 0x1F) > 3) extra_total += 2;     /* U+0100..U+07FF: 2 bytes viram 4 */
-        i += 1 + extra;
+        uint32_t cp; int k = utf8_ler(s + i, n - i, &cp);
+        if (k == 1 && (uint8_t)s[i] >= 0x80) { valido = false; break; }
+        i += k;
     }
-    char *d = aloca((size_t)n + (size_t)extra_total + 1);
-    if (!d) { *tam = n; return s; }
+    if (valido) return s;
+    for (int i = 0; i < n; i++) if ((uint8_t)s[i] >= 0x80) cresce += (uint8_t)s[i] >= 0x80 && (uint8_t)s[i] < 0xA0 ? 2 : 1;
+    char *d = aloca((size_t)n + (size_t)cresce + 1);
+    if (!d) return s;
+    static const uint16_t cp1252[32] = { 0x20AC, 0x81, 0x201A, 0x192, 0x201E, 0x2026, 0x2020, 0x2021, 0x2C6, 0x2030, 0x160, 0x2039, 0x152, 0x8D, 0x17D, 0x8F,
+                                         0x90, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x2DC, 0x2122, 0x161, 0x203A, 0x153, 0x9D, 0x17E, 0x178 };
     int k = 0;
-    for (int i = 0; i < n;) {
+    for (int i = 0; i < n; i++) {
         uint8_t c = (uint8_t)s[i];
-        int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : 3;
-        uint32_t cp = extra == 0 ? c : extra == 1 ? (c & 0x1Fu) : extra == 2 ? (c & 0x0Fu) : (c & 0x07u);
-        for (int e = 1; e <= extra; e++) cp = cp << 6 | ((uint8_t)s[i + e] & 0x3Fu);
-        if (cp < 0x100) d[k++] = cp == 0xA0 ? ' ' : (char)cp;
-        else if (cp == 0xFEFF || cp == 0x200B || cp == 0x200C || cp == 0x200D) {}   /* invisíveis */
-        else k += larga_por(d + k, cp);
-        i += 1 + extra;
+        k += utf8_por(d + k, c >= 0x80 && c < 0xA0 ? cp1252[c - 0x80] : c);
     }
     d[k] = 0;
     libera(s);
@@ -169,27 +164,17 @@ static char *converter_corpo(char *s, int *tam)
     return d;
 }
 
-static int converter(char *s, int n)
+/* Fronteira com a interface do SaguiOS (fonte Latin-1): UTF-8 -> Latin-1. */
+static void utf8_para_sistema(char *s)
 {
-    for (int i = 0; i < n;) {          /* confere primeiro */
-        uint8_t c = (uint8_t)s[i];
-        int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
-        if (extra < 0 || (extra && i + extra >= n)) return n;   /* não é UTF-8: já é Latin-1 */
-        for (int k = 1; k <= extra; k++) if (((uint8_t)s[i + k] & 0xC0) != 0x80) return n;
-        i += 1 + extra;
-    }
-    int k = 0;
+    int k = 0, n = (int)tam_texto(s);
     for (int i = 0; i < n;) {
-        uint8_t c = (uint8_t)s[i];
-        uint32_t cp;
-        int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : 3;
-        cp = extra == 0 ? c : extra == 1 ? (c & 0x1Fu) : extra == 2 ? (c & 0x0Fu) : (c & 0x07u);
-        for (int e = 1; e <= extra; e++) cp = cp << 6 | ((uint8_t)s[i + e] & 0x3Fu);
-        s[k++] = para_latin1(cp);
-        i += 1 + extra;
+        uint32_t cp; i += utf8_ler(s + i, n - i, &cp);
+        s[k++] = cp < 0x100 ? (char)cp : '?';
     }
-    return k;
+    s[k] = 0;
 }
+
 
 static bool letra(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 static char minuscula(char c) { return c >= 'A' && c <= 'Z' ? (char)(c + 32) : c; }
@@ -483,9 +468,13 @@ static bool em_titulo;
 static void rodape(const char *t);
 
 /* Baixa uma imagem inteira, seguindo redirecionamentos. */
-static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
+/* Última resposta HTTP (para o fetch do JavaScript): código, cabeçalhos, URL final */
+static int resp_codigo; static char resp_cab[8192]; static char resp_url[URL_MAX];
+/* qualquer = devolve também o corpo de 4xx/5xx (o fetch quer ver) */
+static uint8_t *baixar_resp(const char *pedido, unsigned *n, bool qualquer)
 {
     static char cab[16384];
+    resp_codigo = 0; resp_cab[0] = 0;
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
     for (int r = 0; r < 4; r++) {
@@ -497,6 +486,9 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
         int c = http_cabecalho(fd, cab, sizeof cab, &extra);
         if (c < 0) { http_fechar(fd); return NULL; }
         int codigo = http_codigo(cab);
+        resp_codigo = codigo;
+        { int k = c < (int)sizeof resp_cab - 1 ? c : (int)sizeof resp_cab - 1; memcpy(resp_cab, cab, (size_t)k); resp_cab[k] = 0; }
+        copia_texto(resp_url, url, sizeof resp_url);
         if (codigo >= 300 && codigo < 400 && http_campo(cab, "Location", destino, sizeof destino)) {
             http_fechar(fd);
             char nova[URL_MAX];
@@ -504,7 +496,7 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
             copia_texto(url, nova, sizeof url);
             continue;
         }
-        if (codigo != 200) { http_fechar(fd); return NULL; }
+        if (codigo != 200 && !qualquer) { http_fechar(fd); return NULL; }
         unsigned cap = 262144, tam = (unsigned)extra;
         uint8_t *d = aloca(cap);
         if (!d) { http_fechar(fd); return NULL; }
@@ -528,6 +520,7 @@ static uint8_t *baixar_imagem(const char *pedido, unsigned *n)
     }
     return NULL;
 }
+static uint8_t *baixar_imagem(const char *pedido, unsigned *n) { return baixar_resp(pedido, n, false); }
 
 /* <img>: baixa, reduz para caber na página e reserva as linhas. */
 static bool colocar_imagem(const char *url, int larg_css)
@@ -1350,7 +1343,7 @@ static void ler_html(const char *h, int n);
  * O motor (libsagui/js.c) monta um DOM do HTML, roda os scripts e devolve o
  * HTML resultante. Elementos com clique viram links sagui-js:N, que voltam
  * para o motor sem passar pela rede. */
-static void js_titulo(const char *t) { copia_texto(titulo_js, t, sizeof titulo_js); }
+static void js_titulo(const char *t) { copia_texto(titulo_js, t, sizeof titulo_js); utf8_para_sistema(titulo_js); }
 
 /* Sem caixa modal: um site com alert em laço travaria o Cipó. Vai para o rodapé. */
 static void js_alerta(const char *t)
@@ -1378,6 +1371,18 @@ static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
     return c;
 }
 static uint8_t *baixar_recurso(const char *u, unsigned *n);
+/* fetch/XHR: corpo de qualquer código, com código, cabeçalhos e URL final */
+static uint8_t *js_resposta(const char *u, unsigned *n, int *codigo, char *cab, int cmax, char *final, int fmax)
+{
+    char end[URL_MAX];
+    *codigo = 0; cab[0] = 0; final[0] = 0;
+    if (!juntar_url(url_atual, u, end, sizeof end)) return NULL;
+    uint8_t *d = baixar_resp(end, n, true);
+    *codigo = resp_codigo;
+    copia_texto(cab, resp_cab, (size_t)cmax);
+    copia_texto(final, resp_url, (size_t)fmax);
+    return d;
+}
 static uint8_t *js_baixar(const char *u, unsigned *n)
 {
     char end[URL_MAX];
@@ -1416,7 +1421,7 @@ static uint8_t *baixar_recurso(const char *u, unsigned *n)
 
 static char *rodar_scripts(char *h, int *n)
 {
-    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta };
+    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta };
     if (!achar_tag(h, *n, "<script")) return h;
     rodape("Rodando scripts...");
     int t = 0;
@@ -1445,6 +1450,7 @@ static void ler_pagina(const char *h, int n)
         motor_ler(motor, h, n, url_atual);
         registrar("cipo: motor leu em %u ms\n", tempo_ms() - t0);
         copia_texto(titulo, motor_titulo(motor), sizeof titulo);
+        utf8_para_sistema(titulo);
         return;   /* o motor substitui o leitor antigo */
     }
     const char *m = achar_tag(h, n, "<main");
@@ -2319,14 +2325,6 @@ static void enviar_formulario(alvo_t *a)
         uint8_t c = (uint8_t)*p;
         if (c == ' ') url[k++] = '+';
         else if (letra((char)c) || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') url[k++] = (char)c;
-        else if (eh_larga(p, 4)) {   /* sequência larga -> UTF-8 */
-            uint32_t cp = larga_ler(p); uint8_t b[4]; int nb;
-            if (cp < 0x800) { b[0] = (uint8_t)(0xC0 | cp >> 6); b[1] = (uint8_t)(0x80 | (cp & 63)); nb = 2; }
-            else if (cp < 0x10000) { b[0] = (uint8_t)(0xE0 | cp >> 12); b[1] = (uint8_t)(0x80 | ((cp >> 6) & 63)); b[2] = (uint8_t)(0x80 | (cp & 63)); nb = 3; }
-            else { b[0] = (uint8_t)(0xF0 | cp >> 18); b[1] = (uint8_t)(0x80 | ((cp >> 12) & 63)); b[2] = (uint8_t)(0x80 | ((cp >> 6) & 63)); b[3] = (uint8_t)(0x80 | (cp & 63)); nb = 4; }
-            for (int i = 0; i < nb && k < (int)sizeof url - 4; i++) { url[k++] = '%'; url[k++] = hexa[b[i] >> 4]; url[k++] = hexa[b[i] & 15]; }
-            p += 3;
-        }
         else if (c >= 0x80) {   /* Latin-1 -> UTF-8, que é o que os sites esperam */
             uint8_t b[2] = { (uint8_t)(0xC0 | (c >> 6)), (uint8_t)(0x80 | (c & 0x3F)) };
             for (int i = 0; i < 2; i++) { url[k++] = '%'; url[k++] = hexa[b[i] >> 4]; url[k++] = hexa[b[i] & 15]; }

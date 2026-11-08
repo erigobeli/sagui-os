@@ -115,25 +115,33 @@ typedef struct {
     uint8_t *(*baixar)(const char *url, unsigned *n);      /* devolve bloco de aloca */
     void (*titulo)(const char *t);                         /* document.title = */
     void (*alerta)(const char *t);
+    /* resposta completa (fetch): corpo de qualquer código, código, cabeçalhos e URL final */
+    uint8_t *(*resposta)(const char *url, unsigned *n, int *codigo, char *cab, int cmax, char *final, int fmax);
 } js_hooks_t;
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */
 void js_fim(void);
-/* Texto interno do Cipó é Latin-1. Caractere acima de U+00FF vira uma
- * "sequência larga": 0x8F (C1, nunca usado em texto) + 3 bytes 10xxxxxx
- * com 18 bits do código (até U+3FFFF: cobre BMP e os emojis). */
-#define LARGA_MARCA 0x8F
-static inline int larga_por(char *d, uint32_t cp)
+/* UTF-8: lê um caractere (byte inválido vale por si: cp = byte) e escreve um. */
+static inline int utf8_ler(const char *p, int resto, uint32_t *cp)
 {
-    if (cp > 0x3FFFF) { d[0] = '?'; return 1; }
-    d[0] = (char)LARGA_MARCA; d[1] = (char)(0x80 | ((cp >> 12) & 63)); d[2] = (char)(0x80 | ((cp >> 6) & 63)); d[3] = (char)(0x80 | (cp & 63));
-    return 4;
+    uint8_t c = (uint8_t)p[0];
+    int n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 0;
+    if (!n || n > resto) { *cp = c; return 1; }
+    uint32_t v = n == 1 ? c : n == 2 ? (c & 0x1Fu) : n == 3 ? (c & 0x0Fu) : (c & 0x07u);
+    for (int k = 1; k < n; k++) { if (((uint8_t)p[k] & 0xC0) != 0x80) { *cp = c; return 1; } v = v << 6 | ((uint8_t)p[k] & 0x3Fu); }
+    *cp = v;
+    return n;
 }
-static inline bool eh_larga(const char *p, int resto)
+static inline int utf8_por(char *d, uint32_t cp)
 {
-    return resto >= 4 && (uint8_t)p[0] == LARGA_MARCA && ((uint8_t)p[1] & 0xC0) == 0x80 && ((uint8_t)p[2] & 0xC0) == 0x80 && ((uint8_t)p[3] & 0xC0) == 0x80;
+    if (cp < 0x80) { d[0] = (char)cp; return 1; }
+    if (cp < 0x800) { d[0] = (char)(0xC0 | cp >> 6); d[1] = (char)(0x80 | (cp & 63)); return 2; }
+    if (cp < 0x10000) { d[0] = (char)(0xE0 | cp >> 12); d[1] = (char)(0x80 | ((cp >> 6) & 63)); d[2] = (char)(0x80 | (cp & 63)); return 3; }
+    d[0] = (char)(0xF0 | cp >> 18); d[1] = (char)(0x80 | ((cp >> 12) & 63)); d[2] = (char)(0x80 | ((cp >> 6) & 63)); d[3] = (char)(0x80 | (cp & 63)); return 4;
 }
-static inline uint32_t larga_ler(const char *p) { return ((uint32_t)(p[1] & 63) << 12) | ((uint32_t)(p[2] & 63) << 6) | (uint32_t)(p[3] & 63); }
+/* Quebra de linha (UAX #14): r[i] antes do caractere i: 0 proibido, 1 permitido, 2 obrigatório */
+void quebra_linha(const uint32_t *cp, int n, uint8_t *r);
+
 /* Fontes da web (TrueType, WOFF, WOFF2): avanço em 1/64 px; glifo em cobertura 0..255 */
 typedef struct fonte fonte_t;
 fonte_t *fonte_abrir(const uint8_t *d, unsigned n);

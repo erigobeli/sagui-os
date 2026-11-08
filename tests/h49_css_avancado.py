@@ -29,6 +29,7 @@ img{position:absolute;top:50px}
 <div class="cobre"></div>
 <span class="ic"></span><span class="ic2"></span>
 <img src="bola.svg" style="left:500px" width="64" height="64">
+<div style="position:absolute;left:340px;top:150px;width:256px;height:40px;background:linear-gradient(to right,#ff0000,#0000ff)"></div>
 <img src="data:image/svg+xml;base64,CIRC" style="left:580px" width="64" height="64">
 </body></html>""".replace("TRI", TRI).replace("CIRC", CIRC)
 BOLA = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="11" fill="#8000ff"/></svg>'
@@ -87,6 +88,9 @@ def main():
         verificar(lar > 300, "mask-image com SVG externo")
         verificar(rox > 300, "<img> com SVG externo")
         verificar(ver > 300, "<img> com SVG data: base64")
+        g0, g1, g2 = px(342, 170), px(340 + 128, 170), px(340 + 253, 170)
+        print("gradiente", g0, g1, g2)
+        verificar(g0[0] > 240 and g0[2] < 15 and 110 < g1[0] < 145 and 110 < g1[2] < 145 and g2[2] > 240 and g2[0] < 15, "linear-gradient interpolado de verdade")
     srv.shutdown()
     return 0
 

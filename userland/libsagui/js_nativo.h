@@ -6,7 +6,7 @@ static str *video_src;   /* último src dado a um <video> pelo JavaScript */
 static val chaves_de(obj *o, int herda)
 {
     obj *r = novo_arr(0);
-    if (o->cl == C_ARR) for (int i = 0; i < o->na; i++) arr_push(r, vS(num_str(de_int(i))));
+    if (o->cl == C_ARR) for (int i = 0; i < o->na; i++) arr_push(r, vS(num_str((double)i)));
     for (obj *c = o; c; c = herda ? c->proto : NULL) {
         if (c == p_obj || c == p_arr || c == p_fn || c == p_str || c == p_el) break;
         for (int i = 0; i < c->np; i++) {
@@ -21,7 +21,7 @@ static val chaves_de(obj *o, int herda)
 static val n_chaves(val este, val *a, int n)
 {
     (void)este; val v = ARG(0);
-    if (v.t == ST) { obj *r = novo_arr(0); for (int i = 0; i < v.s->n; i++) arr_push(r, vS(num_str(de_int(i)))); return vO(r); }
+    if (v.t == ST) { obj *r = novo_arr(0); for (int i = 0; i < v.s->n; i++) arr_push(r, vS(num_str((double)i))); return vO(r); }
     return v.t == OB ? chaves_de(v.o, 1) : vO(novo_arr(0));
 }
 static val n_keys(val este, val *a, int n) { (void)este; val v = ARG(0); return v.t == OB ? chaves_de(v.o, 0) : n_chaves(este, a, n); }
@@ -118,11 +118,11 @@ static val n_unshift(val este, val *a, int n)
 static int rel(val v, int tam, int padrao)
 {
     if (v.t == U) return padrao;
-    i64 x = to_num(v);
-    if (x == NANV) return 0;
-    if (x == INFV) return tam;
-    if (x == -INFV) return 0;
-    int i = para_i32(x);
+    double x = to_num(v);
+    if (d_nan(x)) return 0;
+    if (x >= tam) return tam;
+    if (x <= -tam) return 0;
+    int i = (int)m_trunc(x);
     if (i < 0) { i += tam; return i < 0 ? 0 : i; }
     return i > tam ? tam : i;
 }
@@ -162,6 +162,7 @@ static val n_join(val este, val *a, int n)
         if (i) { memcpy(r->s + k, sep->s, (size_t)sep->n); k += sep->n; }
         memcpy(r->s + k, ps[i]->s, (size_t)ps[i]->n); k += ps[i]->n;
     }
+    medir_str(r);
     return vS(r);
 }
 static val n_aindex(val este, val *a, int n)
@@ -187,139 +188,447 @@ static val n_reverse(val este, val *a, int n)
     return este;
 }
 
-/* ---- String ---- */
+/* ---- String (índices em unidades UTF-16; texto guardado em WTF-8) ---- */
 static str *este_str(val v) { return to_str(v); }
-static val sub(str *s, int i, int f) { if (f <= i) return vS(I("")); return vS(novo_str(s->s + i, f - i)); }
+static val sub(str *s, int i, int f) { if (f <= i) return vS(I("")); return vS(fatia_u(s, i, f)); }
 static val n_string(val este, val *a, int n) { (void)este; return n ? vS(to_str(a[0])) : vS(I("")); }
-static val n_charat(val este, val *a, int n) { str *s = este_str(este); int i = to_i(ARG(0)); return i >= 0 && i < s->n ? vS(intern_n(s->s + i, 1)) : vS(I("")); }
-static val n_charcode(val este, val *a, int n) { str *s = este_str(este); int i = to_i(ARG(0)); return i >= 0 && i < s->n ? vI((uint8_t)s->s[i]) : vN(NANV); }
+static val n_charat(val este, val *a, int n) { str *s = este_str(este); int i = to_i(ARG(0)); return i >= 0 && i < s->u ? vS(fatia_u(s, i, i + 1)) : vS(I("")); }
+static val n_charcode(val este, val *a, int n) { str *s = este_str(este); int c = unidade(s, to_i(ARG(0))); return c >= 0 ? vI(c) : vN(D_NAN); }
+static val n_codepoint(val este, val *a, int n)
+{
+    str *s = este_str(este); int i = to_i(ARG(0)), c = unidade(s, i);
+    if (c < 0) return vU();
+    if (c >= 0xD800 && c <= 0xDBFF) { int d = unidade(s, i + 1); if (d >= 0xDC00 && d <= 0xDFFF) return vI(0x10000 + ((c - 0xD800) << 10) + (d - 0xDC00)); }
+    return vI(c);
+}
+/* busca em bytes (UTF-8 se sincroniza sozinho) com início e resultado em unidades */
 static int busca(str *s, str *t, int de)
 {
-    for (int i = de < 0 ? 0 : de; i + t->n <= s->n; i++) if (!memcmp(s->s + i, t->s, (size_t)t->n)) return i;
+    int meio, b = u_para_b(s, de < 0 ? 0 : de, &meio);
+    for (int i = b; i + t->n <= s->n; i++) if (!memcmp(s->s + i, t->s, (size_t)t->n)) return b_para_u(s, i);
     return -1;
 }
 static val n_sindex(val este, val *a, int n) { return vI(busca(este_str(este), to_str(ARG(0)), to_i(ARG(1)))); }
 static val n_slast(val este, val *a, int n)
 {
     str *s = este_str(este), *t = to_str(ARG(0));
-    for (int i = s->n - t->n; i >= 0; i--) if (!memcmp(s->s + i, t->s, (size_t)t->n)) return vI(i);
+    for (int i = s->n - t->n; i >= 0; i--) if (!memcmp(s->s + i, t->s, (size_t)t->n)) return vI(b_para_u(s, i));
     return vI(-1);
 }
-static val n_sslice(val este, val *a, int n) { str *s = este_str(este); return sub(s, rel(ARG(0), s->n, 0), rel(ARG(1), s->n, s->n)); }
+static val n_sslice(val este, val *a, int n) { str *s = este_str(este); return sub(s, rel(ARG(0), s->u, 0), rel(ARG(1), s->u, s->u)); }
 static val n_substring(val este, val *a, int n)
 {
     str *s = este_str(este);
-    int i = to_i(ARG(0)), f = ARG(1).t == U ? s->n : to_i(a[1]);
+    int i = to_i(ARG(0)), f = ARG(1).t == U ? s->u : to_i(a[1]);
     if (i < 0) i = 0;
     if (f < 0) f = 0;
-    if (i > s->n) i = s->n;
-    if (f > s->n) f = s->n;
+    if (i > s->u) i = s->u;
+    if (f > s->u) f = s->u;
     return i < f ? sub(s, i, f) : sub(s, f, i);
 }
 static val n_substr(val este, val *a, int n)
 {
     str *s = este_str(este);
-    int i = rel(ARG(0), s->n, 0), c = ARG(1).t == U ? s->n - i : to_i(a[1]);
-    return sub(s, i, i + c > s->n ? s->n : i + c);
+    int i = rel(ARG(0), s->u, 0), c = ARG(1).t == U ? s->u - i : to_i(a[1]);
+    return sub(s, i, i + c > s->u ? s->u : i + c);
+}
+/* maiúsculas/minúsculas por código: Latin-1, Latin Extended-A, grego, cirílico; ß -> SS */
+static uint32_t js_maiusc(uint32_t c)
+{
+    if ((c >= 'a' && c <= 'z') || (c >= 0xE0 && c <= 0xFE && c != 0xF7)) return c - 32;
+    if (c == 0xFF) return 0x178;
+    if (c == 0xB5) return 0x39C;
+    if (c >= 0x100 && c <= 0x17F && c != 0x130 && c != 0x131 && c != 0x138 && c != 0x149 && c != 0x17F) {
+        bool pi = (c >= 0x139 && c <= 0x148) || (c >= 0x179 && c <= 0x17E);
+        return (pi ? !(c & 1) : (c & 1)) ? c - 1 : c;
+    }
+    if (c == 0x131) return 'I';
+    if (c == 0x17F) return 'S';
+    if (c >= 0x3B1 && c <= 0x3C9 && c != 0x3C2) return c - 32;
+    if (c == 0x3C2) return 0x3A3;
+    if (c >= 0x3AC && c <= 0x3AF) return c == 0x3AC ? 0x386 : c - 37;
+    if (c >= 0x430 && c <= 0x44F) return c - 32;
+    if (c >= 0x450 && c <= 0x45F) return c - 80;
+    return c;
+}
+static uint32_t js_minusc(uint32_t c)
+{
+    if ((c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xDE && c != 0xD7)) return c + 32;
+    if (c == 0x178) return 0xFF;
+    if (c == 0x130) return 'i';
+    if (c >= 0x100 && c <= 0x17F && c != 0x131 && c != 0x138 && c != 0x149 && c != 0x17F) {
+        bool pi = (c >= 0x139 && c <= 0x148) || (c >= 0x179 && c <= 0x17E);
+        return (pi ? (c & 1) : !(c & 1)) ? c + 1 : c;
+    }
+    if (c >= 0x391 && c <= 0x3A9 && c != 0x3A2) return c + 32;
+    if (c == 0x386) return 0x3AC;
+    if (c >= 0x388 && c <= 0x38A) return c + 37;
+    if (c >= 0x410 && c <= 0x42F) return c + 32;
+    if (c >= 0x400 && c <= 0x40F) return c + 80;
+    return c;
 }
 static val caixa(val este, int alta)
 {
-    str *s = este_str(este), *r = novo_str(s->s, s->n);
-    for (int i = 0; i < r->n; i++) {
-        uint8_t c = (uint8_t)r->s[i];
-        if (alta && ((c >= 'a' && c <= 'z') || (c >= 0xE0 && c != 0xF7 && c != 0xFF))) r->s[i] = (char)(c - 32);
-        if (!alta && ((c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xDE && c != 0xD7))) r->s[i] = (char)(c + 32);
+    str *s = este_str(este);
+    if (s->ascii) {
+        str *r = novo_str(s->s, s->n);
+        for (int i = 0; i < r->n; i++) { char c = r->s[i]; if (alta && c >= 'a' && c <= 'z') r->s[i] = (char)(c - 32); if (!alta && c >= 'A' && c <= 'Z') r->s[i] = (char)(c + 32); }
+        return vS(r);
     }
-    return vS(r);
+    char *b = novo((unsigned)s->n * 2 + 4); int k = 0;
+    for (int i = 0; i < s->n;) {
+        int kk; uint32_t c = cp_em(s->s + i, s->n - i, &kk); i += kk;
+        if (alta && c == 0xDF) { b[k++] = 'S'; b[k++] = 'S'; continue; }
+        k += wtf8_por(b + k, alta ? js_maiusc(c) : js_minusc(c));
+    }
+    return vS(novo_str(b, k));
 }
 static val n_lower(val este, val *a, int n) { (void)a; (void)n; return caixa(este, 0); }
 static val n_upper(val este, val *a, int n) { (void)a; (void)n; return caixa(este, 1); }
+/* espaço em branco do JS: ASCII, NBSP, BOM, U+1680, U+2000-200A, 2028/2029, 202F, 205F, 3000 */
+static int eh_branco_js(uint32_t c)
+{
+    return c == ' ' || (c >= 9 && c <= 13) || c == 0xA0 || c == 0xFEFF || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
+           c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000;
+}
 static val n_trim(val este, val *a, int n)
 {
     (void)a; (void)n; str *s = este_str(este);
-    int i = 0, f = s->n;
-    while (i < f && (uint8_t)s->s[i] <= ' ') i++;
-    while (f > i && (uint8_t)s->s[f - 1] <= ' ') f--;
-    return sub(s, i, f);
+    int i = 0, f = s->n, k;
+    while (i < f && eh_branco_js(cp_em(s->s + i, f - i, &k))) i += k;
+    while (f > i) {
+        int b = f - 1; while (b > i && ((uint8_t)s->s[b] & 0xC0) == 0x80) b--;
+        if (!eh_branco_js(cp_em(s->s + b, f - b, &k))) break;
+        f = b;
+    }
+    return vS(novo_str(s->s + i, f - i));
 }
 static val n_ssplit(val este, val *a, int n)
 {
     str *s = este_str(este); obj *r = novo_arr(0);
     if (ARG(0).t == U) { arr_push(r, vS(s)); return vO(r); }
     str *t = to_str(a[0]);
-    if (!t->n) { for (int i = 0; i < s->n; i++) arr_push(r, vS(intern_n(s->s + i, 1))); return vO(r); }
+    if (!t->n) { for (int i = 0; i < s->u; i++) arr_push(r, vS(fatia_u(s, i, i + 1))); return vO(r); }
     int i = 0, j;
-    while ((j = busca(s, t, i)) >= 0) { arr_push(r, sub(s, i, j)); i = j + t->n; }
-    arr_push(r, sub(s, i, s->n));
+    for (;;) {
+        int meio, b = u_para_b(s, i, &meio), achou = -1;
+        for (int q = b; q + t->n <= s->n; q++) if (!memcmp(s->s + q, t->s, (size_t)t->n)) { achou = q; break; }
+        if (achou < 0) break;
+        arr_push(r, vS(novo_str(s->s + b, achou - b)));
+        j = b_para_u(s, achou + t->n);
+        i = j;
+    }
+    { int meio, b = u_para_b(s, i, &meio); arr_push(r, vS(novo_str(s->s + b, s->n - b))); }
     return vO(r);
 }
 static val n_fromcode(val este, val *a, int n)
 {
-    (void)este; str *r = novo_str(NULL, n);
-    for (int i = 0; i < n; i++) { int c = to_i(a[i]); r->s[i] = c > 255 ? '?' : (char)c; }
-    return vS(r);
+    (void)este;
+    char *b = novo((unsigned)n * 3 + 4); int k = 0;
+    for (int i = 0; i < n; i++) {
+        uint32_t c = (uint32_t)to_i(a[i]) & 0xFFFF;
+        /* par alta+baixa vira um caractere */
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < n) {
+            uint32_t d = (uint32_t)to_i(a[i + 1]) & 0xFFFF;
+            if (d >= 0xDC00 && d <= 0xDFFF) { k += wtf8_por(b + k, 0x10000 + ((c - 0xD800) << 10) + (d - 0xDC00)); i++; continue; }
+        }
+        k += wtf8_por(b + k, c);
+    }
+    return vS(novo_str(b, k));
+}
+static val n_fromcodepoint(val este, val *a, int n)
+{
+    (void)este;
+    char *b = novo((unsigned)n * 4 + 4); int k = 0;
+    for (int i = 0; i < n; i++) { int c = to_i(a[i]); if (c < 0 || c > 0x10FFFF) erro("RangeError", "Invalid code point", NULL); k += wtf8_por(b + k, (uint32_t)c); }
+    return vS(novo_str(b, k));
+}
+
+/* ---- JSON (RFC 8259) ---- */
+typedef struct { const char *s; int n, i; } jctx;
+static __attribute__((noreturn)) void json_erro(jctx *j)
+{
+    char m[96];
+    if (j->i >= j->n) formatar_texto(m, sizeof m, "Unexpected end of JSON input");
+    else formatar_texto(m, sizeof m, "Unexpected token '%c' in JSON at position %d", j->s[j->i], j->i);
+    erro("SyntaxError", m, NULL);
+}
+static void json_esp(jctx *j) { while (j->i < j->n && (j->s[j->i] == ' ' || j->s[j->i] == '\t' || j->s[j->i] == '\n' || j->s[j->i] == '\r')) j->i++; }
+static int json_hex4(jctx *j)
+{
+    int v = 0;
+    for (int k = 0; k < 4; k++) { if (j->i >= j->n || hexv(j->s[j->i]) < 0) json_erro(j); v = v * 16 + hexv(j->s[j->i++]); }
+    return v;
+}
+static str *json_texto(jctx *j)
+{
+    j->i++;   /* aspas */
+    int ini = j->i;
+    while (j->i < j->n && j->s[j->i] != '"' && j->s[j->i] != '\\') { if ((uint8_t)j->s[j->i] < 0x20) json_erro(j); j->i++; }
+    if (j->i < j->n && j->s[j->i] == '"') { str *r = novo_str(j->s + ini, j->i - ini); j->i++; return r; }
+    int cap = (j->n - ini) + 8, k = j->i - ini;
+    char *b = novo((unsigned)cap);
+    memcpy(b, j->s + ini, (size_t)k);
+    for (;;) {
+        if (j->i >= j->n) json_erro(j);
+        char c = j->s[j->i];
+        if (c == '"') { j->i++; break; }
+        if ((uint8_t)c < 0x20) json_erro(j);
+        if (c != '\\') { b[k++] = c; j->i++; continue; }
+        j->i++;
+        if (j->i >= j->n) json_erro(j);
+        char e = j->s[j->i++];
+        switch (e) {
+        case '"': b[k++] = '"'; break; case '\\': b[k++] = '\\'; break; case '/': b[k++] = '/'; break;
+        case 'b': b[k++] = 8; break; case 'f': b[k++] = 12; break; case 'n': b[k++] = '\n'; break; case 'r': b[k++] = '\r'; break; case 't': b[k++] = '\t'; break;
+        case 'u': {
+            uint32_t v = (uint32_t)json_hex4(j);
+            if (v >= 0xD800 && v <= 0xDBFF && j->i + 5 < j->n && j->s[j->i] == '\\' && j->s[j->i + 1] == 'u') {
+                int sv = j->i; j->i += 2;
+                uint32_t d = (uint32_t)json_hex4(j);
+                if (d >= 0xDC00 && d <= 0xDFFF) v = 0x10000 + ((v - 0xD800) << 10) + (d - 0xDC00); else j->i = sv;
+            }
+            k += wtf8_por(b + k, v);
+            break;
+        }
+        default: j->i--; json_erro(j);
+        }
+    }
+    return novo_str(b, k);
+}
+static val json_valor(jctx *j, int prof)
+{
+    if (prof > 512) erro("RangeError", "JSON nesting too deep", NULL);
+    json_esp(j);
+    if (j->i >= j->n) json_erro(j);
+    char c = j->s[j->i];
+    if (c == '{') {
+        j->i++;
+        obj *o = novo_obj(p_obj);
+        json_esp(j);
+        if (j->i < j->n && j->s[j->i] == '}') { j->i++; return vO(o); }
+        for (;;) {
+            json_esp(j);
+            if (j->i >= j->n || j->s[j->i] != '"') json_erro(j);
+            str *k = json_texto(j);
+            json_esp(j);
+            if (j->i >= j->n || j->s[j->i] != ':') json_erro(j);
+            j->i++;
+            val v = json_valor(j, prof + 1);
+            por_prop(o, intern(k), v);
+            json_esp(j);
+            if (j->i < j->n && j->s[j->i] == ',') { j->i++; continue; }
+            if (j->i < j->n && j->s[j->i] == '}') { j->i++; return vO(o); }
+            json_erro(j);
+        }
+    }
+    if (c == '[') {
+        j->i++;
+        obj *r = novo_arr(0);
+        json_esp(j);
+        if (j->i < j->n && j->s[j->i] == ']') { j->i++; return vO(r); }
+        for (;;) {
+            arr_push(r, json_valor(j, prof + 1));
+            json_esp(j);
+            if (j->i < j->n && j->s[j->i] == ',') { j->i++; continue; }
+            if (j->i < j->n && j->s[j->i] == ']') { j->i++; return vO(r); }
+            json_erro(j);
+        }
+    }
+    if (c == '"') return vS(json_texto(j));
+    if (c == 't' && j->i + 4 <= j->n && !memcmp(j->s + j->i, "true", 4)) { j->i += 4; return vB(1); }
+    if (c == 'f' && j->i + 5 <= j->n && !memcmp(j->s + j->i, "false", 5)) { j->i += 5; return vB(0); }
+    if (c == 'n' && j->i + 4 <= j->n && !memcmp(j->s + j->i, "null", 4)) { j->i += 4; return vNul(); }
+    if (c == '-' || (c >= '0' && c <= '9')) {
+        int ini = j->i, neg = c == '-';
+        if (neg) j->i++;
+        if (j->i >= j->n || !(j->s[j->i] >= '0' && j->s[j->i] <= '9')) json_erro(j);
+        if (j->s[j->i] == '0' && j->i + 1 < j->n && j->s[j->i + 1] >= '0' && j->s[j->i + 1] <= '9') { j->i++; json_erro(j); }
+        int u; double v = ler_numero(j->s + j->i, j->n - j->i, &u);
+        /* o número do JSON não aceita "1." nem ".5" */
+        const char *q = j->s + j->i;
+        for (int t = 0; t < u; t++) if (q[t] == '.' && (t + 1 >= u || !(q[t + 1] >= '0' && q[t + 1] <= '9'))) { j->i += t + 1; json_erro(j); }
+        j->i += u;
+        (void)ini;
+        return vN(neg ? -v : v);
+    }
+    json_erro(j);
+}
+static val n_json_parse(val este, val *a, int n)
+{
+    (void)este;
+    str *s = to_str(ARG(0));
+    jctx j = { s->s, s->n, 0 };
+    val v = json_valor(&j, 0);
+    json_esp(&j);
+    if (j.i < j.n) json_erro(&j);
+    return v;
+}
+/* texto entre aspas no formato do JSON.stringify */
+static val n_json_q(val este, val *a, int n)
+{
+    (void)este;
+    str *s = to_str(ARG(0));
+    char *b = novo((unsigned)s->n * 6 + 3); int k = 0;
+    b[k++] = '"';
+    for (int i = 0; i < s->n;) {
+        uint8_t c = (uint8_t)s->s[i];
+        if (c == '"' || c == '\\') { b[k++] = '\\'; b[k++] = (char)c; i++; continue; }
+        if (c < 0x20) {
+            b[k++] = '\\';
+            if (c == '\n') b[k++] = 'n'; else if (c == '\r') b[k++] = 'r'; else if (c == '\t') b[k++] = 't'; else if (c == 8) b[k++] = 'b'; else if (c == 12) b[k++] = 'f';
+            else { formatar_texto(b + k, 6, "u%04x", c); k += 5; }
+            i++; continue;
+        }
+        if (c == 0xED && i + 2 < s->n && ((uint8_t)s->s[i + 1] & 0xE0) == 0xA0) {   /* metade de par solta: \udxxx */
+            uint32_t v = 0xD000 | ((uint32_t)(s->s[i + 1] & 63) << 6) | (uint32_t)(s->s[i + 2] & 63);
+            formatar_texto(b + k, 7, "\\u%04x", v); k += 6; i += 3; continue;
+        }
+        b[k++] = (char)c; i++;
+    }
+    b[k++] = '"';
+    return vS(novo_str(b, k));
 }
 
 /* ---- Number e globais ---- */
 static val n_number(val este, val *a, int n) { (void)este; return n ? vN(to_num(a[0])) : vI(0); }
 static val n_boolean(val este, val *a, int n) { (void)este; return vB(to_bool(ARG(0))); }
+/* Number.prototype.toString(raiz): mesmo algoritmo do V8 (DoubleToRadixCString):
+ * fração até a precisão do número (delta = meia distância ao vizinho) */
 static val n_numstr(val este, val *a, int n)
 {
-    i64 v = to_num(este); int b = ARG(0).t == U ? 10 : to_i(a[0]);
-    if (b == 10 || b < 2 || b > 36 || esp(v)) return vS(num_str(v));
-    char t[80]; int k = 79, neg = v < 0;
-    u64 x = (neg ? -(u64)v : (u64)v) >> FR;
-    t[79] = 0;
-    do { u64 r; x = udiv(x, (unsigned)b, &r); t[--k] = "0123456789abcdefghijklmnopqrstuvwxyz"[(int)r]; } while (x);
-    if (neg) t[--k] = '-';
-    return vT(t + k);
+    double v = to_num(este); int b = ARG(0).t == U ? 10 : to_i(a[0]);
+    if (b < 2 || b > 36) erro("RangeError", "toString() radix must be between 2 and 36", NULL);
+    if (b == 10 || !d_fin(v) || d_nan(v)) return vS(num_str(v));
+    static const char cs[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+    static char buf[2200];
+    int pos = 1100, ini = pos;
+    int neg = v < 0; if (neg) v = -v;
+    double inteiro = m_floor(v), fr = v - inteiro;
+    double delta = 0.5 * (d_de(d_bits(v) + 1) - v);
+    double minimo = d_de(1);
+    if (delta < minimo) delta = minimo;
+    int fp = pos;
+    if (fr >= delta) {
+        buf[fp++] = '.';
+        do {
+            fr *= b; delta *= b;
+            int dg = (int)fr;
+            buf[fp++] = cs[dg];
+            fr -= dg;
+            if (fr > 0.5 || (fr == 0.5 && (dg & 1))) {
+                if (fr + delta > 1) {
+                    /* arredonda para cima e propaga */
+                    for (;;) {
+                        fp--;
+                        if (fp == pos) { inteiro += 1; break; }
+                        char c = buf[fp];
+                        int d = c > '9' ? c - 'a' + 10 : c - '0';
+                        if (d + 1 < b) { buf[fp++] = cs[d + 1]; break; }
+                    }
+                    break;
+                }
+            }
+        } while (fr >= delta && fp < 2190);
+    }
+    /* parte inteira: dígitos de baixo para cima, exatos enquanto o expoente permite */
+    while (((d_bits(inteiro / b) >> 52) & 0x7FF) > 1075) { inteiro /= b; buf[--ini] = '0'; }
+    do {
+        double resto = m_func(30, inteiro, b);
+        buf[--ini] = cs[(int)resto];
+        inteiro = (inteiro - resto) / b;
+    } while (inteiro > 0 && ini > 1);
+    if (neg) buf[--ini] = '-';
+    return vS(novo_str(buf + ini, fp - ini));
 }
-static val n_tofixed(val este, val *a, int n)
+/* toFixed / toPrecision / toExponential pela expansão decimal exata */
+static val n_numfmt(val este, val *a, int n)
 {
-    i64 v = to_num(este); int d = to_i(ARG(0));
-    if (esp(v)) return vS(num_str(v));
-    if (d > 6) d = 6;
-    i64 e = UM; for (int i = 0; i < d; i++) e *= 10;
-    u64 x = v < 0 ? -(u64)v : (u64)v;
-    u64 h = x >> FR, f = x & (UM - 1), m = 1;
-    for (int i = 0; i < d; i++) m *= 10;
-    u64 q = (f * m + (UM >> 1)) >> FR;
-    if (q >= m) { q -= m; h++; }
-    char b[48]; int k = 47; b[47] = 0;
-    for (int i = 0; i < d; i++) { u64 r; q = udiv(q, 10, &r); b[--k] = (char)('0' + (int)r); }
-    if (d) b[--k] = '.';
-    do { u64 r; h = udiv(h, 10, &r); b[--k] = (char)('0' + (int)r); } while (h);
-    if (v < 0) b[--k] = '-';
-    return vT(b + k);
+    double v = to_num(este); int modo = to_i(ARG(0)), p = ARG(1).t == U ? -1 : to_i(a[1]);
+    if (d_nan(v)) return vT("NaN");
+    char out[1300]; int k = 0;
+    if (modo == 0) {   /* toFixed */
+        if (p < 0 || p > 100) erro("RangeError", "toFixed() digits argument must be between 0 and 100", NULL);
+        if (v >= 1e21 || v <= -1e21) return vS(num_str(v));
+    } else if (modo == 1 && p >= 0 && (p < 1 || p > 100)) erro("RangeError", "toPrecision() argument must be between 1 and 100", NULL);
+    else if (modo == 2 && p >= 0 && p > 100) erro("RangeError", "toExponential() argument must be between 0 and 100", NULL);
+    if (modo == 1 && p < 0) return vS(num_str(v));
+    if (v < 0 || (v == 0 && (d_bits(v) >> 63) && modo != 0)) { out[k++] = '-'; v = -v; }
+    if (v < 0) v = -v;
+    if (!d_fin(v)) { memcpy(out + k, "Infinity", 8); k += 8; return vS(novo_str(out, k)); }
+    static char ip[1200], fp[1200], d[2500];
+    int nip, nfp;
+    d_exato(v, ip, &nip, fp, &nfp);
+    if (modo == 0) {
+        /* d = inteiro + fração, arredondado em p casas */
+        int nd = 0;
+        memcpy(d, ip, (size_t)nip); nd = nip;
+        memcpy(d + nd, fp, (size_t)nfp); nd += nfp;
+        int m = nip + p;
+        if (arred_decimal(d, nd, m)) { nip++; m++; }
+        memcpy(out + k, d, (size_t)nip); k += nip;
+        if (p) { out[k++] = '.'; memcpy(out + k, d + nip, (size_t)p); k += p; }
+        return vS(novo_str(out, k));
+    }
+    /* dígitos significativos e expoente */
+    int nd = 0, e;
+    if (nip == 1 && ip[0] == '0') {
+        int z = 0; while (z < nfp && fp[z] == '0') z++;
+        if (z == nfp) { e = 0; d[nd++] = '0'; }
+        else { e = -(z + 1); memcpy(d, fp + z, (size_t)(nfp - z)); nd = nfp - z; }
+    } else { e = nip - 1; memcpy(d, ip, (size_t)nip); nd = nip; memcpy(d + nd, fp, (size_t)nfp); nd += nfp; }
+    int sig;
+    if (modo == 2 && p < 0) {   /* toExponential(): só os dígitos necessários */
+        char sd[32]; int kk, ns = v == 0 ? 1 : d_curto(v, sd, &kk);
+        if (v == 0) { sd[0] = '0'; kk = 1; }
+        memcpy(d, sd, (size_t)ns); nd = ns; e = kk - 1; sig = ns;
+    } else {
+        sig = modo == 1 ? p : p + 1;
+        if (!(nd == 1 && d[0] == '0') && arred_decimal(d, nd, sig)) e++;
+        if (nd == 1 && d[0] == '0') for (int i = 1; i < sig; i++) d[i] = '0';
+    }
+    if (modo == 1 && e >= -6 && e < sig) {
+        if (e >= 0) { memcpy(out + k, d, (size_t)(e + 1)); k += e + 1; if (sig > e + 1) { out[k++] = '.'; memcpy(out + k, d + e + 1, (size_t)(sig - e - 1)); k += sig - e - 1; } }
+        else { out[k++] = '0'; out[k++] = '.'; for (int i = 0; i < -e - 1; i++) out[k++] = '0'; memcpy(out + k, d, (size_t)sig); k += sig; }
+        return vS(novo_str(out, k));
+    }
+    out[k++] = d[0];
+    if (sig > 1) { out[k++] = '.'; memcpy(out + k, d + 1, (size_t)(sig - 1)); k += sig - 1; }
+    out[k++] = 'e'; out[k++] = e < 0 ? '-' : '+';
+    k += formatar_texto(out + k, 8, "%d", e < 0 ? -e : e);
+    return vS(novo_str(out, k));
 }
+static val n_tofixed(val este, val *a, int n) { val b[2] = { vI(0), ARG(0).t == U ? vI(0) : a[0] }; return n_numfmt(este, b, 2); }
+/* parseInt: espaços do JS, sinal, 0x, raiz 2..36 */
 static val n_parseint(val este, val *a, int n)
 {
     (void)este; str *s = to_str(ARG(0));
-    int i = 0, b = to_i(ARG(1)), neg = 0, tem = 0;
-    i64 r = 0;
-    while (i < s->n && (uint8_t)s->s[i] <= ' ') i++;
+    int i = 0, b = to_i(ARG(1)), neg = 0, k;
+    while (i < s->n) { uint32_t c = cp_em(s->s + i, s->n - i, &k); if (!eh_branco_js(c) && c != 0x2028 && c != 0x2029) break; i += k; }
     if (i < s->n && (s->s[i] == '-' || s->s[i] == '+')) neg = s->s[i++] == '-';
+    if (b && (b < 2 || b > 36)) return vN(D_NAN);
     if ((!b || b == 16) && i + 1 < s->n && s->s[i] == '0' && (s->s[i + 1] | 32) == 'x') { i += 2; b = 16; }
     if (!b) b = 10;
-    for (; i < s->n; i++) {
-        char c = s->s[i];
-        int d = dig(c) ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'z' ? (c | 32) - 'a' + 10 : 99;
-        if (d >= b) break;
-        r = nsoma(nmul(r, de_int(b)), de_int(d)); tem = 1;
+    int u;
+    double r = b == 10 ? D_NAN : ler_base(s->s + i, s->n - i, b, &u);
+    if (b == 10) {   /* decimal: só os dígitos, valor correto */
+        int f = i; while (f < s->n && dig(s->s[f])) f++;
+        r = f > i ? ler_decimal(s->s + i, f - i, &u) : D_NAN;
     }
-    return tem ? vN(neg ? -r : r) : vN(NANV);
+    return vN(neg ? -r : r);
 }
 static val n_parsefloat(val este, val *a, int n)
 {
     (void)este; str *s = to_str(ARG(0));
-    int i = 0, neg = 0, u;
-    while (i < s->n && (uint8_t)s->s[i] <= ' ') i++;
+    int i = 0, neg = 0, u, k;
+    while (i < s->n) { uint32_t c = cp_em(s->s + i, s->n - i, &k); if (!eh_branco_js(c) && c != 0x2028 && c != 0x2029) break; i += k; }
     if (i < s->n && (s->s[i] == '-' || s->s[i] == '+')) neg = s->s[i++] == '-';
-    if (i >= s->n || !(dig(s->s[i]) || s->s[i] == '.')) return vN(NANV);
-    i64 r = ler_numero(s->s + i, s->n - i, &u);
+    if (s->n - i >= 8 && !memcmp(s->s + i, "Infinity", 8)) return vN(neg ? -D_INF : D_INF);
+    double r = ler_decimal(s->s + i, s->n - i, &u);
     return vN(neg ? -r : r);
 }
-static val n_isnan(val este, val *a, int n) { (void)este; return vB(to_num(ARG(0)) == NANV); }
+static val n_isnan(val este, val *a, int n) { (void)este; return vB(d_nan(to_num(ARG(0)))); }
+static val n_mat(val este, val *a, int n) { (void)este; return vN(m_func(to_i(ARG(0)), to_num(ARG(1)), to_num(ARG(2)))); }
 
 /* ---- ArrayBuffer e typed arrays ---- */
 static obj *buf_novo(int n, val proto)
@@ -404,31 +713,43 @@ static val n_ta_copiar(val este, val *a, int n)
     for (int i = 0; i < v.o->na; i++) ta_gravar(d.o, off + i, v.o->a[i]);
     return vU();
 }
-/* UTF-8: texto (Latin-1 interno) -> bytes e volta */
+/* Bytes UTF-8 de fora -> texto do JS; sequência inválida vira U+FFFD (como o TextDecoder). */
+static str *de_utf8(const uint8_t *p, int len)
+{
+    char *b = novo((unsigned)len * 3 + 4); int k = 0;
+    for (int i = 0; i < len;) {
+        uint8_t c = p[i];
+        if (c < 0x80) { b[k++] = (char)c; i++; continue; }
+        int ext = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
+        uint32_t cp = ext == 1 ? c & 31u : ext == 2 ? c & 15u : c & 7u;
+        int ok = ext > 0 && i + ext < len;
+        if (ok) for (int e = 1; e <= ext; e++) { if (i + e >= len || (p[i + e] & 0xC0) != 0x80) { ok = 0; break; } cp = cp << 6 | (p[i + e] & 63u); }
+        /* recusa sobrelongos, surrogates e > U+10FFFF */
+        if (ok && ((ext == 1 && cp < 0x80) || (ext == 2 && (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF))) || (ext == 3 && (cp < 0x10000 || cp > 0x10FFFF)))) ok = 0;
+        if (!ok) { k += wtf8_por(b + k, 0xFFFD); i++; continue; }
+        memcpy(b + k, p + i, (size_t)ext + 1); k += ext + 1; i += ext + 1;
+    }
+    return novo_str(b, k);
+}
+static obj *bytes_ta(const uint8_t *d, int n, obj *proto)
+{
+    obj *o = novo_obj(proto ? proto : p_obj);
+    o->cl = C_TA; o->vtipo = 1;
+    o->vbuf = buf_novo(n, vU()); o->vlen = n;
+    if (n) memcpy(o->vbuf->mem, d, (size_t)n);
+    return o;
+}
+/* texto do JS -> bytes UTF-8 (metade de par solta vira U+FFFD) */
 static val n_utf8_cod(val este, val *a, int n)
 {
     (void)este;
     str *t = to_str(ARG(0));
-    obj *o = novo_obj(ARG(1).t == OB ? ARG(1).o : p_obj);
-    o->cl = C_TA; o->vtipo = 1;
-    int k = 0;
-    for (int i = 0; i < t->n; i++) {
-        if (eh_larga(t->s + i, t->n - i)) { uint32_t cp = larga_ler(t->s + i); k += cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4; i += 3; }
-        else k += (uint8_t)t->s[i] >= 0x80 ? 2 : 1;
+    char *b = novo((unsigned)t->n + 4); int k = 0;
+    for (int i = 0; i < t->n;) {
+        if ((uint8_t)t->s[i] == 0xED && i + 2 < t->n && ((uint8_t)t->s[i + 1] & 0xE0) == 0xA0) { k += wtf8_por(b + k, 0xFFFD); i += 3; continue; }
+        b[k++] = t->s[i++];
     }
-    o->vbuf = buf_novo(k, vU()); o->vlen = k;
-    uint8_t *p = o->vbuf->mem; k = 0;
-    for (int i = 0; i < t->n; i++) {
-        uint8_t c = (uint8_t)t->s[i];
-        if (eh_larga(t->s + i, t->n - i)) {
-            uint32_t cp = larga_ler(t->s + i); i += 3;
-            if (cp < 0x800) { p[k++] = (uint8_t)(0xC0 | cp >> 6); p[k++] = (uint8_t)(0x80 | (cp & 63)); }
-            else if (cp < 0x10000) { p[k++] = (uint8_t)(0xE0 | cp >> 12); p[k++] = (uint8_t)(0x80 | ((cp >> 6) & 63)); p[k++] = (uint8_t)(0x80 | (cp & 63)); }
-            else { p[k++] = (uint8_t)(0xF0 | cp >> 18); p[k++] = (uint8_t)(0x80 | ((cp >> 12) & 63)); p[k++] = (uint8_t)(0x80 | ((cp >> 6) & 63)); p[k++] = (uint8_t)(0x80 | (cp & 63)); }
-        }
-        else if (c < 0x80) p[k++] = c; else { p[k++] = (uint8_t)(0xC0 | c >> 6); p[k++] = (uint8_t)(0x80 | (c & 63)); }
-    }
-    return vO(o);
+    return vO(bytes_ta((const uint8_t *)b, k, ARG(1).t == OB ? ARG(1).o : NULL));
 }
 static val n_utf8_dec(val este, val *a, int n)
 {
@@ -438,27 +759,38 @@ static val n_utf8_dec(val este, val *a, int n)
     if (x.t == OB && x.o->cl == C_TA) { p = x.o->vbuf->mem + x.o->voff; len = x.o->vlen * ta_tam[x.o->vtipo]; }
     else if (x.t == OB && x.o->cl == C_BUF) { p = x.o->mem; len = x.o->mem_n; }
     else return vT("");
-    char *b = novo((unsigned)len * 2 + 4); int k = 0;
-    for (int i = 0; i < len;) {
-        uint8_t c = p[i];
-        uint32_t cp; int ext = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : 0;
-        if (i + ext >= len + (ext ? 0 : 1)) { b[k++] = '?'; break; }
-        cp = ext == 0 ? c : ext == 1 ? c & 31 : ext == 2 ? c & 15 : c & 7;
-        for (int e = 1; e <= ext; e++) cp = cp << 6 | (p[i + e] & 63);
-        i += ext + 1;
-        if (cp < 0x100) b[k++] = (char)cp; else k += larga_por(b + k, cp);
-    }
-    return vS(novo_str(b, k));
+    return vS(de_utf8(p, len));
 }
 static val n_log(val este, val *a, int n) { (void)este; registrar("js: %s\n", to_str(ARG(0))->s); return vU(); }
 static val n_eval(val este, val *a, int n) { (void)este; str *s = to_str(ARG(0)); return avaliar(s->s, s->n); }
-static val n_now(val este, val *a, int n) { (void)este; (void)a; (void)n; return vN((i64)(1798761600000ULL + tempo_ms()) << FR); }
+/* Date.now: relógio do sistema (RTC, tomado como UTC) + milissegundos do contador */
+static double agora_base; static unsigned agora_ms0;
+static val n_now(val este, val *a, int n)
+{
+    (void)este; (void)a; (void)n;
+    if (!agora_base) {
+        data_t d; memset(&d, 0, sizeof d);
+        ler_data(&d);
+        int y = d.ano, m = d.mes, dd = d.dia;
+        y -= m <= 2;
+        int era = (y >= 0 ? y : y - 399) / 400, yoe = y - era * 400;
+        int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + dd - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        double dias = (double)era * 146097 + doe - 719468;
+        agora_base = dias * 86400000.0 + d.hora * 3600000.0 + d.minuto * 60000.0 + d.segundo * 1000.0;
+        agora_ms0 = tempo_ms();
+    }
+    return vN(agora_base + (double)(tempo_ms() - agora_ms0));
+}
 static unsigned semente = 2463534242u;
 static val n_rand(val este, val *a, int n)
 {
     (void)este; (void)a; (void)n;
-    semente ^= semente << 13; semente ^= semente >> 17; semente ^= semente << 5; semente ^= tempo_ms();
-    return vN(semente & (UM - 1));
+    /* 53 bits aleatórios em [0, 1) */
+    static u64 x = 0x9E3779B97F4A7C15ULL;
+    x ^= (u64)tempo_ms() * 0xBF58476D1CE4E5B9ULL;
+    x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+    (void)semente;
+    return vN((double)(x >> 11) * (1.0 / 9007199254740992.0));
 }
 static val n_alert(val este, val *a, int n) { (void)este; if (gancho) gancho->alerta(to_str(ARG(0))->s); return vU(); }
 static val n_baixar(val este, val *a, int n)
@@ -467,113 +799,193 @@ static val n_baixar(val este, val *a, int n)
     if (!gancho || tempo_ms() > t_limite) return vNul();
     uint8_t *d = gancho->baixar(to_str(ARG(0))->s, &t);
     if (!d) return vNul();
-    str *s = novo_str((char *)d, (int)t);
+    str *s = de_utf8(d, (int)t);
     libera(d);
     return vS(s);
 }
 
-/* __enviar(url, método, corpo, cabeçalhos) -> [status, texto] (POST, PUT...) */
-static val n_enviar(val este, val *a, int n)
+/* __pedir_n(url, método, corpo, cabeçalhos, proto Uint8Array) ->
+ * [código, bytes, cabeçalhos da resposta, URL final] ou null (falha de rede) */
+static val n_pedir(val este, val *a, int n)
 {
     (void)este; unsigned t = 0;
     if (!gancho || tempo_ms() > t_limite) return vNul();
-    str *met = to_str(ARG(1)), *corpo = ARG(2).t == U || ARG(2).t == NUL ? I("") : to_str(ARG(2)), *cab = ARG(3).t == ST ? ARG(3).s : I("");
-    static char m[16], c[2048];
+    str *url = to_str(ARG(0)), *met = ARG(1).t == U ? I("GET") : to_str(ARG(1)), *cab = ARG(3).t == ST ? ARG(3).s : I("");
+    const void *cp = ""; int cn = 0;
+    val cv = ARG(2);
+    if (cv.t == OB && cv.o->cl == C_TA) { cp = cv.o->vbuf->mem + cv.o->voff; cn = cv.o->vlen * ta_tam[cv.o->vtipo]; }   /* corpo binário: bytes exatos */
+    else if (cv.t == OB && cv.o->cl == C_BUF) { cp = cv.o->mem; cn = cv.o->mem_n; }
+    else if (cv.t != U && cv.t != NUL) { str *cs = to_str(cv); cp = cs->s; cn = cs->n; }   /* texto: UTF-8 */
+    static char m[16], c[2048], rc[8192], fin[2048];
     copia_texto(m, met->s, sizeof m);
     copia_texto(c, cab->s, sizeof c);
-    http_preparar(m, c, corpo->s, corpo->n);
-    uint8_t *d = gancho->baixar(to_str(ARG(0))->s, &t);
-    http_preparar(NULL, NULL, NULL, 0);
-    obj *r = novo_arr(2);
-    arr_push(r, vI(d ? 200 : 0));
-    arr_push(r, d ? vS(novo_str((char *)d, (int)t)) : vNul());
+    int prep = !(m[0] == 'G' && m[1] == 'E' && m[2] == 'T' && !m[3]) || c[0];
+    if (prep) http_preparar(m, c, cp, cn);
+    int codigo = 200; rc[0] = 0; copia_texto(fin, url->s, sizeof fin);
+    uint8_t *d = gancho->resposta ? gancho->resposta(url->s, &t, &codigo, rc, sizeof rc, fin, sizeof fin) : gancho->baixar(url->s, &t);
+    if (prep) http_preparar(NULL, NULL, NULL, 0);
+    if (!d && !codigo) return vNul();
+    obj *r = novo_arr(4);
+    arr_push(r, vI(codigo));
+    arr_push(r, vO(bytes_ta(d ? d : (const uint8_t *)"", d ? (int)t : 0, ARG(4).t == OB ? ARG(4).o : NULL)));
+    arr_push(r, vS(de_utf8((const uint8_t *)rc, (int)tam_texto(rc))));
+    arr_push(r, vS(de_utf8((const uint8_t *)fin, (int)tam_texto(fin))));
     if (d) libera(d);
     return vO(r);
 }
 
+
 /* ---- Expressões regulares: casamento com volta atrás ---- */
 enum { R_CH, R_ANY, R_SET, R_INI, R_FIM, R_B, R_NB, R_GRP, R_REF };
-typedef struct rn { int t, min, max, guloso, cap, olhar, neg; uint8_t c; uint8_t *set; struct rn *alts, *prox_alt, *prox; } rn;
-typedef struct { const char *s; int n, ic, ml, ng; int *caps; } rctx;
+/* Conjunto [...]: bits para < 256, faixas para o resto, e as classes negadas
+ * (\D \W \S) que aceitam todo código alto (\S menos os espaços Unicode). */
+typedef struct { uint8_t b[32]; int *ra; int nra, cra; uint8_t alto, neg; } rset;
+typedef struct rn { int t, min, max, guloso, cap, olhar, neg; uint32_t c; rset *set; struct rn *alts, *prox_alt, *prox; } rn;
+/* posição no texto = byte * 2 + metade (1 = na unidade baixa de um par, só sem a bandeira u) */
+typedef struct { const char *s; int n, ic, ml, un, ng, ponto_tudo; int *caps; } rctx;
 typedef struct ct { rn *n; struct ct *up; int tipo, cap, ini, cont; } ct;
-static const char *rp, *rfim; static int rng;
+static const char *rp, *rfim; static int rng, r_unicode;
+static str *r_nomes[64];   /* nomes dos grupos (?<nome>...) por número */
 static rn *r_alt(void);
-static void set_add(uint8_t *s, int c) { s[c >> 3] |= (uint8_t)(1 << (c & 7)); }
-static void set_classe(uint8_t *s, char c)
+static void set_cp(rset *s, uint32_t a, uint32_t f)
 {
-    int neg = c == 'D' || c == 'W' || c == 'S';
-    uint8_t t[32]; memset(t, 0, 32);
-    switch (c | 32) {
-    case 'd': for (int i = '0'; i <= '9'; i++) set_add(t, i); break;
-    case 'w': for (int i = 0; i < 128; i++) if (dig((char)i) || (id_ini((uint8_t)i) && i != '$')) set_add(t, i); break;
-    default: set_add(t, ' '); for (int i = 9; i <= 13; i++) set_add(t, i); set_add(t, 0xA0);
+    for (uint32_t c = a; c <= f && c < 256; c++) s->b[c >> 3] |= (uint8_t)(1 << (c & 7));
+    if (f >= 256) {
+        if (s->nra + 2 > s->cra) { int c = s->cra ? s->cra * 2 : 8; int *n = novo((unsigned)c * sizeof(int)); if (s->nra) memcpy(n, s->ra, (size_t)s->nra * sizeof(int)); s->ra = n; s->cra = c; }
+        s->ra[s->nra++] = (int)(a < 256 ? 256 : a); s->ra[s->nra++] = (int)f;
     }
-    for (int i = 0; i < 32; i++) s[i] |= neg ? (uint8_t)~t[i] : t[i];
 }
-static int r_escape(void)
+static void set_classe(rset *s, char c)
+{
+    switch (c) {
+    case 'd': set_cp(s, '0', '9'); break;
+    case 'w': set_cp(s, '0', '9'); set_cp(s, 'A', 'Z'); set_cp(s, 'a', 'z'); set_cp(s, '_', '_'); break;
+    case 's': for (uint32_t k = 0; k < 256; k++) if (eh_branco_js(k)) set_cp(s, k, k);
+              set_cp(s, 0x1680, 0x1680); set_cp(s, 0x2000, 0x200A); set_cp(s, 0x2028, 0x2029); set_cp(s, 0x202F, 0x202F); set_cp(s, 0x205F, 0x205F); set_cp(s, 0x3000, 0x3000); set_cp(s, 0xFEFF, 0xFEFF); break;
+    default: {   /* D W S: complemento nos baixos; altos todos (S: menos espaços) */
+        rset t; memset(&t, 0, sizeof t);
+        set_classe(&t, (char)(c | 32));
+        for (int k = 0; k < 32; k++) s->b[k] |= (uint8_t)~t.b[k];
+        s->alto = c == 'S' ? (s->alto == 1 ? 1 : 2) : 1;
+    }
+    }
+}
+static int set_tem(const rset *s, uint32_t c)
+{
+    int r;
+    if (c < 256) r = !!(s->b[c >> 3] & (1 << (c & 7)));
+    else {
+        r = s->alto == 1 || (s->alto == 2 && !eh_branco_js(c));
+        for (int k = 0; !r && k < s->nra; k += 2) if ((int)c >= s->ra[k] && (int)c <= s->ra[k + 1]) r = 1;
+    }
+    return s->neg ? !r : r;
+}
+/* código de um escape; \u alto+\u baixo vira um código só */
+static uint32_t r_escape(void)
 {
     char c = *rp++;
     switch (c) {
     case 'n': return '\n'; case 't': return '\t'; case 'r': return '\r'; case 'f': return 12; case 'v': return 11; case '0': return 0;
-    case 'x': { int v = hexv(rp[0]) * 16 + hexv(rp[1]); rp += 2; return v; }
-    case 'u': { int v = 0; for (int i = 0; i < 4 && rp < rfim; i++) v = v * 16 + hexv(*rp++); return v > 255 ? '?' : v; }
-    default: return (uint8_t)c;
+    case 'c': if (rp < rfim) return (uint32_t)(*rp++ & 31); return 'c';
+    case 'x': { if (rp + 1 < rfim && hexv(rp[0]) >= 0 && hexv(rp[1]) >= 0) { int v = hexv(rp[0]) * 16 + hexv(rp[1]); rp += 2; return (uint32_t)v; } return 'x'; }
+    case 'u': {
+        uint32_t v = 0;
+        if (rp < rfim && *rp == '{') { rp++; while (rp < rfim && *rp != '}') v = v * 16 + (uint32_t)hexv(*rp++); rp++; return v; }
+        for (int i = 0; i < 4 && rp < rfim; i++) v = v * 16 + (uint32_t)hexv(*rp++);
+        if (r_unicode && v >= 0xD800 && v <= 0xDBFF && rp + 5 < rfim && rp[0] == '\\' && rp[1] == 'u') {
+            uint32_t d = 0; for (int i = 0; i < 4; i++) d = d * 16 + (uint32_t)hexv(rp[2 + i]);
+            if (d >= 0xDC00 && d <= 0xDFFF) { rp += 6; v = 0x10000 + ((v - 0xD800) << 10) + (d - 0xDC00); }
+        }
+        return v;
+    }
+    default: { rp--; int k; uint32_t v = cp_em(rp, (int)(rfim - rp), &k); rp += k; return v; }
     }
 }
+/* próximo código do padrão (literal), em WTF-8 */
+static uint32_t r_lit(void) { int k; uint32_t v = cp_em(rp, (int)(rfim - rp), &k); rp += k; return v; }
+static rn *r_ch(uint32_t c) { rn *x = novo(sizeof(rn)); x->min = x->max = 1; x->guloso = 1; x->t = R_CH; x->c = c; return x; }
 static rn *r_atomo(void)
 {
-    rn *x = novo(sizeof(rn));
+    rn *x = novo(sizeof(rn)), *ret = x;
     x->min = x->max = 1; x->guloso = 1;
-    char c = *rp++;
+    char c = *rp;
     switch (c) {
-    case '.': x->t = R_ANY; break;
-    case '^': x->t = R_INI; break;
-    case '$': x->t = R_FIM; break;
+    case '.': rp++; x->t = R_ANY; break;
+    case '^': rp++; x->t = R_INI; break;
+    case '$': rp++; x->t = R_FIM; break;
     case '(':
+        rp++;
         x->t = R_GRP; x->cap = -1;
         if (rp + 1 < rfim && rp[0] == '?') {
             char d = rp[1];
             if (d == ':') rp += 2;
             else if (d == '=' || d == '!') { x->olhar = 1; x->neg = d == '!'; rp += 2; }
-            else if (d == '<' && (rp[2] == '=' || rp[2] == '!')) erro("SyntaxError", "lookbehind", NULL);
-            else if (d == '<') { while (rp < rfim && *rp != '>') rp++; rp++; x->cap = ++rng; }
+            else if (d == '<' && (rp[2] == '=' || rp[2] == '!')) { x->olhar = 2; x->neg = rp[2] == '!'; rp += 3; }   /* lookbehind */
+            else if (d == '<') {
+                const char *n0 = rp + 2; while (rp < rfim && *rp != '>') rp++;
+                x->cap = ++rng;
+                if (x->cap < 64) r_nomes[x->cap] = intern_n(n0, (int)(rp - n0));
+                rp++;
+            }
         } else x->cap = ++rng;
         x->alts = r_alt();
         if (rp < rfim) rp++;
         break;
     case '[': {
-        x->t = R_SET; x->set = novo(32);
-        int neg = rp < rfim && *rp == '^';
-        if (neg) rp++;
+        rp++;
+        x->t = R_SET; x->set = novo(sizeof(rset));
+        if (rp < rfim && *rp == '^') { x->set->neg = 1; rp++; }
         while (rp < rfim && *rp != ']') {
-            int v;
+            uint32_t v;
             if (*rp == '\\') {
                 rp++;
                 char e = *rp;
                 if (e == 'd' || e == 'D' || e == 'w' || e == 'W' || e == 's' || e == 'S') { rp++; set_classe(x->set, e); continue; }
                 if (e == 'b') { rp++; v = 8; } else v = r_escape();
-            } else v = (uint8_t)*rp++;
+            } else v = r_lit();
+            if (!r_unicode && v >= 0x10000) {   /* sem u: um caractere astral no conjunto são duas unidades */
+                set_cp(x->set, 0xD800 + ((v - 0x10000) >> 10), 0xD800 + ((v - 0x10000) >> 10));
+                v = 0xDC00 + ((v - 0x10000) & 0x3FF);
+            }
             if (rp + 1 < rfim && *rp == '-' && rp[1] != ']') {
                 rp++;
-                int f;
-                if (*rp == '\\') { rp++; f = r_escape(); } else f = (uint8_t)*rp++;
-                for (int i = v; i <= f; i++) set_add(x->set, i);
-            } else set_add(x->set, v);
+                uint32_t f;
+                if (*rp == '\\') { rp++; f = r_escape(); } else f = r_lit();
+                if (f >= v) set_cp(x->set, v, f);
+            } else set_cp(x->set, v, v);
         }
         rp++;
-        if (neg) for (int i = 0; i < 32; i++) x->set[i] = (uint8_t)~x->set[i];
         break;
     }
     case '\\': {
+        rp++;
         char e = *rp;
-        if (e == 'd' || e == 'D' || e == 'w' || e == 'W' || e == 's' || e == 'S') { rp++; x->t = R_SET; x->set = novo(32); set_classe(x->set, e); }
+        if (e == 'd' || e == 'D' || e == 'w' || e == 'W' || e == 's' || e == 'S') { rp++; x->t = R_SET; x->set = novo(sizeof(rset)); set_classe(x->set, e); }
         else if (e == 'b') { rp++; x->t = R_B; }
         else if (e == 'B') { rp++; x->t = R_NB; }
-        else if (e >= '1' && e <= '9') { rp++; x->t = R_REF; x->cap = e - '0'; }
-        else { x->t = R_CH; x->c = (uint8_t)r_escape(); }
+        else if (e >= '1' && e <= '9') {
+            rp++; x->t = R_REF; x->cap = e - '0';
+            if (rp < rfim && *rp >= '0' && *rp <= '9' && x->cap * 10 + (*rp - '0') <= rng) x->cap = x->cap * 10 + (*rp++ - '0');
+        }
+        else if (e == 'k' && rp + 1 < rfim && rp[1] == '<') {   /* \k<nome> */
+            const char *n0 = rp + 2, *f = n0; while (f < rfim && *f != '>') f++;
+            str *nm = intern_n(n0, (int)(f - n0));
+            x->t = R_REF; x->cap = 0;
+            for (int g = 1; g <= rng && g < 64; g++) if (r_nomes[g] == nm) x->cap = g;
+            rp = f < rfim ? f + 1 : f;
+        }
+        else { x->t = R_CH; x->c = r_escape(); }
         break;
     }
-    default: x->t = R_CH; x->c = (uint8_t)c;
+    default: x->t = R_CH; x->c = r_lit();
+    }
+    /* sem u, caractere astral literal = metade alta seguida da baixa */
+    if (x->t == R_CH && !r_unicode && x->c >= 0x10000) {
+        uint32_t v = x->c - 0x10000;
+        x->c = 0xD800 + (v >> 10);
+        rn *b = r_ch(0xDC00 + (v & 0x3FF));
+        x->prox = b; x = b;
+        /* o quantificador vale só para a metade baixa (como no JS sem u) */
     }
     if (rp < rfim) {
         char q = *rp;
@@ -585,16 +997,20 @@ static rn *r_atomo(void)
             while (dig(*p)) m = m * 10 + *p++ - '0';
             M = m;
             if (*p == ',') { p++; if (*p == '}') M = 1 << 30; else { M = 0; while (dig(*p)) M = M * 10 + *p++ - '0'; } }
-            if (*p == '}') { x->min = m; x->max = M; rp = p + 1; } else return x;
-        } else return x;
+            if (*p == '}') { x->min = m; x->max = M; rp = p + 1; } else return ret;
+        } else return ret;
         if (rp < rfim && *rp == '?') { x->guloso = 0; rp++; }
     }
-    return x;
+    return ret;
 }
 static rn *r_seq(void)
 {
     rn *pri = NULL, *ult = NULL;
-    while (rp < rfim && *rp != '|' && *rp != ')') { rn *a = r_atomo(); if (ult) ult->prox = a; else pri = a; ult = a; }
+    while (rp < rfim && *rp != '|' && *rp != ')') {
+        rn *a = r_atomo();
+        if (ult) ult->prox = a; else pri = a;
+        ult = a; while (ult->prox) ult = ult->prox;   /* astral sem u gera dois nós */
+    }
     rn *h = novo(sizeof(rn));
     h->prox = pri;
     return h;
@@ -606,20 +1022,45 @@ static rn *r_alt(void)
     return pri;
 }
 static rctx R;
-static int palavra_em(int i) { if (i < 0 || i >= R.n) return 0; uint8_t c = (uint8_t)R.s[i]; return dig((char)c) || (c < 128 && id_ini(c) && c != '$'); }
-static uint8_t baixa(uint8_t c) { return R.ic && c >= 'A' && c <= 'Z' ? (uint8_t)(c + 32) : c; }
-static int um(rn *x, int i)
+/* unidade (sem u) ou código (com u) na posição p; *q = posição seguinte; -1 no fim */
+static int32_t r_ler(int p, int *q)
 {
-    if (i >= R.n) return 0;
-    uint8_t c = (uint8_t)R.s[i];
-    switch (x->t) {
-    case R_CH: return baixa(c) == baixa(x->c);
-    case R_ANY: return c != '\n' && c != '\r';
-    default: {
-        if (x->set[c >> 3] & (1 << (c & 7))) return 1;
-        if (R.ic) { uint8_t o = c >= 'a' && c <= 'z' ? (uint8_t)(c - 32) : baixa(c); return !!(x->set[o >> 3] & (1 << (o & 7))); }
-        return 0;
+    int b = p >> 1, meio = p & 1;
+    if (b >= R.n) return -1;
+    int k; uint32_t c = cp_em(R.s + b, R.n - b, &k);
+    if (c >= 0x10000 && !R.un) {
+        c -= 0x10000;
+        if (meio) { *q = (b + k) * 2; return (int32_t)(0xDC00 + (c & 0x3FF)); }
+        *q = p + 1; return (int32_t)(0xD800 + (c >> 10));
     }
+    *q = (b + k) * 2;
+    return (int32_t)c;
+}
+/* volta uma unidade/código (desfaz exatamente um r_ler) */
+static int r_volta(int p)
+{
+    if (p & 1) return p - 1;
+    int b = p >> 1;
+    if (!b) return 0;
+    int a = b - 1;
+    while (a > 0 && ((uint8_t)R.s[a] & 0xC0) == 0x80) a--;
+    if (!R.un && (uint8_t)R.s[a] >= 0xF0) return a * 2 + 1;
+    return a * 2;
+}
+static int32_t r_antes(int p) { if (!p) return -1; int q; return r_ler(r_volta(p), &q); }
+static int palavra_cp(int32_t c) { return c >= 0 && c < 128 && (dig((char)c) || (id_ini((uint8_t)c) && c != '$')); }
+static uint32_t r_dobra(uint32_t c) { return R.ic ? js_minusc(c) : c; }
+static int um(rn *x, int p, int *q)
+{
+    int32_t c = r_ler(p, q);
+    if (c < 0) return 0;
+    switch (x->t) {
+    case R_CH: return r_dobra((uint32_t)c) == r_dobra(x->c);
+    case R_ANY: return R.ponto_tudo || (c != '\n' && c != '\r' && c != 0x2028 && c != 0x2029);
+    default:
+        if (set_tem(x->set, (uint32_t)c)) return 1;
+        if (R.ic) { uint32_t a = js_minusc((uint32_t)c), b = js_maiusc((uint32_t)c); return (a != (uint32_t)c && set_tem(x->set, a)) || (b != (uint32_t)c && set_tem(x->set, b)); }
+        return 0;
     }
 }
 static int rm(rn *x, int i, ct *k);
@@ -628,10 +1069,10 @@ static int fim_ct(int i, ct *k)
 {
     if (!k) { R.caps[1] = i; return 1; }
     if (k->tipo == 2) return 1;   /* fim de lookahead */
+    if (k->tipo == 3) return i == k->cont;   /* fim de lookbehind: tem que acabar na posição dada */
     int s = -1, s2 = -1;
     if (k->cap > 0) { s = R.caps[k->cap * 2]; s2 = R.caps[k->cap * 2 + 1]; R.caps[k->cap * 2] = k->ini; R.caps[k->cap * 2 + 1] = i; }
     int r;
-    if (k->cont == 1 << 30 && 0) r = 0;
     if (i == k->ini && k->cont > k->n->min) r = 0;   /* repetição vazia */
     else r = rep(k->n, i, k->cont, k->up);
     if (!r && k->cap > 0) { R.caps[k->cap * 2] = s; R.caps[k->cap * 2 + 1] = s2; }
@@ -646,7 +1087,6 @@ static int grp(rn *x, int i, int c, ct *k)
 static int rep(rn *x, int i, int c, ct *k)
 {
     char l; if (&l < lim_pilha) return 0;
-    if (x->t != R_GRP) { /* só chega aqui por grupos */ }
     if (c < x->min) return grp(x, i, c, k);
     if (x->guloso) { if (c < x->max && grp(x, i, c, k)) return 1; return rm(x->prox, i, k); }
     if (rm(x->prox, i, k)) return 1;
@@ -658,66 +1098,100 @@ static int rm(rn *x, int i, ct *k)
     for (;;) {
         if (!x) return fim_ct(i, k);
         switch (x->t) {
-        case R_INI: if (i && !(R.ml && R.s[i - 1] == '\n')) return 0; x = x->prox; continue;
-        case R_FIM: if (i != R.n && !(R.ml && R.s[i] == '\n')) return 0; x = x->prox; continue;
-        case R_B: case R_NB: if ((palavra_em(i - 1) != palavra_em(i)) != (x->t == R_B)) return 0; x = x->prox; continue;
+        case R_INI: { if (i) { int32_t a = r_antes(i); if (!(R.ml && (a == '\n' || a == '\r' || a == 0x2028 || a == 0x2029))) return 0; } x = x->prox; continue; }
+        case R_FIM: { int q; int32_t c = r_ler(i, &q); if (c >= 0 && !(R.ml && (c == '\n' || c == '\r' || c == 0x2028 || c == 0x2029))) return 0; x = x->prox; continue; }
+        case R_B: case R_NB: { int q; if ((palavra_cp(r_antes(i)) != palavra_cp(r_ler(i, &q))) != (x->t == R_B)) return 0; x = x->prox; continue; }
         case R_REF: {
             int a = R.caps[x->cap * 2], b = R.caps[x->cap * 2 + 1];
-            if (a >= 0) { if (i + b - a > R.n || memcmp(R.s + a, R.s + i, (size_t)(b - a))) return 0; i += b - a; }
+            if (a >= 0) {
+                int p = a, j = i;
+                while (p < b) {
+                    int pq, jq; int32_t u = r_ler(p, &pq), v = r_ler(j, &jq);
+                    if (v < 0 || r_dobra((uint32_t)u) != r_dobra((uint32_t)v)) return 0;
+                    p = pq; j = jq;
+                }
+                i = j;
+            }
             x = x->prox; continue;
         }
         case R_GRP:
-            if (x->olhar) {
+            if (x->olhar == 1) {
                 ct f = { x, NULL, 2, -1, i, 0 }; int ok = 0;
                 for (rn *a = x->alts; a && !ok; a = a->prox_alt) ok = rm(a->prox, i, &f);
                 if (ok == x->neg) return 0;
                 x = x->prox; continue;
             }
+            if (x->olhar == 2) {
+                /* lookbehind: algum início q <= i em que o conteúdo casa terminando exatamente em i
+                 * (do mais longe para o mais perto: o maior trecho, como a busca para trás do JS) */
+                int ok = 0, q = 0;
+                for (;;) {
+                    ct f = { x, NULL, 3, -1, q, i };
+                    for (rn *a = x->alts; a && !ok; a = a->prox_alt) ok = rm(a->prox, q, &f);
+                    if (ok || q >= i) break;
+                    int nq; if (r_ler(q, &nq) < 0) break; q = nq;
+                }
+                if (ok == x->neg) return 0;
+                x = x->prox; continue;
+            }
             return rep(x, i, 0, k);
         default: {
-            int c = 0;
-            if (x->min == 1 && x->max == 1) { if (!um(x, i)) return 0; i++; x = x->prox; continue; }
+            int c = 0, p = i, q;
+            if (x->min == 1 && x->max == 1) { if (!um(x, i, &q)) return 0; i = q; x = x->prox; continue; }
             if (x->guloso) {
-                while (c < x->max && um(x, i + c)) c++;
+                while (c < x->max && um(x, p, &q)) { p = q; c++; }
                 if (c < x->min) return 0;
-                for (; c >= x->min; c--) if (rm(x->prox, i + c, k)) return 1;
+                for (; c >= x->min; c--) { if (rm(x->prox, p, k)) return 1; p = r_volta(p); }
                 return 0;
             }
-            while (c < x->min) { if (!um(x, i + c)) return 0; c++; }
-            for (;;) { if (rm(x->prox, i + c, k)) return 1; if (c >= x->max || !um(x, i + c)) return 0; c++; }
+            while (c < x->min) { if (!um(x, p, &q)) return 0; p = q; c++; }
+            for (;;) { if (rm(x->prox, p, k)) return 1; if (c >= x->max || !um(x, p, &q)) return 0; p = q; c++; }
         }
         }
     }
 }
-/* __re(fonte, bandeiras, texto, início) -> [início, fim, c1i, c1f, ...] ou null */
+/* posição interna -> índice em unidades UTF-16 */
+static int r_unid(str *s, int p) { return p < 0 ? -1 : b_para_u(s, p >> 1) + (p & 1); }
+/* __re(fonte, bandeiras, texto, início) -> [início, fim, c1i, c1f, ...] em unidades, ou null */
 static val n_re(val este, val *a, int n)
 {
     (void)este;
     str *src_r = to_str(ARG(0)), *fl = to_str(ARG(1)), *s = to_str(ARG(2));
     static str *ult; static rn *comp; static int comp_n; static str *ult_f;
     src_r = intern(src_r); fl = intern(fl);
+    int un = 0, sticky = 0, ic = 0, ml = 0;
+    int pt = 0;
+    for (int i = 0; i < fl->n; i++) { if (fl->s[i] == 'i') ic = 1; if (fl->s[i] == 'm') ml = 1; if (fl->s[i] == 'y') sticky = 1; if (fl->s[i] == 'u' || fl->s[i] == 'v') un = 1; if (fl->s[i] == 's') pt = 1; }
     if (src_r != ult || fl != ult_f) {
-        rp = src_r->s; rfim = rp + src_r->n; rng = 0;
+        rp = src_r->s; rfim = rp + src_r->n; rng = 0; r_unicode = un; memset(r_nomes, 0, sizeof r_nomes);
         comp = r_alt(); comp_n = rng; ult = src_r; ult_f = fl;
     }
     int *caps = novo((unsigned)(comp_n + 1) * 2 * sizeof(int));
     rctx sv = R;
-    R.s = s->s; R.n = s->n; R.ng = comp_n; R.caps = caps; R.ic = R.ml = 0;
-    int sticky = 0;
-    for (int i = 0; i < fl->n; i++) { if (fl->s[i] == 'i') R.ic = 1; if (fl->s[i] == 'm') R.ml = 1; if (fl->s[i] == 'y') sticky = 1; }
-    for (int i = to_i(ARG(3)); i <= s->n; i++) {
+    R.s = s->s; R.n = s->n; R.ng = comp_n; R.caps = caps; R.ic = ic; R.ml = ml; R.un = un; R.ponto_tudo = pt;
+    int ini = to_i(ARG(3));
+    if (ini > s->u) { R = sv; return vNul(); }
+    int meio, p = u_para_b(s, ini < 0 ? 0 : ini, &meio) * 2 + (meio && !un ? 1 : 0);
+    for (;;) {
         for (int j = 0; j < (comp_n + 1) * 2; j++) caps[j] = -1;
         chk();
         int ok = 0;
-        for (rn *h = comp; h && !ok; h = h->prox_alt) ok = rm(h->prox, i, NULL);
+        for (rn *h = comp; h && !ok; h = h->prox_alt) ok = rm(h->prox, p, NULL);
         if (ok) {
-            caps[0] = i;
+            caps[0] = p;
             obj *r = novo_arr((comp_n + 1) * 2);
-            for (int j = 0; j < (comp_n + 1) * 2; j++) arr_push(r, vI(caps[j]));
+            for (int j = 0; j < (comp_n + 1) * 2; j++) arr_push(r, vI(r_unid(s, caps[j])));
+            /* nomes dos grupos (para match.groups) */
+            obj *nm = novo_arr(comp_n + 1);
+            for (int g = 0; g <= comp_n; g++) arr_push(nm, g && g < 64 && r_nomes[g] ? vS(r_nomes[g]) : vNul());
+            por_prop(r, I("nomes"), vO(nm));
             R = sv;
             return vO(r);
         }
         if (sticky) break;
+        int q;
+        if (r_ler(p, &q) < 0) break;
+        p = q;
     }
     R = sv;
     return vNul();
@@ -1227,7 +1701,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(A, "isArray", n_isarr);
     reg(p_arr, "push", n_push); reg(p_arr, "pop", n_pop); reg(p_arr, "shift", n_shift); reg(p_arr, "unshift", n_unshift); reg(p_arr, "slice", n_aslice); reg(p_arr, "splice", n_splice);
     reg(p_arr, "join", n_join); reg(p_arr, "toString", n_join); reg(p_arr, "indexOf", n_aindex); reg(p_arr, "concat", n_concat); reg(p_arr, "reverse", n_reverse);
-    reg(S, "fromCharCode", n_fromcode);
+    reg(S, "fromCharCode", n_fromcode); reg(S, "fromCodePoint", n_fromcodepoint); reg(p_str, "codePointAt", n_codepoint);
     reg(p_str, "charAt", n_charat); reg(p_str, "charCodeAt", n_charcode); reg(p_str, "indexOf", n_sindex); reg(p_str, "lastIndexOf", n_slast); reg(p_str, "slice", n_sslice);
     reg(p_str, "substring", n_substring); reg(p_str, "substr", n_substr); reg(p_str, "toLowerCase", n_lower); reg(p_str, "toUpperCase", n_upper); reg(p_str, "trim", n_trim);
     reg(p_str, "__split", n_ssplit); reg(p_str, "toString", n_string); reg(p_str, "valueOf", n_mesmo);
@@ -1239,8 +1713,8 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
     reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
-    reg(global, "__baixar", n_baixar); reg(global, "__enviar", n_enviar); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
-    por_prop(global, I("NaN"), vN(NANV)); por_prop(global, I("Infinity"), vN(INFV)); por_prop(global, I("undefined"), vU());
+    reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
+    por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());
     por_prop(global, I("window"), vO(global)); por_prop(global, I("self"), vO(global)); por_prop(global, I("globalThis"), vO(global));
     por_prop(global, I("document"), embrulhar(raiz));
     por_prop(global, I("__url"), vT(url));

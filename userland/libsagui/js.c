@@ -5,25 +5,24 @@
  * verdade montado do HTML. O que dá para escrever em JavaScript mora em
  * js_base.h, que roda no começo de cada página.
  *
- * Limites conhecidos: números são ponto fixo Q43.20 (os programas não usam a
- * FPU), textos são Latin-1, não há coletor (a memória some com a página), async
- * roda de forma síncrona e não há geradores nem módulos. */
+ * Números: IEEE 754 de dupla precisão (js_num.h). Textos: UTF-8 por dentro,
+ * medidos em unidades UTF-16. Limites: não há coletor (a memória some com a
+ * página), não há BigInt nem módulos. */
 #include "sagui.h"
 #include "js_base.h"
 
 typedef long long i64;
 typedef unsigned long long u64;
-#define FR 20
-#define UM (1LL << FR)
-#define NANV ((i64)0x8000000000000000ULL)
-#define INFV 0x7fffffffffffffffLL
 #define MEM_MAX (160u * 1024 * 1024)
 #define PILHA_TAM (4u * 1024 * 1024)
 
-typedef struct str { int n; unsigned h; struct str *in; short kw, dom; char s[]; } str;
+/* Texto do JS: guardado em UTF-8 (WTF-8: metades de par soltas em 3 bytes),
+ * medido em unidades UTF-16 como a linguagem manda. n = bytes, u = unidades;
+ * ascii = 1 quando byte e unidade coincidem. cu/cb: cache do último índice. */
+typedef struct str { int n; unsigned h; struct str *in; short kw, dom; int u, cu, cb; uint8_t ascii; char s[]; } str;
 typedef struct obj obj;
 enum { U, NUL, BO, NU, ST, OB, AC };
-typedef struct { int t; union { i64 n; str *s; obj *o; int b; }; } val;
+typedef struct { int t; union { double n; str *s; obj *o; int b; }; } val;
 typedef struct { str *k; val v; } prop;
 typedef struct no no;
 typedef struct env env;
@@ -41,7 +40,7 @@ struct obj {
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
 typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador; } fdef;
-struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; i64 n; fdef *f; const char *fonte; };
+struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; double n; fdef *f; const char *fonte; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
        K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD,
@@ -87,85 +86,129 @@ static void *novo(unsigned n)
 }
 
 /* ------------------------------------------------------------ números */
-static int bits64(u64 x) { unsigned h = (unsigned)(x >> 32), l = (unsigned)x; return h ? 64 - __builtin_clz(h) : l ? 32 - __builtin_clz(l) : 0; }
 static u64 udiv(u64 a, u64 b, u64 *resto)
 {
     if (!(a >> 32) && !(b >> 32)) { unsigned x = (unsigned)a, y = (unsigned)b; if (resto) *resto = x % y; return x / y; }
     u64 q = 0, r = 0;
-    for (int i = bits64(a) - 1; i >= 0; i--) { r = (r << 1) | ((a >> i) & 1); q <<= 1; if (r >= b) { r -= b; q |= 1; } }
+    for (int i = 63; i >= 0; i--) { r = (r << 1) | ((a >> i) & 1); q <<= 1; if (r >= b) { r -= b; q |= 1; } }
     if (resto) *resto = r;
     return q;
 }
-static i64 de_int(int i) { return (i64)i << FR; }
-static int esp(i64 a) { return a == NANV || a == INFV || a == -INFV; }
-static i64 nsoma(i64 a, i64 b)
+#include "js_num.h"
+/* ToInt32 (sem divisão de 64 bits): parte inteira módulo 2^32 */
+static int para_i32(double d)
 {
-    if (esp(a) || esp(b)) { if (a == NANV || b == NANV) return NANV; if (esp(a) && esp(b) && a != b) return NANV; return esp(a) ? a : b; }
-    i64 r = (i64)((u64)a + (u64)b);
-    if (((a ^ r) & (b ^ r)) < 0) return a < 0 ? -INFV : INFV;
-    return r;
+    if (!d_fin(d) || d == 0) return 0;
+    u64 b = d_bits(d); int ex = (int)((b >> 52) & 0x7FF) - 1075;
+    u64 m = (b & (((u64)1 << 52) - 1)) | ((u64)1 << 52);
+    uint32_t v;
+    if (ex >= 32) v = 0;
+    else if (ex >= 0) v = (uint32_t)(m << ex);
+    else if (ex > -53) v = (uint32_t)(m >> -ex);
+    else v = 0;
+    return (int)((b >> 63) ? (uint32_t)(0u - v) : v);
 }
-static i64 nmul(i64 a, i64 b)
-{
-    if (a == NANV || b == NANV) return NANV;
-    int neg = (a < 0) != (b < 0);
-    if (esp(a) || esp(b)) return !a || !b ? NANV : neg ? -INFV : INFV;
-    u64 x = a < 0 ? -(u64)a : (u64)a, y = b < 0 ? -(u64)b : (u64)b;
-    if (bits64(x) + bits64(y) - FR > 62) return neg ? -INFV : INFV;
-    u64 xh = x >> FR, xl = x & (UM - 1), yh = y >> FR, yl = y & (UM - 1);
-    u64 r = ((xh * yh) << FR) + xh * yl + xl * yh + ((xl * yl) >> FR);
-    return neg ? -(i64)r : (i64)r;
-}
-static i64 ndiv(i64 a, i64 b)
-{
-    if (a == NANV || b == NANV) return NANV;
-    int neg = (a < 0) != (b < 0);
-    if (!b) return !a ? NANV : a < 0 ? -INFV : INFV;
-    if (esp(a)) return esp(b) ? NANV : neg ? -INFV : INFV;
-    if (esp(b)) return 0;
-    u64 x = a < 0 ? -(u64)a : (u64)a, y = b < 0 ? -(u64)b : (u64)b, r, q = udiv(x, y, &r);
-    if (bits64(q) > 62 - FR) return neg ? -INFV : INFV;
-    for (int i = 0; i < FR; i++) { r <<= 1; q <<= 1; if (r >= y) { r -= y; q |= 1; } }
-    return neg ? -(i64)q : (i64)q;
-}
-static i64 nmod(i64 a, i64 b)
-{
-    if (a == NANV || b == NANV || !b || a == INFV || a == -INFV) return NANV;
-    if (esp(b)) return a;
-    u64 x = a < 0 ? -(u64)a : (u64)a, y = b < 0 ? -(u64)b : (u64)b, r;
-    udiv(x, y, &r);
-    return a < 0 ? -(i64)r : (i64)r;
-}
-static int para_i32(i64 n) { return esp(n) ? 0 : (int)(unsigned)(n >> FR) + (n < 0 && (n & (UM - 1)) ? 1 : 0); }
-static i64 ler_numero(const char *s, int n, int *usado)
-{
-    int i = 0; u64 v = 0; int sat = 0;
-    while (i < n && s[i] >= '0' && s[i] <= '9') { if (v < 800000000000ULL) v = v * 10 + (u64)(s[i] - '0'); else sat = 1; i++; }
-    i64 r = sat || v >> 42 ? INFV : (i64)(v << FR);
-    if (i < n && s[i] == '.') {
-        i++;
-        u64 f = 0, e = 1; int d = 0;
-        while (i < n && s[i] >= '0' && s[i] <= '9') { if (d < 9) { f = f * 10 + (u64)(s[i] - '0'); e *= 10; d++; } i++; }
-        if (r != INFV) r += (i64)udiv((f << FR) + (e >> 1), e, NULL);
-    }
-    if (i + 1 < n && (s[i] == 'e' || s[i] == 'E') && ((s[i + 1] >= '0' && s[i + 1] <= '9') || ((s[i + 1] == '-' || s[i + 1] == '+') && i + 2 < n && s[i + 2] >= '0' && s[i + 2] <= '9'))) {
-        i++;
-        int neg = s[i] == '-', x = 0;
-        if (s[i] == '-' || s[i] == '+') i++;
-        while (i < n && s[i] >= '0' && s[i] <= '9') { if (x < 400) x = x * 10 + s[i] - '0'; i++; }
-        for (int k = 0; k < x && r && !esp(r); k++) r = neg ? ndiv(r, de_int(10)) : nmul(r, de_int(10));
-    }
-    if (usado) *usado = i;
-    return r;
-}
+static double ler_numero(const char *s, int n, int *usado) { return ler_decimal(s, n, usado); }
 
 /* ------------------------------------------------------------ textos */
 static str **tab; static int tab_c, tab_n;
+/* bytes e unidades UTF-16 do caractere em p (byte inválido: 1 byte, 1 unidade) */
+static inline int u8_tam(const char *p, int resto, int *unid)
+{
+    uint8_t c = (uint8_t)p[0];
+    int k = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+    if (k > resto) k = 1;
+    for (int i = 1; i < k; i++) if (((uint8_t)p[i] & 0xC0) != 0x80) { k = 1; break; }
+    *unid = k == 4 ? 2 : 1;
+    return k;
+}
+static void medir_str(str *r)
+{
+    int u = 0, a = 1;
+    for (int i = 0; i < r->n;) {
+        if ((uint8_t)r->s[i] < 0x80) { i++; u++; continue; }
+        a = 0;
+        int un; i += u8_tam(r->s + i, r->n - i, &un); u += un;
+    }
+    r->u = u; r->ascii = (uint8_t)a; r->cu = r->cb = 0;
+}
 static str *novo_str(const char *s, int n)
 {
     str *r = novo(sizeof(str) + (unsigned)n + 1);
     if (s) memcpy(r->s, s, (size_t)n);
     r->n = n; r->s[n] = 0;
+    if (s) medir_str(r); else { r->u = n; r->ascii = 1; r->cu = r->cb = 0; }
+    return r;
+}
+/* unidade UTF-16 -> byte (no começo do caractere que a contém); *meio = 1 se cai na 2a metade de um par */
+static int u_para_b(str *s, int u, int *meio)
+{
+    *meio = 0;
+    if (u <= 0) return 0;
+    if (u >= s->u) return s->n;
+    if (s->ascii) return u;
+    int cu = 0, cb = 0;
+    if (s->cu <= u) { cu = s->cu; cb = s->cb; }
+    while (cu < u && cb < s->n) {
+        int un, k = u8_tam(s->s + cb, s->n - cb, &un);
+        if (cu + un > u) { *meio = 1; break; }
+        cu += un; cb += k;
+    }
+    if (!*meio) { s->cu = cu; s->cb = cb; }
+    return cb;
+}
+static int b_para_u(str *s, int b)
+{
+    if (s->ascii) return b;
+    int cu = 0, cb = 0;
+    if (s->cb <= b) { cu = s->cu; cb = s->cb; }
+    while (cb < b && cb < s->n) { int un; cb += u8_tam(s->s + cb, s->n - cb, &un); cu += un; }
+    s->cu = cu; s->cb = cb;
+    return cu;
+}
+/* código do caractere no byte b (WTF-8) */
+static uint32_t cp_em(const char *p, int resto, int *k)
+{
+    int un; *k = u8_tam(p, resto, &un);
+    uint8_t c = (uint8_t)p[0];
+    if (*k == 1) return c;
+    uint32_t v = *k == 2 ? (c & 0x1Fu) : *k == 3 ? (c & 0x0Fu) : (c & 0x07u);
+    for (int i = 1; i < *k; i++) v = v << 6 | ((uint8_t)p[i] & 0x3Fu);
+    return v;
+}
+/* unidade UTF-16 no índice u (-1 fora) */
+static int unidade(str *s, int u)
+{
+    if (u < 0 || u >= s->u) return -1;
+    if (s->ascii) return (uint8_t)s->s[u];
+    int meio, b = u_para_b(s, u, &meio), k;
+    uint32_t c = cp_em(s->s + b, s->n - b, &k);
+    if (c >= 0x10000) { c -= 0x10000; return meio ? (int)(0xDC00 + (c & 0x3FF)) : (int)(0xD800 + (c >> 10)); }
+    return (int)c;
+}
+/* escreve um código (ou metade de par) em WTF-8 */
+static int wtf8_por(char *d, uint32_t c)
+{
+    if (c < 0x80) { d[0] = (char)c; return 1; }
+    if (c < 0x800) { d[0] = (char)(0xC0 | c >> 6); d[1] = (char)(0x80 | (c & 63)); return 2; }
+    if (c < 0x10000) { d[0] = (char)(0xE0 | c >> 12); d[1] = (char)(0x80 | ((c >> 6) & 63)); d[2] = (char)(0x80 | (c & 63)); return 3; }
+    d[0] = (char)(0xF0 | c >> 18); d[1] = (char)(0x80 | ((c >> 12) & 63)); d[2] = (char)(0x80 | ((c >> 6) & 63)); d[3] = (char)(0x80 | (c & 63)); return 4;
+}
+/* fatia [u0, u1) em unidades; metades de par viram surrogates soltos */
+static str *fatia_u(str *s, int u0, int u1)
+{
+    if (u0 < 0) u0 = 0;
+    if (u1 > s->u) u1 = s->u;
+    if (u1 <= u0) return novo_str("", 0);
+    if (s->ascii) return novo_str(s->s + u0, u1 - u0);
+    int m0, m1, b0 = u_para_b(s, u0, &m0), b1 = u_para_b(s, u1, &m1);
+    str *r = novo_str(NULL, (b1 - b0) + 8);
+    int k = 0, i = b0;
+    if (m0) { int kk; uint32_t c = cp_em(s->s + b0, s->n - b0, &kk) - 0x10000; k += wtf8_por(r->s, 0xDC00 + (c & 0x3FF)); i += kk; }
+    if (i < b1) { memcpy(r->s + k, s->s + i, (size_t)(b1 - i)); k += b1 - i; }
+    if (m1) { int kk; uint32_t c = cp_em(s->s + b1, s->n - b1, &kk) - 0x10000; k += wtf8_por(r->s + k, 0xD800 + (c >> 10)); }
+    r->n = k; r->s[k] = 0;
+    medir_str(r);
     return r;
 }
 static unsigned hash(const char *s, int n) { unsigned h = 2166136261u; for (int i = 0; i < n; i++) h = (h ^ (uint8_t)s[i]) * 16777619u; return h | 1; }
@@ -191,8 +234,8 @@ static str *I(const char *s) { return intern_n(s, (int)tam_texto(s)); }
 static val vU(void) { val v; v.t = U; v.n = 0; return v; }
 static val vNul(void) { val v; v.t = NUL; v.n = 0; return v; }
 static val vB(int b) { val v; v.t = BO; v.n = 0; v.b = !!b; return v; }
-static val vN(i64 n) { val v; v.t = NU; v.n = n; return v; }
-static val vI(int n) { return vN(de_int(n)); }
+static val vN(double n) { val v; v.t = NU; v.n = n; return v; }
+static val vI(int n) { return vN((double)n); }
 static val vS(str *s) { val v; v.t = ST; v.n = 0; v.s = s; return v; }
 static val vT(const char *s) { return vS(novo_str(s, (int)tam_texto(s))); }
 static val vO(obj *o) { val v; v.t = OB; v.n = 0; v.o = o; return v; }
@@ -285,25 +328,11 @@ static val novo_nat(nat f, const char *nome)
 static void reg(obj *o, const char *n, nat f) { por_prop(o, I(n), novo_nat(f, n)); }
 
 static val prim(val v);
-static str *num_str(i64 n)
+static str *num_str(double n)
 {
-    char b[40]; int k = 39;
-    b[39] = 0;
-    if (n == NANV) return I("NaN");
-    if (n == INFV) return I("Infinity");
-    if (n == -INFV) return I("-Infinity");
-    u64 x = n < 0 ? -(u64)n : (u64)n, ip = x >> FR;
-    unsigned fr = (unsigned)(((x & (UM - 1)) * 1000000 + (UM >> 1)) >> FR);
-    if (fr >= 1000000) { fr -= 1000000; ip++; }
-    if (fr) {
-        int d = 6;
-        while (fr % 10 == 0) { fr /= 10; d--; }
-        while (d--) { b[--k] = (char)('0' + fr % 10); fr /= 10; }
-        b[--k] = '.';
-    }
-    do { u64 r; ip = udiv(ip, 10, &r); b[--k] = (char)('0' + (int)r); } while (ip);
-    if (n < 0 && (b[k] != '0' || b[k + 1])) b[--k] = '-';
-    return novo_str(b + k, 39 - k);
+    char b[40];
+    int k = d_para_texto(n, b);
+    return novo_str(b, k);
 }
 static str *to_str(val v)
 {
@@ -316,30 +345,32 @@ static str *to_str(val v)
     default: return to_str(prim(v));
     }
 }
-static i64 str_num(str *s)
+/* ToNumber de um texto: espaços do JS em volta, 0x/0o/0b, Infinity, decimal */
+static int eh_branco_js(uint32_t c);
+static double str_num(str *s)
 {
-    int i = 0, n = s->n, neg = 0, u;
-    while (i < n && (uint8_t)s->s[i] <= ' ') i++;
-    while (n > i && (uint8_t)s->s[n - 1] <= ' ') n--;
+    int i = 0, n = s->n, k;
+    while (i < n) { uint32_t c = cp_em(s->s + i, n - i, &k); if (!eh_branco_js(c) && c != 0x2028 && c != 0x2029) break; i += k; }
+    while (n > i) { int b = n - 1; while (b > i && ((uint8_t)s->s[b] & 0xC0) == 0x80) b--; uint32_t c = cp_em(s->s + b, n - b, &k); if (!eh_branco_js(c) && c != 0x2028 && c != 0x2029) break; n = b; }
     if (i == n) return 0;
-    if (s->s[i] == '0' && i + 1 < n && (s->s[i + 1] | 32) == 'x') {
-        i64 r = 0;
-        for (i += 2; i < n; i++) { char c = s->s[i]; int d = c >= '0' && c <= '9' ? c - '0' : (c | 32) >= 'a' && (c | 32) <= 'f' ? (c | 32) - 'a' + 10 : -1; if (d < 0) return NANV; r = r * 16 + d; }
-        return r << FR;
+    if (s->s[i] == '0' && i + 2 < n + 1 && i + 1 < n && ((s->s[i + 1] | 32) == 'x' || (s->s[i + 1] | 32) == 'o' || (s->s[i + 1] | 32) == 'b')) {
+        int base = (s->s[i + 1] | 32) == 'x' ? 16 : (s->s[i + 1] | 32) == 'o' ? 8 : 2, u;
+        double r = ler_base(s->s + i + 2, n - i - 2, base, &u);
+        return u == n - i - 2 ? r : D_NAN;
     }
+    int neg = 0, u;
     if (s->s[i] == '-' || s->s[i] == '+') neg = s->s[i++] == '-';
-    if (n - i == 8 && !memcmp(s->s + i, "Infinity", 8)) return neg ? -INFV : INFV;
-    if (i == n || !((s->s[i] >= '0' && s->s[i] <= '9') || s->s[i] == '.')) return NANV;
-    i64 r = ler_numero(s->s + i, n - i, &u);
-    if (u != n - i) return NANV;
+    if (n - i == 8 && !memcmp(s->s + i, "Infinity", 8)) return neg ? -D_INF : D_INF;
+    double r = ler_decimal(s->s + i, n - i, &u);
+    if (!u || u != n - i) return D_NAN;
     return neg ? -r : r;
 }
-static i64 to_num(val v)
+static double to_num(val v)
 {
     switch (v.t) {
-    case U: return NANV;
+    case U: return D_NAN;
     case NUL: return 0;
-    case BO: return de_int(v.b);
+    case BO: return v.b;
     case NU: return v.n;
     case ST: return str_num(v.s);
     default: return to_num(prim(v));
@@ -350,7 +381,7 @@ static int to_bool(val v)
     switch (v.t) {
     case U: case NUL: return 0;
     case BO: return v.b;
-    case NU: return v.n != 0 && v.n != NANV;
+    case NU: return v.n != 0 && !d_nan(v.n);
     case ST: return v.s->n != 0;
     default: return 1;
     }
@@ -370,7 +401,21 @@ static val concat(str *a, str *b)
 {
     str *r = novo_str(NULL, a->n + b->n);
     memcpy(r->s, a->s, (size_t)a->n);
+    /* metade alta no fim de a + metade baixa no começo de b = um caractere só */
+    if (a->n >= 3 && b->n >= 3 && (uint8_t)a->s[a->n - 3] == 0xED && ((uint8_t)a->s[a->n - 2] & 0xF0) == 0xA0 &&
+        (uint8_t)b->s[0] == 0xED && ((uint8_t)b->s[1] & 0xF0) == 0xB0) {
+        uint32_t hi = 0xD000 | ((uint32_t)(a->s[a->n - 2] & 63) << 6) | (uint32_t)(a->s[a->n - 1] & 63);
+        uint32_t lo = 0xD000 | ((uint32_t)(b->s[1] & 63) << 6) | (uint32_t)(b->s[2] & 63);
+        int k = a->n - 3;
+        k += wtf8_por(r->s + k, 0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00));
+        memcpy(r->s + k, b->s + 3, (size_t)(b->n - 3));
+        r->n = k + b->n - 3; r->s[r->n] = 0;
+        medir_str(r);
+        return vS(r);
+    }
     memcpy(r->s + a->n, b->s, (size_t)b->n);
+    r->s[r->n] = 0;
+    r->u = a->u + b->u; r->ascii = a->ascii && b->ascii; r->cu = r->cb = 0;
     return vS(r);
 }
 static int str_igual(str *a, str *b) { return a == b || (a->n == b->n && !memcmp(a->s, b->s, (size_t)a->n)); }
@@ -380,7 +425,7 @@ static int estrito(val a, val b)
     switch (a.t) {
     case U: case NUL: return 1;
     case BO: return a.b == b.b;
-    case NU: return a.n == b.n && a.n != NANV;
+    case NU: return a.n == b.n;
     case ST: return str_igual(a.s, b.s);
     default: return a.o == b.o;
     }
@@ -392,8 +437,8 @@ static int solto(val a, val b)
     if (a.t == U || a.t == NUL || b.t == U || b.t == NUL) return 0;
     if (a.t == OB) return solto(prim(a), b);
     if (b.t == OB) return solto(a, prim(b));
-    i64 x = to_num(a), y = to_num(b);
-    return x == y && x != NANV;
+    double x = to_num(a), y = to_num(b);
+    return x == y;
 }
 static int indice(str *k)
 {
@@ -410,9 +455,9 @@ static str *s_length, *s_prototype, *s_constructor, *s_arguments;
 
 /* typed arrays: 0 Int8, 1 Uint8, 2 Uint8Clamped, 3 Int16, 4 Uint16, 5 Int32, 6 Uint32, 7 Float32, 8 Float64 */
 static const int ta_tam[9] = { 1, 1, 1, 2, 2, 4, 4, 4, 8 };
-static i64 to_num(val v);
-static int para_i32(i64 n);
-static val vN(i64 n);
+static double to_num(val v);
+static int para_i32(double n);
+static val vN(double n);
 static val ta_ler(obj *o, int i)
 {
     uint8_t *p = o->vbuf->mem + o->voff + i * ta_tam[o->vtipo];
@@ -422,17 +467,22 @@ static val ta_ler(obj *o, int i)
     case 3: return vI((int16_t)(p[0] | p[1] << 8));
     case 4: return vI(p[0] | p[1] << 8);
     case 5: return vI((int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24));
-    case 6: { uint32_t u = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; return vN((i64)u << FR); }
-    case 7: { int32_t q; memcpy(&q, p, 4); return vN((i64)q << (FR - 10)); }   /* ponto fixo guardado x1024 */
-    default: { i64 q; memcpy(&q, p, 8); return vN(q); }
+    case 6: { uint32_t u = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; return vN((double)u); }
+    case 7: { float q; memcpy(&q, p, 4); return vN((double)q); }   /* Float32: IEEE 754 */
+    default: { double q; memcpy(&q, p, 8); return vN(q); }      /* Float64 */
     }
 }
 static void ta_gravar(obj *o, int i, val v)
 {
     uint8_t *p = o->vbuf->mem + o->voff + i * ta_tam[o->vtipo];
-    i64 n = to_num(v);
-    if (o->vtipo == 2) { i64 x = (n + (UM >> 1)) >> FR; p[0] = (uint8_t)(x < 0 ? 0 : x > 255 ? 255 : x); return; }
-    if (o->vtipo == 7) { int32_t q = (int32_t)(n >> (FR - 10)); memcpy(p, &q, 4); return; }
+    double n = to_num(v);
+    if (o->vtipo == 2) {   /* Uint8Clamped: limita e arredonda meio para o par */
+        int x;
+        if (d_nan(n) || n <= 0) x = 0; else if (n >= 255) x = 255;
+        else { double f = m_floor(n), r = n - f; x = (int)f; if (r > 0.5 || (r == 0.5 && (x & 1))) x++; }
+        p[0] = (uint8_t)x; return;
+    }
+    if (o->vtipo == 7) { float q = (float)n; memcpy(p, &q, 4); return; }
     if (o->vtipo == 8) { memcpy(p, &n, 8); return; }
     uint32_t u = (uint32_t)para_i32(n);
     for (int b = 0; b < ta_tam[o->vtipo]; b++) p[b] = (uint8_t)(u >> (8 * b));
@@ -455,8 +505,8 @@ static val get(val b, str *k)
     switch (b.t) {
     case U: case NUL: erro("TypeError", "Cannot read properties of null: ", k->s);
     case ST:
-        if (k == s_length) return vI(b.s->n);
-        { int i = indice(k); if (i >= 0) return i < b.s->n ? vS(intern_n(b.s->s + i, 1)) : vU(); }
+        if (k == s_length) return vI(b.s->u);
+        { int i = indice(k); if (i >= 0) return i < b.s->u ? vS(fatia_u(b.s, i, i + 1)) : vU(); }
         return get_o(p_str, k, b);
     case NU: return get_o(p_num, k, b);
     case BO: return get_o(p_bool, k, b);
@@ -516,15 +566,21 @@ static void put(val b, str *k, val v)
 static str *chave(val k) { return intern(to_str(k)); }
 static val get_i(val b, val k)
 {
-    if (k.t == NU && b.t == OB && b.o->cl == C_ARR && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; return i < b.o->na ? b.o->a[(int)i] : vU(); }
-    if (k.t == NU && b.t == ST && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; return i < b.s->n ? vS(intern_n(b.s->s + (int)i, 1)) : vU(); }
-    if (k.t == NU && b.t == OB && b.o->cl == C_TA && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; return i < b.o->vlen ? ta_ler(b.o, (int)i) : vU(); }
+    int i;
+    if (k.t == NU && k.n >= 0 && k.n < 2147483647.0 && (double)(i = (int)k.n) == k.n) {
+        if (b.t == OB && b.o->cl == C_ARR) return i < b.o->na ? b.o->a[i] : vU();
+        if (b.t == ST) return i < b.s->u ? vS(fatia_u(b.s, i, i + 1)) : vU();
+        if (b.t == OB && b.o->cl == C_TA) return i < b.o->vlen ? ta_ler(b.o, i) : vU();
+    }
     return get(b, chave(k));
 }
 static void put_i(val b, val k, val v)
 {
-    if (k.t == NU && b.t == OB && b.o->cl == C_ARR && k.n >= 0 && !(k.n & (UM - 1)) && (k.n >> FR) < b.o->na) { b.o->a[(int)(k.n >> FR)] = v; return; }
-    if (k.t == NU && b.t == OB && b.o->cl == C_TA && k.n >= 0 && !(k.n & (UM - 1))) { i64 i = k.n >> FR; if (i < b.o->vlen) ta_gravar(b.o, (int)i, v); return; }
+    int i;
+    if (k.t == NU && k.n >= 0 && k.n < 2147483647.0 && (double)(i = (int)k.n) == k.n) {
+        if (b.t == OB && b.o->cl == C_ARR && i < b.o->na) { b.o->a[i] = v; return; }
+        if (b.t == OB && b.o->cl == C_TA) { if (i < b.o->vlen) ta_gravar(b.o, i, v); return; }
+    }
     put(b, chave(k), v);
 }
 
@@ -533,7 +589,7 @@ enum { T_FIM = 0, T_NUM = 256, T_STR, T_TPL, T_ID, T_RE, T_OP = 300 };
 static const char *const ops[] = { ">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "?\?=", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "**" };
 enum { O_URSA, O_3P, O_SEQ, O_SNE, O_POWA, O_SHLA, O_SHRA, O_URS, O_ANDA, O_ORA, O_NNA, O_SETA, O_EQ, O_NE, O_LE, O_GE, O_AND, O_OR, O_NN, O_OPT, O_INC, O_DEC, O_ADDA, O_SUBA, O_MULA, O_DIVA, O_MODA, O_BANDA, O_BORA, O_XORA, O_SHL, O_SHR, O_POW };
 #define OP(x) (T_OP + (x))
-typedef struct { const char *src; int tam, p, tk, nl, ant, ini; i64 num; str *s, *re_f; } lex_t;
+typedef struct { const char *src; int tam, p, tk, nl, ant, ini; double num; str *s, *re_f; } lex_t;
 static lex_t L;
 static __attribute__((noreturn)) void sintaxe(const char *m)
 {
@@ -566,11 +622,17 @@ static int escape(const char *s, int p, int fim, int *k)
         v = 0;
         if (p < fim && s[p] == '{') { p++; while (p < fim && s[p] != '}') v = v * 16 + hexv(s[p++]); p++; }
         else for (int i = 0; i < 4 && p < fim; i++) v = v * 16 + hexv(s[p++]);
-        if (v > 255) v = '?';
         break;
-    default: v = (uint8_t)c;
+    default: tb_por(k, c); return p;   /* bytes do fonte (UTF-8) passam como estão */
     }
-    tb_por(k, (char)v);
+    /* \x, \u: escreve em WTF-8; metade baixa logo após uma alta vira um caractere só */
+    if (v >= 0xDC00 && v <= 0xDFFF && *k >= 3 && (uint8_t)tb[*k - 3] == 0xED && ((uint8_t)tb[*k - 2] & 0xF0) == 0xA0) {
+        uint32_t hi = 0xD000 | ((uint32_t)(tb[*k - 2] & 63) << 6) | (uint32_t)(tb[*k - 1] & 63);
+        *k -= 3;
+        v = (int)(0x10000 + ((hi - 0xD800) << 10) + ((uint32_t)v - 0xDC00));
+    }
+    char w[4]; int nw = wtf8_por(w, (uint32_t)v);
+    for (int i = 0; i < nw; i++) tb_por(k, w[i]);
     return p;
 }
 static void prox(void)
@@ -590,10 +652,17 @@ static void prox(void)
     if (dig((char)c) || (c == '.' && p + 1 < n && dig(s[p + 1]))) {
         if (c == '0' && p + 1 < n && ((s[p + 1] | 32) == 'x' || (s[p + 1] | 32) == 'b' || (s[p + 1] | 32) == 'o')) {
             int b = (s[p + 1] | 32) == 'x' ? 16 : (s[p + 1] | 32) == 'b' ? 2 : 8;
-            u64 v = 0; p += 2;
-            while (p < n && hexv(s[p]) >= 0 && hexv(s[p]) < b) v = v * (unsigned)b + (unsigned)hexv(s[p++]);
-            L.num = v >> 43 ? INFV : (i64)(v << FR);
-        } else { int u; L.num = ler_numero(s + p, n - p, &u); p += u; }
+            p += 2;
+            int u; L.num = ler_base(s + p, n - p, b, &u); p += u;
+        } else {
+            /* separadores numéricos (1_000) saem antes da conversão */
+            int f = p; char tmp[400]; int kk = 0;
+            while (f < n && kk < 398 && ((s[f] >= '0' && s[f] <= '9') || s[f] == '.' || s[f] == '_' || ((s[f] | 32) == 'e' && f + 1 < n) || ((s[f] == '+' || s[f] == '-') && f > p && (s[f - 1] | 32) == 'e'))) { if (s[f] != '_') tmp[kk++] = s[f]; f++; }
+            int u; L.num = ler_numero(tmp, kk, &u);
+            int consumidos = 0, q = p;
+            while (consumidos < u && q < f) { if (s[q] != '_') consumidos++; q++; }
+            p = q;
+        }
         if (p < n && s[p] == 'n') p++;
         L.tk = T_NUM; L.p = p; return;
     }
@@ -1344,7 +1413,7 @@ static val aritmetica(int op, val a, val b)
     if (op == '+') {
         a = prim(a); b = prim(b);
         if (a.t == ST || b.t == ST) return concat(to_str(a), to_str(b));
-        return vN(nsoma(to_num(a), to_num(b)));
+        return vN(to_num(a) + to_num(b));
     }
     switch (op) {
     case OP(O_SEQ): return vB(estrito(a, b));
@@ -1355,12 +1424,18 @@ static val aritmetica(int op, val a, val b)
         a = prim(a); b = prim(b);
         int c;
         if (a.t == ST && b.t == ST) {
-            int m = a.s->n < b.s->n ? a.s->n : b.s->n;
-            c = memcmp(a.s->s, b.s->s, (size_t)m);
-            if (!c) c = a.s->n - b.s->n;
+            if (a.s->ascii && b.s->ascii) {
+                int m = a.s->n < b.s->n ? a.s->n : b.s->n;
+                c = memcmp(a.s->s, b.s->s, (size_t)m);
+                if (!c) c = a.s->n - b.s->n;
+            } else {   /* ordem das unidades UTF-16 */
+                int m = a.s->u < b.s->u ? a.s->u : b.s->u; c = 0;
+                for (int i = 0; i < m && !c; i++) c = unidade(a.s, i) - unidade(b.s, i);
+                if (!c) c = a.s->u - b.s->u;
+            }
         } else {
-            i64 x = to_num(a), y = to_num(b);
-            if (x == NANV || y == NANV) return vB(0);
+            double x = to_num(a), y = to_num(b);
+            if (d_nan(x) || d_nan(y)) return vB(0);
             c = x < y ? -1 : x > y;
         }
         return vB(op == '<' ? c < 0 : op == '>' ? c > 0 : op == OP(O_LE) ? c <= 0 : c >= 0);
@@ -1381,18 +1456,13 @@ static val aritmetica(int op, val a, val b)
     }
     default: break;
     }
-    i64 x = to_num(a), y = to_num(b);
+    double x = to_num(a), y = to_num(b);
     switch (op) {
-    case '-': return vN(nsoma(x, y == NANV ? NANV : -y));
-    case '*': return vN(nmul(x, y));
-    case '/': return vN(ndiv(x, y));
-    case '%': return vN(nmod(x, y));
-    case OP(O_POW): {
-        if (y < 0 || (y & (UM - 1))) { val g = get(vO(global), I("__pow")), ar2[2] = { a, b }; return chamar(g, vU(), ar2, 2); }
-        i64 r = UM;
-        for (int i = para_i32(y); i > 0 && !esp(r); i--) r = nmul(r, x);
-        return vN(r);
-    }
+    case '-': return vN(x - y);
+    case '*': return vN(x * y);
+    case '/': return vN(x / y);
+    case '%': return vN(m_func(30, x, y));
+    case OP(O_POW): return vN(m_pow(x, y));
     default: break;
     }
     int p = para_i32(x), q = para_i32(y);
@@ -1402,7 +1472,7 @@ static val aritmetica(int op, val a, val b)
     case '^': return vI(p ^ q);
     case OP(O_SHL): return vI((int)((unsigned)p << (q & 31)));
     case OP(O_SHR): return vI(p >> (q & 31));
-    case OP(O_URS): return vN((i64)(u64)((unsigned)p >> (q & 31)) << FR);
+    case OP(O_URS): return vN((double)((unsigned)p >> (q & 31)));
     default: return vU();
     }
 }
@@ -1508,7 +1578,7 @@ static val ev(no *x, env *e)
         val a = ev(x->a, e);
         switch (x->op) {
         case '!': return vB(!to_bool(a));
-        case '-': { i64 n = to_num(a); return vN(n == NANV ? n : -n); }
+        case '-': return vN(-to_num(a));
         case '+': return vN(to_num(a));
         case '~': return vI(~to_i(a));
         default: return vU();
@@ -1544,7 +1614,7 @@ static val ev(no *x, env *e)
         if (t->k == K_ID) v = var_get(e, t->s);
         else if (t->k == K_MEM) { o = ev(t->a, e); v = get(o, t->s); }
         else { o = ev(t->a, e); k = ev(t->b, e); v = get_i(o, k); }
-        i64 n = to_num(v), m = nsoma(n, de_int(x->op));
+        double n = to_num(v), m = n + (double)x->op;
         if (t->k == K_ID) var_set(e, t->s, vN(m)); else if (t->k == K_MEM) put(o, t->s, vN(m)); else put_i(o, k, vN(m));
         return vN(x->n ? m : n);
     }
@@ -1949,7 +2019,7 @@ static val n_escopo(val este, val *a, int n)
 static val n_limite(val este, val *a, int n)
 {
     (void)este;
-    t_suave = n > 0 && a[0].t == NU ? tempo_ms() + (unsigned)(a[0].n >> FR) : 0;
+    t_suave = n > 0 && a[0].t == NU ? tempo_ms() + (unsigned)a[0].n : 0;
     if (t_limite < tempo_ms() + 5000) t_limite = tempo_ms() + 5000;   /* ferramenta de diagnóstico: estende a página */
     return vU();
 }
@@ -1973,7 +2043,7 @@ static val n_tentar(val este, val *a, int n)
     (void)este;
     obj *r = novo_arr(2);
     if (n < 3) return vO(r);
-    int ok = tentar_chamada(a[0], a[1], (unsigned)(a[2].n >> FR));
+    int ok = tentar_chamada(a[0], a[1], (unsigned)a[2].n);
     if (!ok && fatal) __builtin_longjmp(topo_s->b, 1);
     arr_push(r, vB(ok)); arr_push(r, ok ? r_tentar : exc);
     return vO(r);
@@ -1982,7 +2052,7 @@ static val n_tentar(val este, val *a, int n)
 static val n_gnext(val este, val *a, int n)
 {
     (void)este;
-    int id = n > 0 ? (int)(to_num(a[0]) >> FR) : -1, modo = n > 1 ? (int)(to_num(a[1]) >> FR) : 0;
+    int id = n > 0 ? (int)to_num(a[0]) : -1, modo = n > 1 ? (int)to_num(a[1]) : 0;
     val v = n > 2 ? a[2] : vU();
     if (id < 0 || id >= n_gers) erro("TypeError", "gerador invalido", NULL);
     ger *g = gers[id];
