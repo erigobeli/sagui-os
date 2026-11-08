@@ -80,9 +80,11 @@ int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seg
     int r;
     /* Logo depois do boot o endereço IP ainda está chegando (DHCP): espera até 10 s. */
     int fd = ERRO_SEM_REDE;
+    unsigned t0 = tempo_ms(), t_dns = 0;
     for (int t = 0; fd == ERRO_SEM_REDE && t < 20; t++) {
         if (t) dormir(500);
         r = resolver(host, &ip);
+        t_dns = tempo_ms();
         fd = r < 0 ? r : conectar(ip, porta);
     }
     if (fd < 0) return fd;
@@ -96,7 +98,9 @@ int http_pedir_seguro(const char *host, int porta, const char *caminho, bool seg
     const uint8_t *corpo = px_corpo; int nc = px_metodo ? px_n : 0;
     px_metodo = NULL; px_cab = NULL; px_corpo = NULL; px_n = 0;   /* vale só para um pedido */
     if (seguro) {
+        unsigned t1 = tempo_ms();
         r = tls_abrir(fd, host);
+        registrar("http: %s dns %u ms, tcp %u ms, tls %u ms\n", host, t_dns - t0, t1 - t_dns, tempo_ms() - t1);
         if (r < 0) { fechar(fd); return r; }
         r = tls_escrever(pedido, (unsigned)n);
         if (r >= 0 && nc > 0) r = tls_escrever(corpo, (unsigned)nc);

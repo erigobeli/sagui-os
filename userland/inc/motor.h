@@ -23,6 +23,10 @@ typedef struct {
     const char *nome;      /* campo: atributo name */
     const char *fixos;     /* campos escondidos do formulário, "a=1&b=2" */
     const char *metodo;
+    void *no;              /* campo/botão: o elemento (para foco e digitação) */
+    int js;                /* clique tratado pelo JavaScript (data-sagui-js), ou -1 */
+    bool envia;            /* botão que envia o formulário (submit, image, <button> sem type) */
+    int campo;             /* data-sagui-campo (campos e botões depois do JavaScript), ou -1 */
 } motor_alvo_t;
 
 motor_t *motor_novo(const motor_ganchos_t *g);
@@ -42,5 +46,16 @@ uint32_t motor_fundo(motor_t *m);
 /* Estatísticas para o log: nós, caixas, comandos de pintura. */
 void     motor_numeros(motor_t *m, int *nos, int *cmds, int *imgs);
 int      motor_links(motor_t *m);
+/* Campo de texto com foco: recebe a digitação dentro da própria caixa. */
+void     motor_foco(motor_t *m, const motor_alvo_t *a);   /* NULL tira o foco */
+bool     motor_tem_foco(motor_t *m);
+const char *motor_foco_valor(motor_t *m);                  /* texto do campo (UTF-8) */
+void     motor_foco_definir(motor_t *m, const char *v);    /* troca o texto; refazer o layout depois */
+int      motor_foco_campo(motor_t *m);                     /* data-sagui-campo do campo, ou -1 */
+bool     motor_focar_campo(motor_t *m, int campo);         /* depois de reler a página */
+/* Envio do formulário de quem (campo ou botão; NULL = campo com foco) como
+ * endereço GET: acao?nome=valor&... com todos os campos que têm nome. */
+bool     motor_envio(motor_t *m, const motor_alvo_t *quem, char *url, int max);
+bool     motor_envio_campo(motor_t *m, int campo, char *url, int max);   /* quem = o elemento data-sagui-campo */
 void     motor_sem_esconder(motor_t *m, bool sim);   /* ignora display:none do autor */   /* quantos links a página tem */
 #endif

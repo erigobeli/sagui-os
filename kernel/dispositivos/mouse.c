@@ -22,7 +22,8 @@
 
 #define FILA   64
 
-static uint8_t pacote[3];
+static uint8_t pacote[4];
+extern bool mouse_com_roda;
 static int pos_pacote;
 static int mx, my, larg = 1024, alt = 768;
 static uint8_t botoes;
@@ -32,11 +33,11 @@ static const char canal = 0;
 
 const void *mouse_canal(void) { return &canal; }
 
-static void guardar(int16_t dx, int16_t dy, uint8_t mudaram)
+static void guardar(int16_t dx, int16_t dy, uint8_t mudaram, int8_t roda)
 {
     uint32_t prox = (fim + 1) % FILA;
     if (prox == ini) ini = (ini + 1) % FILA;   /* fila cheia: esquece o mais antigo */
-    fila[fim] = (evento_mouse_t){ (int16_t)mx, (int16_t)my, dx, dy, botoes, mudaram };
+    fila[fim] = (evento_mouse_t){ (int16_t)mx, (int16_t)my, dx, dy, botoes, mudaram, roda };
     fim = prox;
     acordar(&canal);
 }
@@ -59,7 +60,10 @@ static void tratar_pacote(void)
         klog("[MOUSE] botao esquerdo %s em (%d,%d)\n", novos & BOTAO_ESQUERDO ? "apertado" : "solto", mx, my);
     if (mudaram & BOTAO_DIREITO)
         klog("[MOUSE] botao direito %s em (%d,%d)\n", novos & BOTAO_DIREITO ? "apertado" : "solto", mx, my);
-    guardar((int16_t)dx, (int16_t)-dy, mudaram);
+    /* Quarto byte: deslocamento da roda em 4 bits com sinal (positivo = para baixo). */
+    int roda = 0;
+    if (mouse_com_roda) { roda = pacote[3] & 0x0F; if (roda & 8) roda -= 16; }
+    guardar((int16_t)dx, (int16_t)-dy, mudaram, (int8_t)roda);
     if (video_ativo()) {
         video_cursor(mx, my, true);
         video_mostrar();
@@ -72,7 +76,7 @@ void mouse_byte(uint8_t b)
 {
     if (pos_pacote == 0 && !(b & 0x08)) return;   /* fora de sincronia: espera um byte 0 válido */
     pacote[pos_pacote++] = b;
-    if (pos_pacote == 3) {
+    if (pos_pacote == (mouse_com_roda ? 4 : 3)) {
         pos_pacote = 0;
         tratar_pacote();
     }

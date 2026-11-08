@@ -705,6 +705,21 @@ static void tratar_mouse(evento_mouse_t *m)
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
 
+    /* Roda: vai para a janela que está debaixo do cursor, como nos outros sistemas. */
+    if (m->roda && arrastando < 0) {
+        int k = janela_em(m->x, m->y);
+        if (k >= 0) {
+            janela_t *j = &janelas[ordem[k]];   /* janela_em devolve a posição em ordem[] */
+            int cx = m->x - j->x - BORDA, cy = m->y - j->y - BARRA_TITULO;
+            if (cx >= 0 && cy >= 0 && cx < j->larg && cy < j->alt) {
+                evento_t e = { .tipo = EV_ROLAR, .x = cx, .y = cy, .tecla = (unsigned)(int)m->roda,
+                               .modificadores = teclado_modificadores() & 3 };
+                entregar(j, &e);
+            }
+        }
+        if (!m->mudaram && !m->dx && !m->dy) return;
+    }
+
     if (arrastando >= 0) {
         janela_t *j = &janelas[arrastando];
         if (!j->usada || !(m->botoes & BOTAO_ESQUERDO)) {

@@ -120,6 +120,7 @@ typedef struct {
 } js_hooks_t;
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */
+int   js_clique_cancelado(void);          /* o último clique teve preventDefault */
 void js_fim(void);
 /* UTF-8: lê um caractere (byte inválido vale por si: cp = byte) e escreve um. */
 static inline int utf8_ler(const char *p, int resto, uint32_t *cp)
@@ -152,7 +153,12 @@ int      fonte_ascendente(fonte_t *f, int px);
 int      fonte_descendente(fonte_t *f, int px);
 const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy);
 char *js_tique(int ms, int *saida_n);   /* timers depois do load; HTML novo se o DOM mudou */
-int   js_vivo(void);                     /* ainda há timers na página */
+int   js_vivo(void);
+/* Campo n (data-sagui-campo) recebeu valor e a tecla (13 Enter, 8 apagar, ou o caractere):
+ * roda keydown/input/keyup; HTML novo se os scripts mudaram o DOM. */
+char *js_campo(int n, const char *valor, int tecla, int *saida_n);
+/* Envio do formulário do campo n: evento submit; 1 = o script cancelou (preventDefault). */
+int   js_enviar(int n, char **html, int *saida_n);                     /* ainda há timers na página */
 const char *js_video(void);   /* URL que o JS deu a um <video>, ou NULL */
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);   /* PNG e JPEG */
 int  http_pedir(const char *host, int porta, const char *caminho);   /* manda o GET; devolve o descritor */

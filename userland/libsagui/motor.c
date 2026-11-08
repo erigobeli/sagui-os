@@ -179,6 +179,8 @@ struct motor {
     struct { int8_t fam; uint8_t peso, italico, tentou; char *url; fonte_t *f; } faces[40]; int n_faces;
     unsigned fam_usada;     /* famílias que algum texto pediu (motor_imagens baixa as fontes delas) */
     int rolagem;            /* y da última pintura (para fixed/sticky nos cliques) */
+    no_m *foco;             /* campo de texto com foco */
+    char foco_val[1024];    /* o valor dele (o atributo value aponta para cá) */
 };
 
 /* ================================================================ arena */
@@ -2763,6 +2765,23 @@ static int montar_linhas(no_m *bloco, int i0, int i1, int y, int cw, contexto_t 
 
 static int alvo_link(no_m *n)
 {
+    /* (alvos de link não têm campo) */
+    const char *js = atributo_m(n, "data-sagui-js");
+    if (js && !igual(n->tag, "a") && !igual(n->tag, "button") && !igual(n->tag, "input") && !igual(n->tag, "textarea") && !igual(n->tag, "select")) {
+        /* elemento com clique do JavaScript: o elemento inteiro é o alvo */
+        if (n->alvo >= 0) return n->alvo;
+        if (!crescer_v(mo, (void **)&mo->alvos, &mo->cap_alvos, mo->n_alvos + 1, sizeof(motor_alvo_t))) return -1;
+        motor_alvo_t *a = &mo->alvos[mo->n_alvos];
+        memset(a, 0, sizeof *a);
+        a->tipo = MA_LINK;
+        char u[32];
+        formatar_texto(u, sizeof u, "sagui-js:%s", js);
+        a->href = m_dup(mo, u, (int)tam_texto(u));
+        a->js = texto_para_int(js);
+        a->campo = -1;
+        n->alvo = mo->n_alvos;
+        return mo->n_alvos++;
+    }
     if (!igual(n->tag, "a")) return -1;
     const char *h = atributo_m(n, "href");
     if (!h || !h[0] || (h[0] == '#' && !h[1])) return -1;
@@ -2771,6 +2790,7 @@ static int alvo_link(no_m *n)
     motor_alvo_t *a = &mo->alvos[mo->n_alvos];
     memset(a, 0, sizeof *a);
     a->tipo = MA_LINK;
+    a->js = -1; a->campo = -1;
     char u[600];
     juntar(mo->url, h, u, sizeof u);
     a->href = m_dup(mo, u, (int)tam_texto(u));
@@ -3501,6 +3521,15 @@ static int alvo_form(no_m *n, int tipo)
     motor_alvo_t *a = &mo->alvos[mo->n_alvos];
     memset(a, 0, sizeof *a);
     a->tipo = tipo;
+    a->no = n;
+    const char *jsa = atributo_m(n, "data-sagui-js");
+    a->js = jsa ? texto_para_int(jsa) : -1;
+    const char *ca = atributo_m(n, "data-sagui-campo");
+    a->campo = ca ? texto_para_int(ca) : -1;
+    if (tipo == MA_BOTAO) {
+        const char *ty = atributo_m(n, "type");
+        a->envia = igual(n->tag, "button") ? (!ty || igual(ty, "submit")) : (ty && (igual(ty, "submit") || igual(ty, "image")));
+    }
     const char *ac = f ? atributo_m(f, "action") : NULL;
     char u[600];
     juntar(mo->url, ac && ac[0] ? ac : mo->url, u, sizeof u);
@@ -4302,21 +4331,35 @@ static void controle(no_m *n, int x, int y)
                 return;
             }
             if (t && (igual(t, "submit") || igual(t, "button") || igual(t, "reset") || igual(t, "image"))) { txt = atributo_m(n, "value"); if (!txt) txt = "Enviar"; tipo_alvo = MA_BOTAO; }
-            else { txt = atributo_m(n, "value"); if (!txt || !txt[0]) txt = atributo_m(n, "placeholder"); }
+            else { txt = atributo_m(n, "value"); if (!txt || !txt[0]) txt = n == mo->foco ? "" : atributo_m(n, "placeholder"); }
         } else if (igual(n->tag, "select")) {
             no_m *o = NULL;
             for (no_m *q = n->filho; q; q = q->prox) if (!q->texto && igual(q->tag, "option")) { if (!o || atributo_m(q, "selected")) o = q; }
             if (o && o->filho && o->filho->texto) txt = o->filho->t;
             tipo_alvo = 0;
-        } else if (n->filho && n->filho->texto) txt = n->filho->t;
+        } else if (n == mo->foco) txt = atributo_m(n, "value");
+        else if (n->filho && n->filho->texto) txt = n->filho->t;
+        if (!txt && n == mo->foco) txt = "";
         if (txt) {
-            int max = cl / larg_letra(e), nt = (int)tam_texto(txt);
-            while (nt && eh_esp(*txt)) { txt++; nt--; }
-            if (nt > max) nt = max;
-            int tx = tipo_alvo == MA_BOTAO ? cx + (cl - nt * larg_letra(e)) / 2 : cx;
-            uint32_t cor = (igual(n->tag, "input") && !atributo_m(n, "value") && tipo_alvo == MA_CAMPO) ? 0x8A939C : e->cor;
+            int nt = (int)tam_texto(txt);
+            if (n != mo->foco) while (nt && eh_esp(*txt)) { txt++; nt--; }
             for (const char *p = txt; p < txt + nt; p++) if (*p == '\n') { nt = (int)(p - txt); break; }
-            texto_cmd(tx, cy + (ca - e->tam) / 2, nt * larg_letra(e), e->tam, txt, nt, e, cor);
+            int w = larg_texto(e, txt, nt);
+            if (n == mo->foco) {   /* com foco, o fim do texto (onde se digita) fica à vista */
+                while (nt && w > cl - 2) { int k = 1; while (k < nt && ((uint8_t)txt[k] & 0xC0) == 0x80) k++; txt += k; nt -= k; w = larg_texto(e, txt, nt); }
+            } else {
+                while (nt && w > cl) { do nt--; while (nt && ((uint8_t)txt[nt] & 0xC0) == 0x80); w = larg_texto(e, txt, nt); }
+            }
+            int tx = tipo_alvo == MA_BOTAO ? cx + (cl - w) / 2 : cx;
+            const char *val = atributo_m(n, "value");
+            uint32_t cor = (igual(n->tag, "input") && (!val || !val[0]) && tipo_alvo == MA_CAMPO) ? 0x757575 : e->cor;
+            int ty = igual(n->tag, "textarea") ? cy : cy + (ca - altura_linha(e)) / 2 + (altura_linha(e) - e->tam) / 2;
+            if (nt) texto_cmd(tx, ty, w, e->tam, txt, nt, e, cor);
+            if (n == mo->foco) {   /* cursor de texto */
+                cmd_t c; memset(&c, 0, sizeof c);
+                c.tipo = C_RET; c.x = tx + w; c.y = ty - 1; c.l = 1; c.a = e->tam + 3; c.cor = 0xFF000000 | (e->cor & 0xFFFFFF);
+                cmd_novo(&c);
+            }
         }
         if (tipo_alvo && !atributo_m(n, "disabled")) regiao(x, y, n->l, n->a, alvo_form(n, tipo_alvo));
         return;
@@ -4579,12 +4622,15 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     memcpy(salvo, mo->clip, sizeof salvo);
     if (tem_caixa) {
         /* botão (ou outro átomo) cujo conteúdo é um link: a caixa inteira é clicável */
+        if (n->alvo < 0 && !igual(n->tag, "a")) alvo_link(n);   /* data-sagui-js num bloco */
         if (n->alvo < 0 && eh_atomico(n))
             for (no_m *c = n->filho; c; c = c->prox) if (!c->texto && igual(c->tag, "a")) { int al = alvo_link(c); if (al >= 0) { n->alvo = al; break; } }
         desenhar_caixa(n, x, y);
         if (ctx_cur != ctx_salvo) b_cur = B_INLINE;   /* depois do fundo do contexto: o conteúdo dele */
         if (n->alvo >= 0 && (eh_atomico(n) || eh_bloco(e->display))) regiao(x, y, n->l, n->a, n->alvo);
         controle(n, x, y);
+        /* <button>: o conteúdo é do autor; a caixa inteira é o botão */
+        if (igual(n->tag, "button") && !atributo_m(n, "disabled")) regiao(x, y, n->l, n->a, alvo_form(n, MA_BOTAO));
         /* marcador de lista */
         if (e->display == D_LIST && e->lista && !e->visivel) {
             int lh = altura_linha(e);
@@ -4797,6 +4843,7 @@ static void guardar_folha(motor_t *m, const char *t, int n, const char *base)
 void motor_ler(motor_t *m, const char *html, int n, const char *url)
 {
     mo = m;
+    m->foco = NULL;
     n_folhas = 0;
     copia_texto(m->url, url ? url : "", sizeof m->url);
     ler_html_m(m, html, n);
@@ -5473,3 +5520,139 @@ int motor_links(motor_t *m)
 }
 
 void motor_sem_esconder(motor_t *m, bool sim) { m->sem_esconder = sim; largura_regras = -1; m->n_regras = 0; }
+
+/* ------------------------------------------------- foco e digitação */
+
+static atr_t *atr_valor(motor_t *m, no_m *n)
+{
+    for (atr_t *a = n->atr; a; a = a->prox) if (igual(a->nome, "value")) return a;
+    atr_t *a = m_novo(m, (int)sizeof(atr_t));
+    if (!a) return NULL;
+    a->nome = m_dup(m, "value", 5);
+    a->valor = (char *)"";
+    a->prox = n->atr; n->atr = a;
+    return a;
+}
+
+void motor_foco(motor_t *m, const motor_alvo_t *a)
+{
+    no_m *n = a && a->tipo == MA_CAMPO ? (no_m *)a->no : NULL;
+    if (n && !(igual(n->tag, "input") || igual(n->tag, "textarea"))) n = NULL;
+    m->foco = n;
+    if (!n) return;
+    atr_t *v = atr_valor(m, n);
+    if (!v) { m->foco = NULL; return; }
+    const char *atual = igual(n->tag, "textarea") && !atributo_m(n, "value") && n->filho && n->filho->texto ? n->filho->t : v->valor;
+    if (atual != m->foco_val) copia_texto(m->foco_val, atual, sizeof m->foco_val);
+    v->valor = m->foco_val;
+}
+bool motor_tem_foco(motor_t *m) { return m && m->foco; }
+const char *motor_foco_valor(motor_t *m) { return m->foco ? m->foco_val : ""; }
+void motor_foco_definir(motor_t *m, const char *v)
+{
+    if (!m->foco) return;
+    if (v != m->foco_val) copia_texto(m->foco_val, v, sizeof m->foco_val);
+    atr_t *a = atr_valor(m, m->foco);
+    if (a) a->valor = m->foco_val;
+}
+int motor_foco_campo(motor_t *m)
+{
+    const char *c = m->foco ? atributo_m(m->foco, "data-sagui-campo") : NULL;
+    return c ? texto_para_int(c) : -1;
+}
+static no_m *achar_campo(no_m *n, const char *id)
+{
+    for (; n; n = n->prox) {
+        if (n->texto) continue;
+        const char *c = atributo_m(n, "data-sagui-campo");
+        if (c && igual(c, id)) return n;
+        no_m *r = achar_campo(n->filho, id);
+        if (r) return r;
+    }
+    return NULL;
+}
+bool motor_focar_campo(motor_t *m, int campo)
+{
+    char id[16];
+    formatar_texto(id, sizeof id, "%d", campo);
+    no_m *n = m->raiz ? achar_campo(m->raiz->filho, id) : NULL;
+    if (!n) { m->foco = NULL; return false; }
+    motor_alvo_t a; memset(&a, 0, sizeof a);
+    a.tipo = MA_CAMPO; a.no = n;
+    motor_foco(m, &a);
+    return true;
+}
+
+/* Codifica para application/x-www-form-urlencoded (UTF-8). */
+static int form_cod(char *d, int k, int max, const char *t)
+{
+    static const char hexa[] = "0123456789ABCDEF";
+    for (; *t && k < max - 4; t++) {
+        uint8_t c = (uint8_t)*t;
+        if (c == ' ') d[k++] = '+';
+        else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '*') d[k++] = (char)c;
+        else { d[k++] = '%'; d[k++] = hexa[c >> 4]; d[k++] = hexa[c & 15]; }
+    }
+    d[k] = 0;
+    return k;
+}
+
+/* Envio do formulário (HTML, "constructing the entry list"): campos com nome,
+ * fora os desabilitados, botões, arquivos e caixas desmarcadas. */
+bool motor_envio(motor_t *m, const motor_alvo_t *quem, char *url, int max)
+{
+    no_m *de = quem && quem->no ? (no_m *)quem->no : m->foco;
+    no_m *sub = quem && quem->tipo == MA_BOTAO ? (no_m *)quem->no : NULL;   /* o botão que enviou entra com nome=valor */
+    no_m *f = de ? de->pai : NULL;
+    while (f && !igual(f->tag, "form")) f = f->pai;
+    const char *ac = f ? atributo_m(f, "action") : NULL;
+    char u[600];
+    mo = m;
+    juntar(m->url, ac && ac[0] ? ac : m->url, u, sizeof u);
+    int k = 0;
+    for (; u[k] && u[k] != '?' && u[k] != '#' && k < max - 2; k++) url[k] = u[k];
+    url[k++] = '?'; url[k] = 0;
+    int ini = k;
+    no_m *pilha[64]; int np = 0;
+    no_m *q = f ? f->filho : de;
+    while (q || np) {
+        if (!q) { q = pilha[--np]->prox; continue; }
+        if (!q->texto && (igual(q->tag, "input") || igual(q->tag, "textarea") || igual(q->tag, "select"))) {
+            const char *nm = atributo_m(q, "name"), *t = atributo_m(q, "type");
+            bool pula = !nm || !nm[0] || atributo_m(q, "disabled") ||
+                        (q != sub && t && (igual(t, "submit") || igual(t, "button") || igual(t, "reset") || igual(t, "image") || igual(t, "file"))) ||
+                        (t && (igual(t, "checkbox") || igual(t, "radio")) && !atributo_m(q, "checked"));
+            if (!pula) {
+                const char *v = NULL;
+                if (igual(q->tag, "select")) {
+                    no_m *o = NULL;
+                    for (no_m *c = q->filho; c; c = c->prox) if (!c->texto && igual(c->tag, "option")) { if (!o || atributo_m(c, "selected")) o = c; }
+                    if (o) { v = atributo_m(o, "value"); if (!v && o->filho && o->filho->texto) v = o->filho->t; }
+                } else if (igual(q->tag, "textarea") && q != m->foco) v = q->filho && q->filho->texto ? q->filho->t : "";
+                else v = atributo_m(q, "value");
+                if (!v) v = (t && (igual(t, "checkbox") || igual(t, "radio"))) ? "on" : q == sub ? "Enviar" : "";
+                if (k > ini && k < max - 2) url[k++] = '&';
+                k = form_cod(url, k, max, nm);
+                if (k < max - 2) url[k++] = '=';
+                k = form_cod(url, k, max, v);
+            }
+        }
+        if (f && !q->texto && q->filho && np < 64) { pilha[np++] = q; q = q->filho; continue; }
+        q = f ? q->prox : NULL;
+    }
+    url[k] = 0;
+    return true;
+}
+
+bool motor_envio_campo(motor_t *m, int campo, char *url, int max)
+{
+    char id[16];
+    formatar_texto(id, sizeof id, "%d", campo);
+    no_m *n = m->raiz ? achar_campo(m->raiz->filho, id) : NULL;
+    if (!n) return false;
+    motor_alvo_t a; memset(&a, 0, sizeof a);
+    const char *t = atributo_m(n, "type");
+    a.tipo = igual(n->tag, "button") || (t && (igual(t, "submit") || igual(t, "image"))) ? MA_BOTAO : MA_CAMPO;
+    a.no = n;
+    return motor_envio(m, &a, url, max);
+}

@@ -28,6 +28,7 @@ void teclado_byte(uint8_t b);
 void mouse_byte(uint8_t b);
 
 static bool mouse_ligado;
+bool mouse_com_roda;   /* lido por mouse.c: pacotes de 4 bytes */
 static i8042_diag_t diag;
 
 const i8042_diag_t *i8042_diagnostico(void) { return &diag; }
@@ -145,6 +146,13 @@ bool i8042_iniciar(bool com_mouse)
         }
         /* 200 pacotes por segundo: o padrão de 100 deixa o cursor aos saltos.
          * Quem não aceitar segue no padrão. */
+        /* Roda (IntelliMouse): a sequência de taxas 200, 100, 80 faz o mouse
+         * que tem roda responder ID 3 e mandar pacotes de 4 bytes. */
+        int id = 0;
+        if (para_mouse(0xF3) == 0xFA && para_mouse(200) == 0xFA && para_mouse(0xF3) == 0xFA && para_mouse(100) == 0xFA &&
+            para_mouse(0xF3) == 0xFA && para_mouse(80) == 0xFA && para_mouse(0xF2) == 0xFA)
+            id = ler_resposta();
+        mouse_com_roda = id == 3 || id == 4;
         if (para_mouse(0xF3) == 0xFA) para_mouse(200);
         diag.resposta_ligar = para_mouse(0xF4);    /* começar a enviar */
         ok = diag.resposta_padrao == 0xFA && diag.resposta_ligar == 0xFA;
@@ -162,8 +170,8 @@ bool i8042_iniciar(bool com_mouse)
     irq_registrar(1, ao_interromper);
     if (ok) irq_registrar(12, ao_interromper);
     int_restaura(ints);
-    klog("[I8042] config lida %x, gravada %x; mouse: padrao=%x reset=%x ligar=%x -> %s\n",
+    klog("[I8042] config lida %x, gravada %x; mouse: padrao=%x reset=%x ligar=%x -> %s%s\n",
          (uint32_t)diag.config_lida, cfg, (uint32_t)diag.resposta_padrao, (uint32_t)diag.resposta_reset,
-         (uint32_t)diag.resposta_ligar, ok ? "ligado" : "nao respondeu");
+         (uint32_t)diag.resposta_ligar, ok ? "ligado" : "nao respondeu", mouse_com_roda ? ", com roda" : "");
     return ok;
 }

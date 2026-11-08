@@ -214,6 +214,7 @@ typedef struct {
 #define EV_FECHAR    5   /* clicaram no X da moldura */
 #define EV_TAMANHO   6   /* a janela mudou de tamanho: x = largura, y = altura; redesenhe tudo */
 #define EV_MENU      7   /* item escolhido no menu aberto por SIS_MENU_JANELA: tecla = índice */
+#define EV_ROLAR     8   /* roda do mouse sobre a janela: x, y = ponto; tecla = degraus (int, positivo = para baixo) */
 
 /* Teclas especiais nos eventos de janela. São os mesmos valores do enum do
  * kernel (teclado.h), que por isso não precisa destas definições. */

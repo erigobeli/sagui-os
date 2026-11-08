@@ -1205,6 +1205,7 @@ static int tique_ms, vivo;   /* página viva */
 static str *s_style, *s_onclick, *s_ls, *s_click;
 #define MAX_CLIQUES 512
 static dn *cliques[MAX_CLIQUES]; static int qtd_cliques;
+static dn *dcampos[MAX_CLIQUES]; static int qtd_campos;   /* input/textarea/select na ordem da serialização */
 
 static dn *d_novo(int tipo, str *tag) { dn *d = novo(sizeof(dn)); d->tipo = tipo; d->tag = tag; return d; }
 static void d_tirar(dn *c)
@@ -1398,17 +1399,13 @@ static void serial(buf *b, dn *d, int final)
     if (d->tipo == 9 || d->tipo == 11) { serial_filhos(b, d, final); return; }
     if (final && host_atual && d->tag == I("slot")) { serial_slot(b, d, final); return; }
     if (final && d->tag->n == 6 && !memcmp(d->tag->s, "script", 6)) return;
-    int id = -1;
+    int id = -1, cid = -1;
     if (final && tem_clique(d) && qtd_cliques < MAX_CLIQUES) { id = qtd_cliques; cliques[qtd_cliques++] = d; }
+    if (final && em_lista(d->tag, "input textarea select button") && qtd_campos < MAX_CLIQUES) { cid = qtd_campos; dcampos[qtd_campos++] = d; }
     int e_link = d->tag->n == 1 && d->tag->s[0] == 'a';
     int vazio = em_lista(d->tag, "area base br col embed hr img input link meta param source track wbr");
     char alvo[32];
     formatar_texto(alvo, sizeof alvo, "sagui-js:%d", id);
-    if (id >= 0 && vazio) {
-        str *v = attr(d, I("value"));
-        b_t(b, "<a href=\""); b_t(b, alvo); b_t(b, "\">["); b_t(b, v ? v->s : "ok"); b_t(b, "]</a>");
-        return;
-    }
     b_t(b, "<"); b_por(b, d->tag->s, d->tag->n);
     prop *st = d->w ? achar(d->w, s_style) : NULL;
     for (at *a = d->at; a; a = a->prox) {
@@ -1424,13 +1421,15 @@ static void serial(buf *b, dn *d, int final)
         if (t.n) b_attr(b, s_style, t.b, t.n);
     }
     if (id >= 0 && e_link) b_attr(b, I("href"), alvo, (int)tam_texto(alvo));
+    /* clique do JavaScript e campos: o próprio elemento leva a marca, sem mudar a árvore */
+    char num[16];
+    if (id >= 0 && !e_link) { formatar_texto(num, sizeof num, "%d", id); b_attr(b, I("data-sagui-js"), num, (int)tam_texto(num)); }
+    if (cid >= 0) { formatar_texto(num, sizeof num, "%d", cid); b_attr(b, I("data-sagui-campo"), num, (int)tam_texto(num)); }
     b_t(b, ">");
     if (vazio) return;
-    if (id >= 0 && !e_link) { b_t(b, "<a href=\""); b_t(b, alvo); b_t(b, "\">"); }
     if (final && d->sombra) { dn *h = host_atual; host_atual = d; serial_filhos(b, d->sombra, final); host_atual = h; }
     else if (final && host_atual && d->tag == I("style")) serial_css_sombra(b, d);
     else serial_filhos(b, d, final);
-    if (id >= 0 && !e_link) b_t(b, "</a>");
     b_t(b, "</"); b_por(b, d->tag->s, d->tag->n); b_t(b, ">");
 }
 static void texto_de(buf *b, dn *d)
@@ -1779,7 +1778,7 @@ static int __attribute__((noinline)) proteger(void (*f)(void))
 static void serial_final(void)
 {
     buf b = { 0, 0, 0 };
-    qtd_cliques = 0;
+    qtd_cliques = 0; qtd_campos = 0;
     serial(&b, raiz, 1);
     saida = aloca((size_t)b.n + 1);
     if (!saida) return;
@@ -1806,17 +1805,22 @@ static void pagina_interna(void)
     registrar("cipo: js %d scripts, %d parados%s\n", feitos, parados, fatal ? ", cortado" : "");
     fatal = 0;
     if (raiz) proteger(antes_serial);
-    if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
+    /* Sempre serializa: mesmo sem mudar o DOM, os scripts podem ter posto
+     * cliques (data-sagui-js), e os campos levam data-sagui-campo. */
+    if (raiz) { ar_total = 0; proteger(serial_final); }
 }
+static int clique_cancelado;
+int js_clique_cancelado(void) { return clique_cancelado; }
 static void clique_interno(void)
 {
+    clique_cancelado = 0;
     if (clique_id < 0 || clique_id >= qtd_cliques) return;
     val alvo = embrulhar(cliques[clique_id]);
     t_limite = tempo_ms() + 3000;
     sujo = 0;
     val f = get(vO(global), I("__clicar"));
     salto b; (void)b;
-    chamar(f, vU(), &alvo, 1);
+    clique_cancelado = to_bool(chamar(f, vU(), &alvo, 1));
 }
 static void clique_seguro(void)
 {
@@ -1825,6 +1829,44 @@ static void clique_seguro(void)
     fatal = 0;
     ar_total = 0;
     proteger(serial_final);
+}
+/* Digitação num campo: o valor muda sem sujar o DOM; só os eventos input
+ * (o que os scripts fizerem com eles) podem pedir uma página nova. */
+static int campo_id; static const char *campo_v; static int campo_tecla;
+static void campo_interno(void)
+{
+    if (campo_id < 0 || campo_id >= qtd_campos) return;
+    dn *d = dcampos[campo_id];
+    attr_por(d, I("value"), novo_str(campo_v, (int)tam_texto(campo_v)));
+    if (d->tag == I("textarea")) { limpar(d); if (campo_v[0]) { dn *x = d_novo(3, NULL); x->txt = escapar(novo_str(campo_v, (int)tam_texto(campo_v))); d_por(d, x, NULL); } }
+    sujo = 0;
+    t_limite = tempo_ms() + 3000;
+    val a[2] = { embrulhar(d), vI(campo_tecla) };
+    chamar(get(vO(global), I("__digitar")), vU(), a, 2);
+}
+static void campo_seguro(void)
+{
+    proteger(campo_interno);
+    proteger(antes_serial);
+    fatal = 0;
+    if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
+}
+static int envio_cancelado;
+static void envio_interno(void)
+{
+    envio_cancelado = 0;
+    if (campo_id < 0 || campo_id >= qtd_campos) return;
+    sujo = 0;
+    t_limite = tempo_ms() + 3000;
+    val a = embrulhar(dcampos[campo_id]);
+    envio_cancelado = to_bool(chamar(get(vO(global), I("__enviar")), vU(), &a, 1));
+}
+static void envio_seguro(void)
+{
+    proteger(envio_interno);
+    proteger(antes_serial);
+    fatal = 0;
+    if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
 }
 static char *pilha_js;
 static void na_pilha(void (*f)(void))
@@ -1880,6 +1922,24 @@ char *js_tique(int ms, int *saida_tam)
     return saida;
 }
 int js_vivo(void) { return global && vivo; }
+int js_enviar(int id, char **html, int *saida_tam)
+{
+    *html = NULL; *saida_tam = 0;
+    if (!global) return 0;
+    campo_id = id; saida = NULL; saida_n = 0;
+    na_pilha(envio_seguro);
+    *html = saida; *saida_tam = saida_n;
+    return envio_cancelado;
+}
+char *js_campo(int id, const char *valor, int tecla, int *saida_tam)
+{
+    *saida_tam = 0;
+    if (!global) return NULL;
+    campo_id = id; campo_v = valor; campo_tecla = tecla; saida = NULL; saida_n = 0;
+    na_pilha(campo_seguro);
+    *saida_tam = saida_n;
+    return saida;
+}
 char *js_clicar(int id, int *saida_tam)
 {
     if (!global) return NULL;

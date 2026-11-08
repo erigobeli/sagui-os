@@ -23,6 +23,9 @@
 
 static motor_t *motor;           /* motor de páginas novo: pinta e trata cliques */
 static int motor_altura;
+/* Rolagem em pixels (página do motor); a página simples rola por linhas (topo). */
+static int rol_px;
+static bool arrastando_barra; static int barra_pega;   /* arrastar o polegar da barra */
 
 #define LARG_INICIO 860
 #define ALT_INICIO  600
@@ -1800,7 +1803,7 @@ static void limpar_pagina(void)
     qtd_segs = qtd_alvos = qtd_textos = qtd_forms = 0;
     for (int i = 0; i < qtd_imagens; i++) libera(imagens[i].px);
     qtd_imagens = 0;
-    linhas = topo = 0;
+    linhas = topo = 0; rol_px = 0; arrastando_barra = false;
     centro = ini_linha = 0;
     qtd_regras = qtd_folhas = qtd_abertos = excesso_abertos = qtd_rets = qtd_vars = 0;
     dir_atual = LARG_TEXTO; direita = 0;
@@ -1870,17 +1873,27 @@ static void texto_grande(int x, int y, const char *t, int n, uint32_t cor)
     }
 }
 
+/* Geometria da rolagem, igual para as duas páginas: tudo em pixels. */
+static int total_px(void) { return motor ? motor_altura : linhas * LINHA_A + 8; }
+static int pos_px(void) { return motor ? rol_px : topo * LINHA_A; }
+static int max_px(void) { int m = total_px() - AREA_A; return m > 0 ? m : 0; }
+/* Polegar da barra: posição e altura na tela. */
+static bool polegar(int *y, int *a)
+{
+    int t = total_px();
+    if (t <= AREA_A) return false;
+    *a = AREA_A * AREA_A / t;
+    if (*a < 20) *a = 20;
+    *y = TOPO + (int)((unsigned)(AREA_A - *a) * (unsigned)pos_px() / (unsigned)max_px());
+    return true;
+}
+
 static void desenhar_barra_rolagem(void)
 {
-    int bx = LARG - ROLAGEM;
+    int bx = LARG - ROLAGEM, y, a;
     g_retangulo(j, bx, TOPO, ROLAGEM, AREA_A, 0xE6E9EC);
     g_retangulo(j, bx, TOPO, 1, AREA_A, COR_BORDA);
-    if (linhas > VISIVEIS) {
-        int a = AREA_A * VISIVEIS / linhas;
-        if (a < 20) a = 20;
-        int y = TOPO + (AREA_A - a) * topo / (linhas - VISIVEIS);
-        g_retangulo(j, bx + 3, y + 2, ROLAGEM - 5, a - 4, 0x8A939C);
-    }
+    if (polegar(&y, &a)) g_retangulo(j, bx + 3, y + 2, ROLAGEM - 5, a - 4, arrastando_barra ? 0x5F6770 : 0x8A939C);
 }
 
 static void motor_diagramar(void)
@@ -1898,7 +1911,7 @@ static void motor_diagramar(void)
 static void desenhar_pagina(void)
 {
     if (motor) {
-        motor_pintar(motor, j->px + TOPO * j->larg, LARG - ROLAGEM, j->larg, topo * LINHA_A, AREA_A);
+        motor_pintar(motor, j->px + TOPO * j->larg, LARG - ROLAGEM, j->larg, rol_px, AREA_A);
         desenhar_barra_rolagem();
         jan_mostrar_area(j, 0, TOPO, LARG, AREA_A);
         return;
@@ -1940,26 +1953,25 @@ static void desenhar_pagina(void)
         if (s->estilo & (E_NEGRITO | E_TITULO)) g_texto_n(j, x + 1, y, t, s->n, cor);   /* negrito: duas vezes */
         if ((s->estilo & E_LINK) && !(s->estilo & E_SEMLINHA)) g_retangulo(j, x, y + LETRA_A, s->n * LETRA_L, 1, cor);
     }
-    /* Barra de rolagem. */
-    int bx = LARG - ROLAGEM;
-    g_retangulo(j, bx, TOPO, ROLAGEM, AREA_A, 0xE6E9EC);
-    g_retangulo(j, bx, TOPO, 1, AREA_A, COR_BORDA);
-    if (linhas > VISIVEIS) {
-        int a = AREA_A * VISIVEIS / linhas;
-        if (a < 20) a = 20;
-        int y = TOPO + (AREA_A - a) * topo / (linhas - VISIVEIS);
-        g_retangulo(j, bx + 3, y + 2, ROLAGEM - 5, a - 4, 0x8A939C);
-    }
+    desenhar_barra_rolagem();
     jan_mostrar_area(j, 0, TOPO, LARG, AREA_A);
 }
 
-static void rolar(int para)
+/* Leva a rolagem ao pixel dado (a página simples arredonda para a linha). */
+static void rolar_px(int para)
 {
-    int max = linhas > VISIVEIS ? linhas - VISIVEIS : 0;
+    int max = max_px();
     if (para > max) para = max;
     if (para < 0) para = 0;
-    if (para == topo) return;
-    topo = para;
+    if (motor) {
+        if (para == rol_px) return;
+        rol_px = para;
+    } else {
+        int l = (para + LINHA_A / 2) / LINHA_A;
+        if (l == topo) return;
+        topo = l;
+    }
+    registrar("cipo: rolagem %d\n", pos_px());
     desenhar_pagina();
 }
 
@@ -2255,7 +2267,7 @@ static void carregar(const char *pedido)
         desenhar_pagina();
     }
     if (motor) rodape(texto_pronto());
-    registrar("cipo: pronto \"%s\" (%d linhas, %d links)\n", titulo, linhas, motor ? motor_links(motor) : qtd_alvos);
+    registrar("cipo: pronto \"%s\" (%d linhas, %d links) em %u ms\n", titulo, linhas, motor ? motor_links(motor) : qtd_alvos, tempo_ms() - inicio_pagina);
 }
 
 /* Clique num elemento com evento: o motor roda o evento e devolve a página. */
@@ -2266,10 +2278,14 @@ static void clique_js(int id)
     abrir_video_da_pagina();
     if (!h) return;
     inicio_pagina = tempo_ms();
+    int tp = rol_px, campo = motor_tem_foco(motor) ? motor_foco_campo(motor) : -1;
     limpar_pagina();
     ler_pagina(h, n);
     libera(h);
+    if (motor && campo >= 0) motor_focar_campo(motor, campo);
     motor_diagramar();
+    while (motor && motor_imagens(motor, 8)) motor_diagramar();
+    rol_px = tp > max_px() ? max_px() : tp;   /* como nos outros navegadores, o clique não volta ao topo */
     registrar("cipo: clique js %d (%d linhas)\n", id, linhas);
     rodape(texto_pronto());
     desenhar_pagina();
@@ -2289,18 +2305,92 @@ static void pagina_viva(void)
     unsigned x = hash_texto(h, n);
     if (x == hash_viva) { libera(h); return; }
     hash_viva = x;
-    int t = topo;
+    int t = topo, tp = rol_px, campo = motor_tem_foco(motor) ? motor_foco_campo(motor) : -1;
     unsigned t0 = tempo_ms();
     limpar_pagina();
     ler_pagina(h, n);
     libera(h);
+    if (motor && campo >= 0) motor_focar_campo(motor, campo);
     motor_diagramar();
     while (motor && motor_imagens(motor, 8)) motor_diagramar();
     if (t > linhas) t = linhas;
     topo = t;
+    rol_px = tp > max_px() ? max_px() : tp;
     desenhar_pagina();
     ult_redesenho = tempo_ms();
     registrar("cipo: viva redesenhou em %u ms\n", ult_redesenho - t0);
+}
+
+static void navegar(const char *url);
+/* Layout de novo no mesmo ponto da rolagem (o campo mudou de texto ou de foco). */
+static void refazer_pagina(void)
+{
+    if (!motor) return;
+    motor_altura = motor_layout(motor, LARG - ROLAGEM, AREA_A);
+    linhas = (motor_altura + LINHA_A - 1) / LINHA_A + 1;
+    if (rol_px > max_px()) rol_px = max_px();
+    desenhar_pagina();
+}
+
+/* O JavaScript mudou o DOM por causa do campo: relê a página e devolve o foco. */
+static void reler_com_foco(char *h, int n, int campo)
+{
+    int tp = rol_px;
+    limpar_pagina();
+    ler_pagina(h, n);
+    libera(h);
+    if (motor && campo >= 0) motor_focar_campo(motor, campo);
+    motor_diagramar();
+    while (motor && motor_imagens(motor, 8)) motor_diagramar();
+    rol_px = tp > max_px() ? max_px() : tp;
+    desenhar_pagina();
+}
+
+/* Envio de formulário (Enter no campo ou botão de envio): evento submit para
+ * o JavaScript; se ninguém cancelar, GET para a ação com os campos. Com
+ * JavaScript, o elemento é achado pelo data-sagui-campo (a página pode ter
+ * sido relida pelo clique); sem, pelo alvo do motor. */
+static void enviar(const motor_alvo_t *quem, int campo)
+{
+    char url[URL_MAX];
+    if (campo >= 0) {
+        char *h; int n;
+        int cancelou = js_enviar(campo, &h, &n);
+        abrir_video_da_pagina();
+        if (cancelou) { if (h) reler_com_foco(h, n, motor_tem_foco(motor) ? motor_foco_campo(motor) : -1); return; }
+        if (h) libera(h);
+        if (motor_envio_campo(motor, campo, url, sizeof url)) navegar(url);
+        return;
+    }
+    if (motor_envio(motor, quem, url, sizeof url)) navegar(url);
+}
+
+/* Tecla num campo com foco (UTF-8 por dentro; o teclado manda Latin-1). */
+static void tecla_no_campo(unsigned t)
+{
+    if (t == TECLA_ESC) { motor_foco(motor, NULL); refazer_pagina(); return; }
+    if (t == '\n' || t == '\r') { enviar(NULL, motor_foco_campo(motor)); return; }
+    char v[1024];
+    copia_texto(v, motor_foco_valor(motor), sizeof v);
+    int k = (int)tam_texto(v);
+    if (t == '\b') {
+        if (!k) return;
+        do k--; while (k > 0 && ((uint8_t)v[k] & 0xC0) == 0x80);
+        v[k] = 0;
+    } else if (t >= 32 && t < 256) {
+        if (k + 4 >= (int)sizeof v) return;
+        k += utf8_por(v + k, t);
+        v[k] = 0;
+    } else return;
+    motor_foco_definir(motor, v);
+    int campo = motor_foco_campo(motor);
+    if (campo >= 0) {
+        int n = 0;
+        char *h = js_campo(campo, v, t == '\b' ? 8 : (int)t, &n);
+        abrir_video_da_pagina();
+        if (h) { reler_com_foco(h, n, campo); return; }
+    }
+    refazer_pagina();
 }
 
 static void navegar(const char *url)
@@ -2385,6 +2475,7 @@ int principal(int argc, char **argv)
         /* Como nos outros navegadores: clicar no endereço e digitar troca o
          * endereço inteiro, em vez de escrever depois dele. */
         bool tinha_foco = endereco.foco;
+        if (e.tipo == EV_CLIQUE && e.y < TOPO && motor_tem_foco(motor)) { motor_foco(motor, NULL); refazer_pagina(); }
         if (e.tipo == EV_TECLA && substituir && e.tecla >= 32 && e.tecla < 256) {
             caixa_definir(&endereco, "");
             endereco.foco = true;
@@ -2398,42 +2489,56 @@ int principal(int argc, char **argv)
             if (qtd_historico) carregar(historico[--qtd_historico]);
             continue;
         }
+        if (e.tipo == EV_TECLA && !endereco.foco && motor_tem_foco(motor)) { tecla_no_campo(e.tecla); continue; }
         if (e.tipo == EV_TECLA && !endereco.foco) {
             unsigned t = e.tecla;
-            if (t == TECLA_BAIXO) rolar(topo + 1);
-            else if (t == TECLA_CIMA) rolar(topo - 1);
-            else if (t == TECLA_PGDN || t == ' ') rolar(topo + VISIVEIS - 1);
-            else if (t == TECLA_PGUP) rolar(topo - (VISIVEIS - 1));
-            else if (t == TECLA_HOME) rolar(0);
-            else if (t == TECLA_END) rolar(linhas);
+            /* Passos do Chrome: 40 px na seta, uma tela menos 40 px na página. */
+            if (t == TECLA_BAIXO) rolar_px(pos_px() + 40);
+            else if (t == TECLA_CIMA) rolar_px(pos_px() - 40);
+            else if (t == TECLA_PGDN || t == ' ') rolar_px(pos_px() + AREA_A - 40);
+            else if (t == TECLA_PGUP) rolar_px(pos_px() - (AREA_A - 40));
+            else if (t == TECLA_HOME) rolar_px(0);
+            else if (t == TECLA_END) rolar_px(max_px());
             else if (t == '\b') { if (qtd_historico) carregar(historico[--qtd_historico]); }
             continue;
         }
         if (e.tipo == EV_CLIQUE && (e.botoes & 1)) {
-            if (e.x >= LARG - ROLAGEM && e.y >= TOPO && e.y < ALT - RODAPE && linhas > VISIVEIS) {
-                /* Clique na barra: leva aquele ponto da página para a tela. */
-                rolar((e.y - TOPO) * (linhas - VISIVEIS) / AREA_A);
+            int py, pa;
+            if (e.x >= LARG - ROLAGEM && e.y >= TOPO && e.y < ALT - RODAPE && polegar(&py, &pa)) {
+                /* No polegar: começa a arrastar. Fora dele: uma tela para aquele lado. */
+                if (e.y >= py && e.y < py + pa) {
+                    arrastando_barra = true;
+                    barra_pega = e.y - py;
+                    desenhar_barra_rolagem();
+                    jan_mostrar_area(j, LARG - ROLAGEM, TOPO, ROLAGEM, AREA_A);
+                } else rolar_px(pos_px() + (e.y < py ? -(AREA_A - 40) : AREA_A - 40));
                 continue;
             }
             if (motor && e.y >= TOPO && e.y < ALT - RODAPE && e.x < LARG - ROLAGEM) {
-                const motor_alvo_t *ma = motor_alvo(motor, e.x, e.y - TOPO + topo * LINHA_A);
-                registrar("cipo: clique em %d,%d -> %s\n", e.x, e.y - TOPO + topo * LINHA_A, ma && ma->href ? ma->href : "nada");
+                const motor_alvo_t *ma = motor_alvo(motor, e.x, e.y - TOPO + rol_px);
+                registrar("cipo: clique em %d,%d -> %s\n", e.x, e.y - TOPO + rol_px, ma && ma->href ? ma->href : "nada");
                 if (ma && ma->tipo == MA_LINK) {
                     char url[URL_MAX];
                     copia_texto(url, ma->href, sizeof url);
                     if (comeca_com(url, "sagui-js:")) clique_js(texto_para_int(url + 9));
                     else if (!comeca_com(url, "javascript:") && !comeca_com(url, "mailto:")) navegar(url);
-                } else if (ma && (ma->tipo == MA_CAMPO || ma->tipo == MA_BOTAO)) {
-                    char texto[120] = "";
-                    if (pedir_texto("Cipó", "Digite o texto e aperte Enter:", texto, sizeof texto)) {
-                        char url[URL_MAX], q[400];
-                        codificar(texto, q, sizeof q);
-                        const char *b = ma->href;
-                        int k = formatar_texto(url, sizeof url, "%s", b);
-                        for (int i = 0; url[i]; i++) if (url[i] == '?' || url[i] == '#') { url[i] = 0; k = i; break; }
-                        formatar_texto(url + k, sizeof url - (size_t)k, "?%s%s%s=%s", ma->fixos ? ma->fixos : "", ma->fixos && ma->fixos[0] ? "&" : "", ma->nome, q);
-                        navegar(url);
-                    }
+                } else if (ma && ma->tipo == MA_CAMPO) {
+                    /* foco no campo: a digitação vai para dentro da caixa */
+                    if (endereco.foco) { endereco.foco = false; desenhar_barra(); }
+                    motor_foco(motor, ma);
+                    registrar("cipo: foco no campo %d\n", motor_foco_campo(motor));
+                    refazer_pagina();
+                } else if (ma && ma->tipo == MA_BOTAO) {
+                    /* como no navegador: o clique vai ao script; depois, se o botão
+                     * é de envio, o formulário vai (a não ser que o script cancele) */
+                    /* ma deixa de valer se o clique reler a página: guarda o que precisa */
+                    int js = ma->js, campo = ma->campo;
+                    bool envia = ma->envia, cancelou = false;
+                    if (js >= 0) { clique_js(js); cancelou = js_clique_cancelado(); }
+                    if (envia && !cancelou) enviar(js >= 0 ? NULL : ma, campo);
+                } else if (motor_tem_foco(motor)) {
+                    motor_foco(motor, NULL);
+                    refazer_pagina();
                 }
                 continue;
             }
@@ -2448,10 +2553,26 @@ int principal(int argc, char **argv)
             }
             continue;
         }
+        if (arrastando_barra && (e.tipo == EV_SOLTOU || (e.tipo == EV_MOVER && !(e.botoes & 1)))) {
+            arrastando_barra = false;
+            desenhar_barra_rolagem();
+            jan_mostrar_area(j, LARG - ROLAGEM, TOPO, ROLAGEM, AREA_A);
+            continue;
+        }
+        if (arrastando_barra && e.tipo == EV_MOVER) {
+            int py, pa;
+            if (polegar(&py, &pa) && AREA_A > pa)
+                rolar_px((e.y - barra_pega - TOPO <= 0 ? 0 : (int)((unsigned)(e.y - barra_pega - TOPO) * (unsigned)max_px() / (unsigned)(AREA_A - pa))));
+            continue;
+        }
+        if (e.tipo == EV_ROLAR) {   /* roda: 100 px por degrau, como o Chrome */
+            rolar_px(pos_px() + 100 * (int)e.tecla);
+            continue;
+        }
         if (e.tipo == EV_MOVER && motor) {
-            const motor_alvo_t *ma = e.y >= TOPO && e.y < ALT - RODAPE ? motor_alvo(motor, e.x, e.y - TOPO + topo * LINHA_A) : NULL;
+            const motor_alvo_t *ma = e.y >= TOPO && e.y < ALT - RODAPE ? motor_alvo(motor, e.x, e.y - TOPO + rol_px) : NULL;
             if (ma && ma->tipo == MA_LINK) rodape(ma->href);
-            else if (ma) rodape("Formulário: clique para digitar");
+            else if (ma) rodape(ma->tipo == MA_CAMPO ? "Campo de texto" : "Enviar formulário");
             else rodape(texto_pronto());
             continue;
         }
