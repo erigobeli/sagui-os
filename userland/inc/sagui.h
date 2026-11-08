@@ -119,6 +119,15 @@ typedef struct {
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */
 void js_fim(void);
+/* Fontes da web (TrueType, WOFF, WOFF2): avanço em 1/64 px; glifo em cobertura 0..255 */
+typedef struct fonte fonte_t;
+fonte_t *fonte_abrir(const uint8_t *d, unsigned n);
+void     fonte_fechar(fonte_t *f);
+int      fonte_avanco(fonte_t *f, unsigned cp, int px);
+bool     fonte_tem(fonte_t *f, unsigned cp);
+int      fonte_ascendente(fonte_t *f, int px);
+int      fonte_descendente(fonte_t *f, int px);
+const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy);
 char *js_tique(int ms, int *saida_n);   /* timers depois do load; HTML novo se o DOM mudou */
 int   js_vivo(void);                     /* ainda há timers na página */
 const char *js_video(void);   /* URL que o JS deu a um <video>, ou NULL */

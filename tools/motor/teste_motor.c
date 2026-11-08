@@ -47,6 +47,7 @@ int main(int argc, char **argv)
     motor_ler(m, (const char *)h, (int)n, argc > 4 ? argv[4] : "http://teste/pagina.html");
     while (motor_imagens(m, 8)) {}
     int alt = motor_layout(m, larg, 560);
+    if (motor_imagens(m, 8)) { while (motor_imagens(m, 8)) {} alt = motor_layout(m, larg, 560); }   /* fontes pedidas no layout */
     if (getenv("CMDS")) { extern void motor_dump_cmds(motor_t *, int, int); int a0 = atoi(getenv("CMDS")); motor_dump_cmds(m, a0, a0 + 40); }
     if (getenv("ARVORE")) { extern void motor_dump(motor_t *, int); motor_dump(m, atoi(getenv("ARVORE"))); }
     int nos, cmds, imgs; motor_numeros(m, &nos, &cmds, &imgs);

@@ -55,7 +55,9 @@ typedef struct {
     const char *conteudo;   /* content */
     uint8_t bg_tam;         /* 0 natural, 1 cobre/estica, 2 contém */
     uint8_t mascara;        /* mask-image: o fundo é a cor de um ícone que não desenhamos */
-    int16_t z;
+    int16_t z; uint8_t z_def;           /* z-index; z_def = não é auto */
+    medida_t tf[2];                     /* transform: translate (x, y) */
+    int8_t fam;                         /* font-family: família de @font-face, -1 = fonte do sistema */
 } estilo_t;
 
 typedef struct atr { char *nome, *valor; struct atr *prox; } atr_t;
@@ -128,10 +130,14 @@ typedef struct {
     int img;
     int cx0, cy0, cx1, cy1;     /* recorte */
     int16_t bw[4]; uint32_t bc[4];
-    int z;
+    int z;          /* camada de pintura: 0 fluxo, 2z+1 posicionados */
+    fonte_t *fo;    /* fonte da web do texto, ou NULL (bitmap) */
+    int cam;        /* 0 ou índice+1 em camadas (fixed/sticky seguem a rolagem) */
 } cmd_t;
 
-typedef struct { int x, y, l, a; int alvo; } regiao_t;
+typedef struct { int x, y, l, a; int alvo; int z, cam; } regiao_t;
+/* fixed: desloca pela rolagem; sticky: desloca até prender no topo, sem sair do pai */
+typedef struct { uint8_t fixo; int y0, topo, lim; } camada_t;
 
 typedef struct { char *url; uint32_t *px; int l, a; uint8_t tentou, alfa; } imagem_m;
 
@@ -155,6 +161,12 @@ struct motor {
     int clip[4];
     int folhas;
     bool sem_esconder;      /* ignora display:none do autor (páginas que só aparecem por JS) */
+    camada_t cams[64]; int n_cams;
+    /* @font-face: famílias (nome) e faces (url, peso, itálico, fonte carregada) */
+    char fams[16][40]; int n_fams;
+    struct { int8_t fam; uint8_t peso, italico, tentou; char *url; fonte_t *f; } faces[40]; int n_faces;
+    unsigned fam_usada;     /* famílias que algum texto pediu (motor_imagens baixa as fontes delas) */
+    int rolagem;            /* y da última pintura (para fixed/sticky nos cliques) */
 };
 
 /* ================================================================ arena */
@@ -540,7 +552,7 @@ enum {
     PR_FLEX, PR_FDIR, PR_FWRAP, PR_FFLOW, PR_JUSTIFY, PR_AITEMS, PR_ASELF, PR_GROW, PR_SHRINK, PR_BASIS, PR_GAP, PR_RGAP, PR_CGAP, PR_ORDER,
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
-    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT,
+    PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -553,7 +565,7 @@ static const char *const nomes_prop[] = {
     "grid-template-columns", "grid-column", "grid-column-start", "grid-column-end", "grid-row", "top", "right", "bottom", "left", "inset", "text-transform", "vertical-align", "z-index",
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
-    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content",
+    "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
 };
 
 static int achar_prop(const char *p, int n)
@@ -1086,6 +1098,78 @@ static void ler_regra(motor_t *m, const char *sel, int ns, const char *d, int nd
 
 /* Folha de estilo. As regras dentro de @media só entram se a mídia vale
  * para a largura atual (o motor relê as folhas quando a largura muda). */
+static int ler_peso(const char *v);
+static const char *base_folha; static int ler_folha_sem_faces;   /* URL da folha sendo lida (url() de @font-face é relativo a ela) */
+static void juntar(const char *base, const char *rel, char *s, int max);
+/* @font-face: guarda família, peso, estilo e a melhor fonte de src (woff2 > woff > ttf) */
+static void ler_font_face(motor_t *m, const char *s, int n)
+{
+    char fam[40] = ""; int peso = 0, ital = 0, util = 1;
+    const char *melhor = NULL; int mn = 0, mnota = -1;
+    int i = 0;
+    while (i < n) {
+        while (i < n && (eh_esp(s[i]) || s[i] == ';')) i++;
+        int k0 = i; while (i < n && s[i] != ':' && s[i] != ';') i++;
+        if (i >= n || s[i] != ':') break;
+        int k1 = i++;
+        while (k1 > k0 && eh_esp(s[k1 - 1])) k1--;
+        int v0 = i, dentro = 0;
+        while (i < n && (s[i] != ';' || dentro)) { if (s[i] == '(') dentro++; else if (s[i] == ')') dentro--; else if (s[i] == '"' || s[i] == '\'') { char q = s[i++]; while (i < n && s[i] != q) i++; } i++; }
+        int v1 = i;
+        while (v0 < v1 && eh_esp(s[v0])) v0++;
+        const char *ch = s + k0; int nk = k1 - k0;
+        if (nk == 11 && igual_n(ch, "font-family", 11)) {
+            int a = v0, b = v1; while (b > a && eh_esp(s[b - 1])) b--;
+            if (a < b && (s[a] == '"' || s[a] == '\'')) { a++; if (b > a && (s[b - 1] == '"' || s[b - 1] == '\'')) b--; }
+            int k = b - a < 39 ? b - a : 39; memcpy(fam, s + a, (size_t)k); fam[k] = 0;
+        } else if (nk == 11 && igual_n(ch, "font-weight", 11)) {
+            char w[16]; int k = v1 - v0 < 15 ? v1 - v0 : 15; memcpy(w, s + v0, (size_t)k); w[k] = 0;
+            for (int j = 0; j < k; j++) if (w[j] == ' ') { w[j] = 0; break; }   /* faixa "100 900": vale o começo */
+            int pw = ler_peso(w); if (pw > 0) peso = 1;
+        } else if (nk == 10 && igual_n(ch, "font-style", 10)) ital = igual_n(s + v0, "italic", 6) || igual_n(s + v0, "oblique", 7);
+        else if (nk == 13 && igual_n(ch, "unicode-range", 13)) {
+            /* só as faces que cobrem o latim básico (A = U+41) */
+            util = 0;
+            for (int j = v0; j < v1; j++) {
+                if ((s[j] | 32) != 'u' || j + 1 >= v1 || s[j + 1] != '+') continue;
+                unsigned a = 0, b; int q = j + 2;
+                while (q < v1 && ((s[q] >= '0' && s[q] <= '9') || ((s[q] | 32) >= 'a' && (s[q] | 32) <= 'f'))) { a = a * 16 + (unsigned)(s[q] <= '9' ? s[q] - '0' : (s[q] | 32) - 'a' + 10); q++; }
+                b = a;
+                if (q < v1 && s[q] == '-') { b = 0; q++; while (q < v1 && ((s[q] >= '0' && s[q] <= '9') || ((s[q] | 32) >= 'a' && (s[q] | 32) <= 'f'))) { b = b * 16 + (unsigned)(s[q] <= '9' ? s[q] - '0' : (s[q] | 32) - 'a' + 10); q++; } }
+                if (a <= 0x41 && b >= 0x41) util = 1;
+            }
+        } else if (nk == 3 && igual_n(ch, "src", 3)) {
+            for (int j = v0; j + 4 < v1; j++) {
+                if (!igual_n(s + j, "url(", 4)) continue;
+                int a = j + 4; while (a < v1 && (s[a] == ' ' || s[a] == '"' || s[a] == '\'')) a++;
+                int b = a; while (b < v1 && s[b] != ')' && s[b] != '"' && s[b] != '\'') b++;
+                int fim = b; while (fim < v1 && s[fim] != ',') fim++;
+                int nota = 0;
+                for (int q = a; q < fim; q++) {
+                    if (igual_n(s + q, "woff2", 5)) { nota = 3; break; }
+                    if (igual_n(s + q, "woff", 4)) nota = 2;
+                    else if (!nota && (igual_n(s + q, "truetype", 8) || igual_n(s + q, ".ttf", 4))) nota = 1;
+                    else if (igual_n(s + q, "opentype", 8) || igual_n(s + q, ".otf", 4) || igual_n(s + q, ".eot", 4) || igual_n(s + q, ".svg", 4)) { nota = -1; break; }
+                }
+                if (igual_n(s + a, "data:", 5)) nota = -1;
+                if (nota > mnota) { mnota = nota; melhor = s + a; mn = b - a; }
+                j = fim;
+            }
+        }
+    }
+    if (!fam[0] || !melhor || mnota <= 0 || !util || m->n_faces >= 40) return;
+    int f = -1;
+    for (int k = 0; k < m->n_fams; k++) if (igual(m->fams[k], fam)) f = k;
+    if (f < 0) { if (m->n_fams >= 16) return; f = m->n_fams++; copia_texto(m->fams[f], fam, sizeof m->fams[f]); }
+    char rel[400], u[600];
+    int k = mn < 399 ? mn : 399; memcpy(rel, melhor, (size_t)k); rel[k] = 0;
+    juntar(base_folha ? base_folha : m->url, rel, u, sizeof u);
+    for (int q = 0; q < m->n_faces; q++) if (m->faces[q].fam == f && m->faces[q].peso == peso && m->faces[q].italico == ital) return;
+    m->faces[m->n_faces].fam = (int8_t)f; m->faces[m->n_faces].peso = (uint8_t)peso; m->faces[m->n_faces].italico = (uint8_t)ital;
+    m->faces[m->n_faces].url = m_dup(m, u, (int)tam_texto(u)); m->faces[m->n_faces].f = NULL; m->faces[m->n_faces].tentou = 0;
+    m->n_faces++;
+}
+
 static void ler_folha(motor_t *m, const char *s, int n, int prof)
 {
     int i = 0;
@@ -1120,6 +1204,7 @@ static void ler_folha(motor_t *m, const char *s, int n, int prof)
         const char *cab = s + ini; int nc = cab_fim - ini;
         while (nc && eh_esp(cab[nc - 1])) nc--;
         if (nc && cab[0] == '@') {
+            if (nc >= 10 && igual_n(cab, "@font-face", 10)) { if (!ler_folha_sem_faces) ler_font_face(m, s + b0, b1 - b0); continue; }
             if (prof < 4 && nc >= 6 && igual_n(cab, "@media", 6)) { if (media_ok(m, cab + 6, nc - 6)) ler_folha(m, s + b0, b1 - b0, prof + 1); }
             else if (prof < 4 && ((nc >= 9 && igual_n(cab, "@supports", 9)) || (nc >= 6 && igual_n(cab, "@layer", 6)) || (nc >= 10 && igual_n(cab, "@container", 10))))
                 ler_folha(m, s + b0, b1 - b0, prof + 1);
@@ -1276,8 +1361,8 @@ static void estilo_inicial(estilo_t *e, const estilo_t *pai)
     if (pai) {
         e->cor = pai->cor; e->tam = pai->tam; e->peso = pai->peso; e->italico = pai->italico; e->alinha = pai->alinha;
         e->branco = pai->branco; e->lista = pai->lista; e->visivel = pai->visivel; e->linha = pai->linha; e->maiusc = pai->maiusc;
-        e->sublinha = pai->sublinha; e->risca = pai->risca;
-    } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; }
+        e->sublinha = pai->sublinha; e->risca = pai->risca; e->fam = pai->fam;
+    } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; }
 }
 
 static int px_de(const medida_t *m, int tam)
@@ -1349,6 +1434,32 @@ static uint8_t ler_display(const char *v)
     };
     for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++) if (igual(v, t[i].n)) return t[i].d;
     return 255;
+}
+
+/* font-family: primeira família da lista que veio de @font-face; -1 se nenhuma.
+ * Serve também para o atalho font (a família é a última palavra do primeiro item). */
+static int achar_familia(motor_t *m, const char *v)
+{
+    if (!m || !m->n_fams) return -2;
+    const char *p = v;
+    while (*p) {
+        const char *f = p; while (*f && *f != ',') f++;
+        const char *a = p, *b = f;
+        const char *q = a; while (q < b && *q != '"' && *q != '\'') q++;
+        if (q < b) { char c = *q; a = q + 1; b = a; while (b < f && *b != c) b++; }
+        else {
+            while (a < b && eh_esp(*a)) a++;
+            while (b > a && eh_esp(b[-1])) b--;
+            const char *u = b; while (u > a && !eh_esp(u[-1])) u--;   /* última palavra */
+            if (p == v) a = u;
+        }
+        for (int i = 0; i < m->n_fams; i++) {
+            int k = (int)tam_texto(m->fams[i]);
+            if (k == (int)(b - a) && igual_n(a, m->fams[i], k)) return i;
+        }
+        p = *f ? f + 1 : f;
+    }
+    return -1;
 }
 
 static int ler_peso(const char *v)
@@ -1546,7 +1657,9 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_FSIZE: tamanho_fonte(e, v, pai); break;
     case PR_FWEIGHT: { int w = ler_peso(v); if (w >= 0) e->peso = (uint8_t)w; break; }
     case PR_FSTYLE: e->italico = igual(v, "italic") || igual(v, "oblique"); break;
+    case PR_FFAMILY: { int f = achar_familia(m, v); if (f != -2) e->fam = (int8_t)f; break; }
     case PR_FONT: {
+        { int f = achar_familia(m, v); if (f != -2) e->fam = (int8_t)f; }
         int k = palavras(v, nv, p, t, 6);
         for (int i = 0; i < k; i++) {
             char w[24]; int tw = t[i] < 23 ? t[i] : 23;
@@ -1662,7 +1775,32 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_OPACITY: { int u; int x = num100(v, nv, &u); if (u) e->opaco0 = x <= 0; break; }
     case PR_TTRANSFORM: e->maiusc = igual(v, "uppercase") ? 1 : igual(v, "lowercase") ? 2 : igual(v, "capitalize") ? 3 : 0; break;
     case PR_VALIGN: e->vert = igual(v, "middle") ? 1 : igual(v, "top") ? 2 : igual(v, "bottom") ? 3 : 0; break;
-    case PR_ZINDEX: { int u; int x = num100(v, nv, &u); if (u) e->z = (int16_t)(x / 100); break; }
+    case PR_ZINDEX: { int u; int x = num100(v, nv, &u); if (u) { e->z = (int16_t)(x / 100); e->z_def = 1; } else e->z_def = 0; break; }
+    case PR_TRANSFORM: {
+        /* só translate (o mais comum: centralizar com -50%); rotate/scale ficam de fora */
+        e->tf[0].u = e->tf[1].u = U_PX; e->tf[0].v = e->tf[1].v = 0;
+        for (const char *p = v; *p; p++) {
+            if (!igual_n(p, "translate", 9)) continue;
+            p += 9;
+            int eixo = -1;
+            if (*p == 'X' || *p == 'x') { eixo = 0; p++; } else if (*p == 'Y' || *p == 'y') { eixo = 1; p++; } else if (*p == '3') p += 2;
+            if (*p != '(') continue;
+            const char *f = ++p; while (*f && *f != ')') f++;
+            int k = eixo < 0 ? 0 : eixo;
+            for (const char *c = p; c < f && k < 2; k++) {
+                const char *d = c; while (d < f && *d != ',') d++;
+                medida_t m;
+                if (ler_medida_m(c, (int)(d - c), &m) && m.u != U_AUTO && m.u != U_NONE) {
+                    if (m.u == U_EM || m.u == U_REM) { m.v = px_de(&m, e->tam); m.u = U_PX; }
+                    e->tf[k] = m;
+                }
+                if (eixo >= 0) break;
+                c = d + 1;
+            }
+            p = *f ? f : f - 1;
+        }
+        break;
+    }
     default: break;
     }
 }
@@ -2073,8 +2211,36 @@ static bool tamanho_natural(no_m *n, int *l, int *a)
 
 /* ------------------------------------------------- medidas intrínsecas */
 
-/* Largura de uma palavra (com text-transform não muda a largura). */
-static int larg_texto(const estilo_t *e, int n) { return n * larg_letra(e); }
+/* Fonte da web do estilo: a face carregada mais parecida (peso, itálico); NULL usa o bitmap. */
+static fonte_t *fonte_de(const estilo_t *e)
+{
+    if (e->fam < 0 || !mo) return NULL;
+    mo->fam_usada |= 1u << e->fam;
+    int melhor = -1, nota = -1;
+    for (int i = 0; i < mo->n_faces; i++) {
+        if (mo->faces[i].fam != e->fam || !mo->faces[i].f) continue;
+        int n = (mo->faces[i].peso == (e->peso ? 1 : 0) ? 2 : 0) + (mo->faces[i].italico == e->italico ? 1 : 0);
+        if (n > nota) { nota = n; melhor = i; }
+    }
+    return melhor >= 0 ? mo->faces[melhor].f : NULL;
+}
+static uint8_t transformar_car(const estilo_t *e, const char *t, int i)
+{
+    uint8_t ch = (uint8_t)t[i];
+    if (e->maiusc == 1 || (e->maiusc == 3 && (i == 0 || t[i - 1] == ' '))) { if ((ch >= 'a' && ch <= 'z') || (ch >= 0xE0 && ch <= 0xFE && ch != 0xF7)) ch = (uint8_t)(ch - 32); }
+    else if (e->maiusc == 2 && ((ch >= 'A' && ch <= 'Z') || (ch >= 0xC0 && ch <= 0xDE && ch != 0xD7))) ch = (uint8_t)(ch + 32);
+    return ch;
+}
+/* Largura de um texto: avanços da fonte da web, ou letra fixa do bitmap. */
+static int larg_texto(const estilo_t *e, const char *t, int n)
+{
+    fonte_t *f = fonte_de(e);
+    if (!f) return n * larg_letra(e);
+    int s = 0;
+    for (int i = 0; i < n; i++) s += fonte_avanco(f, transformar_car(e, t, i), e->tam);
+    return (s + 32) / 64;
+}
+static int larg_car(const estilo_t *e, char ch) { return larg_texto(e, &ch, 1); }
 
 static void medir_inline(no_m *n, int *mx, int *mn, int *linha)
 {
@@ -2088,15 +2254,16 @@ static void medir_inline(no_m *n, int *mx, int *mn, int *linha)
                 char ch = c->t[i];
                 if (e->branco == 1 && ch == '\n') { if (*linha > *mx) *mx = *linha; *linha = 0; pal = 0; continue; }
                 if (eh_esp(ch) && e->branco != 1) {
-                    if (pal * larg_letra(e) > *mn) *mn = pal * larg_letra(e);
+                    if (pal > *mn) *mn = pal;
                     pal = 0;
-                    *linha += larg_letra(e);
+                    *linha += larg_car(e, ' ');
                     continue;
                 }
-                pal++;
-                *linha += larg_letra(e);
+                int w = larg_car(e, ch);
+                pal += w;
+                *linha += w;
             }
-            if (pal * larg_letra(e) > *mn) *mn = pal * larg_letra(e);
+            if (pal > *mn) *mn = pal;
             continue;
         }
         estilo_t *e = &c->e;
@@ -2257,7 +2424,7 @@ static void coletar_no(no_m *c, no_m *n, int alvo, contexto_t *ctx, no_m *bloco_
         if (c->texto) {
             if (c->texto == 2 || !c->nt) return;
             const estilo_t *e = &n->e;
-            if (e->visivel) { item_t it = { c, e, NULL, 0, larg_texto(e, c->nt), altura_linha(e), 1, -1 }; it.l = 0; (void)it; }
+            if (e->visivel) { item_t it = { c, e, NULL, 0, larg_texto(e, c->t, c->nt), altura_linha(e), 1, -1 }; it.l = 0; (void)it; }
             int i = 0;
             while (i < c->nt) {
                 char ch = c->t[i];
@@ -2265,21 +2432,21 @@ static void coletar_no(no_m *c, no_m *n, int alvo, contexto_t *ctx, no_m *bloco_
                     if (ch == '\n') { item_t it = { c, e, NULL, 0, 0, altura_linha(e), 3, alvo }; por_item(&it); i++; continue; }
                     int k = i;
                     while (k < c->nt && c->t[k] != '\n') k++;
-                    item_t it = { c, e, c->t + i, k - i, larg_texto(e, k - i), altura_linha(e), 0, alvo };
+                    item_t it = { c, e, c->t + i, k - i, larg_texto(e, c->t + i, k - i), altura_linha(e), 0, alvo };
                     por_item(&it);
                     i = k;
                     continue;
                 }
                 if (eh_esp(ch)) {
                     while (i < c->nt && eh_esp(c->t[i])) i++;
-                    item_t it = { c, e, " ", 1, larg_letra(e), altura_linha(e), 1, alvo };
+                    item_t it = { c, e, " ", 1, larg_car(e, ' '), altura_linha(e), 1, alvo };
                     if (e->branco == 2) it.tipo = 0;
                     por_item(&it);
                     continue;
                 }
                 int k = i;
                 while (k < c->nt && !eh_esp(c->t[k])) k++;
-                item_t it = { c, e, c->t + i, k - i, larg_texto(e, k - i), altura_linha(e), 0, alvo };
+                item_t it = { c, e, c->t + i, k - i, larg_texto(e, c->t + i, k - i), altura_linha(e), 0, alvo };
                 por_item(&it);
                 i = k;
             }
@@ -3199,8 +3366,10 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
 
 /* ================================================================ achatar */
 
+static int z_cur, cam_cur;
 static void cmd_novo(cmd_t *c)
 {
+    c->z = z_cur; c->cam = cam_cur;
     if (!crescer_v(mo, (void **)&mo->cmds, &mo->cap_cmds, mo->n_cmds + 1, sizeof(cmd_t))) return;
     c->cx0 = mo->clip[0]; c->cy0 = mo->clip[1]; c->cx1 = mo->clip[2]; c->cy1 = mo->clip[3];
     mo->cmds[mo->n_cmds++] = *c;
@@ -3210,6 +3379,7 @@ static void regiao(int x, int y, int l, int a, int alvo)
     if (alvo < 0 || l <= 0 || a <= 0) return;
     if (!crescer_v(mo, (void **)&mo->regs, &mo->cap_regs, mo->n_regs + 1, sizeof(regiao_t))) return;
     regiao_t *r = &mo->regs[mo->n_regs++];
+    r->z = z_cur; r->cam = cam_cur;
     r->x = x; r->y = y; r->l = l; r->a = a; r->alvo = alvo;
 }
 
@@ -3220,6 +3390,7 @@ static void texto_cmd(int x, int y, int l, int a, const char *t, int nt, const e
     c.tam = e->tam; c.cor = cor; c.peso = e->peso; c.italico = e->italico;
     c.sublinha = (uint8_t)(e->sublinha | (e->risca << 1));
     c.raio = e->maiusc;
+    c.fo = fonte_de(e);
     cmd_novo(&c);
 }
 
@@ -3679,7 +3850,7 @@ static uint32_t *svg_desenhar(no_m *n, int l, int a)
     return px;
 }
 
-typedef struct { no_m *n; int sx, sy; int clip[4]; int cb[4]; } adiado_t;
+typedef struct { no_m *n; int sx, sy; int clip[4]; int cb[4]; int z, cam; } adiado_t;
 static adiado_t adiados[512]; static int n_adiados;
 
 static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int cb_a);
@@ -3720,6 +3891,7 @@ static void achatar_filhos(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l
                 a->sx = ox + c->x; a->sy = oy + c->y;   /* posição estática */
                 memcpy(a->clip, mo->clip, sizeof a->clip);
                 if (c->e.position == P_FIXED) { a->clip[0] = -INF; a->clip[1] = -INF; a->clip[2] = INF; a->clip[3] = INF; }
+                a->z = z_cur; a->cam = cam_cur;
                 a->cb[0] = cb_x; a->cb[1] = cb_y; a->cb[2] = cb_l; a->cb[3] = cb_a;
             }
             continue;
@@ -3843,13 +4015,31 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     estilo_t *e = &n->e;
     if (e->display == D_NONE || e->opaco0) return;
     int x = ox + n->x, y = oy + n->y;
-    if (e->position == P_RELATIVE || e->position == P_STICKY) {
+    int z_salvo = z_cur, cam_salva = cam_cur;
+    bool flex_pai = n->pai && (n->pai->e.display == D_FLEX || n->pai->e.display == D_IFLEX || n->pai->e.display == D_GRID);
+    if (e->position != P_STATIC || (e->z_def && flex_pai)) {
+        if (e->z_def) z_cur = 2 * e->z + 1; else if (z_cur <= 0) z_cur = 1;
+    }
+    if (e->tf[0].v || e->tf[1].v) {
+        int dx = res_med(&e->tf[0], n->l, e), dy = res_med(&e->tf[1], n->a, e);
+        if (e->tf[0].u == U_PX || dx != -1) x += dx;
+        if (e->tf[1].u == U_PX || dy != -1) y += dy;
+    }
+    if (e->position == P_STICKY && e->pos[0].u != U_AUTO && n->pai && mo->n_cams < 64) {
+        no_m *p = n->pai;
+        camada_t *k = &mo->cams[mo->n_cams++];
+        k->fixo = 0; k->y0 = y; k->topo = res_med(&e->pos[0], cb_a, e);
+        k->lim = (oy + p->a - p->bl[2] - p->pl[2]) - (y + n->a);
+        if (k->lim < 0) k->lim = 0;
+        cam_cur = mo->n_cams;
+    }
+    if (e->position == P_RELATIVE) {
         int t = res_med(&e->pos[0], cb_a, e), l = res_med(&e->pos[3], cb_l, e), b = res_med(&e->pos[2], cb_a, e), r = res_med(&e->pos[1], cb_l, e);
         if (t >= 0 || e->pos[0].u == U_PX) y += e->pos[0].u == U_AUTO ? 0 : t; else if (b > 0) y -= b;
         if (l >= 0 || e->pos[3].u == U_PX) x += e->pos[3].u == U_AUTO ? 0 : l; else if (r > 0) x -= r;
         if (e->pos[0].u == U_PX && e->pos[0].v < 0) y += 0;
     }
-    if (e->display == D_CONTENTS) { achatar_filhos(n, x, y, cb_x, cb_y, cb_l, cb_a); return; }
+    if (e->display == D_CONTENTS) { achatar_filhos(n, x, y, cb_x, cb_y, cb_l, cb_a); z_cur = z_salvo; cam_cur = cam_salva; return; }
     bool tem_caixa = !(e->display == D_INLINE && !eh_atomico(n));
     int salvo[4];
     memcpy(salvo, mo->clip, sizeof salvo);
@@ -3899,6 +4089,7 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     if (e->position != P_STATIC) { ncb_x = x + n->bl[3]; ncb_y = y + n->bl[0]; ncb_l = n->l - n->bl[1] - n->bl[3]; ncb_a = n->a - n->bl[0] - n->bl[2]; }
     achatar_filhos(n, x, y, ncb_x, ncb_y, ncb_l, ncb_a);
     memcpy(mo->clip, salvo, sizeof salvo);
+    z_cur = z_salvo; cam_cur = cam_salva;
 }
 
 static void achatar_adiados(int ini)
@@ -3909,6 +4100,8 @@ static void achatar_adiados(int ini)
         int cb_x = a.cb[0], cb_y = a.cb[1], cb_l = a.cb[2], cb_a = a.cb[3];
         if (c->e.position == P_FIXED) { cb_x = 0; cb_y = 0; cb_l = mo->vw; cb_a = mo->vh; }
         posicionar_abs(c, cb_x, cb_y, cb_l, cb_a, a.sx, a.sy);
+        z_cur = a.z; cam_cur = a.cam;
+        if (c->e.position == P_FIXED && mo->n_cams < 64) { camada_t *k = &mo->cams[mo->n_cams++]; k->fixo = 1; cam_cur = mo->n_cams; }
         int salvo[4];
         memcpy(salvo, mo->clip, sizeof salvo);
         memcpy(mo->clip, a.clip, sizeof salvo);
@@ -3927,11 +4120,44 @@ static void achatar_adiados(int ini)
         c->x = ax; c->y = ay;
         memcpy(mo->clip, salvo, sizeof salvo);
     }
+    z_cur = 0; cam_cur = 0;
+}
+
+/* Ordem de pintura por camada (estável): negativos, fluxo, posicionados por z. */
+static void ordenar_camadas(void)
+{
+    int n = mo->n_cmds, zs[64], nz = 0;
+    bool mistura = false;
+    for (int i = 0; i < n; i++) {
+        int z = mo->cmds[i].z, j = 0;
+        if (i && z < mo->cmds[i - 1].z) mistura = true;
+        while (j < nz && zs[j] != z) j++;
+        if (j == nz && nz < 64) zs[nz++] = z;
+    }
+    if (!mistura) return;
+    for (int i = 1; i < nz; i++) { int t = zs[i], j = i; while (j && zs[j - 1] > t) { zs[j] = zs[j - 1]; j--; } zs[j] = t; }
+    cmd_t *novo = aloca((size_t)n * sizeof(cmd_t));
+    if (!novo) return;
+    int k = 0;
+    for (int a = 0; a < nz; a++) for (int i = 0; i < n; i++) if (mo->cmds[i].z == zs[a]) novo[k++] = mo->cmds[i];
+    memcpy(mo->cmds, novo, (size_t)k * sizeof(cmd_t));
+    mo->n_cmds = k;
+    libera(novo);
+}
+static int desloc_camada(motor_t *m, int cam, int rol)
+{
+    if (!cam || cam > m->n_cams) return 0;
+    camada_t *k = &m->cams[cam - 1];
+    if (k->fixo) return rol;
+    int d = rol + k->topo - k->y0;
+    if (d < 0) d = 0;
+    if (d > k->lim) d = k->lim;
+    return d;
 }
 
 /* ================================================================ API */
 
-static char *folhas_txt[64]; static int folhas_n[64]; static int n_folhas;
+static char *folhas_txt[64]; static int folhas_n[64]; static int n_folhas; static char *folhas_base[64];
 
 static int largura_regras = -1;
 
@@ -3952,6 +4178,7 @@ void motor_fim(motor_t *m)
 {
     if (!m) return;
     for (int i = 0; i < m->n_imgs; i++) if (m->imgs[i].px) libera(m->imgs[i].px);
+    for (int i = 0; i < m->n_faces; i++) if (m->faces[i].f) fonte_fechar(m->faces[i].f);
     while (m->blocos) { bloco_m *b = m->blocos; m->blocos = b->prox; libera(b); }
     libera(m);
     n_folhas = 0;
@@ -3964,9 +4191,10 @@ static no_m *proximo_no(no_m *n)
     return n ? n->prox : NULL;
 }
 
-static void guardar_folha(motor_t *m, const char *t, int n)
+static void guardar_folha(motor_t *m, const char *t, int n, const char *base)
 {
     if (n_folhas >= 64 || n <= 0) return;
+    folhas_base[n_folhas] = base ? m_dup(m, base, (int)tam_texto(base)) : NULL;
     folhas_txt[n_folhas] = m_dup(m, t, n);
     folhas_n[n_folhas++] = n;
 }
@@ -3989,7 +4217,7 @@ void motor_ler(motor_t *m, const char *html, int n, const char *url)
         }
         if (igual(q->tag, "style") && q->filho && q->filho->texto) {
             const char *md = atributo_m(q, "media");
-            if (!md || media_ok(m, md, (int)tam_texto(md)) || 1) guardar_folha(m, q->filho->t, q->filho->nt);
+            if (!md || media_ok(m, md, (int)tam_texto(md)) || 1) guardar_folha(m, q->filho->t, q->filho->nt, NULL);
         }
         if (igual(q->tag, "link")) {
             const char *rel = atributo_m(q, "rel"), *h = atributo_m(q, "href");
@@ -4000,7 +4228,7 @@ void motor_ler(motor_t *m, const char *html, int n, const char *url)
                 unsigned tam = 0;
                 uint8_t *d = m->g.baixar(u, &tam);
                 m->folhas++;
-                if (d) { guardar_folha(m, (const char *)d, (int)tam); libera(d); }
+                if (d) { guardar_folha(m, (const char *)d, (int)tam, u); libera(d); }
             }
         }
         if (igual(q->tag, "img") || (igual(q->tag, "input") && atributo_m(q, "src"))) {
@@ -4020,6 +4248,18 @@ void motor_ler(motor_t *m, const char *html, int n, const char *url)
 int motor_imagens(motor_t *m, int max)
 {
     int k = 0;
+    /* fontes da web das famílias que o texto usa: chegam antes das imagens (mudam a diagramação) */
+    for (int i = 0; i < m->n_faces && k < max; i++) {
+        if (m->faces[i].tentou || !(m->fam_usada & (1u << m->faces[i].fam)) || !m->g.baixar) continue;
+        m->faces[i].tentou = 1;
+        k++;
+        unsigned n = 0;
+        uint8_t *d = m->g.baixar(m->faces[i].url, &n);
+        if (!d) continue;
+        m->faces[i].f = fonte_abrir(d, n);
+        registrar("cipo: fonte %s %s (%u bytes)\n", m->fams[m->faces[i].fam], m->faces[i].f ? "ok" : "nao abriu", n);
+        libera(d);
+    }
     for (int i = 0; i < m->n_imgs && k < max; i++) {
         imagem_m *im = &m->imgs[i];
         if (im->tentou) continue;
@@ -4083,7 +4323,10 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
         ua_fim = m->n_regras;
         for (int i = 0; i < n_folhas; i++) {
             int antes = m->n_regras;
+            base_folha = folhas_base[i];
+            if (largura_regras >= 0) { ler_folha_sem_faces = 1; }
             ler_folha(m, folhas_txt[i], folhas_n[i], 0);
+            ler_folha_sem_faces = 0; base_folha = NULL;
             if (largura_regras < 0) registrar("cipo: css %d regras\n", m->n_regras - antes);
         }
         largura_regras = largura;
@@ -4103,13 +4346,15 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
         if (c->e.fundo) m->fundo = c->e.fundo & 0xFFFFFF;
         else for (no_m *b = c->filho; b; b = b->prox) if (!b->texto && igual(b->tag, "body") && b->e.fundo) m->fundo = b->e.fundo & 0xFFFFFF;
     }
-    m->n_cmds = 0; m->n_regs = 0; n_adiados = 0;
+    m->n_cmds = 0; m->n_regs = 0; n_adiados = 0; m->n_cams = 0; z_cur = 0; cam_cur = 0;
     m->clip[0] = -INF; m->clip[1] = -INF; m->clip[2] = INF; m->clip[3] = INF;
     achatar(m->raiz, 0, 0, 0, 0, largura, altura_tela);
     achatar_adiados(0);
+    ordenar_camadas();
     int h = m->raiz->a;
     for (int i = 0; i < m->n_cmds; i++) {
         cmd_t *c = &m->cmds[i];
+        if (c->cam) continue;   /* fixed/sticky não aumentam a página */
         int fim = c->y + c->a;
         if (c->cy1 < fim) fim = c->cy1;
         if (fim > h && fim < INF / 2) h = fim;
@@ -4172,8 +4417,37 @@ static char maiuscula(char c)
     return c;
 }
 
+/* texto com fonte da web: glifos com antialias, avanço em 1/64 px */
+static void texto_ttf(alvo_px_t *t, cmd_t *c)
+{
+    fonte_t *f = c->fo;
+    int px = c->tam < 4 ? 4 : c->tam;
+    int asc = fonte_ascendente(f, px), des = fonte_descendente(f, px), tot = asc + des;
+    int base = c->y + (tot > 0 ? (px * asc + tot / 2) / tot : px * 4 / 5);
+    int x64 = c->x * 64;
+    estilo_t e; memset(&e, 0, sizeof e); e.maiusc = (uint8_t)c->raio;
+    for (int i = 0; i < c->nt; i++) {
+        uint8_t ch = transformar_car(&e, c->t, i);
+        int x = (x64 + 32) >> 6;
+        x64 += fonte_avanco(f, ch, px);
+        if (ch == ' ' || ch == 0xA0 || x > t->c2) continue;
+        int l, a, ox, oy;
+        const uint8_t *g = fonte_glifo(f, ch, px, &l, &a, &ox, &oy);
+        if (!g || x + ox + l < t->c0) continue;
+        for (int yy = 0; yy < a; yy++) {
+            int py = base + oy + yy;
+            if (py < t->c1 || py >= t->c3) continue;
+            const uint8_t *lin = g + yy * l;
+            for (int xx = 0; xx < l; xx++) if (lin[xx] > 8) ponto(t, x + ox + xx, py, ((uint32_t)lin[xx] << 24) | (c->cor & 0xFFFFFF));
+        }
+    }
+    if (c->sublinha & 1) ret(t, c->x, base + px / 10 + 1, c->l, px >= 24 ? 2 : 1, 0xFF000000u | c->cor, 0);
+    if (c->sublinha & 2) ret(t, c->x, base - asc / 3, c->l, 1, 0xFF000000u | c->cor, 0);
+}
+
 static void texto_px(alvo_px_t *t, cmd_t *c)
 {
+    if (c->fo) { texto_ttf(t, c); return; }
     int tam = c->tam < 6 ? 6 : c->tam;
     int lw = (tam + 1) / 2, lh = tam;
     int x = c->x;
@@ -4230,8 +4504,15 @@ void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
 {
     alvo_px_t t = { px, larg, passo, y, a, 0, y, larg, y + a };
     for (int yy = 0; yy < a; yy++) { uint32_t *l = px + yy * passo; for (int xx = 0; xx < larg; xx++) l[xx] = m->fundo; }
+    m->rolagem = y;
     for (int i = 0; i < m->n_cmds; i++) {
-        cmd_t *c = &m->cmds[i];
+        cmd_t cc = m->cmds[i], *c = &cc;
+        if (c->cam) {
+            int d = desloc_camada(m, c->cam, y);
+            c->y += d;
+            if (c->cy0 > -INF / 2) c->cy0 += d;
+            if (c->cy1 < INF / 2) c->cy1 += d;
+        }
         if (c->y >= y + a || c->y + c->a + 4 <= y) continue;
         t.c0 = c->cx0 > 0 ? c->cx0 : 0; t.c1 = c->cy0 > y ? c->cy0 : y;
         t.c2 = c->cx1 < larg ? c->cx1 : larg; t.c3 = c->cy1 < y + a ? c->cy1 : y + a;
@@ -4269,11 +4550,13 @@ void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
 
 const motor_alvo_t *motor_alvo(motor_t *m, int x, int y)
 {
+    regiao_t *melhor = NULL;
     for (int i = m->n_regs - 1; i >= 0; i--) {
         regiao_t *r = &m->regs[i];
-        if (x >= r->x && x < r->x + r->l && y >= r->y && y < r->y + r->a && r->alvo < m->n_alvos) return &m->alvos[r->alvo];
+        int ry = r->y + desloc_camada(m, r->cam, m->rolagem);
+        if (x >= r->x && x < r->x + r->l && y >= ry && y < ry + r->a && r->alvo < m->n_alvos && (!melhor || r->z > melhor->z)) melhor = r;
     }
-    return NULL;
+    return melhor ? &m->alvos[melhor->alvo] : NULL;
 }
 
 const char *motor_titulo(motor_t *m) { return m->titulo; }

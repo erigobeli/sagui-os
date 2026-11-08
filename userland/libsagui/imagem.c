@@ -133,6 +133,8 @@ static bool inflar(const uint8_t *p, unsigned n, uint8_t *s, unsigned max)
     } while (!ultimo);
     return o == max;
 }
+/* deflate cru (sem o cabeçalho zlib de 2 bytes): usado pelas fontes WOFF */
+bool inflar_zlib(const uint8_t *p, unsigned n, uint8_t *s, unsigned max) { return inflar(p, n, s, max); }
 
 /* ------------------------------------------------------------ PNG */
 
