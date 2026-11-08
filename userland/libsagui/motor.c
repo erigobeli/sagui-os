@@ -52,11 +52,12 @@ typedef struct {
     const char *area;       /* grid-area: nome */
     uint8_t opaco0;         /* opacity: 0 */
     const char *bg_url;     /* background-image: url() */
+    const char *mask_url;   /* mask-image: url() */
     const char *conteudo;   /* content */
     uint8_t bg_tam;         /* 0 natural, 1 cobre/estica, 2 contém */
     uint8_t mascara;        /* mask-image: o fundo é a cor de um ícone que não desenhamos */
     int16_t z; uint8_t z_def;           /* z-index; z_def = não é auto */
-    medida_t tf[2];                     /* transform: translate (x, y) */
+    const char *tf_txt;                 /* transform (texto; resolvido no achatamento, % depende da caixa) */
     int8_t fam;                         /* font-family: família de @font-face, -1 = fonte do sistema */
 } estilo_t;
 
@@ -86,6 +87,7 @@ typedef struct no_m {
     uint8_t pseudo;                 /* nó gerado por ::before/::after */
     struct no_m *ps[2];
     int bg_img;                     /* índice da imagem de fundo, -1 */
+    int mask_img;                   /* índice da imagem da máscara, -1 */
 } no_m;
 
 /* ================================================================ CSS */
@@ -120,7 +122,7 @@ typedef struct { const char *chave; int *regras; int n, cap; } balde_t;
 
 /* ================================================================ pintura */
 
-enum { C_RET, C_BORDA, C_TEXTO, C_IMG, C_LINHA };
+enum { C_RET, C_BORDA, C_TEXTO, C_IMG, C_LINHA, C_POLY, C_IMGR, C_NADA, C_MASK };
 typedef struct {
     uint8_t tipo, peso, italico, sublinha;
     int16_t tam, raio;
@@ -130,12 +132,14 @@ typedef struct {
     int img;
     int cx0, cy0, cx1, cy1;     /* recorte */
     int16_t bw[4]; uint32_t bc[4];
-    int z;          /* camada de pintura: 0 fluxo, 2z+1 posicionados */
+    uint32_t z;     /* camada de pintura: chave hierárquica dos contextos de empilhamento */
     fonte_t *fo;    /* fonte da web do texto, ou NULL (bitmap) */
+    int px4[4], py4[4];     /* C_POLY: quadrilátero girado (x, y em 1/16 px) */
+    int32_t q[6]; int ol, oa;  /* C_IMGR: tela -> imagem (16.16) e tamanho original */
     int cam;        /* 0 ou índice+1 em camadas (fixed/sticky seguem a rolagem) */
 } cmd_t;
 
-typedef struct { int x, y, l, a; int alvo; int z, cam; } regiao_t;
+typedef struct { int x, y, l, a; int alvo; uint32_t z; int cam; } regiao_t;
 /* fixed: desloca pela rolagem; sticky: desloca até prender no topo, sem sair do pai */
 typedef struct { uint8_t fixo; int y0, topo, lim; } camada_t;
 
@@ -282,9 +286,9 @@ static int entidades(char *d, int n)
         }
         if (!ok) { d[k++] = d[i++]; continue; }
         if (j < n && d[j] == ';') j++;
-        char l = para_l1(c);
-        if (c == 0 || (!l && c > 0xFF)) { if (c > 0xFF && !l) d[k++] = '?'; }
-        else d[k++] = l;
+        if (c > 0xFF && c != 0x200B && c != 0x200C && c != 0x200D && c != 0xFEFF && j - i >= 4) k += larga_por(d + k, c);   /* cabe: a entidade tem >= 4 bytes */
+        else if (c > 0xFF) { char l = para_l1(c); if (l) d[k++] = l; }
+        else if (c) d[k++] = (char)c;
         i = j;
     }
     return k;
@@ -578,7 +582,7 @@ static int achar_prop(const char *p, int n)
         {"margin-inline", PR_MINLINE}, {"margin-block", PR_MBLOCK}, {"padding-inline", PR_PINLINE}, {"padding-block", PR_PBLOCK},
         {"inset-inline-start", PR_LEFT}, {"inset-inline-end", PR_RIGHT}, {"inset-block-start", PR_TOP}, {"inset-block-end", PR_BOTTOM},
         {"inline-size", PR_WIDTH}, {"block-size", PR_HEIGHT}, {"max-inline-size", PR_MAXW}, {"min-inline-size", PR_MINW},
-        {"max-block-size", PR_MAXH}, {"min-block-size", PR_MINH}, {"grid-row-start", PR_GROW_L},
+        {"max-block-size", PR_MAXH}, {"min-block-size", PR_MINH}, {"grid-row-start", PR_GROW_L}, {"mask", PR_MASK},
     };
     for (unsigned i = 0; i < sizeof logicas / sizeof logicas[0]; i++) if ((int)tam_texto(logicas[i].n) == n && igual_n(p, logicas[i].n, n)) return logicas[i].p;
     for (int i = 1; i < PR_CUSTOM; i++) if ((int)tam_texto(nomes_prop[i]) == n && igual_n(p, nomes_prop[i], n)) return i;
@@ -1099,6 +1103,20 @@ static void ler_regra(motor_t *m, const char *sel, int ns, const char *d, int nd
 /* Folha de estilo. As regras dentro de @media só entram se a mídia vale
  * para a largura atual (o motor relê as folhas quando a largura muda). */
 static int ler_peso(const char *v);
+/* primeiro url(...) do valor; aceita aspas (data: com aspas do outro tipo dentro) */
+static const char *ler_url(const char *v, int *n)
+{
+    const char *u = v;
+    for (; *u; u++) if (igual_n(u, "url(", 4)) break;
+    if (!*u) return NULL;
+    u += 4;
+    while (*u == ' ') u++;
+    const char *f;
+    if (*u == '"' || *u == '\'') { char q = *u++; f = u; while (*f && *f != q) f++; }
+    else { f = u; while (*f && *f != ')') f++; while (f > u && f[-1] == ' ') f--; }
+    *n = (int)(f - u);
+    return *n > 0 ? u : NULL;
+}
 static const char *base_folha; static int ler_folha_sem_faces;   /* URL da folha sendo lida (url() de @font-face é relativo a ela) */
 static void juntar(const char *base, const char *rel, char *s, int max);
 /* @font-face: guarda família, peso, estilo e a melhor fonte de src (woff2 > woff > ttf) */
@@ -1630,15 +1648,9 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         /* fallthrough */
     case PR_BG: {
         {
-            const char *u = v;
-            for (; *u; u++) if (igual_n(u, "url(", 4)) break;
-            if (*u) {
-                u += 4;
-                while (*u == ' ' || *u == '"' || *u == '\'') u++;
-                const char *f = u;
-                while (*f && *f != ')' && *f != '"' && *f != '\'') f++;
-                if (f > u && !igual_n(u, "data:", 5)) e->bg_url = m_dup(m, u, (int)(f - u));
-            } else if (prop == PR_BGIMAGE && strstr_m(v, "none")) e->bg_url = NULL;
+            int un; const char *u = ler_url(v, &un);
+            if (u) e->bg_url = m_dup(m, u, un);
+            else if (prop == PR_BGIMAGE && strstr_m(v, "none")) e->bg_url = NULL;
             if (prop == PR_BG) { if (strstr_m(v, "cover")) e->bg_tam = 1; else if (strstr_m(v, "contain")) e->bg_tam = 2; }
             if (prop == PR_BGIMAGE) break;
         }
@@ -1771,36 +1783,12 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         break;
     }
     case PR_CONTENT: e->conteudo = v; break;
-    case PR_MASK: e->mascara = !strstr_m(v, "none"); break;
+    case PR_MASK: { int un; const char *u = ler_url(v, &un); e->mascara = !strstr_m(v, "none") || u; e->mask_url = u ? m_dup(m, u, un) : NULL; break; }
     case PR_OPACITY: { int u; int x = num100(v, nv, &u); if (u) e->opaco0 = x <= 0; break; }
     case PR_TTRANSFORM: e->maiusc = igual(v, "uppercase") ? 1 : igual(v, "lowercase") ? 2 : igual(v, "capitalize") ? 3 : 0; break;
     case PR_VALIGN: e->vert = igual(v, "middle") ? 1 : igual(v, "top") ? 2 : igual(v, "bottom") ? 3 : 0; break;
     case PR_ZINDEX: { int u; int x = num100(v, nv, &u); if (u) { e->z = (int16_t)(x / 100); e->z_def = 1; } else e->z_def = 0; break; }
-    case PR_TRANSFORM: {
-        /* só translate (o mais comum: centralizar com -50%); rotate/scale ficam de fora */
-        e->tf[0].u = e->tf[1].u = U_PX; e->tf[0].v = e->tf[1].v = 0;
-        for (const char *p = v; *p; p++) {
-            if (!igual_n(p, "translate", 9)) continue;
-            p += 9;
-            int eixo = -1;
-            if (*p == 'X' || *p == 'x') { eixo = 0; p++; } else if (*p == 'Y' || *p == 'y') { eixo = 1; p++; } else if (*p == '3') p += 2;
-            if (*p != '(') continue;
-            const char *f = ++p; while (*f && *f != ')') f++;
-            int k = eixo < 0 ? 0 : eixo;
-            for (const char *c = p; c < f && k < 2; k++) {
-                const char *d = c; while (d < f && *d != ',') d++;
-                medida_t m;
-                if (ler_medida_m(c, (int)(d - c), &m) && m.u != U_AUTO && m.u != U_NONE) {
-                    if (m.u == U_EM || m.u == U_REM) { m.v = px_de(&m, e->tam); m.u = U_PX; }
-                    e->tf[k] = m;
-                }
-                if (eixo >= 0) break;
-                c = d + 1;
-            }
-            p = *f ? f : f - 1;
-        }
-        break;
-    }
+    case PR_TRANSFORM: e->tf_txt = igual(v, "none") ? NULL : m_dup(m, v, nv); break;
     default: break;
     }
 }
@@ -1998,13 +1986,20 @@ static int imagem_idx(motor_t *m, const char *url)
     return m->n_imgs++;
 }
 
+static int url_img(motor_t *m, const char *rel)
+{
+    if (!rel) return -1;
+    if (comeca_com(rel, "data:")) return imagem_idx(m, rel);
+    char u[600]; juntar(m->url, rel, u, sizeof u);
+    return imagem_idx(m, u);
+}
 static void estilizar_tudo(motor_t *m, no_m *n)
 {
     for (; n; n = n->prox) {
-        if (n->pseudo) { n->bg_img = -1; if (n->e.bg_url) { char u[600]; juntar(m->url, n->e.bg_url, u, sizeof u); n->bg_img = imagem_idx(m, u); } continue; }
+        if (n->pseudo) { n->bg_img = url_img(m, n->e.bg_url); n->mask_img = url_img(m, n->e.mask_url); continue; }
         estilizar(m, n);
-        n->bg_img = -1;
-        if (!n->texto && n->e.bg_url) { char u[600]; juntar(m->url, n->e.bg_url, u, sizeof u); n->bg_img = imagem_idx(m, u); }
+        n->bg_img = -1; n->mask_img = -1;
+        if (!n->texto) { n->bg_img = url_img(m, n->e.bg_url); n->mask_img = url_img(m, n->e.mask_url); }
         if (n->e.display == D_NONE) continue;
         if (n->filho) estilizar_tudo(m, n->filho);
     }
@@ -2235,9 +2230,16 @@ static uint8_t transformar_car(const estilo_t *e, const char *t, int i)
 static int larg_texto(const estilo_t *e, const char *t, int n)
 {
     fonte_t *f = fonte_de(e);
-    if (!f) return n * larg_letra(e);
+    if (!f) {
+        int c = n;
+        for (int i = 0; i + 3 < n; i++) if (eh_larga(t + i, n - i)) { c -= 3; i += 3; }
+        return c * larg_letra(e);
+    }
     int s = 0;
-    for (int i = 0; i < n; i++) s += fonte_avanco(f, transformar_car(e, t, i), e->tam);
+    for (int i = 0; i < n; i++) {
+        if (eh_larga(t + i, n - i)) { s += fonte_avanco(f, larga_ler(t + i), e->tam); i += 3; continue; }
+        s += fonte_avanco(f, transformar_car(e, t, i), e->tam);
+    }
     return (s + 32) / 64;
 }
 static int larg_car(const estilo_t *e, char ch) { return larg_texto(e, &ch, 1); }
@@ -2259,7 +2261,9 @@ static void medir_inline(no_m *n, int *mx, int *mn, int *linha)
                     *linha += larg_car(e, ' ');
                     continue;
                 }
-                int w = larg_car(e, ch);
+                int w;
+                if (eh_larga(c->t + i, c->nt - i)) { w = larg_texto(e, c->t + i, 4); i += 3; }
+                else w = larg_car(e, ch);
                 pal += w;
                 *linha += w;
             }
@@ -3366,7 +3370,12 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
 
 /* ================================================================ achatar */
 
-static int z_cur, cam_cur;
+/* Contextos de empilhamento: a chave tem 4 níveis de 8 bits (do mais alto ao
+ * mais baixo). Em cada nível: 128 = fluxo normal, (64+z)*2+1 = posicionado
+ * com z (auto/0 = 129). Um elemento com z-index cria um nível novo para os
+ * descendentes, que então só se ordenam entre si, dentro dele. */
+#define Z_FLUXO (128u << 24)
+static uint32_t z_cur = Z_FLUXO, z_pref; static int z_niv, cam_cur;
 static void cmd_novo(cmd_t *c)
 {
     c->z = z_cur; c->cam = cam_cur;
@@ -3850,7 +3859,7 @@ static uint32_t *svg_desenhar(no_m *n, int l, int a)
     return px;
 }
 
-typedef struct { no_m *n; int sx, sy; int clip[4]; int cb[4]; int z, cam; } adiado_t;
+typedef struct { no_m *n; int sx, sy; int clip[4]; int cb[4]; uint32_t z, pref; int niv, cam; } adiado_t;
 static adiado_t adiados[512]; static int n_adiados;
 
 static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int cb_a);
@@ -3891,7 +3900,7 @@ static void achatar_filhos(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l
                 a->sx = ox + c->x; a->sy = oy + c->y;   /* posição estática */
                 memcpy(a->clip, mo->clip, sizeof a->clip);
                 if (c->e.position == P_FIXED) { a->clip[0] = -INF; a->clip[1] = -INF; a->clip[2] = INF; a->clip[3] = INF; }
-                a->z = z_cur; a->cam = cam_cur;
+                a->z = z_cur; a->pref = z_pref; a->niv = z_niv; a->cam = cam_cur;
                 a->cb[0] = cb_x; a->cb[1] = cb_y; a->cb[2] = cb_l; a->cb[3] = cb_a;
             }
             continue;
@@ -3904,6 +3913,16 @@ static void desenhar_caixa(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
     if (e->visivel || e->opaco0) return;
+    if (e->fundo && e->mascara && n->mask_img >= 0 && mo->imgs[n->mask_img].px && n->l > 0 && n->a > 0) {
+        /* mask-image: a cor de fundo só onde a máscara é opaca (ajuste contain, centrada) */
+        imagem_m *im = &mo->imgs[n->mask_img];
+        cmd_t c; memset(&c, 0, sizeof c);
+        c.tipo = C_MASK; c.img = n->mask_img; c.cor = e->fundo;
+        int l = n->l, a = n->a;
+        if ((long long)im->l * n->a > (long long)im->a * n->l) a = im->a * n->l / (im->l ? im->l : 1); else l = im->l * n->a / (im->a ? im->a : 1);
+        c.x = x + (n->l - l) / 2; c.y = y + (n->a - a) / 2; c.l = l; c.a = a;
+        cmd_novo(&c);
+    }
     if (e->fundo && !e->mascara) {
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_RET; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.cor = e->fundo; c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
@@ -4010,20 +4029,226 @@ static void controle(no_m *n, int x, int y)
     }
 }
 
+/* ------------------------------------------------- transform */
+
+static const int32_t SEN[91] = { 0,1144,2287,3430,4572,5712,6850,7987,9121,10252,11380,12505,13626,14742,15855,16962,18064,19161,20252,21336,
+    22415,23486,24550,25607,26656,27697,28729,29753,30767,31772,32768,33754,34729,35693,36647,37590,38521,39441,40348,41243,42126,42995,43852,
+    44695,45525,46341,47143,47930,48703,49461,50203,50931,51643,52339,53020,53684,54332,54963,55578,56175,56756,57319,57865,58393,58903,59396,
+    59870,60326,60764,61183,61584,61966,62328,62672,62997,63303,63589,63856,64104,64332,64540,64729,64898,65048,65177,65287,65376,65446,65496,
+    65526,65536 };   /* sen(g graus) x 65536 */
+static int32_t seno_g(int g)
+{
+    g %= 360; if (g < 0) g += 360;
+    if (g <= 90) return SEN[g];
+    if (g <= 180) return SEN[180 - g];
+    if (g <= 270) return -SEN[g - 180];
+    return -SEN[360 - g];
+}
+static int32_t tan_g(int g) { int32_t c = seno_g(g + 90); return c ? muldiv(seno_g(g), 65536, c) : 0; }
+/* ângulo em graus inteiros: deg, rad, turn, grad */
+static int ler_angulo(const char *s, int n)
+{
+    int u; int v = num100(s, n, &u);
+    if (!u) return 0;
+    const char *un = s + u;
+    if (igual_n(un, "rad", 3)) return v * 573 / 1000;
+    if (igual_n(un, "turn", 4)) return v * 36 / 10;
+    if (igual_n(un, "grad", 4)) return v * 9 / 1000;
+    return v / 100;
+}
+static int32_t fator16(const char *s, int n)   /* número -> 16.16 */
+{
+    int u; int v = num100(s, n, &u);
+    if (!u) return 65536;
+    if (n > u && s[u] == '%') v /= 100;
+    if (v > 3000) v = 3000; if (v < -3000) v = -3000;
+    return v * 16384 / 25;
+}
+/* Matriz afim do transform: a b c d em 16.16, e f em px. Falso se identidade. */
+static bool tf_matriz(const char *v, int l, int al, const estilo_t *es, int32_t M[6])
+{
+    M[0] = 65536; M[1] = 0; M[2] = 0; M[3] = 65536; M[4] = 0; M[5] = 0;
+    bool algo = false;
+    for (const char *p = v; *p;) {
+        while (*p && (eh_esp(*p) || *p == ',')) p++;
+        const char *nm = p; while (*p && *p != '(') p++;
+        if (!*p) break;
+        int nn = (int)(p - nm);
+        const char *a0 = ++p; while (*p && *p != ')') p++;
+        const char *a1 = p; if (*p) p++;
+        const char *ar[6]; int an[6], na = 0;
+        for (const char *q = a0; q < a1 && na < 6;) {
+            while (q < a1 && (eh_esp(*q) || *q == ',')) q++;
+            if (q >= a1) break;
+            const char *w = q; while (q < a1 && !eh_esp(*q) && *q != ',') q++;
+            ar[na] = w; an[na++] = (int)(q - w);
+        }
+        int32_t F[6] = { 65536, 0, 0, 65536, 0, 0 };
+        #define NOME(t) (nn == (int)sizeof(t) - 1 && igual_n(nm, t, nn))
+        if (NOME("translate") || NOME("translateX") || NOME("translateY") || NOME("translate3d")) {
+            for (int k = 0; k < na && k < 2; k++) {
+                medida_t md;
+                if (!ler_medida_m(ar[k], an[k], &md)) continue;
+                int eixo = NOME("translateY") ? 1 : k;
+                if (NOME("translateX") && k) break;
+                int px = md.u == U_PCT ? muldiv(md.v, eixo ? al : l, 10000) : md.u == U_EM || md.u == U_REM ? px_de(&md, es->tam) : res_med(&md, 0, es);
+                if (md.u == U_PX) px = md.v;
+                F[4 + eixo] = px;
+                if (NOME("translateY")) break;
+            }
+        } else if (NOME("scale") || NOME("scaleX") || NOME("scaleY") || NOME("scale3d")) {
+            int32_t sx = na ? fator16(ar[0], an[0]) : 65536, sy = na > 1 && !NOME("scale3d") ? fator16(ar[1], an[1]) : NOME("scale3d") && na > 1 ? fator16(ar[1], an[1]) : sx;
+            if (NOME("scaleX")) sy = 65536;
+            if (NOME("scaleY")) { sy = sx; sx = 65536; }
+            F[0] = sx; F[3] = sy;
+        } else if (NOME("rotate") || NOME("rotateZ")) {
+            int g = na ? ler_angulo(ar[0], an[0]) : 0;
+            int32_t sn = seno_g(g), cs = seno_g(g + 90);
+            F[0] = cs; F[1] = sn; F[2] = -sn; F[3] = cs;
+        } else if (NOME("skew") || NOME("skewX") || NOME("skewY")) {
+            int gx = na ? ler_angulo(ar[0], an[0]) : 0, gy = na > 1 ? ler_angulo(ar[1], an[1]) : 0;
+            if (NOME("skewY")) { gy = gx; gx = 0; }
+            F[2] = tan_g(gx); F[1] = tan_g(gy);
+        } else if (NOME("matrix") && na == 6) {
+            for (int k = 0; k < 4; k++) F[k] = fator16(ar[k], an[k]);
+            int u; F[4] = num100(ar[4], an[4], &u) / 100; F[5] = num100(ar[5], an[5], &u) / 100;
+        } else continue;
+        #undef NOME
+        int32_t R[6];
+        R[0] = (int32_t)(((int64_t)M[0] * F[0] + (int64_t)M[2] * F[1]) >> 16);
+        R[1] = (int32_t)(((int64_t)M[1] * F[0] + (int64_t)M[3] * F[1]) >> 16);
+        R[2] = (int32_t)(((int64_t)M[0] * F[2] + (int64_t)M[2] * F[3]) >> 16);
+        R[3] = (int32_t)(((int64_t)M[1] * F[2] + (int64_t)M[3] * F[3]) >> 16);
+        R[4] = (int32_t)(((int64_t)M[0] * F[4] + (int64_t)M[2] * F[5]) >> 16) + M[4];
+        R[5] = (int32_t)(((int64_t)M[1] * F[4] + (int64_t)M[3] * F[5]) >> 16) + M[5];
+        memcpy(M, R, sizeof R);
+        algo = true;
+    }
+    return algo;
+}
+/* ponto (x, y) da página pela matriz em torno da origem (ox, oy); saída em 1/16 px */
+static void tf_ponto(const int32_t M[6], int ox, int oy, int x, int y, int *rx, int *ry)
+{
+    int dx = x - ox, dy = y - oy;
+    *rx = (int)((((int64_t)M[0] * dx + (int64_t)M[2] * dy) >> 12) + (ox + M[4]) * 16);
+    *ry = (int)((((int64_t)M[1] * dx + (int64_t)M[3] * dy) >> 12) + (oy + M[5]) * 16);
+}
+static void tf_caixa(const int32_t M[6], int ox, int oy, int x, int y, int l, int a, int *bx, int *by, int *bl, int *ba)
+{
+    int px[4], py[4];
+    tf_ponto(M, ox, oy, x, y, &px[0], &py[0]); tf_ponto(M, ox, oy, x + l, y, &px[1], &py[1]);
+    tf_ponto(M, ox, oy, x + l, y + a, &px[2], &py[2]); tf_ponto(M, ox, oy, x, y + a, &px[3], &py[3]);
+    int x0 = px[0], x1 = px[0], y0 = py[0], y1 = py[0];
+    for (int i = 1; i < 4; i++) { if (px[i] < x0) x0 = px[i]; if (px[i] > x1) x1 = px[i]; if (py[i] < y0) y0 = py[i]; if (py[i] > y1) y1 = py[i]; }
+    *bx = x0 >> 4; *by = y0 >> 4; *bl = ((x1 + 15) >> 4) - *bx; *ba = ((y1 + 15) >> 4) - *by;
+}
+static void tf_poly(cmd_t *c, const int32_t M[6], int ox, int oy, int x, int y, int l, int a, uint32_t cor)
+{
+    c->tipo = C_POLY; c->cor = cor;
+    tf_ponto(M, ox, oy, x, y, &c->px4[0], &c->py4[0]); tf_ponto(M, ox, oy, x + l, y, &c->px4[1], &c->py4[1]);
+    tf_ponto(M, ox, oy, x + l, y + a, &c->px4[2], &c->py4[2]); tf_ponto(M, ox, oy, x, y + a, &c->px4[3], &c->py4[3]);
+    tf_caixa(M, ox, oy, x, y, l, a, &c->x, &c->y, &c->l, &c->a);
+}
+static int32_t abs32(int32_t v) { return v < 0 ? -v : v; }
+/* aplica a matriz aos comandos [i0, n) e regiões [r0, n) já emitidos pela subárvore */
+static void tf_aplicar(int i0, int r0, const int32_t M[6], int ox, int oy)
+{
+    bool alinhado = M[1] == 0 && M[2] == 0;
+    int fim = mo->n_cmds;
+    for (int i = i0; i < fim; i++) {
+        cmd_t *c = &mo->cmds[i];
+        if (c->cx0 > -INF / 2 && c->cx1 < INF / 2 && c->cy0 > -INF / 2 && c->cy1 < INF / 2) {
+            int bx, by, bl, ba;
+            tf_caixa(M, ox, oy, c->cx0, c->cy0, c->cx1 - c->cx0, c->cy1 - c->cy0, &bx, &by, &bl, &ba);
+            c->cx0 = bx; c->cy0 = by; c->cx1 = bx + bl; c->cy1 = by + ba;
+        }
+        if ((alinhado && c->tipo != C_POLY && c->tipo != C_IMGR) || c->tipo == C_TEXTO) {
+            int bx, by, bl, ba;
+            tf_caixa(M, ox, oy, c->x, c->y, c->l, c->a, &bx, &by, &bl, &ba);
+            if (c->tipo == C_TEXTO) {
+                int32_t esc = alinhado ? abs32(M[3]) : 65536;
+                int t2 = (int)(((int64_t)c->tam * esc) >> 16);
+                /* texto girado: fica reto, centrado no lugar novo */
+                c->x = bx + (bl - (int)(((int64_t)c->l * (alinhado ? abs32(M[0]) : 65536)) >> 16)) / 2;
+                c->y = by + (ba - (int)(((int64_t)c->a * esc) >> 16)) / 2;
+                c->l = (int)(((int64_t)c->l * (alinhado ? abs32(M[0]) : 65536)) >> 16);
+                c->a = (int)(((int64_t)c->a * esc) >> 16);
+                c->tam = (int16_t)(t2 < 4 ? 4 : t2);
+                continue;
+            }
+            c->x = bx; c->y = by; c->l = bl; c->a = ba;
+            if (c->tipo == C_RET || c->tipo == C_IMG || c->tipo == C_BORDA) c->raio = (int16_t)(((int64_t)c->raio * abs32(M[0])) >> 16);
+            if (c->tipo == C_BORDA) for (int k = 0; k < 4; k++) c->bw[k] = (int16_t)((((int64_t)c->bw[k] * abs32(k & 1 ? M[0] : M[3])) >> 16) ? (((int64_t)c->bw[k] * abs32(k & 1 ? M[0] : M[3])) >> 16) : (c->bw[k] ? 1 : 0));
+            continue;
+        }
+        /* girado ou inclinado */
+        if (c->tipo == C_RET) { tf_poly(c, M, ox, oy, c->x, c->y, c->l, c->a, c->cor); continue; }
+        if (c->tipo == C_BORDA) {
+            cmd_t b = *c;
+            c->tipo = C_NADA;
+            int x = b.x, y = b.y, l = b.l, a = b.a;
+            int lados[4][4] = { { x, y, l, b.bw[0] }, { x + l - b.bw[1], y, b.bw[1], a }, { x, y + a - b.bw[2], l, b.bw[2] }, { x, y, b.bw[3], a } };
+            for (int k = 0; k < 4; k++) {
+                if (!b.bw[k]) continue;
+                cmd_t s2 = b;
+                tf_poly(&s2, M, ox, oy, lados[k][0], lados[k][1], lados[k][2], lados[k][3], b.bc[k]);
+                if (!crescer_v(mo, (void **)&mo->cmds, &mo->cap_cmds, mo->n_cmds + 1, sizeof(cmd_t))) break;
+                c = &mo->cmds[i];
+                mo->cmds[mo->n_cmds++] = s2;
+            }
+            continue;
+        }
+        if (c->tipo == C_IMG) {
+            /* inversa: tela -> retângulo original */
+            int32_t det = (int32_t)(((int64_t)M[0] * M[3] - (int64_t)M[1] * M[2]) >> 16);
+            if (!det) { c->tipo = C_NADA; continue; }
+            int x = c->x, y = c->y, l = c->l, a = c->a;
+            int32_t ia = muldiv(M[3], 65536, det), ib = muldiv(-M[1], 65536, det), ic = muldiv(-M[2], 65536, det), id = muldiv(M[0], 65536, det);
+            /* local = inv * (tela - (O + M.e) ) + (O - origem do retângulo) */
+            c->q[0] = ia; c->q[1] = ib; c->q[2] = ic; c->q[3] = id;
+            c->q[4] = ox + M[4]; c->q[5] = oy + M[5];
+            c->ol = l; c->oa = a; c->bw[0] = (int16_t)(ox - x); c->bw[1] = (int16_t)(oy - y);
+            tf_caixa(M, ox, oy, x, y, l, a, &c->x, &c->y, &c->l, &c->a);
+            c->tipo = C_IMGR;
+            continue;
+        }
+        if (c->tipo == C_POLY) {
+            for (int k = 0; k < 4; k++) {
+                int x16 = c->px4[k], y16 = c->py4[k];
+                int dx = x16 - ox * 16, dy = y16 - oy * 16;
+                c->px4[k] = (int)((((int64_t)M[0] * dx + (int64_t)M[2] * dy) >> 16) + (ox + M[4]) * 16);
+                c->py4[k] = (int)((((int64_t)M[1] * dx + (int64_t)M[3] * dy) >> 16) + (oy + M[5]) * 16);
+            }
+            int x0 = c->px4[0], x1 = x0, y0 = c->py4[0], y1 = y0;
+            for (int k = 1; k < 4; k++) { if (c->px4[k] < x0) x0 = c->px4[k]; if (c->px4[k] > x1) x1 = c->px4[k]; if (c->py4[k] < y0) y0 = c->py4[k]; if (c->py4[k] > y1) y1 = c->py4[k]; }
+            c->x = x0 >> 4; c->y = y0 >> 4; c->l = ((x1 + 15) >> 4) - c->x; c->a = ((y1 + 15) >> 4) - c->y;
+        }
+    }
+    for (int i = r0; i < mo->n_regs; i++) {
+        regiao_t *r = &mo->regs[i];
+        tf_caixa(M, ox, oy, r->x, r->y, r->l, r->a, &r->x, &r->y, &r->l, &r->a);
+    }
+}
+
 static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int cb_a)
 {
     estilo_t *e = &n->e;
     if (e->display == D_NONE || e->opaco0) return;
     int x = ox + n->x, y = oy + n->y;
-    int z_salvo = z_cur, cam_salva = cam_cur;
+    uint32_t z_salvo = z_cur, pref_salvo = z_pref, z_ctx_fluxo = 0; int niv_salvo = z_niv, cam_salva = cam_cur;
     bool flex_pai = n->pai && (n->pai->e.display == D_FLEX || n->pai->e.display == D_IFLEX || n->pai->e.display == D_GRID);
     if (e->position != P_STATIC || (e->z_def && flex_pai)) {
-        if (e->z_def) z_cur = 2 * e->z + 1; else if (z_cur <= 0) z_cur = 1;
+        int sh = 24 - 8 * (z_niv < 3 ? z_niv : 3);
+        int zz = e->z_def ? e->z : 0; if (zz > 63) zz = 63; if (zz < -64) zz = -64;
+        uint32_t b = (uint32_t)((64 + zz) * 2 + 1);
+        z_cur = (z_pref & ~(0xFFFFFFFFu >> (8 * (z_niv < 3 ? z_niv : 3)))) | (b << sh);
+        if (e->z_def && z_niv < 3) { z_pref = z_cur; z_niv++; z_ctx_fluxo = z_cur | (128u << (sh - 8)); }   /* cria contexto */
     }
-    if (e->tf[0].v || e->tf[1].v) {
-        int dx = res_med(&e->tf[0], n->l, e), dy = res_med(&e->tf[1], n->a, e);
-        if (e->tf[0].u == U_PX || dx != -1) x += dx;
-        if (e->tf[1].u == U_PX || dy != -1) y += dy;
+    int32_t TM[6]; bool tem_tf = false;
+    int tf_i0 = mo->n_cmds, tf_r0 = mo->n_regs;
+    if (e->tf_txt && tf_matriz(e->tf_txt, n->l, n->a, e, TM)) {
+        if (TM[0] == 65536 && TM[1] == 0 && TM[2] == 0 && TM[3] == 65536) { x += TM[4]; y += TM[5]; }   /* só desloca */
+        else tem_tf = true;
     }
     if (e->position == P_STICKY && e->pos[0].u != U_AUTO && n->pai && mo->n_cams < 64) {
         no_m *p = n->pai;
@@ -4039,7 +4264,7 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
         if (l >= 0 || e->pos[3].u == U_PX) x += e->pos[3].u == U_AUTO ? 0 : l; else if (r > 0) x -= r;
         if (e->pos[0].u == U_PX && e->pos[0].v < 0) y += 0;
     }
-    if (e->display == D_CONTENTS) { achatar_filhos(n, x, y, cb_x, cb_y, cb_l, cb_a); z_cur = z_salvo; cam_cur = cam_salva; return; }
+    if (e->display == D_CONTENTS) { achatar_filhos(n, x, y, cb_x, cb_y, cb_l, cb_a); z_cur = z_salvo; z_pref = pref_salvo; z_niv = niv_salvo; cam_cur = cam_salva; return; }
     bool tem_caixa = !(e->display == D_INLINE && !eh_atomico(n));
     int salvo[4];
     memcpy(salvo, mo->clip, sizeof salvo);
@@ -4048,6 +4273,7 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
         if (n->alvo < 0 && eh_atomico(n))
             for (no_m *c = n->filho; c; c = c->prox) if (!c->texto && igual(c->tag, "a")) { int al = alvo_link(c); if (al >= 0) { n->alvo = al; break; } }
         desenhar_caixa(n, x, y);
+        if (z_ctx_fluxo) z_cur = z_ctx_fluxo;   /* fundo do contexto embaixo; filhos negativos e o fluxo por cima */
         if (n->alvo >= 0 && (eh_atomico(n) || eh_bloco(e->display))) regiao(x, y, n->l, n->a, n->alvo);
         controle(n, x, y);
         /* marcador de lista */
@@ -4089,7 +4315,8 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     if (e->position != P_STATIC) { ncb_x = x + n->bl[3]; ncb_y = y + n->bl[0]; ncb_l = n->l - n->bl[1] - n->bl[3]; ncb_a = n->a - n->bl[0] - n->bl[2]; }
     achatar_filhos(n, x, y, ncb_x, ncb_y, ncb_l, ncb_a);
     memcpy(mo->clip, salvo, sizeof salvo);
-    z_cur = z_salvo; cam_cur = cam_salva;
+    if (tem_tf) tf_aplicar(tf_i0, tf_r0, TM, x + n->l / 2, y + n->a / 2);
+    z_cur = z_salvo; z_pref = pref_salvo; z_niv = niv_salvo; cam_cur = cam_salva;
 }
 
 static void achatar_adiados(int ini)
@@ -4100,7 +4327,7 @@ static void achatar_adiados(int ini)
         int cb_x = a.cb[0], cb_y = a.cb[1], cb_l = a.cb[2], cb_a = a.cb[3];
         if (c->e.position == P_FIXED) { cb_x = 0; cb_y = 0; cb_l = mo->vw; cb_a = mo->vh; }
         posicionar_abs(c, cb_x, cb_y, cb_l, cb_a, a.sx, a.sy);
-        z_cur = a.z; cam_cur = a.cam;
+        z_cur = a.z; z_pref = a.pref; z_niv = a.niv; cam_cur = a.cam;
         if (c->e.position == P_FIXED && mo->n_cams < 64) { camada_t *k = &mo->cams[mo->n_cams++]; k->fixo = 1; cam_cur = mo->n_cams; }
         int salvo[4];
         memcpy(salvo, mo->clip, sizeof salvo);
@@ -4120,22 +4347,22 @@ static void achatar_adiados(int ini)
         c->x = ax; c->y = ay;
         memcpy(mo->clip, salvo, sizeof salvo);
     }
-    z_cur = 0; cam_cur = 0;
+    z_cur = Z_FLUXO; z_pref = 0; z_niv = 0; cam_cur = 0;
 }
 
 /* Ordem de pintura por camada (estável): negativos, fluxo, posicionados por z. */
 static void ordenar_camadas(void)
 {
-    int n = mo->n_cmds, zs[64], nz = 0;
+    int n = mo->n_cmds, nz = 0; uint32_t zs[64];
     bool mistura = false;
     for (int i = 0; i < n; i++) {
-        int z = mo->cmds[i].z, j = 0;
+        uint32_t z = mo->cmds[i].z; int j = 0;
         if (i && z < mo->cmds[i - 1].z) mistura = true;
         while (j < nz && zs[j] != z) j++;
         if (j == nz && nz < 64) zs[nz++] = z;
     }
     if (!mistura) return;
-    for (int i = 1; i < nz; i++) { int t = zs[i], j = i; while (j && zs[j - 1] > t) { zs[j] = zs[j - 1]; j--; } zs[j] = t; }
+    for (int i = 1; i < nz; i++) { uint32_t t = zs[i]; int j = i; while (j && zs[j - 1] > t) { zs[j] = zs[j - 1]; j--; } zs[j] = t; }
     cmd_t *novo = aloca((size_t)n * sizeof(cmd_t));
     if (!novo) return;
     int k = 0;
@@ -4191,10 +4418,50 @@ static no_m *proximo_no(no_m *n)
     return n ? n->prox : NULL;
 }
 
+/* url() relativos de uma folha externa valem a partir da folha: reescreve absolutos */
+static char *absolutizar_urls(motor_t *m, const char *t, int *n, const char *base)
+{
+    int extra = 0;
+    for (int i = 0; i + 4 < *n; i++) if (igual_n(t + i, "url(", 4)) extra += 600;
+    if (!extra) return m_dup(m, t, *n);
+    char *d = m_novo(m, *n + extra + 1);
+    if (!d) return m_dup(m, t, *n);
+    int k = 0;
+    for (int i = 0; i < *n;) {
+        if (i + 4 < *n && igual_n(t + i, "url(", 4)) {
+            memcpy(d + k, t + i, 4); k += 4; i += 4;
+            while (i < *n && t[i] == ' ') i++;
+            char q = 0;
+            if (i < *n && (t[i] == '"' || t[i] == '\'')) q = t[i++];
+            int ini = i;
+            while (i < *n && (q ? t[i] != q : t[i] != ')')) i++;
+            int len = i - ini;
+            if (q) i++;
+            char rel[600], abs[600];
+            int lc = len < 599 ? len : 599;
+            memcpy(rel, t + ini, (size_t)lc); rel[lc] = 0;
+            if (len < 599 && !comeca_com(rel, "data:") && rel[0] != '#') {
+                juntar(base, rel, abs, sizeof abs);
+                int la = (int)tam_texto(abs);
+                d[k++] = '"'; memcpy(d + k, abs, (size_t)la); k += la; d[k++] = '"';
+            } else {
+                if (q) d[k++] = q;
+                memcpy(d + k, t + ini, (size_t)len); k += len;
+                if (q) d[k++] = q;
+            }
+            continue;
+        }
+        d[k++] = t[i++];
+    }
+    d[k] = 0;
+    *n = k;
+    return d;
+}
 static void guardar_folha(motor_t *m, const char *t, int n, const char *base)
 {
     if (n_folhas >= 64 || n <= 0) return;
     folhas_base[n_folhas] = base ? m_dup(m, base, (int)tam_texto(base)) : NULL;
+    if (base) { folhas_txt[n_folhas] = absolutizar_urls(m, t, &n, base); folhas_n[n_folhas++] = n; return; }
     folhas_txt[n_folhas] = m_dup(m, t, n);
     folhas_n[n_folhas++] = n;
 }
@@ -4235,7 +4502,8 @@ void motor_ler(motor_t *m, const char *html, int n, const char *url)
             const char *src = atributo_m(q, "src");
             if (!src || !src[0] || comeca_com(src, "data:")) { const char *ds = atributo_m(q, "data-src"); if (ds) src = ds; }
             if (!src || !src[0] || comeca_com(src, "data:")) { const char *ss = atributo_m(q, "srcset"); if (ss && ss[0]) { int k = 0; while (ss[k] && !eh_esp(ss[k]) && ss[k] != ',') k++; src = m_dup(m, ss, k); } }
-            if (!src || !src[0] || comeca_com(src, "data:")) continue;
+            if (!src || !src[0]) continue;
+            if (comeca_com(src, "data:")) { q->img = imagem_idx(m, src); continue; }
             juntar(m->url, src, u, sizeof u);
             int idx = -1;
             for (int i = 0; i < m->n_imgs; i++) if (igual(m->imgs[i].url, u)) { idx = i; break; }
@@ -4243,6 +4511,106 @@ void motor_ler(motor_t *m, const char *html, int n, const char *url)
             q->img = idx;
         }
     }
+}
+
+/* data:[tipo][;base64],dados -> bytes (aloca) */
+static uint8_t *dados_url(const char *u, unsigned *n)
+{
+    const char *v = acha_char(u, ',');
+    if (!v) return NULL;
+    bool b64 = false;
+    for (const char *p = u; p < v; p++) if (igual_n(p, ";base64", 7)) b64 = true;
+    v++;
+    int tam = (int)tam_texto(v);
+    uint8_t *d = aloca((unsigned)tam + 1);
+    if (!d) return NULL;
+    unsigned k = 0;
+    if (b64) {
+        unsigned acc = 0; int bits = 0;
+        for (int i = 0; i < tam; i++) {
+            char c = v[i]; int x;
+            if (c >= 'A' && c <= 'Z') x = c - 'A'; else if (c >= 'a' && c <= 'z') x = c - 'a' + 26;
+            else if (c >= '0' && c <= '9') x = c - '0' + 52; else if (c == '+' || c == '-') x = 62; else if (c == '/' || c == '_') x = 63;
+            else continue;
+            acc = acc << 6 | (unsigned)x; bits += 6;
+            if (bits >= 8) { bits -= 8; d[k++] = (uint8_t)(acc >> bits); }
+        }
+    } else {
+        for (int i = 0; i < tam; i++) {
+            if (v[i] == '%' && i + 2 < tam) {
+                int h = 0;
+                for (int j = 1; j <= 2; j++) { char c = (char)(v[i + j] | 32); h = h * 16 + (c >= 'a' ? c - 'a' + 10 : c - '0'); }
+                d[k++] = (uint8_t)h; i += 2;
+            } else d[k++] = (uint8_t)v[i];
+        }
+    }
+    d[k] = 0;
+    *n = k;
+    return d;
+}
+
+/* Arquivo SVG (texto): monta um nó de mentira e usa o rasterizador do motor,
+ * no tamanho de width/height ou da viewBox (até 512 px). NULL se não é SVG. */
+static uint32_t *svg_arquivo(motor_t *m, const char *s, int n, int *l, int *a)
+{
+    int i = 0;
+    while (i + 4 < n && !igual_n(s + i, "<svg", 4)) { if (i > 2048) return NULL; i++; }
+    if (i + 4 >= n) return NULL;
+    int f = i + 4;
+    while (f < n && s[f] != '>') { if (s[f] == '"' || s[f] == '\'') { char q = s[f++]; while (f < n && s[f] != q) f++; } f++; }
+    if (f >= n) return NULL;
+    no_m *g = m_novo(m, sizeof(no_m));
+    if (!g) return NULL;
+    copia_texto(g->tag, "svg", sizeof g->tag);
+    g->img = -1; g->bg_img = -1; g->mask_img = -1; g->alvo = -1;
+    estilo_inicial(&g->e, NULL);
+    /* atributos do <svg> */
+    for (int p = i + 4; p < f;) {
+        while (p < f && (eh_esp(s[p]) || s[p] == '/')) p++;
+        int k0 = p; while (p < f && s[p] != '=' && !eh_esp(s[p]) && s[p] != '>') p++;
+        int k1 = p;
+        if (k1 == k0) { p++; continue; }
+        if (p < f && s[p] == '=') {
+            p++;
+            char q = s[p] == '"' || s[p] == '\'' ? s[p++] : 0;
+            int v0 = p; while (p < f && (q ? s[p] != q : !eh_esp(s[p]))) p++;
+            atr_t *at = m_novo(m, sizeof(atr_t));
+            if (!at) break;
+            at->nome = m_dup(m, s + k0, k1 - k0); at->valor = m_dup(m, s + v0, p - v0);
+            for (char *c = at->nome; *c; c++) if (*c >= 'A' && *c <= 'Z' && !igual(at->nome, "viewBox")) *c = (char)(*c + 32);
+            at->prox = g->atr; g->atr = at;
+            if (q) p++;
+        }
+    }
+    int fim = n;
+    for (int p = n - 6; p > f; p--) if (igual_n(s + p, "</svg>", 6)) { fim = p; break; }
+    g->t = m_dup(m, s + f + 1, fim - f - 1); g->nt = fim - f - 1;
+    int w = 0, h = 0, u;
+    const char *aw = atributo_m(g, "width"), *ah = atributo_m(g, "height");
+    if (aw) w = num100(aw, (int)tam_texto(aw), &u) / 100;
+    if (ah) h = num100(ah, (int)tam_texto(ah), &u) / 100;
+    if (aw && acha_char(aw, '%')) w = 0;
+    if (ah && acha_char(ah, '%')) h = 0;
+    if (w <= 0 || h <= 0) {
+        const char *vb = atributo_m(g, "viewBox"); if (!vb) vb = atributo_m(g, "viewbox");
+        int v4[4] = { 0, 0, 0, 0 }; const char *q = vb;
+        for (int k = 0; k < 4 && q; k++) q = svg_num(q, &v4[k]);
+        if (v4[2] > 0 && v4[3] > 0) { w = v4[2] / 256; h = v4[3] / 256; } else { w = 300; h = 150; }
+    }
+    if (!atributo_m(g, "viewBox") && !atributo_m(g, "viewbox")) {   /* sem viewBox: as unidades são as de width/height */
+        atr_t *at = m_novo(m, sizeof(atr_t));
+        char vb[48]; formatar_texto(vb, sizeof vb, "0 0 %d %d", w, h);
+        if (at) { at->nome = m_dup(m, "viewBox", 7); at->valor = m_dup(m, vb, (int)tam_texto(vb)); at->prox = g->atr; g->atr = at; }
+    }
+    /* ícones pequenos: desenha maior para escalar bem */
+    while (w < 96 && h < 96 && w > 0 && h > 0) { w *= 2; h *= 2; }
+    while (w > 512 || h > 512) { w /= 2; h /= 2; }
+    if (w <= 0 || h <= 0) return NULL;
+    motor_t *antes = mo; mo = m;
+    uint32_t *px = svg_desenhar(g, w, h);
+    mo = antes;
+    *l = w; *a = h;
+    return px;
 }
 
 int motor_imagens(motor_t *m, int max)
@@ -4265,12 +4633,15 @@ int motor_imagens(motor_t *m, int max)
         if (im->tentou) continue;
         im->tentou = 1;
         k++;
-        if (!m->g.baixar || !m->g.imagem) continue;
         unsigned n = 0;
-        uint8_t *d = m->g.baixar(im->url, &n);
+        uint8_t *d = NULL;
+        if (comeca_com(im->url, "data:")) d = dados_url(im->url, &n);
+        else if (m->g.baixar) d = m->g.baixar(im->url, &n);
         if (!d) continue;
-        uint32_t *px; int l, a;
-        if (m->g.imagem(d, n, &px, &l, &a)) { im->px = px; im->l = l; im->a = a; }
+        int l, a;
+        uint32_t *px = svg_arquivo(m, (const char *)d, (int)n, &l, &a);
+        if (px) { im->px = px; im->l = l; im->a = a; im->alfa = 1; }
+        else if (m->g.imagem && m->g.imagem(d, n, &px, &l, &a)) { im->px = px; im->l = l; im->a = a; }
         libera(d);
     }
     return k;
@@ -4346,7 +4717,7 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
         if (c->e.fundo) m->fundo = c->e.fundo & 0xFFFFFF;
         else for (no_m *b = c->filho; b; b = b->prox) if (!b->texto && igual(b->tag, "body") && b->e.fundo) m->fundo = b->e.fundo & 0xFFFFFF;
     }
-    m->n_cmds = 0; m->n_regs = 0; n_adiados = 0; m->n_cams = 0; z_cur = 0; cam_cur = 0;
+    m->n_cmds = 0; m->n_regs = 0; n_adiados = 0; m->n_cams = 0; z_cur = Z_FLUXO; z_pref = 0; z_niv = 0; cam_cur = 0;
     m->clip[0] = -INF; m->clip[1] = -INF; m->clip[2] = INF; m->clip[3] = INF;
     achatar(m->raiz, 0, 0, 0, 0, largura, altura_tela);
     achatar_adiados(0);
@@ -4417,6 +4788,42 @@ static char maiuscula(char c)
     return c;
 }
 
+/* quadrilátero convexo (1/16 px) com antialias horizontal */
+static void poly_px(alvo_px_t *t, const cmd_t *c)
+{
+    static uint16_t cob[4096];
+    int y0 = c->y > t->c1 ? c->y : t->c1, y1 = c->y + c->a < t->c3 ? c->y + c->a : t->c3;
+    int bx0 = c->x, bl = c->l + 2;
+    if (bl > 4096 || bl <= 0) return;
+    uint32_t al = c->cor >> 24 ? c->cor >> 24 : 255, rgb = c->cor & 0xFFFFFF;
+    for (int y = y0; y < y1; y++) {
+        memset(cob, 0, (size_t)bl * sizeof cob[0]);
+        for (int sub = 0; sub < 4; sub++) {   /* 4 sub-linhas por pixel */
+            int yc = y * 16 + 2 + sub * 4, xl = 1 << 30, xr = -(1 << 30);
+            for (int k = 0; k < 4; k++) {
+                int k1 = (k + 1) & 3, ya = c->py4[k], yb = c->py4[k1];
+                if (ya == yb) continue;
+                int lo = ya < yb ? ya : yb, hi = ya < yb ? yb : ya;
+                if (yc < lo || yc >= hi) continue;
+                int x = c->px4[k] + (c->px4[k1] - c->px4[k]) * (yc - ya) / (yb - ya);
+                if (x < xl) xl = x;
+                if (x > xr) xr = x;
+            }
+            if (xl >= xr) continue;
+            for (int X = xl >> 4; X <= (xr - 1) >> 4; X++) {
+                int a0 = X * 16 > xl ? X * 16 : xl, a1 = X * 16 + 16 < xr ? X * 16 + 16 : xr;
+                int i = X - bx0;
+                if (a1 > a0 && i >= 0 && i < bl) cob[i] = (uint16_t)(cob[i] + (a1 - a0));
+            }
+        }
+        for (int i = 0; i < bl; i++) {
+            if (!cob[i]) continue;
+            uint32_t k = al * (cob[i] > 64 ? 64u : cob[i]) / 64;
+            if (k) ponto(t, bx0 + i, y, (k << 24) | rgb);
+        }
+    }
+}
+
 /* texto com fonte da web: glifos com antialias, avanço em 1/64 px */
 static void texto_ttf(alvo_px_t *t, cmd_t *c)
 {
@@ -4427,7 +4834,8 @@ static void texto_ttf(alvo_px_t *t, cmd_t *c)
     int x64 = c->x * 64;
     estilo_t e; memset(&e, 0, sizeof e); e.maiusc = (uint8_t)c->raio;
     for (int i = 0; i < c->nt; i++) {
-        uint8_t ch = transformar_car(&e, c->t, i);
+        unsigned ch = transformar_car(&e, c->t, i);
+        if (eh_larga(c->t + i, c->nt - i)) { ch = larga_ler(c->t + i); i += 3; }
         int x = (x64 + 32) >> 6;
         x64 += fonte_avanco(f, ch, px);
         if (ch == ' ' || ch == 0xA0 || x > t->c2) continue;
@@ -4454,6 +4862,12 @@ static void texto_px(alvo_px_t *t, cmd_t *c)
     bool negrito = c->peso && tam >= 10;
     for (int i = 0; i < c->nt; i++, x += lw) {
         uint8_t ch = (uint8_t)c->t[i];
+        if (eh_larga(c->t + i, c->nt - i)) {   /* sem fonte da web: o parecido em Latin-1, ou uma caixa */
+            char l = para_l1(larga_ler(c->t + i));
+            i += 3;
+            if (!l) { ret(t, x + 1, c->y + tam / 5, lw - 2 > 1 ? lw - 2 : 1, tam * 3 / 5, 0x60000000u | c->cor, 0); continue; }
+            ch = (uint8_t)l;
+        }
         if (c->raio == 1) ch = (uint8_t)maiuscula((char)ch);
         else if (c->raio == 2 && ch >= 'A' && ch <= 'Z') ch = (uint8_t)(ch + 32);
         else if (c->raio == 3 && (i == 0 || c->t[i - 1] == ' ')) ch = (uint8_t)maiuscula((char)ch);
@@ -4496,8 +4910,8 @@ static void texto_px(alvo_px_t *t, cmd_t *c)
             }
         }
     }
-    if (c->sublinha & 1) ret(t, c->x, c->y + tam * 7 / 8, c->nt * lw, tam >= 24 ? 2 : 1, 0xFF000000u | c->cor, 0);
-    if (c->sublinha & 2) ret(t, c->x, c->y + tam / 2, c->nt * lw, 1, 0xFF000000u | c->cor, 0);
+    if (c->sublinha & 1) ret(t, c->x, c->y + tam * 7 / 8, c->l, tam >= 24 ? 2 : 1, 0xFF000000u | c->cor, 0);
+    if (c->sublinha & 2) ret(t, c->x, c->y + tam / 2, c->l, 1, 0xFF000000u | c->cor, 0);
 }
 
 void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
@@ -4526,6 +4940,45 @@ void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
             if (c->bw[1]) ret(&t, c->x + c->l - c->bw[1], c->y + (c->raio ? c->raio : 0), c->bw[1], c->a - 2 * (c->raio ? c->raio : 0), c->bc[1], 0);
             break;
         case C_TEXTO: texto_px(&t, c); break;
+        case C_POLY: poly_px(&t, c); break;
+        case C_MASK: {
+            imagem_m *im = &m->imgs[c->img];
+            if (!im->px || c->l <= 0 || c->a <= 0) break;
+            uint32_t ca = c->cor >> 24 ? c->cor >> 24 : 255, rgb = c->cor & 0xFFFFFF;
+            int ya = c->y < t.c1 ? t.c1 : c->y, yb = c->y + c->a > t.c3 ? t.c3 : c->y + c->a;
+            int xa = c->x < t.c0 ? t.c0 : c->x, xb = c->x + c->l > t.c2 ? t.c2 : c->x + c->l;
+            for (int yy = ya; yy < yb; yy++) {
+                const uint32_t *src = im->px + ((yy - c->y) * im->a / c->a) * im->l;
+                for (int xx = xa; xx < xb; xx++) {
+                    uint32_t p = src[(xx - c->x) * im->l / c->l], al;
+                    if (im->alfa) al = p >> 24;
+                    else { uint32_t lum = (((p >> 16) & 255) * 3 + ((p >> 8) & 255) * 6 + (p & 255)) / 10; al = 255 - lum; }   /* composta no branco: escuro = opaco */
+                    al = al * ca / 255;
+                    if (al) ponto(&t, xx, yy, (al << 24) | rgb);
+                }
+            }
+            break;
+        }
+        case C_IMGR: {
+            imagem_m *im = &m->imgs[c->img];
+            if (!im->px || c->ol <= 0 || c->oa <= 0) break;
+            int ya = c->y < t.c1 ? t.c1 : c->y, yb = c->y + c->a > t.c3 ? t.c3 : c->y + c->a;
+            int xa = c->x < t.c0 ? t.c0 : c->x, xb = c->x + c->l > t.c2 ? t.c2 : c->x + c->l;
+            for (int yy = ya; yy < yb; yy++) {
+                uint32_t *d = px + (yy - y) * passo;
+                for (int xx = xa; xx < xb; xx++) {
+                    int sx = xx - c->q[4], sy = yy - c->q[5];
+                    int u = (int)(((int64_t)c->q[0] * sx + (int64_t)c->q[2] * sy) >> 16) + c->bw[0];
+                    int v = (int)(((int64_t)c->q[1] * sx + (int64_t)c->q[3] * sy) >> 16) + c->bw[1];
+                    if (u < 0 || v < 0 || u >= c->ol || v >= c->oa) continue;
+                    uint32_t p = im->px[(v * im->a / c->oa) * im->l + u * im->l / c->ol];
+                    if (!im->alfa) { d[xx] = p & 0xFFFFFF; continue; }
+                    uint32_t al = p >> 24;
+                    if (al) d[xx] = al >= 250 ? p & 0xFFFFFF : misturar(d[xx], p);
+                }
+            }
+            break;
+        }
         case C_IMG: {
             imagem_m *im = &m->imgs[c->img];
             if (!im->px || c->l <= 0 || c->a <= 0) break;

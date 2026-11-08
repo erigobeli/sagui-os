@@ -27,3 +27,18 @@ int      fonte_ascendente(fonte_t *f, int px);
 int      fonte_descendente(fonte_t *f, int px);
 const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy);
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
+/* Texto interno do Cipó é Latin-1. Caractere acima de U+00FF vira uma
+ * "sequência larga": 0x8F (C1, nunca usado em texto) + 3 bytes 10xxxxxx
+ * com 18 bits do código (até U+3FFFF: cobre BMP e os emojis). */
+#define LARGA_MARCA 0x8F
+static inline int larga_por(char *d, uint32_t cp)
+{
+    if (cp > 0x3FFFF) { d[0] = '?'; return 1; }
+    d[0] = (char)LARGA_MARCA; d[1] = (char)(0x80 | ((cp >> 12) & 63)); d[2] = (char)(0x80 | ((cp >> 6) & 63)); d[3] = (char)(0x80 | (cp & 63));
+    return 4;
+}
+static inline bool eh_larga(const char *p, int resto)
+{
+    return resto >= 4 && (uint8_t)p[0] == LARGA_MARCA && ((uint8_t)p[1] & 0xC0) == 0x80 && ((uint8_t)p[2] & 0xC0) == 0x80 && ((uint8_t)p[3] & 0xC0) == 0x80;
+}
+static inline uint32_t larga_ler(const char *p) { return ((uint32_t)(p[1] & 63) << 12) | ((uint32_t)(p[2] & 63) << 6) | (uint32_t)(p[3] & 63); }

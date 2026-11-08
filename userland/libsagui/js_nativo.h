@@ -412,12 +412,21 @@ static val n_utf8_cod(val este, val *a, int n)
     obj *o = novo_obj(ARG(1).t == OB ? ARG(1).o : p_obj);
     o->cl = C_TA; o->vtipo = 1;
     int k = 0;
-    for (int i = 0; i < t->n; i++) k += (uint8_t)t->s[i] >= 0x80 ? 2 : 1;
+    for (int i = 0; i < t->n; i++) {
+        if (eh_larga(t->s + i, t->n - i)) { uint32_t cp = larga_ler(t->s + i); k += cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4; i += 3; }
+        else k += (uint8_t)t->s[i] >= 0x80 ? 2 : 1;
+    }
     o->vbuf = buf_novo(k, vU()); o->vlen = k;
     uint8_t *p = o->vbuf->mem; k = 0;
     for (int i = 0; i < t->n; i++) {
         uint8_t c = (uint8_t)t->s[i];
-        if (c < 0x80) p[k++] = c; else { p[k++] = (uint8_t)(0xC0 | c >> 6); p[k++] = (uint8_t)(0x80 | (c & 63)); }
+        if (eh_larga(t->s + i, t->n - i)) {
+            uint32_t cp = larga_ler(t->s + i); i += 3;
+            if (cp < 0x800) { p[k++] = (uint8_t)(0xC0 | cp >> 6); p[k++] = (uint8_t)(0x80 | (cp & 63)); }
+            else if (cp < 0x10000) { p[k++] = (uint8_t)(0xE0 | cp >> 12); p[k++] = (uint8_t)(0x80 | ((cp >> 6) & 63)); p[k++] = (uint8_t)(0x80 | (cp & 63)); }
+            else { p[k++] = (uint8_t)(0xF0 | cp >> 18); p[k++] = (uint8_t)(0x80 | ((cp >> 12) & 63)); p[k++] = (uint8_t)(0x80 | ((cp >> 6) & 63)); p[k++] = (uint8_t)(0x80 | (cp & 63)); }
+        }
+        else if (c < 0x80) p[k++] = c; else { p[k++] = (uint8_t)(0xC0 | c >> 6); p[k++] = (uint8_t)(0x80 | (c & 63)); }
     }
     return vO(o);
 }
@@ -429,7 +438,7 @@ static val n_utf8_dec(val este, val *a, int n)
     if (x.t == OB && x.o->cl == C_TA) { p = x.o->vbuf->mem + x.o->voff; len = x.o->vlen * ta_tam[x.o->vtipo]; }
     else if (x.t == OB && x.o->cl == C_BUF) { p = x.o->mem; len = x.o->mem_n; }
     else return vT("");
-    char *b = novo((unsigned)len + 1); int k = 0;
+    char *b = novo((unsigned)len * 2 + 4); int k = 0;
     for (int i = 0; i < len;) {
         uint8_t c = p[i];
         uint32_t cp; int ext = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : 0;
@@ -437,7 +446,7 @@ static val n_utf8_dec(val este, val *a, int n)
         cp = ext == 0 ? c : ext == 1 ? c & 31 : ext == 2 ? c & 15 : c & 7;
         for (int e = 1; e <= ext; e++) cp = cp << 6 | (p[i + e] & 63);
         i += ext + 1;
-        b[k++] = cp < 0x100 ? (char)cp : '?';
+        if (cp < 0x100) b[k++] = (char)cp; else k += larga_por(b + k, cp);
     }
     return vS(novo_str(b, k));
 }

@@ -136,7 +136,39 @@ static char para_latin1(uint32_t c)
     }
 }
 
-/* Converte o corpo para Latin-1, se for UTF-8 válido; senão já é Latin-1. */
+/* Converte o corpo para Latin-1, se for UTF-8 válido; senão já é Latin-1.
+ * Caracteres acima de U+00FF viram sequências largas (podem crescer: 2 bytes
+ * UTF-8 viram 4), então devolve um bloco novo quando precisa. */
+static char *converter_corpo(char *s, int *tam)
+{
+    int n = *tam, extra_total = 0;
+    for (int i = 0; i < n;) {
+        uint8_t c = (uint8_t)s[i];
+        int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
+        if (extra < 0 || (extra && i + extra >= n)) return s;   /* não é UTF-8: já é Latin-1 */
+        for (int k = 1; k <= extra; k++) if (((uint8_t)s[i + k] & 0xC0) != 0x80) return s;
+        if (extra == 1 && (c & 0x1F) > 3) extra_total += 2;     /* U+0100..U+07FF: 2 bytes viram 4 */
+        i += 1 + extra;
+    }
+    char *d = aloca((size_t)n + (size_t)extra_total + 1);
+    if (!d) { *tam = n; return s; }
+    int k = 0;
+    for (int i = 0; i < n;) {
+        uint8_t c = (uint8_t)s[i];
+        int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : 3;
+        uint32_t cp = extra == 0 ? c : extra == 1 ? (c & 0x1Fu) : extra == 2 ? (c & 0x0Fu) : (c & 0x07u);
+        for (int e = 1; e <= extra; e++) cp = cp << 6 | ((uint8_t)s[i + e] & 0x3Fu);
+        if (cp < 0x100) d[k++] = cp == 0xA0 ? ' ' : (char)cp;
+        else if (cp == 0xFEFF || cp == 0x200B || cp == 0x200C || cp == 0x200D) {}   /* invisíveis */
+        else k += larga_por(d + k, cp);
+        i += 1 + extra;
+    }
+    d[k] = 0;
+    libera(s);
+    *tam = k;
+    return d;
+}
+
 static int converter(char *s, int n)
 {
     for (int i = 0; i < n;) {          /* confere primeiro */
@@ -2139,7 +2171,7 @@ static void carregar(const char *pedido)
             registrar("cipo: erro: %s %s\n", erro, detalhe);
             pagina_de_erro(erro, detalhe[0] ? detalhe : url);
         } else if (corpo) {
-            tam = converter(corpo, tam);
+            corpo = converter_corpo(corpo, &tam);
             if (html) {
                 titulo_js[0] = alerta_js[0] = 0;
                 char *novo = rodar_scripts(corpo, &tam);
@@ -2287,6 +2319,14 @@ static void enviar_formulario(alvo_t *a)
         uint8_t c = (uint8_t)*p;
         if (c == ' ') url[k++] = '+';
         else if (letra((char)c) || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') url[k++] = (char)c;
+        else if (eh_larga(p, 4)) {   /* sequência larga -> UTF-8 */
+            uint32_t cp = larga_ler(p); uint8_t b[4]; int nb;
+            if (cp < 0x800) { b[0] = (uint8_t)(0xC0 | cp >> 6); b[1] = (uint8_t)(0x80 | (cp & 63)); nb = 2; }
+            else if (cp < 0x10000) { b[0] = (uint8_t)(0xE0 | cp >> 12); b[1] = (uint8_t)(0x80 | ((cp >> 6) & 63)); b[2] = (uint8_t)(0x80 | (cp & 63)); nb = 3; }
+            else { b[0] = (uint8_t)(0xF0 | cp >> 18); b[1] = (uint8_t)(0x80 | ((cp >> 12) & 63)); b[2] = (uint8_t)(0x80 | ((cp >> 6) & 63)); b[3] = (uint8_t)(0x80 | (cp & 63)); nb = 4; }
+            for (int i = 0; i < nb && k < (int)sizeof url - 4; i++) { url[k++] = '%'; url[k++] = hexa[b[i] >> 4]; url[k++] = hexa[b[i] & 15]; }
+            p += 3;
+        }
         else if (c >= 0x80) {   /* Latin-1 -> UTF-8, que é o que os sites esperam */
             uint8_t b[2] = { (uint8_t)(0xC0 | (c >> 6)), (uint8_t)(0x80 | (c & 0x3F)) };
             for (int i = 0; i < 2; i++) { url[k++] = '%'; url[k++] = hexa[b[i] >> 4]; url[k++] = hexa[b[i] & 15]; }

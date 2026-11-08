@@ -2,8 +2,8 @@
  * transformação de glyf), contornos com composições e rasterizador com
  * antialias por área acumulada (cobertura exata de cada pixel).
  *
- * Sem hinting: o desenho é o contorno escalado, como no macOS. CFF (fontes
- * OpenType com contornos PostScript) fica de fora: fonte_abrir devolve NULL. */
+ * Sem hinting: o desenho é o contorno escalado, como no macOS. CFF (OpenType
+ * com contornos PostScript, charstrings Type 2) também, inclusive CID. */
 #include <sagui.h>
 
 uint8_t *brotli_descomprimir(const uint8_t *in, unsigned n, unsigned *saida_n, unsigned max);
@@ -28,6 +28,10 @@ struct fonte {
     int cmap_fmt, aw_passo;
     int upem, ngl, nhm, loca_longo, asc, desc;
     gdec *gd;                               /* WOFF2: glifos decodificados */
+    /* CFF (OpenType com contornos PostScript) */
+    const uint8_t *cff; unsigned n_cff;
+    const uint8_t *cs_idx, *gsub_idx, *lsub_idx;  /* INDEX das charstrings, subrotinas globais e locais */
+    const uint8_t *fdsel; const uint8_t *fd_lsub[32]; int n_fd;
     fpt *gpts; uint16_t *gends;
     gcache cache[CACHE_G];
     unsigned cache_bytes;
@@ -212,11 +216,279 @@ static int woff2_glyf(fonte_t *f, const uint8_t *d, unsigned n)
     return 1;
 }
 
+/* ------------------------------------------------------------ CFF */
+
+/* INDEX: count, offSize, offsets[count+1], dados. Devolve o fim do INDEX. */
+static const uint8_t *idx_fim(const uint8_t *p, const uint8_t *fim)
+{
+    if (p + 2 > fim) return NULL;
+    unsigned cnt = u16(p);
+    if (!cnt) return p + 2;
+    if (p + 3 > fim) return NULL;
+    unsigned os = p[2];
+    if (os < 1 || os > 4) return NULL;
+    const uint8_t *o = p + 3 + cnt * os;
+    if (o + os > fim) return NULL;
+    unsigned v = 0; for (unsigned k = 0; k < os; k++) v = v << 8 | o[k];
+    return o + os - 1 + v;
+}
+static int idx_obj(const uint8_t *p, unsigned i, const uint8_t **d, unsigned *n)
+{
+    if (!p) return 0;
+    unsigned cnt = u16(p);
+    if (i >= cnt) return 0;
+    unsigned os = p[2];
+    const uint8_t *o = p + 3;
+    unsigned a = 0, b = 0;
+    for (unsigned k = 0; k < os; k++) { a = a << 8 | o[i * os + k]; b = b << 8 | o[(i + 1) * os + k]; }
+    if (b < a) return 0;
+    *d = o + (cnt + 1) * os - 1 + a; *n = b - a;
+    return 1;
+}
+/* DICT: devolve os operandos (inteiros) do operador op (12 xx = 1200 + xx) */
+static int dict_achar(const uint8_t *p, unsigned n, int op, int *v, int max)
+{
+    int pilha[48], np = 0;
+    for (unsigned i = 0; i < n;) {
+        uint8_t b = p[i];
+        if (b <= 21) {
+            int o = b; i++;
+            if (b == 12) { if (i >= n) return 0; o = 1200 + p[i++]; }
+            if (o == op) { for (int k = 0; k < np && k < max; k++) v[k] = pilha[k]; return np; }
+            np = 0;
+        } else if (b == 28) { if (i + 3 > n) return 0; if (np < 48) pilha[np++] = (int16_t)(p[i + 1] << 8 | p[i + 2]); i += 3; }
+        else if (b == 29) { if (i + 5 > n) return 0; if (np < 48) pilha[np++] = (int)u32(p + i + 1); i += 5; }
+        else if (b == 30) { i++; while (i < n) { uint8_t q = p[i++]; if ((q & 15) == 15 || (q >> 4) == 15) break; } if (np < 48) pilha[np++] = 0; }
+        else if (b >= 32 && b <= 246) { if (np < 48) pilha[np++] = b - 139; i++; }
+        else if (b >= 247 && b <= 250) { if (i + 2 > n) return 0; if (np < 48) pilha[np++] = (b - 247) * 256 + p[i + 1] + 108; i += 2; }
+        else if (b >= 251 && b <= 254) { if (i + 2 > n) return 0; if (np < 48) pilha[np++] = -(b - 251) * 256 - p[i + 1] - 108; i += 2; }
+        else i++;
+    }
+    return -1;
+}
+static const uint8_t *cff_subrs_privado(const uint8_t *c, unsigned nc, const uint8_t *top, unsigned ntop)
+{
+    int pv[2];
+    if (dict_achar(top, ntop, 18, pv, 2) != 2 || pv[1] < 0 || (unsigned)pv[1] + (unsigned)pv[0] > nc) return NULL;
+    const uint8_t *priv = c + pv[1];
+    int sb[1];
+    if (dict_achar(priv, (unsigned)pv[0], 19, sb, 1) != 1) return NULL;
+    const uint8_t *ls = priv + sb[0];
+    if (ls < c || ls + 2 > c + nc || !idx_fim(ls, c + nc)) return NULL;
+    return ls;
+}
+static int cff_abrir(fonte_t *f, const uint8_t *c, unsigned n)
+{
+    if (n < 4) return 0;
+    const uint8_t *fim = c + n;
+    const uint8_t *nomes = c + c[2];
+    const uint8_t *tops = idx_fim(nomes, fim);
+    const uint8_t *strs = tops ? idx_fim(tops, fim) : NULL;
+    const uint8_t *gsub = strs ? idx_fim(strs, fim) : NULL;
+    if (!gsub || !idx_fim(gsub, fim)) return 0;
+    const uint8_t *top; unsigned ntop;
+    if (!idx_obj(tops, 0, &top, &ntop)) return 0;
+    int v[4];
+    if (dict_achar(top, ntop, 17, v, 1) != 1 || v[0] <= 0 || (unsigned)v[0] >= n) return 0;
+    f->cff = c; f->n_cff = n;
+    f->cs_idx = c + v[0];
+    if (!idx_fim(f->cs_idx, fim)) return 0;
+    f->gsub_idx = gsub;
+    if (dict_achar(top, ntop, 1230, v, 4) >= 0) {   /* ROS: CID, uma Private por FD */
+        int fa[1], fs[1];
+        if (dict_achar(top, ntop, 1236, fa, 1) != 1 || dict_achar(top, ntop, 1237, fs, 1) != 1) return 0;
+        const uint8_t *fda = c + fa[0];
+        if (fa[0] <= 0 || (unsigned)fa[0] >= n || !idx_fim(fda, fim)) return 0;
+        f->n_fd = (int)u16(fda) < 32 ? (int)u16(fda) : 32;
+        for (int i = 0; i < f->n_fd; i++) { const uint8_t *fd; unsigned nfd; f->fd_lsub[i] = idx_obj(fda, (unsigned)i, &fd, &nfd) ? cff_subrs_privado(c, n, fd, nfd) : NULL; }
+        f->fdsel = fs[0] > 0 && (unsigned)fs[0] < n ? c + fs[0] : NULL;
+    } else f->lsub_idx = cff_subrs_privado(c, n, top, ntop);
+    return 1;
+}
+static int cff_fd(const fonte_t *f, unsigned gid)
+{
+    const uint8_t *s = f->fdsel, *fim = f->cff + f->n_cff;
+    if (!s) return 0;
+    if (s[0] == 0) return s + 1 + gid < fim ? s[1 + gid] : 0;
+    if (s[0] == 3) {
+        unsigned nr = u16(s + 1);
+        for (unsigned i = 0; i < nr && s + 3 + i * 3 + 5 <= fim; i++) {
+            unsigned a = u16(s + 3 + i * 3), b = u16(s + 3 + (i + 1) * 3);
+            if (gid >= a && gid < b) return s[3 + i * 3 + 2];
+        }
+    }
+    return 0;
+}
+
+/* destino do contorno: caixa (passo 1) ou acumulador (passo 2) */
+typedef struct acum acum;
+typedef struct {
+    int modo;                 /* 0 caixa, 1 desenha */
+    float esc, ox, oy;        /* fonte -> pixels do acumulador */
+    float xmin, xmax, ymin, ymax;
+    float cx, cy, sx, sy; int aberto;
+    acum *r;
+} trilha;
+static void linha(acum *r, float x0, float y0, float x1, float y1);
+static void t_ponto(trilha *t, float x, float y)
+{
+    if (x < t->xmin) t->xmin = x;
+    if (x > t->xmax) t->xmax = x;
+    if (y < t->ymin) t->ymin = y;
+    if (y > t->ymax) t->ymax = y;
+}
+static void t_lin(trilha *t, float x, float y)
+{
+    if (t->modo == 0) t_ponto(t, x, y);
+    else linha(t->r, t->cx * t->esc - t->ox, -t->cy * t->esc - t->oy, x * t->esc - t->ox, -y * t->esc - t->oy);
+    t->cx = x; t->cy = y;
+}
+static void t_fechar(trilha *t) { if (t->aberto && (t->cx != t->sx || t->cy != t->sy)) t_lin(t, t->sx, t->sy); t->aberto = 0; }
+static void t_mover(trilha *t, float x, float y) { t_fechar(t); t->cx = t->sx = x; t->cy = t->sy = y; t->aberto = 1; if (t->modo == 0) t_ponto(t, x, y); }
+static void t_cubica(trilha *t, float x1, float y1, float x2, float y2, float x3, float y3)
+{
+    if (t->modo == 0) { t_ponto(t, x1, y1); t_ponto(t, x2, y2); t_ponto(t, x3, y3); t->cx = x3; t->cy = y3; return; }
+    float x0 = t->cx, y0 = t->cy;
+    float d = (x1 - x0 < 0 ? x0 - x1 : x1 - x0) + (y1 - y0 < 0 ? y0 - y1 : y1 - y0) + (x3 - x2 < 0 ? x2 - x3 : x3 - x2) + (y3 - y2 < 0 ? y2 - y3 : y3 - y2);
+    int n = 2 + (int)(d * t->esc / 3);
+    if (n > 24) n = 24;
+    for (int i = 1; i <= n; i++) {
+        float s = (float)i / (float)n, u = 1 - s;
+        float x = u * u * u * x0 + 3 * u * u * s * x1 + 3 * u * s * s * x2 + s * s * s * x3;
+        float y = u * u * u * y0 + 3 * u * u * s * y1 + 3 * u * s * s * y2 + s * s * s * y3;
+        t_lin(t, x, y);
+    }
+}
+
+/* interpretador de charstrings Type 2 */
+typedef struct { const fonte_t *f; const uint8_t *lsub; trilha *t; float pilha[48]; int np, nstem, largura_feita; float x, y; int prof; } cs_estado;
+static int cs_bias(const uint8_t *idx) { unsigned c = idx ? u16(idx) : 0; return c < 1240 ? 107 : c < 33900 ? 1131 : 32768; }
+static int cs_rodar(cs_estado *e, const uint8_t *p, unsigned n)
+{
+    if (++e->prof > 10) return 0;
+    for (unsigned i = 0; i < n;) {
+        uint8_t b = p[i];
+        if (b >= 32 || b == 28) {
+            float v;
+            if (b == 28) { if (i + 3 > n) return 0; v = (float)(int16_t)(p[i + 1] << 8 | p[i + 2]); i += 3; }
+            else if (b <= 246) { v = (float)(b - 139); i++; }
+            else if (b <= 250) { if (i + 2 > n) return 0; v = (float)((b - 247) * 256 + p[i + 1] + 108); i += 2; }
+            else if (b <= 254) { if (i + 2 > n) return 0; v = (float)(-(b - 251) * 256 - p[i + 1] - 108); i += 2; }
+            else { if (i + 5 > n) return 0; v = (float)(int32_t)u32(p + i + 1) / 65536.0f; i += 5; }
+            if (e->np < 48) e->pilha[e->np++] = v;
+            continue;
+        }
+        i++;
+        float *s = e->pilha; int k = e->np;
+        trilha *t = e->t;
+        #define LARGURA(par) do { if (!e->largura_feita) { e->largura_feita = 1; if ((k & 1) != (par)) { s++; k--; } } } while (0)
+        switch (b) {
+        case 1: case 3: case 18: case 23:   /* hstem vstem hstemhm vstemhm */
+            LARGURA(0); e->nstem += k / 2; e->np = 0; break;
+        case 19: case 20:                    /* hintmask cntrmask */
+            LARGURA(0); e->nstem += k / 2; i += (unsigned)(e->nstem + 7) / 8; e->np = 0; break;
+        case 21: LARGURA(0); if (k >= 2) { e->x += s[0]; e->y += s[1]; } t_mover(t, e->x, e->y); e->np = 0; break;
+        case 22: LARGURA(1); if (k >= 1) e->x += s[0]; t_mover(t, e->x, e->y); e->np = 0; break;
+        case 4: LARGURA(1); if (k >= 1) e->y += s[0]; t_mover(t, e->x, e->y); e->np = 0; break;
+        case 5: for (int j = 0; j + 1 < k; j += 2) { e->x += s[j]; e->y += s[j + 1]; t_lin(t, e->x, e->y); } e->np = 0; break;
+        case 6: case 7:
+            for (int j = 0; j < k; j++) { if ((j & 1) == (b == 6 ? 0 : 1)) e->x += s[j]; else e->y += s[j]; t_lin(t, e->x, e->y); }
+            e->np = 0; break;
+        case 8: case 24: {   /* rrcurveto, rcurveline */
+            int j = 0;
+            for (; j + 5 < k && !(b == 24 && k - j < 8); j += 6) {
+                float x1 = e->x + s[j], y1 = e->y + s[j + 1], x2 = x1 + s[j + 2], y2 = y1 + s[j + 3];
+                e->x = x2 + s[j + 4]; e->y = y2 + s[j + 5]; t_cubica(t, x1, y1, x2, y2, e->x, e->y);
+            }
+            if (b == 24 && j + 1 < k) { e->x += s[j]; e->y += s[j + 1]; t_lin(t, e->x, e->y); }
+            e->np = 0; break;
+        }
+        case 25: {   /* rlinecurve */
+            int j = 0;
+            for (; j + 1 < k - 6; j += 2) { e->x += s[j]; e->y += s[j + 1]; t_lin(t, e->x, e->y); }
+            if (j + 5 < k) { float x1 = e->x + s[j], y1 = e->y + s[j + 1], x2 = x1 + s[j + 2], y2 = y1 + s[j + 3]; e->x = x2 + s[j + 4]; e->y = y2 + s[j + 5]; t_cubica(t, x1, y1, x2, y2, e->x, e->y); }
+            e->np = 0; break;
+        }
+        case 26: case 27: {   /* vvcurveto, hhcurveto */
+            int j = 0; float d0 = 0;
+            if (k & 1) { d0 = s[0]; j = 1; }
+            for (; j + 3 < k; j += 4) {
+                float x1, y1;
+                if (b == 26) { x1 = e->x + d0; y1 = e->y + s[j]; } else { x1 = e->x + s[j]; y1 = e->y + d0; }
+                float x2 = x1 + s[j + 1], y2 = y1 + s[j + 2];
+                if (b == 26) { e->x = x2; e->y = y2 + s[j + 3]; } else { e->x = x2 + s[j + 3]; e->y = y2; }
+                t_cubica(t, x1, y1, x2, y2, e->x, e->y);
+                d0 = 0;
+            }
+            e->np = 0; break;
+        }
+        case 30: case 31: {   /* vhcurveto, hvcurveto */
+            int h = b == 31;
+            for (int j = 0; j + 3 < k; j += 4) {
+                float x1, y1, x2, y2, x3, y3, ult = (k - j == 5) ? s[j + 4] : 0;
+                if (h) { x1 = e->x + s[j]; y1 = e->y; x2 = x1 + s[j + 1]; y2 = y1 + s[j + 2]; y3 = y2 + s[j + 3]; x3 = x2 + ult; }
+                else { x1 = e->x; y1 = e->y + s[j]; x2 = x1 + s[j + 1]; y2 = y1 + s[j + 2]; x3 = x2 + s[j + 3]; y3 = y2 + ult; }
+                t_cubica(t, x1, y1, x2, y2, x3, y3);
+                e->x = x3; e->y = y3; h = !h;
+            }
+            e->np = 0; break;
+        }
+        case 10: case 29: {   /* callsubr, callgsubr */
+            if (!k) return 0;
+            const uint8_t *idx = b == 10 ? e->lsub : e->f->gsub_idx;
+            int nr = (int)s[k - 1] + cs_bias(idx);
+            e->np--;
+            const uint8_t *d; unsigned nd;
+            if (!idx_obj(idx, (unsigned)nr, &d, &nd)) return 0;
+            int r = cs_rodar(e, d, nd);
+            if (r != 1) { e->prof--; return r; }
+            break;
+        }
+        case 11: e->prof--; return 1;   /* return */
+        case 14: LARGURA(0); t_fechar(t); e->prof--; return 2;   /* endchar */
+        case 12: {
+            if (i >= n) return 0;
+            uint8_t x = p[i++];
+            float dx[6], dy[6];
+            if (x == 35 && k >= 12) { for (int j = 0; j < 6; j++) { dx[j] = s[2 * j]; dy[j] = s[2 * j + 1]; } }
+            else if (x == 34 && k >= 7) { dx[0] = s[0]; dy[0] = 0; dx[1] = s[1]; dy[1] = s[2]; dx[2] = s[3]; dy[2] = 0; dx[3] = s[4]; dy[3] = 0; dx[4] = s[5]; dy[4] = -s[2]; dx[5] = s[6]; dy[5] = 0; }
+            else if (x == 36 && k >= 9) { dx[0] = s[0]; dy[0] = s[1]; dx[1] = s[2]; dy[1] = s[3]; dx[2] = s[4]; dy[2] = 0; dx[3] = s[5]; dy[3] = 0; dx[4] = s[6]; dy[4] = s[7]; dx[5] = s[8]; dy[5] = -(s[1] + s[3] + s[7]); }
+            else if (x == 37 && k >= 11) {
+                float sx = s[0] + s[2] + s[4] + s[6] + s[8], sy = s[1] + s[3] + s[5] + s[7] + s[9];
+                for (int j = 0; j < 5; j++) { dx[j] = s[2 * j]; dy[j] = s[2 * j + 1]; }
+                if ((sx < 0 ? -sx : sx) > (sy < 0 ? -sy : sy)) { dx[5] = s[10]; dy[5] = -sy; } else { dx[5] = -sx; dy[5] = s[10]; }
+            } else { e->np = 0; break; }
+            for (int c2 = 0; c2 < 2; c2++) {
+                float x1 = e->x + dx[3 * c2], y1 = e->y + dy[3 * c2], x2 = x1 + dx[3 * c2 + 1], y2 = y1 + dy[3 * c2 + 1];
+                e->x = x2 + dx[3 * c2 + 2]; e->y = y2 + dy[3 * c2 + 2];
+                t_cubica(t, x1, y1, x2, y2, e->x, e->y);
+            }
+            e->np = 0; break;
+        }
+        default: e->np = 0; break;
+        }
+        #undef LARGURA
+    }
+    e->prof--;
+    return 1;
+}
+static void cff_glifo(const fonte_t *f, unsigned gid, trilha *t)
+{
+    const uint8_t *d; unsigned nd;
+    if (!idx_obj(f->cs_idx, gid, &d, &nd)) return;
+    cs_estado e; memset(&e, 0, sizeof e);
+    e.f = f; e.t = t;
+    e.lsub = f->fdsel || f->n_fd ? f->fd_lsub[cff_fd(f, gid) & 31] : f->lsub_idx;
+    cs_rodar(&e, d, nd);
+    t_fechar(t);
+}
+
 static fonte_t *montar_fonte(fonte_t *f, tabela *t, int nt)
 {
     const tabela *head = achar(t, nt, TAG('h','e','a','d')), *hhea = achar(t, nt, TAG('h','h','e','a')), *maxp = achar(t, nt, TAG('m','a','x','p'));
     const tabela *hmtx = achar(t, nt, TAG('h','m','t','x')), *cmap = achar(t, nt, TAG('c','m','a','p')), *glyf = achar(t, nt, TAG('g','l','y','f')), *loca = achar(t, nt, TAG('l','o','c','a'));
-    if (!head || head->n < 54 || !hhea || hhea->n < 36 || !maxp || maxp->n < 6 || !hmtx || !cmap || !glyf) goto ruim;
+    const tabela *cff = achar(t, nt, TAG('C','F','F',' '));
+    if (!head || head->n < 54 || !hhea || hhea->n < 36 || !maxp || maxp->n < 6 || !hmtx || !cmap || (!glyf && !cff)) goto ruim;
     f->upem = (int)u16(head->p + 18);
     f->loca_longo = s16(head->p + 50);
     f->ngl = (int)u16(maxp->p + 4);
@@ -226,7 +498,8 @@ static fonte_t *montar_fonte(fonte_t *f, tabela *t, int nt)
     if (!ler_cmap(f, cmap->p, cmap->n)) goto ruim;
     if (hmtx->transf) { f->aw = hmtx->p + 1; f->aw_passo = 2; if (hmtx->n < 1 + (unsigned)f->nhm * 2) goto ruim; }
     else { f->aw = hmtx->p; f->aw_passo = 4; if (hmtx->n < (unsigned)f->nhm * 4) goto ruim; }
-    if (glyf->transf) { if (!woff2_glyf(f, glyf->p, glyf->n)) goto ruim; }
+    if (!glyf) { if (!cff_abrir(f, cff->p, cff->n)) goto ruim; }
+    else if (glyf->transf) { if (!woff2_glyf(f, glyf->p, glyf->n)) goto ruim; }
     else {
         if (!loca) goto ruim;
         f->glyf = glyf->p; f->n_glyf = glyf->n; f->loca = loca->p; f->n_loca = loca->n;
@@ -245,7 +518,7 @@ fonte_t *fonte_abrir(const uint8_t *d, unsigned n)
     memset(f, 0, sizeof *f);
     tabela t[64]; int nt = 0;
     uint32_t sig = u32(d);
-    if (sig == 0x00010000 || sig == TAG('t','r','u','e')) {
+    if (sig == 0x00010000 || sig == TAG('t','r','u','e') || sig == TAG('O','T','T','O')) {
         uint8_t *c = guardar(f, n);
         if (!c) { fonte_fechar(f); return NULL; }
         memcpy(c, d, n);
@@ -259,7 +532,7 @@ fonte_t *fonte_abrir(const uint8_t *d, unsigned n)
         return montar_fonte(f, t, nt);
     }
     if (sig == TAG('w','O','F','F')) {
-        if (n < 44 || u32(d + 4) == TAG('O','T','T','O')) { fonte_fechar(f); return NULL; }
+        if (n < 44) { fonte_fechar(f); return NULL; }
         unsigned k = u16(d + 12);
         for (unsigned i = 0; i < k && nt < 64 && 44 + i * 20 + 20 <= n; i++) {
             const uint8_t *e = d + 44 + i * 20;
@@ -267,7 +540,7 @@ fonte_t *fonte_abrir(const uint8_t *d, unsigned n)
             unsigned off = u32(e + 4), clen = u32(e + 8), olen = u32(e + 12);
             if (off > n || clen > n - off || olen > (8u << 20)) continue;
             bool util = tag == TAG('c','m','a','p') || tag == TAG('h','e','a','d') || tag == TAG('h','h','e','a') || tag == TAG('h','m','t','x') ||
-                        tag == TAG('m','a','x','p') || tag == TAG('g','l','y','f') || tag == TAG('l','o','c','a');
+                        tag == TAG('m','a','x','p') || tag == TAG('g','l','y','f') || tag == TAG('l','o','c','a') || tag == TAG('C','F','F',' ');
             if (!util) continue;
             uint8_t *c = guardar(f, olen);
             if (!c) { fonte_fechar(f); return NULL; }
@@ -278,7 +551,7 @@ fonte_t *fonte_abrir(const uint8_t *d, unsigned n)
         return montar_fonte(f, t, nt);
     }
     if (sig == TAG('w','O','F','2')) {
-        if (n < 48 || u32(d + 4) == TAG('O','T','T','O') || u32(d + 4) == TAG('t','t','c','f')) { fonte_fechar(f); return NULL; }
+        if (n < 48 || u32(d + 4) == TAG('t','t','c','f')) { fonte_fechar(f); return NULL; }
         unsigned k = u16(d + 12), comp = u32(d + 20);
         const uint8_t *p = d + 48, *fim = d + n;
         unsigned soma = 0;
@@ -419,7 +692,7 @@ static inline float fpiso(float v) { int i = (int)v; return (float)(v < (float)i
 static inline float fteto(float v) { int i = (int)v; return (float)(v > (float)i ? i + 1 : i); }
 static inline float fabs_f(float v) { return v < 0 ? -v : v; }
 
-typedef struct { float *a; int w, h; } acum;
+struct acum { float *a; int w, h; };
 
 static void linha(acum *r, float x0, float y0, float x1, float y1)
 {
@@ -484,6 +757,27 @@ static void quad(acum *r, float x0, float y0, float x1, float y1, float x2, floa
 
 static int px_cache(int px) { return px > 200 ? 200 : px; }
 
+static const uint8_t *guardar_cache(fonte_t *f, gcache *c, unsigned gid, int px, acum *r, int w, int hh, int bx0, int by0, int *l, int *a, int *ox, int *oy);
+static const uint8_t *cff_rasterizar(fonte_t *f, unsigned gid, int px, gcache *c, int *l, int *a, int *ox, int *oy)
+{
+    trilha t; memset(&t, 0, sizeof t);
+    t.xmin = t.ymin = 1e9f; t.xmax = t.ymax = -1e9f;
+    cff_glifo(f, gid, &t);
+    if (t.xmin > t.xmax) return NULL;
+    float esc = (float)px / (float)f->upem;
+    int bx0 = (int)fpiso(t.xmin * esc) - 1, bx1 = (int)fteto(t.xmax * esc) + 1;
+    int by0 = (int)fpiso(-t.ymax * esc) - 1, by1 = (int)fteto(-t.ymin * esc) + 1;
+    int w = bx1 - bx0 + 2, hh = by1 - by0;
+    if (w <= 0 || hh <= 0 || w > 600 || hh > 600) return NULL;
+    acum r = { aloca((unsigned)(w * hh + 4) * sizeof(float)), w, hh };
+    if (!r.a) return NULL;
+    memset(r.a, 0, (unsigned)(w * hh + 4) * sizeof(float));
+    trilha d; memset(&d, 0, sizeof d);
+    d.modo = 1; d.esc = esc; d.ox = (float)bx0; d.oy = (float)by0; d.r = &r;
+    cff_glifo(f, gid, &d);
+    return guardar_cache(f, c, gid, px, &r, w, hh, bx0, by0, l, a, ox, oy);
+}
+
 const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy)
 {
     px = px_cache(px);
@@ -491,6 +785,7 @@ const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int 
     unsigned h = (gid * 31u + (unsigned)px * 7u) % CACHE_G;
     gcache *c = &f->cache[h];
     if (c->cob && c->gid == gid && c->px == px) { *l = c->l; *a = c->a; *ox = c->ox; *oy = c->oy; return c->cob; }
+    if (f->cff) return cff_rasterizar(f, gid, px, c, l, a, ox, oy);
     static fpt pts[MAXP]; static uint16_t ends[MAXP];
     contorno k = { pts, ends, 0, 0 };
     afim id = { 16384, 0, 0, 16384, 0, 0 };
@@ -540,6 +835,12 @@ const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int 
         #undef PY
         ini = fim + 1;
     }
+    return guardar_cache(f, c, gid, px, &r, w, hh, bx0, by0, l, a, ox, oy);
+}
+
+static const uint8_t *guardar_cache(fonte_t *f, gcache *c, unsigned gid, int px, acum *rp, int w, int hh, int bx0, int by0, int *l, int *a, int *ox, int *oy)
+{
+    acum r = *rp;
     uint8_t *cob = aloca((unsigned)(w * hh));
     if (!cob) { libera(r.a); return NULL; }
     for (int y = 0; y < hh; y++) {
