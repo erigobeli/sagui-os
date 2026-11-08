@@ -5,7 +5,7 @@ static str *video_src;   /* último src dado a um <video> pelo JavaScript */
 /* Ganchos que saem do JS (rede, TLS, imagens, layout) usam muita pilha C e não
  * checam limite: rodam sempre numa pilha própria de 2 MB, nunca na pilha de
  * 192 KB de uma corrotina async. */
-static char *pilha_ext;
+static char *pilha_ext, *ext_volta;
 static void em_pilha_grande(void (*f)(void))
 {
     enum { PILHA_EXT = 2 * 1024 * 1024 };
@@ -14,8 +14,11 @@ static void em_pilha_grande(void (*f)(void))
     char *atual; __asm__ volatile("movl %%esp, %0" : "=r"(atual));
     if (atual >= pilha_ext && atual < pilha_ext + PILHA_EXT) { f(); return; }   /* já nela */
     char *topo = pilha_ext + PILHA_EXT - 16;
+    char *volta_ant = ext_volta;
+    ext_volta = atual;   /* o coletor continua a varredura na pilha de quem chamou */
     __asm__ volatile("movl %%esp, %%ebx\n\tmovl %0, %%esp\n\tcall *%1\n\tmovl %%ebx, %%esp"
                      :: "r"(topo), "r"(f) : "ebx", "eax", "ecx", "edx", "memory", "cc");
+    ext_volta = volta_ant;
 }
 static const char *gb_url; static unsigned gb_n; static uint8_t *gb_d;
 static int *gb_cod; static char *gb_cab, *gb_fin; static int gb_cmax, gb_fmax;
@@ -1872,6 +1875,30 @@ static val n_dataset(val este, val *a, int n)
     o->d = d; o->estilo = 2;
     return vO(o);
 }
+/* document.cookie e navegação pedida pelo script */
+static char nav_url[4096]; static int nav_pedido, nav_subst;
+static val n_cookie(val este, val *a, int n)
+{
+    (void)este;
+    if (n >= 2) { cookie_guardar(to_str(ARG(0))->s, to_str(ARG(1))->s, true); return vU(); }
+    static char b[8192];
+    cookie_texto(to_str(ARG(0))->s, b, sizeof b, true);
+    return vT(b);
+}
+static val n_navegar(val este, val *a, int n)
+{
+    (void)este;
+    copia_texto(nav_url, to_str(ARG(0))->s, sizeof nav_url);
+    nav_pedido = 1; nav_subst = to_bool(ARG(1));
+    return vU();
+}
+int js_navegacao(char *url, int max, int *substituir)
+{
+    if (!nav_pedido) return 0;
+    nav_pedido = 0;
+    copia_texto(url, nav_url, (size_t)max); *substituir = nav_subst;
+    return 1;
+}
 static val n_script_atual(val este, val *a, int n) { (void)este; (void)a; (void)n; return script_atual ? embrulhar(script_atual) : vNul(); }
 static double NA(val *a, int n, int i) { return i < n ? to_num(a[i]) : 0; }
 static val n_c2(val este, val *a, int n)
@@ -2004,7 +2031,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());
@@ -2172,12 +2199,14 @@ static void na_pilha(void (*f)(void))
     __asm__ volatile("movl %%esp, %%ebx\n\tmovl %0, %%esp\n\tcall *%1\n\tmovl %%ebx, %%esp"
                      :: "r"(topo), "r"(f) : "ebx", "eax", "ecx", "edx", "memory", "cc");
 }
+static void gc_liberar_tudo(void);
 void js_fim(void)
 {
+    nav_pedido = 0;
     tela2d_liberar_todas();
     lay_ger = 0xFFFFFFFFu; lay_ok = 0; lay_n = 0;
     video_src = NULL;
-    while (blocos) { bloco *b = blocos; blocos = b->prox; libera(b); }
+    gc_liberar_tudo();
     ar = NULL; ar_u = ar_c = ar_total = 0;
     tab = NULL; tab_c = tab_n = 0; tb = NULL; tb_c = 0;
     raiz = NULL; global = NULL; vivo = 1; qtd_cliques = 0; topo_s = NULL; fatal = 0;
@@ -2290,4 +2319,140 @@ const char *js_video(void)
     copia_texto(u, video_src->s, sizeof u);
     video_src = NULL;
     return u;
+}
+
+
+/* ------------------------------------------------------------ coletor de lixo */
+extern char _dados_ini[], _dados_fim[];
+static uint32_t **gc_pend; static int gc_np, gc_cp;
+static void gc_ver(uint32_t v)
+{
+    if (v < gc_min || v >= gc_max) return;
+    bloco *b = bloco_de(v);
+    if (!b || v < (uintptr_t)b + BLOCO_CAB + 4 || v >= (uintptr_t)b + b->usado) return;
+    /* começo da alocação: bit mais próximo para trás no mapa */
+    unsigned w = (unsigned)((v - (uintptr_t)b) >> 2);
+    int k = (int)(w >> 5);
+    uint32_t m = b->ini[k] & (w & 31 ? (2u << (w & 31)) - 1 : 1u);
+    while (!m && k > 0) m = b->ini[--k];
+    if (!m) return;
+    int bit = 31; while (!(m & (1u << bit))) bit--;
+    uint32_t *h = (uint32_t *)b + ((unsigned)k * 32 + (unsigned)bit);
+    if (*h & (GC_MARCA | GC_LIVRE)) return;
+    uintptr_t ini = (uintptr_t)(h + 1), fim = ini + (*h & ~3u);
+    if (v < ini || v >= fim) return;
+    *h |= GC_MARCA;
+    if (gc_np == gc_cp) {
+        int c = gc_cp ? gc_cp * 2 : 65536;
+        uint32_t **n = aloca((unsigned)c * sizeof(uint32_t *));
+        if (!n) { gc_proibido = 1; return; }   /* sem memória para marcar: desiste com segurança abaixo */
+        if (gc_np) memcpy(n, gc_pend, (size_t)gc_np * sizeof(uint32_t *));
+        if (gc_pend) libera(gc_pend);
+        gc_pend = n; gc_cp = c;
+    }
+    gc_pend[gc_np++] = h;
+}
+static void gc_faixa(const void *lo, const void *hi)
+{
+    uintptr_t a = ((uintptr_t)lo + 3) & ~(uintptr_t)3;
+    for (const uint32_t *p = (const uint32_t *)a; (const void *)(p + 1) <= hi; p++) gc_ver(*p);
+}
+/* pilha que contém o endereço: devolve o topo e, se for de corrotina, qual */
+static char *gc_topo(char *esp, ger **g)
+{
+    *g = NULL;
+    if (pilha_js && esp >= pilha_js && esp < pilha_js + PILHA_TAM) return pilha_js + PILHA_TAM;
+    if (pilha_ext && esp >= pilha_ext && esp < pilha_ext + 2 * 1024 * 1024) return pilha_ext + 2 * 1024 * 1024;
+    for (int i = 0; i < n_gers; i++) {
+        ger *x = gers[i];
+        if (x && x->pilha && esp >= x->pilha && esp < x->pilha + GER_PILHA) { *g = x; return x->pilha + GER_PILHA; }
+    }
+    return NULL;
+}
+static __attribute__((noinline)) void gc_coletar(void)
+{
+    uint32_t regs[4];
+    __asm__ volatile("movl %%ebx, %0\n\tmovl %%esi, %1\n\tmovl %%edi, %2\n\tmovl %%ebp, %3"
+                     : "=m"(regs[0]), "=m"(regs[1]), "=m"(regs[2]), "=m"(regs[3]));
+    char *esp; __asm__ volatile("movl %%esp, %0" : "=r"(esp));
+    ger *g;
+    if (!gc_topo(esp, &g)) return;   /* fora das pilhas conhecidas: não dá para achar as raízes */
+    unsigned t0 = tempo_ms();
+    gc_np = 0;
+    gc_proibido = 1;   /* nada de coletar dentro da coleta */
+    for (int i = 0; i < 4; i++) gc_ver(regs[i]);
+    /* a cadeia de pilhas ativas: daqui até a do interpretador */
+    char *p = esp;
+    for (int volta = 0; p && volta < 64; volta++) {
+        char *topo = gc_topo(p, &g);
+        if (!topo) break;
+        gc_faixa(p, topo);
+        if (g) p = (char *)g->esp_c;                        /* corrotina rodando: quem a retomou */
+        else if (topo == pilha_ext + 2 * 1024 * 1024) p = ext_volta;
+        else break;                                          /* pilha do interpretador: fim */
+    }
+    /* corrotinas paradas no await/yield */
+    for (int i = 0; i < n_gers; i++) {
+        ger *x = gers[i];
+        if (x && x->pilha && x->estado == 1) gc_faixa(x->esp_g, x->pilha + GER_PILHA);
+    }
+    gc_faixa(_dados_ini, _dados_fim);
+    while (gc_np) {
+        uint32_t *h = gc_pend[--gc_np];
+        gc_faixa(h + 1, (char *)(h + 1) + (*h & ~3u));
+    }
+    /* varre: desmarca os vivos, junta os mortos vizinhos e refaz as listas */
+    memset(livre_peq, 0, sizeof livre_peq); livre_grande = NULL;
+    unsigned vivo = 0, liberado = 0;
+    for (int i = 0; i < n_bl; i++) {
+        bloco *b = tab_bl[i];
+        uint32_t *h = (uint32_t *)((char *)b + BLOCO_CAB), *fim = (uint32_t *)((char *)b + b->usado), *ant = NULL;
+        while (h < fim) {
+            unsigned t = *h & ~3u;
+            uint32_t *prox = h + 1 + t / 4;
+            if (*h & GC_MARCA) { *h &= ~GC_MARCA; vivo += t + 4; ant = NULL; }
+            else if (ant) { *ant = ((*ant & ~3u) + 4 + t) | GC_LIVRE; bit_por(b, h, 0); }
+            else { *h = t | GC_LIVRE; ant = h; }
+            h = prox;
+        }
+    }
+    /* blocos inteiros livres voltam ao sistema; o resto vai para as listas */
+    int k = 0;
+    for (int i = 0; i < n_bl; i++) {
+        bloco *b = tab_bl[i];
+        uint32_t *h = (uint32_t *)((char *)b + BLOCO_CAB);
+        bool vazio = b != bl_atual && (*h & GC_LIVRE) && (char *)(h + 1) + (*h & ~3u) >= (char *)b + b->usado;
+        if (vazio) {
+            for (bloco **pp = &blocos; *pp; pp = &(*pp)->prox) if (*pp == b) { *pp = b->prox; break; }
+            bytes_blocos -= b->tam; liberado += b->tam;
+            if (ar_total >= b->tam) ar_total -= b->tam;
+            libera(b->ini); libera(b);
+            continue;
+        }
+        tab_bl[k++] = b;
+        uint32_t *fim = (uint32_t *)((char *)b + b->usado);
+        for (h = (uint32_t *)((char *)b + BLOCO_CAB); h < fim; h += 1 + (*h & ~3u) / 4) if (*h & GC_LIVRE) livre_por(h);
+    }
+    n_bl = k;
+    gc_min = ~(uintptr_t)0; gc_max = 0;
+    for (int i = 0; i < n_bl; i++) {
+        if ((uintptr_t)tab_bl[i] < gc_min) gc_min = (uintptr_t)tab_bl[i];
+        if ((uintptr_t)tab_bl[i] + tab_bl[i]->tam > gc_max) gc_max = (uintptr_t)tab_bl[i] + tab_bl[i]->tam;
+    }
+    gc_ultimo_vivo = vivo;
+    gc_limiar = vivo * 2 + (16u << 20);
+    if (gc_limiar < (24u << 20)) gc_limiar = 24u << 20;
+    if (gc_limiar > MEM_MAX) gc_limiar = MEM_MAX;
+    gc_coletas++;
+    gc_proibido = 0;
+    registrar("js: coleta %u: %u KB vivos, %u KB devolvidos, %u blocos, %u ms\n", gc_coletas, vivo / 1024, liberado / 1024, n_bl, tempo_ms() - t0);
+}
+
+/* fim da página: tudo volta ao sistema */
+static void gc_liberar_tudo(void)
+{
+    while (blocos) { bloco *b = blocos; blocos = b->prox; libera(b->ini); libera(b); }
+    n_bl = 0; gc_min = ~(uintptr_t)0; gc_max = 0; bl_atual = NULL;
+    memset(livre_peq, 0, sizeof livre_peq); livre_grande = NULL;
+    bytes_blocos = 0; gc_limiar = 24u << 20;
 }

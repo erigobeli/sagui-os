@@ -53,12 +53,30 @@ static const char *const kws[] = { "", "var", "let", "const", "function", "retur
     "void", "this", "null", "true", "false", "in", "instanceof", "throw", "try", "catch", "finally", "switch", "case", "default", "class", "extends",
     "super", "async", "await", "of", "get", "set", "static" };
 
-/* ------------------------------------------------------------ memória */
-typedef struct bloco { struct bloco *prox; } bloco;
+/* ------------------------------------------------------------ memória
+ * Coletor de lixo marca-e-varre conservador. Cada alocação tem um cabeçalho
+ * de 4 bytes (tamanho | MARCA | LIVRE) e um bit num mapa por bloco que diz
+ * onde ela começa (para achar o dono de um ponteiro que aponta para o meio).
+ * Raízes: .data/.bss do programa, a parte usada de cada pilha onde o JS roda
+ * (a do interpretador, a de cada corrotina e a dos ganchos externos) e os
+ * registradores. O que não é alcançado vira bloco livre (vizinhos se juntam);
+ * bloco de 2 MB todo livre volta ao sistema. */
+typedef unsigned long uintptr_t;
+typedef struct bloco { struct bloco *prox; unsigned tam, usado; uint32_t *ini; } bloco;
+#define BLOCO_CAB 16
+#define GC_MARCA 1u
+#define GC_LIVRE 2u
 static bloco *blocos;
 static char *ar; static unsigned ar_u, ar_c, ar_total;
+static bloco *bl_atual;
+static bloco *tab_bl[512]; static int n_bl;            /* blocos em ordem de endereço */
+static uintptr_t gc_min = ~(uintptr_t)0, gc_max;
+static uint32_t *livre_peq[129]; static uint32_t *livre_grande;
+static unsigned bytes_blocos, gc_limiar = 24u << 20, gc_coletas, gc_ultimo_vivo;
+static int gc_proibido;
 static const js_hooks_t *gancho;
 static void lancar_fatal(const char *m);
+static void gc_coletar(void);
 
 static unsigned t_suave;   /* limite que vira exceção comum (para testar funções desconhecidas) */
 static unsigned cont_novo;
@@ -68,22 +86,106 @@ static __attribute__((noreturn)) void lancar(val v);
 static int no_limite;
 static __attribute__((noreturn, noinline)) void limite_suave(void) { no_limite = 1; val v = vT("limite de tempo"); no_limite = 0; lancar(v); }
 static __attribute__((noreturn)) void erro(const char *tipo, const char *m, const char *x);
+
+static void bit_por(bloco *b, uint32_t *h, int v)
+{
+    unsigned w = (unsigned)(h - (uint32_t *)b);
+    if (v) b->ini[w >> 5] |= 1u << (w & 31); else b->ini[w >> 5] &= ~(1u << (w & 31));
+}
+static bloco *bloco_de(uintptr_t p)
+{
+    if (p < gc_min || p >= gc_max) return NULL;
+    int a = 0, z = n_bl - 1;
+    while (a <= z) {
+        int m = (a + z) / 2;
+        bloco *b = tab_bl[m];
+        if (p < (uintptr_t)b) z = m - 1;
+        else if (p >= (uintptr_t)b + b->tam) a = m + 1;
+        else return b;
+    }
+    return NULL;
+}
+static void livre_por(uint32_t *h)
+{
+    unsigned n = *h & ~3u;
+    if (n <= 512) { h[1] = (uint32_t)(uintptr_t)livre_peq[n >> 2]; livre_peq[n >> 2] = h; }
+    else { h[1] = (uint32_t)(uintptr_t)livre_grande; livre_grande = h; }
+}
+static uint32_t *livre_tirar(unsigned n)
+{
+    if (n <= 512 && livre_peq[n >> 2]) { uint32_t *h = livre_peq[n >> 2]; livre_peq[n >> 2] = (uint32_t *)(uintptr_t)h[1]; return h; }
+    for (uint32_t **pp = &livre_grande; *pp; pp = (uint32_t **)(void *)&(*pp)[1]) {
+        uint32_t *h = *pp, t = *h & ~3u;
+        if (t < n) continue;
+        *pp = (uint32_t *)(uintptr_t)h[1];
+        if (t - n >= 20) {   /* sobra vira outro livre */
+            uint32_t *r = h + 1 + n / 4;
+            *r = (t - n - 4) | GC_LIVRE;
+            bit_por(bloco_de((uintptr_t)h), r, 1);
+            livre_por(r);
+            *h = n;
+        }
+        return h;
+    }
+    return NULL;
+}
+static bloco *bloco_novo(unsigned t)
+{
+    if (n_bl >= 512) return NULL;
+    bloco *b = aloca(t);
+    if (!b) return NULL;
+    uint32_t *ini = aloca(t / 32 + 8);
+    if (!ini) { libera(b); return NULL; }
+    memset(b, 0, t); memset(ini, 0, t / 32 + 8);
+    b->tam = t; b->usado = BLOCO_CAB; b->ini = ini;
+    b->prox = blocos; blocos = b;
+    int i = n_bl;
+    while (i > 0 && (uintptr_t)tab_bl[i - 1] > (uintptr_t)b) { tab_bl[i] = tab_bl[i - 1]; i--; }
+    tab_bl[i] = b; n_bl++;
+    if ((uintptr_t)b < gc_min) gc_min = (uintptr_t)b;
+    if ((uintptr_t)b + t > gc_max) gc_max = (uintptr_t)b + t;
+    bytes_blocos += t; ar_total += t;
+    return b;
+}
 static void *novo(unsigned n)
 {
     if (t_suave && !no_limite && !(++cont_novo & 0x3FFF) && tempo_ms() > t_suave) limite_suave();
     n = (n + 3) & ~3u;
-    if (n > ar_c - ar_u) {
-        unsigned t = n + 16 > (2u << 20) ? n + 16 : (2u << 20);
-        if (ar_total + t > MEM_MAX) lancar_fatal("memoria");
-        bloco *b = aloca(t);
-        if (!b) lancar_fatal("memoria");
-        memset(b, 0, t);
-        b->prox = blocos; blocos = b;
-        ar = (char *)b; ar_u = 8; ar_c = t; ar_total += t;
+    if (n < 4) n = 4;
+    uint32_t *h = livre_tirar(n);
+    if (h) {
+        unsigned t = *h & ~3u;
+        *h = t;
+        memset(h + 1, 0, t);
+        return h + 1;
     }
-    void *p = ar + ar_u;
-    ar_u += n;
-    return p;
+    if (n + 4 > ar_c - ar_u) {
+        unsigned t = n + 4 + BLOCO_CAB > (2u << 20) ? ((n + 4 + BLOCO_CAB + 4095) & ~4095u) : (2u << 20);
+        if (bytes_blocos + t > gc_limiar && !gc_proibido) {
+            gc_coletar();
+            h = livre_tirar(n);
+            if (h) { unsigned tt = *h & ~3u; *h = tt; memset(h + 1, 0, tt); return h + 1; }
+        }
+        if (ar_total + t > MEM_MAX) lancar_fatal("memoria");
+        bloco *b = bloco_novo(t);
+        if (!b) lancar_fatal("memoria");
+        if (t > (2u << 20)) {   /* objeto grande: bloco só dele */
+            h = (uint32_t *)((char *)b + BLOCO_CAB);
+            *h = n; bit_por(b, h, 1); b->usado = BLOCO_CAB + 4 + n;
+            return h + 1;
+        }
+        /* o resto do bloco anterior vira livre */
+        if (bl_atual && ar_c - ar_u >= 8) {
+            uint32_t *r = (uint32_t *)(ar + ar_u);
+            *r = (ar_c - ar_u - 4) | GC_LIVRE; bit_por(bl_atual, r, 1); livre_por(r);
+            bl_atual->usado = ar_c;
+        }
+        bl_atual = b; ar = (char *)b; ar_u = BLOCO_CAB; ar_c = t;
+    }
+    h = (uint32_t *)(ar + ar_u);
+    *h = n; bit_por(bl_atual, h, 1);
+    ar_u += n + 4; bl_atual->usado = ar_u;
+    return h + 1;
 }
 
 /* ------------------------------------------------------------ números */

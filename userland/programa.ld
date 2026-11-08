@@ -7,7 +7,9 @@ SECTIONS
     .text : { *(.text.inicio) *(.text .text.*) }
     .rodata : { *(.rodata .rodata.*) }
     . = ALIGN(4096);
+    _dados_ini = .;
     .data : { *(.data .data.*) }
     .bss : { *(.bss .bss.*) *(COMMON) }
+    _dados_fim = .;
     /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) }
 }

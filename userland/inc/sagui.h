@@ -103,7 +103,10 @@ int  http_pedir_seguro(const char *host, int porta, const char *caminho, bool se
 int  http_ler(int fd, void *buf, unsigned n);                        /* como ler, também por TLS */
 void http_fechar(int fd);
 void http_preparar(const char *metodo, const char *cabecalhos, const void *corpo, int n);   /* POST etc. no próximo pedido */
-int  http_juntar_pedacos(char *d, int n);                            /* desfaz Transfer-Encoding: chunked */
+int  http_juntar_pedacos(char *d, int n);
+/* Cookies (RFC 6265): pote do processo. Set-Cookie e document.cookie gravam; pedidos levam. */
+void cookie_guardar(const char *url, const char *set_cookie, bool de_js);
+int  cookie_texto(const char *url, char *o, int max, bool de_js);                            /* desfaz Transfer-Encoding: chunked */
 int  tls_abrir(int fd, const char *host);
 int  tls_escrever(const void *d, unsigned n);
 int  tls_ler(void *d, unsigned max);
@@ -172,7 +175,8 @@ void  js_janela(int l, int a, int rx, int ry);
 /* A página rolou ou mudou de tamanho: eventos scroll/resize e observadores; HTML novo se mudou. */
 char *js_rolar(int rx, int ry, int *saida_n);
 char *js_redimensionar(int l, int a, int *saida_n);
-int   js_rolagem_pedida(int *x, int *y);   /* scrollTo do script: 1 = há pedido */
+int   js_rolagem_pedida(int *x, int *y);
+int   js_navegacao(char *url, int max, int *substituir);   /* location.href= / assign / replace / reload */   /* scrollTo do script: 1 = há pedido */
 /* Campo n (data-sagui-campo) recebeu valor e a tecla (13 Enter, 8 apagar, ou o caractere):
  * roda keydown/input/keyup; HTML novo se os scripts mudaram o DOM. */
 char *js_campo(int n, const char *valor, int tecla, int *saida_n);

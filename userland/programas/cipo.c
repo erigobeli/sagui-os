@@ -475,6 +475,44 @@ static void rodape(const char *t);
 static int resp_codigo; static char resp_cab[8192]; static char resp_url[URL_MAX];
 /* qualquer = devolve também o corpo de 4xx/5xx (o fetch quer ver) */
 static unsigned t_rede, t_js;
+/* <meta http-equiv="refresh" content="N; url=..."> fora de <noscript> (o JS está ligado) */
+static char refresh_url[URL_MAX]; static unsigned refresh_em; static bool refresh_ativo;
+static void ler_refresh(const char *h, int n)
+{
+    refresh_ativo = false;
+    for (int i = 0; i + 6 < n; i++) {
+        if (h[i] != '<') continue;
+        if (compara_texto_n(h + i + 1, "noscript", 8) == 0 || compara_texto_n(h + i + 1, "NOSCRIPT", 8) == 0) {   /* pula até o fim */
+            for (; i + 10 < n; i++) if (h[i] == '<' && h[i + 1] == '/' && ((h[i + 2] | 32) == 'n') && compara_texto_n(h + i + 3, "oscript", 7) == 0) break;
+            continue;
+        }
+        if ((h[i + 1] | 32) != 'm' || (h[i + 2] | 32) != 'e' || (h[i + 3] | 32) != 't' || (h[i + 4] | 32) != 'a') continue;
+        int f = i; while (f < n && h[f] != '>') f++;
+        bool eq = false; const char *ct = NULL; int ctn = 0;
+        for (int k = i; k + 10 < f; k++) {
+            if ((h[k] | 32) == 'r' && compara_texto_n(h + k, "refresh", 7) == 0) eq = true;
+            if ((h[k] | 32) == 'c' && compara_texto_n(h + k, "content=", 8) == 0) {
+                int a = k + 8; char q = h[a] == '"' || h[a] == '\'' ? h[a++] : ' ';
+                int b = a; while (b < f && h[b] != q && !(q == ' ' && h[b] == '>')) b++;
+                ct = h + a; ctn = b - a;
+            }
+        }
+        if (!eq || !ct) continue;
+        int seg = 0, k = 0;
+        while (k < ctn && ct[k] >= '0' && ct[k] <= '9') seg = seg * 10 + (ct[k++] - '0');
+        while (k < ctn && (ct[k] == ';' || ct[k] == ',' || ct[k] == ' ' || ct[k] == '.')) k++;
+        if (k + 4 <= ctn && (ct[k] | 32) == 'u' && (ct[k + 1] | 32) == 'r' && (ct[k + 2] | 32) == 'l') { k += 3; while (k < ctn && (ct[k] == ' ' || ct[k] == '=')) k++; }
+        char rel[URL_MAX]; int r = 0;
+        while (k < ctn && r < URL_MAX - 1 && ct[k] != '\'' && ct[k] != '"') rel[r++] = ct[k++];
+        rel[r] = 0;
+        /* &amp; do atributo */
+        for (char *a = rel; (a = (char *)acha_char(a, '&'));) { if (compara_texto_n(a, "&amp;", 5) == 0) memmove(a + 1, a + 5, tam_texto(a + 5) + 1); a++; }
+        if (!juntar_url(url_atual, rel[0] ? rel : url_atual, refresh_url, sizeof refresh_url)) continue;
+        refresh_em = tempo_ms() + (unsigned)seg * 1000; refresh_ativo = true;
+        registrar("cipo: meta refresh em %d s para %s\n", seg, refresh_url);
+        return;
+    }
+}
 static bool canvas_vivo;
 static int js_rol, rol_pedida = -1;   /* rolagem que o JS já viu; scrollTo pedido pelo JS */   /* a página anima um <canvas>: o tique vem mais rápido */   /* medição: tempo da página em rede e em scripts */
 static uint8_t *baixar_resp_(const char *pedido, unsigned *n, bool qualquer);
@@ -2084,7 +2122,7 @@ static void carregar(const char *pedido)
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
     inicio_pagina = tempo_ms();
-    t_rede = t_js = 0; canvas_vivo = false;
+    t_rede = t_js = 0; canvas_vivo = false; refresh_ativo = false;
     if (medidor) { motor_fim(medidor); medidor = NULL; }
     js_rol = 0; rol_pedida = -1;
     js_fim();
@@ -2214,6 +2252,7 @@ static void carregar(const char *pedido)
                 titulo_js[0] = alerta_js[0] = 0;
                 int tam_doc = tam;   /* o documento como veio (a serialização tira os scripts) */
                 char *novo = rodar_scripts(corpo, &tam);
+                ler_refresh(novo, tam);
                 ler_pagina(novo, tam);
                 if (motor) {
                     motor_diagramar();
@@ -2496,10 +2535,16 @@ int principal(int argc, char **argv)
 
     evento_t e;
     for (;;) {
-        if (js_vivo() || (js_ativo() && motor && pos_px() != js_rol)) {
+        {   /* o script pediu outra página (location) ou o meta refresh venceu */
+            char u[URL_MAX]; int subst = 0;
+            if (js_navegacao(u, sizeof u, &subst)) { registrar("cipo: o script navegou para %s\n", u); if (subst) carregar(u); else navegar(u); continue; }
+            if (refresh_ativo && (int)(tempo_ms() - refresh_em) >= 0) { refresh_ativo = false; copia_texto(u, refresh_url, sizeof u); carregar(u); continue; }
+        }
+        if (js_vivo() || refresh_ativo || (js_ativo() && motor && pos_px() != js_rol)) {
             if (proximo_evento(j->id, &e, false) != 1) {
                 /* ritmo: redesenho caro espera mais */
                 unsigned agora = tempo_ms(), passo = canvas_vivo ? 40 : agora - ult_redesenho < 2000 ? 1000 : 250;
+                if (!js_vivo() && !(js_ativo() && motor && pos_px() != js_rol)) { dormir(50); continue; }   /* só esperando o refresh */
                 if (agora - ult_tique >= passo || pos_px() != js_rol) { pagina_viva(); aplicar_rolagem_pedida(); } else dormir(20);
                 continue;
             }
