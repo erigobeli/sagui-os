@@ -1327,6 +1327,25 @@ static void js_alerta(const char *t)
     formatar_texto(alerta_js, sizeof alerta_js, "Alerta da página: %s", t);
 }
 
+/* Cache dos recursos da página (CSS e imagens): a página viva é relida a
+ * cada mudança do DOM e não deve baixar tudo de novo. Limpo ao navegar. */
+#define CACHE_N 48
+#define CACHE_MAX (6u << 20)
+static struct { char *url; uint8_t *d; unsigned n; } cache[CACHE_N];
+static int qtd_cache; static unsigned cache_total;
+static unsigned ult_tique, ult_redesenho, hash_viva;
+static void cache_limpar(void)
+{
+    for (int i = 0; i < qtd_cache; i++) { libera(cache[i].url); libera(cache[i].d); }
+    qtd_cache = 0; cache_total = 0;
+}
+static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
+{
+    uint8_t *c = aloca(n + 1);
+    if (c) { memcpy(c, d, n); c[n] = 0; }
+    return c;
+}
+static uint8_t *baixar_recurso(const char *u, unsigned *n);
 static uint8_t *js_baixar(const char *u, unsigned *n)
 {
     char end[URL_MAX];
@@ -1344,6 +1363,23 @@ static void abrir_video_da_pagina(void)
     int pid = executar("/bin/video", args);
     registrar("cipo: video da pagina (%d bytes) pid %d\n", (int)tam_texto(u), pid);
     if (pid > 0) rodape("Vídeo aberto no tocador");
+}
+
+static uint8_t *baixar_recurso(const char *u, unsigned *n)
+{
+    char end[URL_MAX];
+    if (!juntar_url(url_atual, u, end, sizeof end)) return NULL;
+    for (int i = 0; i < qtd_cache; i++)
+        if (compara_texto(cache[i].url, end) == 0) { *n = cache[i].n; return copia_bloco(cache[i].d, cache[i].n); }
+    uint8_t *d = js_baixar(u, n);
+    if (d && qtd_cache < CACHE_N && cache_total + *n <= CACHE_MAX) {
+        int k = (int)tam_texto(end);
+        char *cu = aloca((unsigned)k + 1);
+        uint8_t *cd = copia_bloco(d, *n);
+        if (cu && cd) { memcpy(cu, end, (unsigned)k + 1); cache[qtd_cache].url = cu; cache[qtd_cache].d = cd; cache[qtd_cache].n = *n; qtd_cache++; cache_total += *n; }
+        else { if (cu) libera(cu); if (cd) libera(cd); }
+    }
+    return d;
 }
 
 static char *rodar_scripts(char *h, int *n)
@@ -1369,7 +1405,7 @@ static bool decodificar_registrando(const uint8_t *d, unsigned n, uint32_t **px,
 }
 static void ler_pagina(const char *h, int n)
 {
-    static const motor_ganchos_t g = { js_baixar, decodificar_registrando };
+    static const motor_ganchos_t g = { baixar_recurso, decodificar_registrando };
     if (motor) motor_fim(motor);
     motor = motor_novo(&g);
     if (motor) {
@@ -1984,6 +2020,8 @@ static void carregar(const char *pedido)
     copia_texto(url, pedido, sizeof url);
     inicio_pagina = tempo_ms();
     js_fim();
+    cache_limpar();
+    hash_viva = 0; ult_tique = tempo_ms();
     nota_busca[0] = 0;
     trocar_busca(url, sizeof url);
     /* Sem esquema, tenta HTTPS primeiro e cai para HTTP se não der. */
@@ -2199,6 +2237,34 @@ static void clique_js(int id)
     desenhar_pagina();
 }
 
+/* Página viva: timers e animações do JS continuam depois do load; quando o
+ * DOM muda, a página é relida e redesenhada no mesmo ponto da rolagem. */
+static unsigned hash_texto(const char *h, int n) { unsigned x = 2166136261u; for (int i = 0; i < n; i++) x = (x ^ (uint8_t)h[i]) * 16777619u; return x; }
+static void pagina_viva(void)
+{
+    int n = 0;
+    unsigned agora = tempo_ms();
+    char *h = js_tique((int)(agora - ult_tique > 1000 ? 1000 : agora - ult_tique), &n);
+    ult_tique = agora;
+    abrir_video_da_pagina();
+    if (!h) return;
+    unsigned x = hash_texto(h, n);
+    if (x == hash_viva) { libera(h); return; }
+    hash_viva = x;
+    int t = topo;
+    unsigned t0 = tempo_ms();
+    limpar_pagina();
+    ler_pagina(h, n);
+    libera(h);
+    motor_diagramar();
+    while (motor && motor_imagens(motor, 8)) motor_diagramar();
+    if (t > linhas) t = linhas;
+    topo = t;
+    desenhar_pagina();
+    ult_redesenho = tempo_ms();
+    registrar("cipo: viva redesenhou em %u ms\n", ult_redesenho - t0);
+}
+
 static void navegar(const char *url)
 {
     if (url_atual[0] && compara_texto(url, url_atual) != 0) {
@@ -2258,7 +2324,14 @@ int principal(int argc, char **argv)
 
     evento_t e;
     for (;;) {
-        if (proximo_evento(j->id, &e, true) != 1) continue;
+        if (js_vivo()) {
+            if (proximo_evento(j->id, &e, false) != 1) {
+                /* ritmo: redesenho caro espera mais */
+                unsigned agora = tempo_ms(), passo = agora - ult_redesenho < 2000 ? 1000 : 250;
+                if (agora - ult_tique >= passo) pagina_viva(); else dormir(20);
+                continue;
+            }
+        } else if (proximo_evento(j->id, &e, true) != 1) continue;
         if (e.tipo == EV_FECHAR) break;
         if (e.tipo == EV_TAMANHO) {
             /* A diagramação depende da largura: abre a página de novo. */

@@ -1279,6 +1279,7 @@ static val executar_fn(obj *o, val este, val *a, int n, val novo_t)
         hoist(d->corpo->a, e);
         for (no *s = d->corpo->a; s; s = s->prox) if (ex(s, e) == C_RET) { r = rv; break; }
     }
+    if (!d->seta && novo_t.t == OB && r.t != OB && q.este.t == OB) r = q.este;   /* super() pode ter trocado o this */
     qa = ant;
     if (d->assinc) r = chamar(get(vO(global), I("__resolvido")), vU(), &r, 1);
     return r;
@@ -1593,7 +1594,7 @@ static val ev(no *x, env *e)
             obj *cl = qa->func; val pai = vU();
             if (cl && cl->proto) pai = vO(cl->proto);
             int n = avaliar_args(x->b, e, &a);
-            if (pai.t == OB && pai.o != p_fn) { campos(pai.o, qa->este); val r = chamar_n(pai, qa->este, a, n, qa->novo); if (r.t == OB) qa->este = r; }
+            if (pai.t == OB && pai.o != p_fn) { campos(pai.o, qa->este); val r = chamar_n(pai, qa->este, a, n, qa->novo); if (r.t == OB) { if (r.o != qa->este.o && cl) campos(cl, r); qa->este = r; } }
             return qa->este;
         }
         if (c->k == K_MEM) {

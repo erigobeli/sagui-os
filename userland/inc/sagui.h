@@ -119,6 +119,8 @@ typedef struct {
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */
 void js_fim(void);
+char *js_tique(int ms, int *saida_n);   /* timers depois do load; HTML novo se o DOM mudou */
+int   js_vivo(void);                     /* ainda há timers na página */
 const char *js_video(void);   /* URL que o JS deu a um <video>, ou NULL */
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);   /* PNG e JPEG */
 int  http_pedir(const char *host, int porta, const char *caminho);   /* manda o GET; devolve o descritor */

@@ -716,8 +716,9 @@ static val n_re(val este, val *a, int n)
 
 /* ---- DOM ---- */
 typedef struct at { str *k, *v; struct at *prox; } at;
-struct dn { int tipo; str *tag, *txt; at *at; dn *pai, *pri, *ult, *ant, *prox; obj *w; int feito; };
+struct dn { int tipo; str *tag, *txt; at *at; dn *pai, *pri, *ult, *ant, *prox; obj *w; int feito; dn *sombra; };
 static dn *raiz; static int sujo;
+static int tique_ms, vivo;   /* página viva */
 static str *s_style, *s_onclick, *s_ls, *s_click;
 #define MAX_CLIQUES 512
 static dn *cliques[MAX_CLIQUES]; static int qtd_cliques;
@@ -733,6 +734,7 @@ static void d_tirar(dn *c)
 }
 static void d_por(dn *p, dn *c, dn *antes)
 {
+    if (c->tipo == 11) { while (c->pri) d_por(p, c->pri, antes); return; }   /* fragmento: muda os filhos */
     d_tirar(c);
     c->pai = p; c->prox = antes;
     c->ant = antes ? antes->ant : p->ult;
@@ -869,11 +871,49 @@ static int tem_clique(dn *d)
     return l && l->v.t == OB && achar(l->v.o, s_click);
 }
 static void serial(buf *b, dn *d, int final);
+static dn *host_atual;   /* hospedeiro da sombra sendo achatada (serialização final) */
 static void serial_filhos(buf *b, dn *d, int final) { for (dn *c = d->pri; c; c = c->prox) serial(b, c, final); }
+/* <slot>: põe os filhos leves do hospedeiro que pertencem a ele; sem nenhum, o conteúdo reserva. */
+static void serial_slot(buf *b, dn *slot, int final)
+{
+    dn *h = host_atual; str *nome = attr(slot, I("name")); int achou = 0;
+    host_atual = NULL;
+    for (dn *c = h->pri; c; c = c->prox) {
+        str *sa = c->tipo == 1 ? attr(c, I("slot")) : NULL;
+        int meu = nome && nome->n ? (sa && sa->n == nome->n && !memcmp(sa->s, nome->s, (size_t)nome->n)) : !(sa && sa->n);
+        if (!meu) continue;
+        if (c->tipo == 3 && !nome) { int so_branco = 1; for (int i = 0; i < c->txt->n; i++) if ((unsigned char)c->txt->s[i] > ' ') so_branco = 0; if (so_branco) continue; }
+        achou = 1; serial(b, c, final);
+    }
+    host_atual = h;
+    if (!achou) serial_filhos(b, slot, final);
+}
+/* CSS da sombra: :host(X) vira tag-do-hospedeiro + X, :host vira a tag. */
+static void serial_css_sombra(buf *b, dn *st)
+{
+    str *tag = host_atual->tag;
+    for (dn *c = st->pri; c; c = c->prox) {
+        if (c->tipo != 3) continue;
+        const char *s = c->txt->s; int n = c->txt->n;
+        for (int i = 0; i < n; i++) {
+            if (i + 5 <= n && !memcmp(s + i, ":host", 5) && !(i + 5 < n && s[i + 5] == '-')) {
+                b_por(b, tag->s, tag->n); i += 4;
+                if (i + 1 < n && s[i + 1] == '(') {
+                    int prof = 0, j = i + 2;
+                    for (; j < n; j++) { if (s[j] == '(') prof++; else if (s[j] == ')') { if (!prof) break; prof--; } }
+                    b_por(b, s + i + 2, j - i - 2); i = j;
+                }
+                continue;
+            }
+            b_por(b, s + i, 1);
+        }
+    }
+}
 static void serial(buf *b, dn *d, int final)
 {
     if (d->tipo == 3) { b_por(b, d->txt->s, d->txt->n); return; }
-    if (d->tipo == 9) { serial_filhos(b, d, final); return; }
+    if (d->tipo == 9 || d->tipo == 11) { serial_filhos(b, d, final); return; }
+    if (final && host_atual && d->tag == I("slot")) { serial_slot(b, d, final); return; }
     if (final && d->tag->n == 6 && !memcmp(d->tag->s, "script", 6)) return;
     int id = -1;
     if (final && tem_clique(d) && qtd_cliques < MAX_CLIQUES) { id = qtd_cliques; cliques[qtd_cliques++] = d; }
@@ -904,7 +944,9 @@ static void serial(buf *b, dn *d, int final)
     b_t(b, ">");
     if (vazio) return;
     if (id >= 0 && !e_link) { b_t(b, "<a href=\""); b_t(b, alvo); b_t(b, "\">"); }
-    serial_filhos(b, d, final);
+    if (final && d->sombra) { dn *h = host_atual; host_atual = d; serial_filhos(b, d->sombra, final); host_atual = h; }
+    else if (final && host_atual && d->tag == I("style")) serial_css_sombra(b, d);
+    else serial_filhos(b, d, final);
     if (id >= 0 && !e_link) b_t(b, "</a>");
     b_t(b, "</"); b_por(b, d->tag->s, d->tag->n); b_t(b, ">");
 }
@@ -967,7 +1009,7 @@ static int el_get(obj *o, str *k, val *r)
     switch (k->dom) {
     case D_TYPE: *r = vI(d->tipo); break;
     case D_NAME: case D_TAG:
-        if (d->tipo != 1) { *r = vS(I(d->tipo == 3 ? "#text" : "#document")); break; }
+        if (d->tipo != 1) { *r = vS(I(d->tipo == 3 ? "#text" : d->tipo == 11 ? "#document-fragment" : "#document")); break; }
         *r = caixa(vS(d->tag), 1); break;
     case D_PAI: *r = embrulhar(d->pai); break;
     case D_PAIEL: *r = embrulhar(d->pai && d->pai->tipo == 1 ? d->pai : NULL); break;
@@ -1129,6 +1171,8 @@ static dn *por_id(dn *d, str *id)
 static val n_byid(val este, val *a, int n) { (void)este; return embrulhar(por_id(raiz, to_str(ARG(0)))); }
 static val n_create_el(val este, val *a, int n) { (void)este; str *t = to_str(ARG(0)); if (t->n == 5 && (t->s[0] | 32) == 'v' && (t->s[1] | 32) == 'i' && (t->s[2] | 32) == 'd') registrar("js: criou <video>\n"); return embrulhar(d_novo(1, baixo_n(t->s, t->n))); }
 static val n_create_txt(val este, val *a, int n) { (void)este; dn *t = d_novo(3, NULL); t->txt = escapar(to_str(ARG(0))); return embrulhar(t); }
+static val n_sombra(val este, val *a, int n) { (void)este; dn *d = de_val(ARG(0)); if (!d) return vU(); if (!d->sombra) { d->sombra = d_novo(11, NULL); sujo = 1; } return embrulhar(d->sombra); }
+static val n_frag(val este, val *a, int n) { (void)este; (void)a; (void)n; return embrulhar(d_novo(11, NULL)); }
 static val n_append(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), NULL); sujo = 1; return a[0]; }
 static val n_insert(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), ARG(1).t == OB ? de_val(a[1]) : NULL); sujo = 1; return a[0]; }
 static val n_remove_ch(val este, val *a, int n) { (void)este; d_tirar(de_val(ARG(0))); sujo = 1; return a[0]; }
@@ -1186,7 +1230,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
     reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
-    reg(global, "__baixar", n_baixar); reg(global, "__enviar", n_enviar); reg(global, "__re", n_re);
+    reg(global, "__baixar", n_baixar); reg(global, "__enviar", n_enviar); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(NANV)); por_prop(global, I("Infinity"), vN(INFV)); por_prop(global, I("undefined"), vU());
     por_prop(global, I("window"), vO(global)); por_prop(global, I("self"), vO(global)); por_prop(global, I("globalThis"), vO(global));
     por_prop(global, I("document"), embrulhar(raiz));
@@ -1272,11 +1316,13 @@ static void pagina_scripts(void)
     /* o que os scripts criaram durante o load */
     while (!fatal && (s = prox_script(raiz))) { rodar_um(s); if (!fatal) rodar_global("__fim"); }
 }
+static void antes_serial(void) { rodar_global("__antes_serial"); }
 static void pagina_interna(void)
 {
     if (proteger(pagina_scripts) == 0 && !raiz) return;
     registrar("cipo: js %d scripts, %d parados%s\n", feitos, parados, fatal ? ", cortado" : "");
     fatal = 0;
+    if (raiz) proteger(antes_serial);
     if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
 }
 static void clique_interno(void)
@@ -1292,6 +1338,7 @@ static void clique_interno(void)
 static void clique_seguro(void)
 {
     proteger(clique_interno);
+    proteger(antes_serial);
     fatal = 0;
     ar_total = 0;
     proteger(serial_final);
@@ -1311,7 +1358,7 @@ void js_fim(void)
     while (blocos) { bloco *b = blocos; blocos = b->prox; libera(b); }
     ar = NULL; ar_u = ar_c = ar_total = 0;
     tab = NULL; tab_c = tab_n = 0; tb = NULL; tb_c = 0;
-    raiz = NULL; global = NULL; qtd_cliques = 0; topo_s = NULL; fatal = 0;
+    raiz = NULL; global = NULL; vivo = 1; qtd_cliques = 0; topo_s = NULL; fatal = 0;
     memset(&escrito, 0, sizeof escrito);
 }
 /* Roda os scripts da página. Devolve o HTML novo (aloca) ou NULL se nada mudou. */
@@ -1325,6 +1372,31 @@ char *js_pagina(const char *h, int n, const char *url, const js_hooks_t *g, int 
     *saida_tam = saida_n;
     return saida;
 }
+/* Página viva: roda os timers que venceram em ms e devolve o HTML se o DOM mudou. */
+static void tique_interno(void)
+{
+    t_limite = tempo_ms() + 120;
+    val a = vI(tique_ms);
+    vivo = to_bool(chamar(get(vO(global), I("__tique")), vU(), &a, 1));
+}
+static void tique_seguro(void)
+{
+    sujo = 0;
+    if (!proteger(tique_interno)) vivo = 0;
+    proteger(antes_serial);
+    fatal = 0;
+    if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
+}
+char *js_tique(int ms, int *saida_tam)
+{
+    *saida_tam = 0;
+    if (!global || !raiz) return NULL;
+    tique_ms = ms; saida = NULL; saida_n = 0;
+    na_pilha(tique_seguro);
+    *saida_tam = saida_n;
+    return saida;
+}
+int js_vivo(void) { return global && vivo; }
 char *js_clicar(int id, int *saida_tam)
 {
     if (!global) return NULL;
