@@ -30,7 +30,12 @@ static uint8_t *baixar(const char *url, unsigned *n)
     *n = (unsigned)k;
     return k ? d : (free(d), NULL);
 }
-static bool imagem(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a) { (void)d; (void)n; *l = 40; *a = 30; *px = calloc(40 * 30, 4); for (int i = 0; i < 1200; i++) (*px)[i] = 0x3366CC; return true; }
+/* Imagens de verdade (o mesmo decodificador do SaguiOS); sem ele, um retângulo azul. */
+static bool imagem(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a)
+{
+    if (imagem_decodificar(d, n, px, l, a)) return true;
+    *l = 40; *a = 30; *px = calloc(40 * 30, 4); for (int i = 0; i < 1200; i++) (*px)[i] = 0x3366CC; return true;
+}
 
 int main(int argc, char **argv)
 {

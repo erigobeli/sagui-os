@@ -474,7 +474,18 @@ static void rodape(const char *t);
 /* Última resposta HTTP (para o fetch do JavaScript): código, cabeçalhos, URL final */
 static int resp_codigo; static char resp_cab[8192]; static char resp_url[URL_MAX];
 /* qualquer = devolve também o corpo de 4xx/5xx (o fetch quer ver) */
+static unsigned t_rede, t_js;
+static bool canvas_vivo;
+static int js_rol, rol_pedida = -1;   /* rolagem que o JS já viu; scrollTo pedido pelo JS */   /* a página anima um <canvas>: o tique vem mais rápido */   /* medição: tempo da página em rede e em scripts */
+static uint8_t *baixar_resp_(const char *pedido, unsigned *n, bool qualquer);
 static uint8_t *baixar_resp(const char *pedido, unsigned *n, bool qualquer)
+{
+    unsigned t0 = tempo_ms();
+    uint8_t *d = baixar_resp_(pedido, n, qualquer);
+    t_rede += tempo_ms() - t0;
+    return d;
+}
+static uint8_t *baixar_resp_(const char *pedido, unsigned *n, bool qualquer)
 {
     static char cab[16384];
     resp_codigo = 0; resp_cab[0] = 0;
@@ -1422,13 +1433,37 @@ static uint8_t *baixar_recurso(const char *u, unsigned *n)
     return d;
 }
 
+/* Layout pedido por um script (medidas): um motor à parte diagrama o DOM
+ * atual com o CSS em cache e devolve as caixas. Fica vivo para o
+ * getComputedStyle até o próximo pedido ou a próxima página. */
+static motor_t *medidor;
+static uint8_t *baixar_recurso(const char *u, unsigned *n);
+static bool decodificar_registrando(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
+static int js_layout(const char *html, int n, int *caixas, int qtd)
+{
+    static const motor_ganchos_t g = { baixar_recurso, decodificar_registrando, tela2d_pixels };
+    unsigned t0 = tempo_ms();
+    if (medidor) motor_fim(medidor);
+    medidor = motor_novo(&g);
+    if (!medidor) return 0;
+    motor_ler(medidor, html, n, url_atual);
+    motor_layout(medidor, LARG - ROLAGEM, AREA_A);
+    motor_caixas(medidor, caixas, qtd);
+    registrar("cipo: layout para o script (%d elementos) em %u ms\n", qtd, tempo_ms() - t0);
+    return 1;
+}
+static bool js_estilo(int k, const char *prop, char *o, int max) { return medidor && motor_estilo_de(medidor, k, prop, o, max); }
+
 static char *rodar_scripts(char *h, int *n)
 {
-    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta };
+    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta, js_layout, js_estilo };
     if (!achar_tag(h, *n, "<script")) return h;
     rodape("Rodando scripts...");
     int t = 0;
+    unsigned t0 = tempo_ms(), r0 = t_rede;
+    js_janela(LARG - ROLAGEM, AREA_A, 0, 0);
     char *novo = js_pagina(h, *n, url_atual, &ganchos, &t);
+    t_js += (tempo_ms() - t0) - (t_rede - r0);
     abrir_video_da_pagina();
     if (!novo) return h;
     *n = t;
@@ -1445,7 +1480,7 @@ static bool decodificar_registrando(const uint8_t *d, unsigned n, uint32_t **px,
 }
 static void ler_pagina(const char *h, int n)
 {
-    static const motor_ganchos_t g = { baixar_recurso, decodificar_registrando };
+    static const motor_ganchos_t g = { baixar_recurso, decodificar_registrando, tela2d_pixels };
     if (motor) motor_fim(motor);
     motor = motor_novo(&g);
     if (motor) {
@@ -2069,6 +2104,9 @@ static void carregar(const char *pedido)
     char url[URL_MAX];
     copia_texto(url, pedido, sizeof url);
     inicio_pagina = tempo_ms();
+    t_rede = t_js = 0; canvas_vivo = false;
+    if (medidor) { motor_fim(medidor); medidor = NULL; }
+    js_rol = 0; rol_pedida = -1;
     js_fim();
     cache_limpar();
     hash_viva = 0; ult_tique = tempo_ms();
@@ -2099,6 +2137,7 @@ static void carregar(const char *pedido)
         bool html = true;
         const char *erro = NULL;
         char detalhe[200] = "";
+        unsigned t_doc = tempo_ms();
         for (int redirecoes = 0; redirecoes < 5; redirecoes++) {
             char host[128], caminho[512];
             int porta;
@@ -2184,6 +2223,7 @@ static void carregar(const char *pedido)
             if (http_campo(cab, "Transfer-Encoding", te, sizeof te)) tam = http_juntar_pedacos(corpo, tam);
             break;
         }
+        t_rede += tempo_ms() - t_doc;
         limpar_pagina();
         if (erro) {
             registrar("cipo: erro: %s %s\n", erro, detalhe);
@@ -2267,7 +2307,7 @@ static void carregar(const char *pedido)
         desenhar_pagina();
     }
     if (motor) rodape(texto_pronto());
-    registrar("cipo: pronto \"%s\" (%d linhas, %d links) em %u ms\n", titulo, linhas, motor ? motor_links(motor) : qtd_alvos, tempo_ms() - inicio_pagina);
+    registrar("cipo: pronto \"%s\" (%d linhas, %d links) em %u ms: rede %u ms, scripts %u ms\n", titulo, linhas, motor ? motor_links(motor) : qtd_alvos, tempo_ms() - inicio_pagina, t_rede, t_js);
 }
 
 /* Clique num elemento com evento: o motor roda o evento e devolve a página. */
@@ -2298,10 +2338,24 @@ static void pagina_viva(void)
 {
     int n = 0;
     unsigned agora = tempo_ms();
-    char *h = js_tique((int)(agora - ult_tique > 1000 ? 1000 : agora - ult_tique), &n);
+    unsigned v0 = tela2d_versao();
+    char *hr = NULL, *h;
+    int nr = 0;
+    if (pos_px() != js_rol) {   /* a página rolou: scroll e observadores antes dos timers */
+        js_rol = pos_px();
+        hr = js_rolar(0, js_rol, &nr);
+    }
+    h = js_tique((int)(agora - ult_tique > 1000 ? 1000 : agora - ult_tique), &n);
+    if (h) { if (hr) libera(hr); } else { h = hr; n = nr; }   /* vale o estado mais novo */
+    int px_ped, py_ped;
+    if (js_rolagem_pedida(&px_ped, &py_ped)) { (void)px_ped; rol_pedida = py_ped; }
     ult_tique = agora;
     abrir_video_da_pagina();
-    if (!h) return;
+    if (!h) {
+        /* só um <canvas> mudou: pinta de novo, sem layout */
+        if (tela2d_versao() != v0 && motor) { desenhar_pagina(); ult_redesenho = tempo_ms(); canvas_vivo = true; }
+        return;
+    }
     unsigned x = hash_texto(h, n);
     if (x == hash_viva) { libera(h); return; }
     hash_viva = x;
@@ -2319,6 +2373,15 @@ static void pagina_viva(void)
     desenhar_pagina();
     ult_redesenho = tempo_ms();
     registrar("cipo: viva redesenhou em %u ms\n", ult_redesenho - t0);
+}
+
+/* scrollTo pedido pelo script */
+static void aplicar_rolagem_pedida(void)
+{
+    if (rol_pedida < 0) return;
+    int y = rol_pedida;
+    rol_pedida = -1;
+    rolar_px(y);
 }
 
 static void navegar(const char *url);
@@ -2452,11 +2515,11 @@ int principal(int argc, char **argv)
 
     evento_t e;
     for (;;) {
-        if (js_vivo()) {
+        if (js_vivo() || (js_ativo() && motor && pos_px() != js_rol)) {
             if (proximo_evento(j->id, &e, false) != 1) {
                 /* ritmo: redesenho caro espera mais */
-                unsigned agora = tempo_ms(), passo = agora - ult_redesenho < 2000 ? 1000 : 250;
-                if (agora - ult_tique >= passo) pagina_viva(); else dormir(20);
+                unsigned agora = tempo_ms(), passo = canvas_vivo ? 40 : agora - ult_redesenho < 2000 ? 1000 : 250;
+                if (agora - ult_tique >= passo || pos_px() != js_rol) { pagina_viva(); aplicar_rolagem_pedida(); } else dormir(20);
                 continue;
             }
         } else if (proximo_evento(j->id, &e, true) != 1) continue;
@@ -2466,9 +2529,24 @@ int principal(int argc, char **argv)
             jan_tamanho(j, &e);
             bt_ir.x = LARG - 50;
             endereco.l = LARG - 162 - 58;
-            char url[URL_MAX];
-            copia_texto(url, url_atual, sizeof url);
-            carregar(url);
+            desenhar_barra();
+            desenhar_rodape();
+            if (motor) {
+                /* como nos outros navegadores: só o layout muda, nada é baixado de novo;
+                 * o script recebe resize (e pode mudar a página) */
+                int nn = 0;
+                char *hh = js_ativo() ? js_redimensionar(LARG - ROLAGEM, AREA_A, &nn) : NULL;
+                if (hh) reler_com_foco(hh, nn, motor_tem_foco(motor) ? motor_foco_campo(motor) : -1);
+                else {
+                    motor_diagramar();
+                    if (rol_px > max_px()) rol_px = max_px();
+                    desenhar_pagina();
+                }
+            } else {
+                char url[URL_MAX];
+                copia_texto(url, url_atual, sizeof url);
+                carregar(url);
+            }
             jan_mostrar(j);
             continue;
         }

@@ -36,6 +36,7 @@ struct obj {
     no *campos; dn *d;
     uint8_t *mem; int mem_n;            /* ArrayBuffer */
     struct obj *vbuf; int voff, vlen, vtipo;   /* typed array: buffer, deslocamento, elementos, tipo */
+    uint8_t estilo;                     /* objeto el.style: escrever nele muda a página */
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
@@ -260,7 +261,7 @@ static __attribute__((noreturn)) void erro(const char *tipo, const char *m, cons
 {
     char b[240];
     formatar_texto(b, sizeof b, "%s%s", m, x ? x : "");
-    if (no_atual && no_atual->fonte && comeca_com(m, "Cannot read")) {
+    if (no_atual && no_atual->fonte) {   /* trecho perto do erro, para o log */
         int k = (int)tam_texto(b);
         if (k < 160) { b[k++] = ' '; b[k++] = '['; const char *q = no_atual->fonte - 40; for (int z = 0; z < 60 && q[z] && k < 236; z++) b[k++] = q[z] == '\n' ? ' ' : q[z]; b[k++] = ']'; b[k] = 0; }
     }
@@ -304,8 +305,12 @@ static void reindexar(obj *o)
     o->idx = novo((unsigned)c * sizeof(int)); o->cidx = c;
     for (int i = 0; i < o->np; i++) if (o->p[i].k) { int j = (int)(o->p[i].k->h & (unsigned)(c - 1)); while (o->idx[j]) j = (j + 1) & (c - 1); o->idx[j] = i + 1; }
 }
+static unsigned dom_ger;   /* sobe a cada mudança do DOM ou de um el.style (layout em cache vence) */
+static void (*ds_escrever)(obj *o, str *k, val v);   /* el.dataset.x = v vira atributo data-x */
 static void por_prop(obj *o, str *k, val v)
 {
+    if (o->estilo == 2 && ds_escrever) ds_escrever(o, k, v);
+    else if (o->estilo) dom_ger++;
     prop *p = achar(o, k);
     if (p) { p->v = v; return; }
     if (o->np == o->cp) {
@@ -1324,7 +1329,18 @@ static void chk(void)
     if (!(++passos & 8191) && tempo_ms() > t_limite) lancar_fatal("tempo");
 }
 static val novo_gerador(obj *o, val este, val *a, int n);
+static val executar_fn_(obj *o, val este, val *a, int n, val novo_t);
+static val nova_corrotina(obj *o, val este, val *a, int n);
+/* async function: corrotina numa pilha própria. Roda até o primeiro await e
+ * devolve a Promise; cada await suspende e é retomado por microtask quando o
+ * valor se resolve (o __async do js_base conduz). Exceção vira rejeição. */
 static val executar_fn(obj *o, val este, val *a, int n, val novo_t)
+{
+    fdef *d = o->fn->f;
+    if (!d->assinc || d->gerador || gerador_entrando) return executar_fn_(o, este, a, n, novo_t);
+    return nova_corrotina(o, este, a, n);
+}
+static val executar_fn_(obj *o, val este, val *a, int n, val novo_t)
 {
     fdef *d = o->fn->f;
     if (d->gerador && !gerador_entrando) return novo_gerador(o, este, a, n);
@@ -1350,7 +1366,6 @@ static val executar_fn(obj *o, val este, val *a, int n, val novo_t)
     }
     if (!d->seta && novo_t.t == OB && r.t != OB && q.este.t == OB) r = q.este;   /* super() pode ter trocado o this */
     qa = ant;
-    if (d->assinc) r = chamar(get(vO(global), I("__resolvido")), vU(), &r, 1);
     return r;
 }
 static val chamar_n(val f, val este, val *a, int n, val novo_t)
@@ -1874,11 +1889,7 @@ static int __attribute__((noinline)) rodar(const char *s, int n, val *res)
     topo_s = ant;
     return 1;
 }
-static val aguardar(val v)
-{
-    val f = get(vO(global), I("__esperar"));
-    return chamar(f, vU(), &v, 1);
-}
+
 
 
 /* ---- geradores: cada um roda numa pilha própria; yield troca de pilha ---- */
@@ -1890,6 +1901,7 @@ typedef struct ger {
     int estado;            /* 0 novo, 1 parado, 2 rodando, 3 fim */
     int modo; val troca;   /* o que o next/throw/return mandou */
     int res_tipo; val res; /* 0 yield, 1 fim, 2 exceção */
+    int assinc;            /* corrotina de async function: await suspende aqui */
     salto *g_topo; quadro *g_qa; int g_prof; char *g_lim;   /* estado do intérprete dentro do gerador */
 } ger;
 static ger **gers; static int n_gers, c_gers;
@@ -1920,6 +1932,24 @@ static val novo_gerador(obj *o, val este, val *a, int n)
     gers[n_gers] = g;
     val id = vI(n_gers++);
     return chamar(get(vO(global), I("__gerador")), vU(), &id, 1);
+}
+
+static val nova_corrotina(obj *o, val este, val *a, int n)
+{
+    ger *g = novo(sizeof(ger));
+    memset(g, 0, sizeof *g);
+    g->fo = o; g->este = este; g->n = n; g->assinc = 1;
+    g->args = novo((unsigned)(n + 1) * sizeof(val));
+    if (n) memcpy(g->args, a, (size_t)n * sizeof(val));
+    if (n_gers == c_gers) {
+        c_gers = c_gers ? c_gers * 2 : 64;
+        ger **ng = novo((unsigned)c_gers * sizeof(ger *));
+        if (n_gers) memcpy(ng, gers, (size_t)n_gers * sizeof(ger *));
+        gers = ng;
+    }
+    gers[n_gers] = g;
+    val id = vI(n_gers++);
+    return chamar(get(vO(global), I("__async")), vU(), &id, 1);
 }
 
 static __attribute__((noinline, noreturn)) void ger_entrada(void)
@@ -2049,6 +2079,12 @@ static val n_tentar(val este, val *a, int n)
     return vO(r);
 }
 /* __gnext(id, modo, valor) -> [done, value] */
+static val aguardar(val v)
+{
+    if (ger_rodando && ger_rodando->assinc) return produzir_um(v);   /* suspende a corrotina */
+    val f = get(vO(global), I("__esperar"));   /* await fora de async (topo de módulo) */
+    return chamar(f, vU(), &v, 1);
+}
 static val n_gnext(val este, val *a, int n)
 {
     (void)este;

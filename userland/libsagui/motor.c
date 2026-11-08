@@ -56,7 +56,10 @@ typedef struct {
     const char *mask_url;   /* mask-image: url() */
     const char *grad;       /* background(-image): linear-/radial-gradient(...) (texto) */
     const char *conteudo;   /* content */
-    uint8_t bg_tam;         /* 0 natural, 1 cobre/estica, 2 contém */
+    const char *bg_pos;     /* background-position (texto; % depende da caixa e da imagem) */
+    const char *bg_px, *bg_py;          /* background-position-x / -y */
+    const char *bg_size;    /* background-size (texto) */
+    uint8_t bg_rep;         /* background-repeat: x | y << 2; 0 repeat, 1 no-repeat, 2 space, 3 round */
     uint8_t mascara;        /* mask-image: o fundo é a cor de um ícone que não desenhamos */
     int16_t z; uint8_t z_def;           /* z-index; z_def = não é auto */
     const char *tf_txt;                 /* transform (texto; resolvido no achatamento, % depende da caixa) */
@@ -90,6 +93,7 @@ typedef struct no_m {
     struct no_m *ps[2];
     int bg_img;                     /* índice da imagem de fundo, -1 */
     int mask_img;                   /* índice da imagem da máscara, -1 */
+    int ax, ay; uint8_t pintado;    /* posição final (depois de posicionados e relativos), para o JavaScript */
 } no_m;
 
 /* ================================================================ CSS */
@@ -124,7 +128,7 @@ typedef struct { const char *chave; int *regras; int n, cap; } balde_t;
 
 /* ================================================================ pintura */
 
-enum { C_RET, C_BORDA, C_TEXTO, C_IMG, C_LINHA, C_POLY, C_IMGR, C_NADA, C_MASK, C_GRUPO, C_GRUPO_FIM, C_TEXTOR, C_GRAD };
+enum { C_RET, C_BORDA, C_TEXTO, C_IMG, C_LINHA, C_POLY, C_IMGR, C_NADA, C_MASK, C_GRUPO, C_GRUPO_FIM, C_TEXTOR, C_GRAD, C_TELA };
 typedef struct {
     uint8_t tipo, peso, italico, sublinha;
     int16_t tam, raio;
@@ -550,6 +554,7 @@ enum {
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
+    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -563,6 +568,7 @@ static const char *const nomes_prop[] = {
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
+    "background-position", "background-repeat", "background-position-x", "background-position-y",
 };
 
 static int achar_prop(const char *p, int n)
@@ -1294,8 +1300,12 @@ static const char folha_padrao[] =
     "table{text-align:left}center table{margin-left:auto;margin-right:auto}a:link{color:#0b57d0;text-decoration:underline}small,sub,sup{font-size:.83em}big{font-size:1.17em}pre{white-space:pre}"
     "hr{border:1px solid #c4cbd2;margin:.5em 0}center{text-align:center}mark{background-color:#ff0}"
     "img,video,canvas,iframe,input,button,select,textarea,object,embed,meter,progress{display:inline-block}"
-    "input,select,textarea{border:1px solid #8a939c;padding:2px 4px;background-color:#fff;color:#000}"
-    "button,input[type=submit],input[type=button],input[type=reset]{border:1px solid #8a939c;padding:2px 8px;background-color:#e2e6ea;text-align:center}"
+    /* controles como no html.css do Chromium: fonte própria (não herdada), 13,333px */
+    "input,select,textarea,button{font-size:13.333px;font-weight:normal;font-style:normal;color:#000;text-transform:none;text-indent:0;line-height:normal}"
+    "input,textarea{border:1px solid #767676;border-radius:2px;padding:1px 2px;background-color:#fff}textarea{padding:2px}"
+    "select{border:1px solid #767676;border-radius:2px;background-color:#fff;box-sizing:border-box}"
+    "button,input[type=submit],input[type=button],input[type=reset],input[type=image]{border:1px solid #767676;border-radius:2px;padding:1px 6px;"
+    "background-color:#efefef;text-align:center;box-sizing:border-box}"
     "input[type=checkbox],input[type=radio]{padding:0}textarea{white-space:pre}summary{font-weight:bold}legend{padding:0 2px}fieldset{border:1px solid #c4cbd2;padding:4px 8px}";
 
 /* ================================================================ cascata */
@@ -1357,6 +1367,86 @@ static int comparar_achado(const achado_t *a, const achado_t *b)
     if (ia != ib) return ia - ib;
     if (a->espec != b->espec) return a->espec - b->espec;
     return a->ordem - b->ordem;
+}
+
+/* background-repeat: um ou dois valores (CSS Backgrounds 3, 3.4). */
+static int rep_um(const char *p, int t)
+{
+    if (t == 6 && igual_n(p, "repeat", 6)) return 0;
+    if (t == 9 && igual_n(p, "no-repeat", 9)) return 1;
+    if (t == 5 && igual_n(p, "space", 5)) return 2;
+    if (t == 5 && igual_n(p, "round", 5)) return 3;
+    return -1;
+}
+static uint8_t ler_repeticao(const char *v, int nv)
+{
+    const char *p[2]; int t[2];
+    int k = palavras(v, nv, p, t, 2);
+    if (k >= 1 && t[0] == 8 && igual_n(p[0], "repeat-x", 8)) return 0 | 1 << 2;
+    if (k >= 1 && t[0] == 8 && igual_n(p[0], "repeat-y", 8)) return 1 | 0 << 2;
+    int x = k >= 1 ? rep_um(p[0], t[0]) : 0, y = k >= 2 ? rep_um(p[1], t[1]) : x;
+    if (x < 0) x = 0;
+    if (y < 0) y = x;
+    return (uint8_t)(x | y << 2);
+}
+static bool eh_pos(const char *p, int t)
+{
+    if ((t == 4 && (igual_n(p, "left", 4))) || (t == 5 && igual_n(p, "right", 5)) || (t == 3 && igual_n(p, "top", 3)) ||
+        (t == 6 && (igual_n(p, "bottom", 6) || igual_n(p, "center", 6)))) return true;
+    medida_t md;
+    return ler_medida_m(p, t, &md) && md.u != U_AUTO;
+}
+static bool eh_tam(const char *p, int t)
+{
+    if ((t == 4 && igual_n(p, "auto", 4)) || (t == 5 && igual_n(p, "cover", 5)) || (t == 7 && igual_n(p, "contain", 7))) return true;
+    medida_t md;
+    return ler_medida_m(p, t, &md);
+}
+/* Atalho background: a camada com a imagem dá posição / tamanho e repetição. */
+static void fundo_atalho(motor_t *m, estilo_t *e, const char *v, int nv)
+{
+    e->bg_pos = e->bg_px = e->bg_py = e->bg_size = NULL; e->bg_rep = 0;
+    /* camada: a primeira com url(); senão a última (a da cor) */
+    const char *ini = v, *fim = v + nv, *c0 = v;
+    int prof = 0; bool achou = false;
+    for (const char *q = v; q <= v + nv; q++) {
+        if (q < v + nv && *q == '(') prof++;
+        else if (q < v + nv && *q == ')') prof--;
+        else if (q == v + nv || (*q == ',' && !prof)) {
+            bool tem = false;
+            for (const char *r = c0; r + 4 <= q; r++) if (igual_n(r, "url(", 4)) { tem = true; break; }
+            if (tem && !achou) { ini = c0; fim = q; achou = true; }
+            if (!achou) { ini = c0; fim = q; }
+            c0 = q + 1;
+        }
+    }
+    char pos[96] = "", tam[64] = "";
+    const char *rp[2]; int rt[2], nr = 0;
+    bool barra = false;
+    const char *q = ini;
+    while (q < fim) {
+        while (q < fim && (*q == ' ' || *q == '\t' || *q == '\n')) q++;
+        if (q >= fim) break;
+        if (*q == '/') { barra = true; q++; continue; }
+        const char *a = q; int pr = 0;
+        while (q < fim && (pr || (*q != ' ' && *q != '\t' && *q != '\n' && *q != '/'))) { if (*q == '(') pr++; else if (*q == ')') pr--; q++; }
+        int t = (int)(q - a);
+        if (rep_um(a, t) >= 0 || (t == 8 && (igual_n(a, "repeat-x", 8) || igual_n(a, "repeat-y", 8)))) { if (nr < 2) { rp[nr] = a; rt[nr] = t; nr++; } continue; }
+        if (barra && eh_tam(a, t)) {
+            if ((int)tam_texto(tam) + t + 2 < (int)sizeof tam) { if (tam[0]) junta_texto(tam, " ", sizeof tam); int k = (int)tam_texto(tam); memcpy(tam + k, a, (size_t)t); tam[k + t] = 0; }
+            continue;
+        }
+        barra = false;
+        if (eh_pos(a, t) && (int)tam_texto(pos) + t + 2 < (int)sizeof pos) { if (pos[0]) junta_texto(pos, " ", sizeof pos); int k = (int)tam_texto(pos); memcpy(pos + k, a, (size_t)t); pos[k + t] = 0; }
+    }
+    if (pos[0]) e->bg_pos = m_dup(m, pos, (int)tam_texto(pos));
+    if (tam[0]) e->bg_size = m_dup(m, tam, (int)tam_texto(tam));
+    if (nr) {
+        char r[24] = ""; int k = 0;
+        for (int i = 0; i < nr && k + rt[i] + 2 < (int)sizeof r; i++) { if (k) r[k++] = ' '; memcpy(r + k, rp[i], (size_t)rt[i]); k += rt[i]; }
+        r[k] = 0;
+        e->bg_rep = ler_repeticao(r, k);
+    }
 }
 
 static void estilo_inicial(estilo_t *e, const estilo_t *pai)
@@ -1636,15 +1726,19 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_RADIUS: if (ler_medida_m(v, palavras(v, nv, p, t, 1) ? t[0] : nv, &md)) e->raio = (int16_t)(md.u == U_PCT ? (md.v >= 5000 ? 999 : md.v / 10) : px_de(&md, e->tam)); break;
     case PR_COLOR: if (ler_cor(v, nv, &c, e->cor)) e->cor = c & 0xFFFFFF; break;
     case PR_BGCOLOR: if (ler_cor(v, nv, &c, e->cor)) e->fundo = (c >> 24) >= 0x40 ? c : 0; break;
+    case PR_BGPOS: e->bg_pos = m_dup(m, v, nv); e->bg_px = e->bg_py = NULL; break;
+    case PR_BGPOSX: e->bg_px = m_dup(m, v, nv); break;
+    case PR_BGPOSY: e->bg_py = m_dup(m, v, nv); break;
+    case PR_BGREP: e->bg_rep = ler_repeticao(v, nv); break;
     case PR_BGIMAGE: case PR_BGSIZE:
-        if (prop == PR_BGSIZE) { e->bg_tam = strstr_m(v, "contain") ? 2 : (strstr_m(v, "cover") || strstr_m(v, "100%")) ? 1 : 0; break; }
+        if (prop == PR_BGSIZE) { e->bg_size = m_dup(m, v, nv); break; }
         /* fallthrough */
     case PR_BG: {
         {
             int un; const char *u = ler_url(v, &un);
             if (u) e->bg_url = m_dup(m, u, un);
-            else if (prop == PR_BGIMAGE && strstr_m(v, "none")) e->bg_url = NULL;
-            if (prop == PR_BG) { if (strstr_m(v, "cover")) e->bg_tam = 1; else if (strstr_m(v, "contain")) e->bg_tam = 2; }
+            else if (prop == PR_BG || strstr_m(v, "none")) e->bg_url = NULL;   /* o atalho volta tudo ao inicial */
+            if (prop == PR_BG) fundo_atalho(m, e, v, nv);
             if (prop == PR_BGIMAGE) break;
         }
         if (nv == 4 && igual_n(v, "none", 4)) { e->fundo = 0; break; }
@@ -2153,6 +2247,7 @@ static void tamanho_img(no_m *n, int *l, int *a)
 }
 
 /* tamanho natural de controles e mídia */
+static int larg_texto(const estilo_t *e, const char *t, int n);
 static bool tamanho_natural(no_m *n, int *l, int *a)
 {
     estilo_t *e = &n->e;
@@ -2180,7 +2275,8 @@ static bool tamanho_natural(no_m *n, int *l, int *a)
         if (t && (igual(t, "checkbox") || igual(t, "radio"))) { *l = 13; *a = 13; return true; }
         if (t && (igual(t, "submit") || igual(t, "button") || igual(t, "reset"))) {
             const char *v = atributo_m(n, "value");
-            *l = (int)tam_texto(v ? v : (igual(t, "reset") ? "Limpar" : "Enviar")) * larg_letra(e);
+            const char *rot = v ? v : (igual(t, "reset") ? "Limpar" : "Enviar");
+            *l = larg_texto(e, rot, (int)tam_texto(rot));
             *a = altura_linha(e);
             return true;
         }
@@ -3528,7 +3624,8 @@ static int alvo_form(no_m *n, int tipo)
     a->campo = ca ? texto_para_int(ca) : -1;
     if (tipo == MA_BOTAO) {
         const char *ty = atributo_m(n, "type");
-        a->envia = igual(n->tag, "button") ? (!ty || igual(ty, "submit")) : (ty && (igual(ty, "submit") || igual(ty, "image")));
+        /* sem formulário dono, botão nenhum envia (HTML: "form owner") */
+        a->envia = f && (igual(n->tag, "button") ? (!ty || igual(ty, "submit")) : (ty && (igual(ty, "submit") || igual(ty, "image"))));
     }
     const char *ac = f ? atributo_m(f, "action") : NULL;
     char u[600];
@@ -4224,6 +4321,7 @@ static uint32_t grad_cor(const grad_m *G, int t)
     return (A << 24) | r;
 }
 
+static void fundo_imagem(no_m *n, int x, int y);
 static void desenhar_caixa(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
@@ -4251,24 +4349,7 @@ static void desenhar_caixa(no_m *n, int x, int y)
             cmd_novo(&c);
         }
     }
-    if (n->bg_img >= 0 && mo->imgs[n->bg_img].px && n->l > 0 && n->a > 0) {
-        imagem_m *im = &mo->imgs[n->bg_img];
-        cmd_t c; memset(&c, 0, sizeof c);
-        c.tipo = C_IMG; c.img = n->bg_img;
-        int l = im->l, a = im->a;
-        if (e->bg_tam == 1) { l = n->l; a = n->a; }
-        else if (e->bg_tam == 2 || l > n->l || a > n->a) {
-            if (l * n->a > a * n->l) { a = a * n->l / (l ? l : 1); l = n->l; } else { l = l * n->a / (a ? a : 1); a = n->a; }
-        }
-        c.x = x + (n->l - l) / 2; c.y = y + (n->a - a) / 2; c.l = l; c.a = a; c.raio = e->raio;
-        int salvo[4]; memcpy(salvo, mo->clip, sizeof salvo);
-        if (x > mo->clip[0]) mo->clip[0] = x;
-        if (y > mo->clip[1]) mo->clip[1] = y;
-        if (x + n->l < mo->clip[2]) mo->clip[2] = x + n->l;
-        if (y + n->a < mo->clip[3]) mo->clip[3] = y + n->a;
-        cmd_novo(&c);
-        memcpy(mo->clip, salvo, sizeof salvo);
-    }
+    if (n->bg_img >= 0 && mo->imgs[n->bg_img].px && n->l > 0 && n->a > 0) fundo_imagem(n, x, y);
     if (n->bl[0] || n->bl[1] || n->bl[2] || n->bl[3]) {
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_BORDA; c.x = x; c.y = y; c.l = n->l; c.a = n->a;
@@ -4276,6 +4357,124 @@ static void desenhar_caixa(no_m *n, int x, int y)
         c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
         cmd_novo(&c);
     }
+}
+
+/* ------------------------------------------------- imagem de fundo
+ * CSS Backgrounds 3: área de posição = caixa do padding (background-origin
+ * inicial), recorte = caixa da borda (background-clip inicial); tamanho,
+ * posição (1 a 4 valores) e repetição por eixo. */
+static int fundo_valor(const char *p, int t, int ref, const estilo_t *e, bool *ok)
+{
+    medida_t md;
+    *ok = ler_medida_m(p, t, &md) && md.u != U_AUTO;
+    if (!*ok) return 0;
+    if (md.u == U_PCT) return muldiv(md.v, ref, 10000);
+    if (md.u == U_VW) return muldiv(md.v, mo->vw, 10000);
+    if (md.u == U_VH) return muldiv(md.v, mo->vh, 10000);
+    return px_de(&md, e->tam);
+}
+static void fundo_tamanho(const estilo_t *e, int al, int aa, int il, int ia, int *l, int *a)
+{
+    *l = il; *a = ia;
+    if (!e->bg_size) return;
+    const char *p[2]; int t[2];
+    int k = palavras(e->bg_size, (int)tam_texto(e->bg_size), p, t, 2);
+    if (k >= 1 && (igual_n(p[0], "cover", 5) || igual_n(p[0], "contain", 7))) {
+        bool cobre = igual_n(p[0], "cover", 5);
+        /* escala única: a maior (cobre) ou a menor (contém) que encaixa um eixo */
+        bool por_l = (int64_t)al * ia > (int64_t)aa * il;   /* área mais larga que a imagem */
+        if (por_l == cobre) { *l = al; *a = muldiv(ia, al, il); } else { *a = aa; *l = muldiv(il, aa, ia); }
+        return;
+    }
+    bool ok;
+    int w = -1, h = -1;
+    if (k >= 1) { int v = fundo_valor(p[0], t[0], al, e, &ok); if (ok) w = v; }
+    if (k >= 2) { int v = fundo_valor(p[1], t[1], aa, e, &ok); if (ok) h = v; }
+    if (w >= 0 && h >= 0) { *l = w; *a = h; }
+    else if (w >= 0) { *l = w; *a = muldiv(ia, w, il); }
+    else if (h >= 0) { *a = h; *l = muldiv(il, h, ia); }
+}
+/* Um eixo da posição: palavra-chave (0, 50 ou 100%) e deslocamento opcional. */
+static int fundo_eixo(const char *kw, int kt, const char *off, int ot, int livre, const estilo_t *e)
+{
+    bool ok;
+    int fim = kt > 0 && ((kt == 5 && igual_n(kw, "right", 5)) || (kt == 6 && igual_n(kw, "bottom", 6)));
+    int base = !kt ? 0 : (kt == 6 && igual_n(kw, "center", 6)) ? livre / 2 : fim ? livre : 0;
+    if (!kt) return fundo_valor(off, ot, livre, e, &ok);   /* só medida: % vale do espaço livre */
+    if (ot) { int d = fundo_valor(off, ot, livre, e, &ok); if (ok) return fim ? livre - d : base + d; }
+    return base;
+}
+static bool kw_y(const char *p, int t) { return (t == 3 && igual_n(p, "top", 3)) || (t == 6 && igual_n(p, "bottom", 6)); }
+static bool kw_x(const char *p, int t) { return (t == 4 && igual_n(p, "left", 4)) || (t == 5 && igual_n(p, "right", 5)); }
+static bool kw(const char *p, int t) { return kw_x(p, t) || kw_y(p, t) || (t == 6 && igual_n(p, "center", 6)); }
+static void fundo_posicao(const estilo_t *e, int livre_x, int livre_y, int *ox, int *oy)
+{
+    *ox = *oy = 0;
+    const char *p[4]; int t[4];
+    int k = e->bg_pos ? palavras(e->bg_pos, (int)tam_texto(e->bg_pos), p, t, 4) : 0;
+    /* eixo x e y: (palavra-chave, deslocamento) */
+    const char *xk = NULL, *xo = NULL, *yk = NULL, *yo = NULL; int xkt = 0, xot = 0, ykt = 0, yot = 0;
+    if (k == 1) {
+        if (kw_y(p[0], t[0])) { yk = p[0]; ykt = t[0]; xk = "center"; xkt = 6; }
+        else { if (kw(p[0], t[0])) { xk = p[0]; xkt = t[0]; } else { xo = p[0]; xot = t[0]; } yk = "center"; ykt = 6; }
+    } else if (k == 2) {
+        int a = 0, b = 1;
+        if (kw_y(p[0], t[0]) || kw_x(p[1], t[1])) { a = 1; b = 0; }
+        if (kw(p[a], t[a])) { xk = p[a]; xkt = t[a]; } else { xo = p[a]; xot = t[a]; }
+        if (kw(p[b], t[b])) { yk = p[b]; ykt = t[b]; } else { yo = p[b]; yot = t[b]; }
+    } else if (k >= 3) {
+        /* palavra-chave seguida de deslocamento opcional, em qualquer ordem dos eixos */
+        for (int i = 0; i < k; i++) {
+            if (!kw(p[i], t[i])) continue;
+            const char *o = NULL; int ot = 0;
+            if (i + 1 < k && !kw(p[i + 1], t[i + 1])) { o = p[i + 1]; ot = t[i + 1]; }
+            bool eixo_y = kw_y(p[i], t[i]) || (t[i] == 6 && igual_n(p[i], "center", 6) && xkt);
+            if (eixo_y) { yk = p[i]; ykt = t[i]; yo = o; yot = ot; } else { xk = p[i]; xkt = t[i]; xo = o; xot = ot; }
+        }
+    }
+    if (e->bg_px) { xk = NULL; xkt = 0; xo = NULL; xot = 0; const char *q[2]; int u[2]; int n = palavras(e->bg_px, (int)tam_texto(e->bg_px), q, u, 2);
+        if (n >= 1 && kw(q[0], u[0])) { xk = q[0]; xkt = u[0]; if (n == 2) { xo = q[1]; xot = u[1]; } } else if (n >= 1) { xo = q[0]; xot = u[0]; } }
+    if (e->bg_py) { yk = NULL; ykt = 0; yo = NULL; yot = 0; const char *q[2]; int u[2]; int n = palavras(e->bg_py, (int)tam_texto(e->bg_py), q, u, 2);
+        if (n >= 1 && kw(q[0], u[0])) { yk = q[0]; ykt = u[0]; if (n == 2) { yo = q[1]; yot = u[1]; } } else if (n >= 1) { yo = q[0]; yot = u[0]; } }
+    *ox = xkt || xot ? fundo_eixo(xk, xkt, xo, xot, livre_x, e) : 0;
+    *oy = ykt || yot ? fundo_eixo(yk, ykt, yo, yot, livre_y, e) : 0;
+}
+static void fundo_imagem(no_m *n, int x, int y)
+{
+    estilo_t *e = &n->e;
+    imagem_m *im = &mo->imgs[n->bg_img];
+    int px0 = x + n->bl[3], py0 = y + n->bl[0];
+    int al = n->l - n->bl[3] - n->bl[1], aa = n->a - n->bl[0] - n->bl[2];
+    if (al <= 0 || aa <= 0) { px0 = x; py0 = y; al = n->l; aa = n->a; }
+    int l, a;
+    fundo_tamanho(e, al, aa, im->l, im->a, &l, &a);
+    int rx = e->bg_rep & 3, ry = e->bg_rep >> 2 & 3;
+    /* round: ajusta o tamanho para caber um número inteiro de vezes */
+    if (rx == 3 && l > 0) { int q = (al + l / 2) / l; if (q < 1) q = 1; int nl = al / q; if (ry != 3 && e->bg_size == NULL) a = muldiv(a, nl, l); l = nl; }
+    if (ry == 3 && a > 0) { int q = (aa + a / 2) / a; if (q < 1) q = 1; a = aa / q; }
+    if (l <= 0 || a <= 0) return;
+    int ox, oy;
+    fundo_posicao(e, al - l, aa - a, &ox, &oy);
+    int salvo[4]; memcpy(salvo, mo->clip, sizeof salvo);
+    if (x > mo->clip[0]) mo->clip[0] = x;
+    if (y > mo->clip[1]) mo->clip[1] = y;
+    if (x + n->l < mo->clip[2]) mo->clip[2] = x + n->l;
+    if (y + n->a < mo->clip[3]) mo->clip[3] = y + n->a;
+    /* space: imagens inteiras, a sobra vira espaço entre elas (cada uma é um comando) */
+    int nx = 1, ny = 1, gx = 0, gy = 0, sx0 = px0 + ox, sy0 = py0 + oy;
+    if (rx == 2) { nx = al / l; if (nx >= 2) { gx = (al - nx * l) / (nx - 1); sx0 = px0; } else nx = 1; }
+    if (ry == 2) { ny = aa / a; if (ny >= 2) { gy = (aa - ny * a) / (ny - 1); sy0 = py0; } else ny = 1; }
+    if (nx > 64) nx = 64;
+    if (ny > 64) ny = 64;
+    for (int j = 0; j < ny; j++)
+        for (int i = 0; i < nx; i++) {
+            cmd_t c; memset(&c, 0, sizeof c);
+            c.tipo = C_IMG; c.img = n->bg_img;
+            c.x = sx0 + i * (l + gx); c.y = sy0 + j * (a + gy); c.l = l; c.a = a; c.raio = e->raio;
+            c.peso = (uint8_t)((rx == 0 || rx == 3 ? 1 : 0) | (ry == 0 || ry == 3 ? 2 : 0));   /* ladrilha no eixo */
+            cmd_novo(&c);
+        }
+    memcpy(mo->clip, salvo, sizeof salvo);
 }
 
 static void controle(no_m *n, int x, int y)
@@ -4312,6 +4511,13 @@ static void controle(no_m *n, int x, int y)
     }
     if (igual(n->tag, "video") || igual(n->tag, "iframe") || igual(n->tag, "embed") || igual(n->tag, "object") || igual(n->tag, "canvas")) {
         cmd_t c; memset(&c, 0, sizeof c);
+        const char *tv = igual(n->tag, "canvas") ? atributo_m(n, "data-sagui-canvas") : NULL;
+        if (tv && mo->g.tela) {   /* canvas com contexto 2D: pixels lidos na hora de pintar */
+            c.tipo = C_TELA; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.img = texto_para_int(tv);
+            cmd_novo(&c);
+            regiao(x, y, n->l, n->a, n->alvo);
+            return;
+        }
         c.tipo = C_RET; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.cor = igual(n->tag, "canvas") ? 0 : 0xFF202428;
         if (c.cor) cmd_novo(&c);
         if (!igual(n->tag, "canvas")) {
@@ -4580,11 +4786,14 @@ static void tf_aplicar(int i0, int r0, const int32_t M[6], int ox, int oy)
     }
 }
 
+static void achatar_medir(no_m *n, int x, int y);
 static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int cb_a)
 {
     estilo_t *e = &n->e;
-    if (e->display == D_NONE || e->opaco0) return;
+    if (e->display == D_NONE) return;
     int x = ox + n->x, y = oy + n->y;
+    n->ax = x; n->ay = y; n->pintado = 1;
+    if (e->opaco0) { achatar_medir(n, x, y); return; }
     ctx_m *ctx_salvo = ctx_cur, *real_salvo = ctx_real; uint16_t b_salvo = b_cur; int cam_salva = cam_cur;
     bool flex_pai = n->pai && (n->pai->e.display == D_FLEX || n->pai->e.display == D_IFLEX || n->pai->e.display == D_GRID);
     bool posic = e->position != P_STATIC, item_z = e->z_def && flex_pai;
@@ -4593,6 +4802,11 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     if (cria) { ctx_cur = ctx_real = ctx_novo(ctx_real, b_de_z(e->z_def ? e->z : 0), 1); b_cur = B_FUNDO; }
     else if (posic) { ctx_cur = ctx_novo(ctx_real, B_POS, 0); b_cur = B_FUNDO; }
     else if (e->flutua) { ctx_cur = ctx_novo(ctx_cur, B_FLOAT, 0); b_cur = B_FUNDO; }
+    /* inline-block, inline-flex, controles: pintados "como se criassem um contexto"
+     * (CSS 2.1, apêndice E): fundo, blocos e texto de dentro ficam juntos, no
+     * lugar do átomo na linha; os posicionados de dentro continuam no contexto real */
+    /* itens de flex e grid pintam "exatamente como inline-blocks" (CSS Flexbox 1, 4.4; Grid 1, 9.5) */
+    else if (eh_atomico(n) || flex_pai) { ctx_cur = ctx_novo(ctx_cur, B_INLINE, 0); b_cur = B_FUNDO; }
     else b_cur = (eh_bloco(e->display) || e->display == D_TABLE || e->display == D_FLEX || e->display == D_GRID || e->display == D_LIST) && !eh_atomico(n) ? B_BLOCO : B_INLINE;
     bool grupo = e->opac < 255;
     if (grupo) { cmd_t g; memset(&g, 0, sizeof g); g.tipo = C_GRUPO; g.alfa = e->opac; g.x = -INF; g.y = -INF; g.l = 2 * INF; g.a = 2 * INF; cmd_novo(&g); }
@@ -4681,6 +4895,16 @@ static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int c
     if (tem_tf) tf_aplicar(tf_i0, tf_r0, TM, x + n->l / 2, y + n->a / 2);
     if (grupo) { uint16_t bs = b_cur; b_cur = B_FIM; cmd_t g; memset(&g, 0, sizeof g); g.tipo = C_GRUPO_FIM; g.alfa = e->opac; g.x = -INF; g.y = -INF; g.l = 2 * INF; g.a = 2 * INF; cmd_novo(&g); b_cur = bs; }
     ctx_cur = ctx_salvo; ctx_real = real_salvo; b_cur = b_salvo; cam_cur = cam_salva;
+}
+
+/* opacity:0: nada é pintado, mas as caixas existem (o JavaScript mede) */
+static void achatar_medir(no_m *n, int x, int y)
+{
+    for (no_m *c = n->filho; c; c = c->prox) {
+        if (c->texto || c->e.display == D_NONE) continue;
+        c->ax = x + c->x; c->ay = y + c->y; c->pintado = 1;
+        achatar_medir(c, c->ax, c->ay);
+    }
 }
 
 /* fixo_vira_abs: dentro de um elemento com transform, fixed se posiciona nele (não na janela) */
@@ -5034,6 +5258,7 @@ static void limpar_layout(no_m *n)
 }
 
 
+static void zerar_pintado(no_m *n) { for (; n; n = n->prox) { n->pintado = 0; if (n->filho) zerar_pintado(n->filho); } }
 static int layout_interno(motor_t *m, int largura, int altura_tela);
 static motor_t *arg_m; static int arg_l, arg_a, arg_r;
 static void layout_na_pilha(void) { arg_r = layout_interno(arg_m, arg_l, arg_a); }
@@ -5061,6 +5286,7 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
 {
     mo = m;
     if (!m->raiz) return 0;
+    zerar_pintado(m->raiz);
     m->vw = largura; m->vh = altura_tela;
     if (largura_regras != largura || !m->n_regras) {
         m->n_regras = 0; m->n_univ = 0;
@@ -5443,16 +5669,39 @@ void motor_pintar(motor_t *m, uint32_t *px, int larg, int passo, int y, int a)
             }
             break;
         }
-        case C_IMG: {
-            imagem_m *im = &m->imgs[c->img];
-            if (!im->px || c->l <= 0 || c->a <= 0) break;
+        case C_TELA: {
+            int tl = 0, ta = 0;
+            const uint32_t *tp = m->g.tela ? m->g.tela(c->img, &tl, &ta) : NULL;
+            if (!tp || tl <= 0 || ta <= 0 || c->l <= 0 || c->a <= 0) break;
             int ya = c->y < t.c1 ? t.c1 : c->y, yb = c->y + c->a > t.c3 ? t.c3 : c->y + c->a;
             int xa = c->x < t.c0 ? t.c0 : c->x, xb = c->x + c->l > t.c2 ? t.c2 : c->x + c->l;
             for (int yy = ya; yy < yb; yy++) {
-                const uint32_t *src = im->px + ((yy - c->y) * im->a / c->a) * im->l;
+                const uint32_t *src = tp + ((yy - c->y) * ta / c->a) * tl;
                 uint32_t *d = px + (yy - y) * passo;
                 for (int xx = xa; xx < xb; xx++) {
-                    uint32_t p = src[(xx - c->x) * im->l / c->l];
+                    uint32_t p = src[(xx - c->x) * tl / c->l];
+                    uint32_t al = p >> 24;
+                    if (al) d[xx] = al >= 250 ? p & 0xFFFFFF : misturar(d[xx], p);
+                }
+            }
+            break;
+        }
+        case C_IMG: {
+            imagem_m *im = &m->imgs[c->img];
+            if (!im->px || c->l <= 0 || c->a <= 0) break;
+            /* peso: bit 0 ladrilha em x, bit 1 em y (background-repeat); o recorte limita */
+            bool tx = c->peso & 1, ty = (c->peso & 2) != 0;
+            int ya = ty ? t.c1 : (c->y < t.c1 ? t.c1 : c->y), yb = ty ? t.c3 : (c->y + c->a > t.c3 ? t.c3 : c->y + c->a);
+            int xa = tx ? t.c0 : (c->x < t.c0 ? t.c0 : c->x), xb = tx ? t.c2 : (c->x + c->l > t.c2 ? t.c2 : c->x + c->l);
+            for (int yy = ya; yy < yb; yy++) {
+                int vy = yy - c->y;
+                if (ty) { vy %= c->a; if (vy < 0) vy += c->a; }
+                const uint32_t *src = im->px + (vy * im->a / c->a) * im->l;
+                uint32_t *d = px + (yy - y) * passo;
+                for (int xx = xa; xx < xb; xx++) {
+                    int vx = xx - c->x;
+                    if (tx) { vx %= c->l; if (vx < 0) vx += c->l; }
+                    uint32_t p = src[vx * im->l / c->l];
                     if (!im->alfa) { d[xx] = p & 0xFFFFFF; continue; }   /* JPEG/PNG já vêm compostos sobre branco */
                     uint32_t al = p >> 24;
                     if (al) d[xx] = al >= 250 ? p & 0xFFFFFF : misturar(d[xx], p);
@@ -5605,7 +5854,8 @@ bool motor_envio(motor_t *m, const motor_alvo_t *quem, char *url, int max)
     no_m *sub = quem && quem->tipo == MA_BOTAO ? (no_m *)quem->no : NULL;   /* o botão que enviou entra com nome=valor */
     no_m *f = de ? de->pai : NULL;
     while (f && !igual(f->tag, "form")) f = f->pai;
-    const char *ac = f ? atributo_m(f, "action") : NULL;
+    if (!f) return false;   /* campo fora de formulário: Enter não envia nada */
+    const char *ac = atributo_m(f, "action");
     char u[600];
     mo = m;
     juntar(m->url, ac && ac[0] ? ac : m->url, u, sizeof u);
@@ -5655,4 +5905,122 @@ bool motor_envio_campo(motor_t *m, int campo, char *url, int max)
     a.tipo = igual(n->tag, "button") || (t && (igual(t, "submit") || igual(t, "image"))) ? MA_BOTAO : MA_CAMPO;
     a.no = n;
     return motor_envio(m, &a, url, max);
+}
+
+/* ------------------------------------------------- caixas para o JavaScript
+ * Por elemento marcado com data-sagui-n=k (a serialização do JS marca todos):
+ * 16 inteiros: x, y, largura, altura (caixa da borda, coordenadas da página),
+ * bordas (4), paddings (4), largura e altura do conteúdo rolável, exibido (0/1),
+ * reservado. Elemento sem caixa (display:none) fica com zeros. */
+static void extensao(no_m *n, int *dir, int *baixo)
+{
+    for (no_m *c = n->filho; c; c = c->prox) {
+        if (c->texto || !c->pintado) continue;
+        if (c->ax + c->l > *dir) *dir = c->ax + c->l;
+        if (c->ay + c->a > *baixo) *baixo = c->ay + c->a;
+        if (!c->e.corta) extensao(c, dir, baixo);
+    }
+    for (struct frag *f = n->frags; f; f = f->prox) {
+        if (n->ax + f->x + f->l > *dir) *dir = n->ax + f->x + f->l;
+        if (n->ay + f->y + f->a > *baixo) *baixo = n->ay + f->y + f->a;
+    }
+}
+static void exportar_no(no_m *n, int *d, int max)
+{
+    for (; n; n = n->prox) {
+        if (n->texto) continue;
+        const char *k = atributo_m(n, "data-sagui-n");
+        int i = k ? texto_para_int(k) : -1;
+        if (i >= 0 && i < max) {
+            int *o = d + i * 16;
+            memset(o, 0, 16 * sizeof(int));
+            if (n->pintado) {
+                o[0] = n->ax; o[1] = n->ay; o[2] = n->l; o[3] = n->a;
+                for (int j = 0; j < 4; j++) { o[4 + j] = n->bl[j]; o[8 + j] = n->pl[j]; }
+                int dir = n->ax + n->l - n->bl[1], baixo = n->ay + n->a - n->bl[2];
+                extensao(n, &dir, &baixo);
+                o[12] = dir - n->ax - n->bl[3] + n->pl[1];   /* inclui o padding do fim */
+                o[13] = baixo - n->ay - n->bl[0] + n->pl[2];
+                if (o[12] < n->l - n->bl[1] - n->bl[3]) o[12] = n->l - n->bl[1] - n->bl[3];
+                if (o[13] < n->a - n->bl[0] - n->bl[2]) o[13] = n->a - n->bl[0] - n->bl[2];
+                o[14] = 1;
+            }
+        }
+        exportar_no(n->filho, d, max);
+    }
+}
+int motor_caixas(motor_t *m, int *d, int max)
+{
+    memset(d, 0, (size_t)max * 16 * sizeof(int));
+    if (m->raiz) exportar_no(m->raiz, d, max);
+    return max;
+}
+
+/* Valor computado de uma propriedade (getComputedStyle) do elemento k, como texto. */
+static no_m *achar_n(no_m *n, const char *k)
+{
+    for (; n; n = n->prox) {
+        if (n->texto) continue;
+        const char *v = atributo_m(n, "data-sagui-n");
+        if (v && igual(v, k)) return n;
+        no_m *r = achar_n(n->filho, k);
+        if (r) return r;
+    }
+    return NULL;
+}
+static void cor_txt(uint32_t c, char *o, int max)
+{
+    unsigned a = c >> 24;
+    if (a == 255 || a == 0) formatar_texto(o, (size_t)max, a ? "rgb(%u, %u, %u)" : "rgba(%u, %u, %u, 0)", (c >> 16) & 255, (c >> 8) & 255, c & 255);
+    else {
+        unsigned mil = (a * 1000 + 127) / 255;
+        formatar_texto(o, (size_t)max, "rgba(%u, %u, %u, 0.%03u)", (c >> 16) & 255, (c >> 8) & 255, c & 255, mil > 999 ? 999 : mil);
+        int k = (int)tam_texto(o) - 1;
+        while (o[k - 1] == '0') { o[k - 1] = ')'; o[k] = 0; k--; }
+    }
+}
+bool motor_estilo_de(motor_t *m, int k, const char *prop, char *o, int max)
+{
+    char id[16]; formatar_texto(id, sizeof id, "%d", k);
+    no_m *n = m->raiz ? achar_n(m->raiz, id) : NULL;
+    o[0] = 0;
+    if (!n) return false;
+    estilo_t *e = &n->e;
+    static const char *const disp[] = { "inline", "block", "none", "flex", "inline-block", "inline-flex", "grid", "table", "table-row", "table-cell" };
+    #define PX(v) formatar_texto(o, (size_t)max, "%dpx", (int)(v))
+    if (igual(prop, "display")) {
+        const char *d = "block";
+        switch (e->display) {
+        case D_INLINE: d = "inline"; break; case D_NONE: d = "none"; break; case D_FLEX: d = "flex"; break;
+        case D_IBLOCK: d = "inline-block"; break; case D_IFLEX: d = "inline-flex"; break; case D_GRID: d = "grid"; break;
+        case D_TABLE: d = "table"; break; case D_CELL: d = "table-cell"; break; case D_LIST: d = "list-item"; break;
+        case D_CONTENTS: d = "contents"; break; default: d = "block"; break;
+        }
+        (void)disp;
+        copia_texto(o, d, (size_t)max);
+    } else if (igual(prop, "position")) copia_texto(o, e->position == P_RELATIVE ? "relative" : e->position == P_ABSOLUTE ? "absolute" : e->position == P_FIXED ? "fixed" : e->position == P_STICKY ? "sticky" : "static", (size_t)max);
+    else if (igual(prop, "visibility")) copia_texto(o, e->visivel ? "hidden" : "visible", (size_t)max);
+    else if (igual(prop, "opacity")) { if (e->opaco0) copia_texto(o, "0", (size_t)max); else if (e->opac == 255) copia_texto(o, "1", (size_t)max); else formatar_texto(o, (size_t)max, "0.%02d", e->opac * 100 / 255); }
+    else if (igual(prop, "width")) PX(n->l - n->bl[1] - n->bl[3] - n->pl[1] - n->pl[3]);
+    else if (igual(prop, "height")) PX(n->a - n->bl[0] - n->bl[2] - n->pl[0] - n->pl[2]);
+    else if (igual(prop, "padding-top")) PX(n->pl[0]); else if (igual(prop, "padding-right")) PX(n->pl[1]);
+    else if (igual(prop, "padding-bottom")) PX(n->pl[2]); else if (igual(prop, "padding-left")) PX(n->pl[3]);
+    else if (igual(prop, "border-top-width")) PX(n->bl[0]); else if (igual(prop, "border-right-width")) PX(n->bl[1]);
+    else if (igual(prop, "border-bottom-width")) PX(n->bl[2]); else if (igual(prop, "border-left-width")) PX(n->bl[3]);
+    else if (igual(prop, "margin-top")) PX(n->mt); else if (igual(prop, "margin-right")) PX(n->mr);
+    else if (igual(prop, "margin-bottom")) PX(n->mb); else if (igual(prop, "margin-left")) PX(n->ml);
+    else if (igual(prop, "font-size")) PX(e->tam);
+    else if (igual(prop, "font-weight")) formatar_texto(o, (size_t)max, "%d", e->peso ? e->peso : 400);
+    else if (igual(prop, "font-style")) copia_texto(o, e->italico ? "italic" : "normal", (size_t)max);
+    else if (igual(prop, "line-height")) { if (e->linha.u == U_AUTO) copia_texto(o, "normal", (size_t)max); else PX(altura_linha(e)); }
+    else if (igual(prop, "color")) cor_txt(0xFF000000u | e->cor, o, max);
+    else if (igual(prop, "background-color")) cor_txt(e->fundo, o, max);
+    else if (igual(prop, "z-index")) { if (e->z_def) formatar_texto(o, (size_t)max, "%d", e->z); else copia_texto(o, "auto", (size_t)max); }
+    else if (igual(prop, "overflow") || igual(prop, "overflow-x") || igual(prop, "overflow-y")) copia_texto(o, e->corta ? "hidden" : "visible", (size_t)max);
+    else if (igual(prop, "transform")) copia_texto(o, e->tf_txt ? e->tf_txt : "none", (size_t)max);
+    else if (igual(prop, "font-family")) copia_texto(o, e->fam >= 0 && e->fam < m->n_fams ? m->fams[e->fam] : "sans-serif", (size_t)max);
+    else if (igual(prop, "box-sizing")) copia_texto(o, e->caixa_borda ? "border-box" : "content-box", (size_t)max);
+    else return false;
+    #undef PX
+    return true;
 }

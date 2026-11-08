@@ -10,7 +10,7 @@ static val chaves_de(obj *o, int herda)
     for (obj *c = o; c; c = herda ? c->proto : NULL) {
         if (c == p_obj || c == p_arr || c == p_fn || c == p_str || c == p_el) break;
         for (int i = 0; i < c->np; i++) {
-            if (!c->p[i].k || c->p[i].k->s[0] == '_') continue;
+            if (!c->p[i].k || (c->p[i].k->s[0] == '_' && c->p[i].k->s[1] == '_')) continue;   /* __x: internas do Cipó */
             if (c != o && (c->p[i].v.t == OB && c->p[i].v.o->cl == C_FN)) continue;
             if (c->p[i].k == s_constructor || c->p[i].k == s_prototype) continue;
             arr_push(r, vS(c->p[i].k));
@@ -23,6 +23,15 @@ static val n_chaves(val este, val *a, int n)
     (void)este; val v = ARG(0);
     if (v.t == ST) { obj *r = novo_arr(0); for (int i = 0; i < v.s->n; i++) arr_push(r, vS(num_str((double)i))); return vO(r); }
     return v.t == OB ? chaves_de(v.o, 1) : vO(novo_arr(0));
+}
+/* __def: copia todas as propriedades (inclusive as internas __x, que o for-in não mostra) */
+static val n_copiar(val este, val *a, int n)
+{
+    (void)este;
+    if (ARG(0).t != OB || ARG(1).t != OB) return vU();
+    obj *d = a[0].o, *o = a[1].o;
+    for (int i = 0; i < o->np; i++) if (o->p[i].k) por_prop(d, o->p[i].k, o->p[i].v);
+    return vU();
 }
 static val n_keys(val este, val *a, int n) { (void)este; val v = ARG(0); return v.t == OB ? chaves_de(v.o, 0) : n_chaves(este, a, n); }
 static val n_getproto(val este, val *a, int n)
@@ -1199,13 +1208,16 @@ static val n_re(val este, val *a, int n)
 
 /* ---- DOM ---- */
 typedef struct at { str *k, *v; struct at *prox; } at;
-struct dn { int tipo; str *tag, *txt; at *at; dn *pai, *pri, *ult, *ant, *prox; obj *w; int feito; dn *sombra; };
+struct dn { int tipo; str *tag, *txt; at *at; dn *pai, *pri, *ult, *ant, *prox; obj *w; int feito; dn *sombra; int nk; unsigned nk_ger; };
 static dn *raiz; static int sujo;
+#define SUJAR() (sujo = 1, dom_ger++)
+static unsigned ger_serial;   /* dom_ger da última serialização */
 static int tique_ms, vivo;   /* página viva */
 static str *s_style, *s_onclick, *s_ls, *s_click;
 #define MAX_CLIQUES 512
 static dn *cliques[MAX_CLIQUES]; static int qtd_cliques;
 static dn *dcampos[MAX_CLIQUES]; static int qtd_campos;   /* input/textarea/select na ordem da serialização */
+static int qtd_n; static unsigned ser_ger;   /* data-sagui-n: número de cada elemento na serialização (e de qual) */
 
 static dn *d_novo(int tipo, str *tag) { dn *d = novo(sizeof(dn)); d->tipo = tipo; d->tag = tag; return d; }
 static void d_tirar(dn *c)
@@ -1331,11 +1343,41 @@ static void b_attr(buf *b, str *k, const char *v, int n)
     for (int i = 0; i < n; i++) { if (v[i] == '"') b_t(b, "&quot;"); else b_por(b, v + i, 1); }
     b_t(b, "\"");
 }
+/* "cor: x; --v: y" -> propriedades do objeto style (camelCase; --custom como está) */
+static void estilo_ler(obj *st, const char *t, int n)
+{
+    int i = 0;
+    while (i < n) {
+        while (i < n && (t[i] == ' ' || t[i] == ';' || t[i] == '\n' || t[i] == '\t')) i++;
+        int k0 = i;
+        while (i < n && t[i] != ':' && t[i] != ';') i++;
+        if (i >= n || t[i] != ':') { while (i < n && t[i] != ';') i++; continue; }
+        int k1 = i++;
+        while (k1 > k0 && t[k1 - 1] == ' ') k1--;
+        while (i < n && t[i] == ' ') i++;
+        int v0 = i, prof = 0;
+        while (i < n && (prof || t[i] != ';')) { if (t[i] == '(') prof++; else if (t[i] == ')') prof--; i++; }
+        int v1 = i;
+        while (v1 > v0 && (t[v1 - 1] == ' ' || t[v1 - 1] == '\n')) v1--;
+        if (k1 <= k0) continue;
+        char kb[96]; int kn = 0;
+        bool custom = k1 - k0 > 2 && t[k0] == '-' && t[k0 + 1] == '-';
+        for (int j = k0; j < k1 && kn < 95; j++) {
+            char c = t[j];
+            if (!custom && c == '-' && j + 1 < k1 && j > k0) { char u = t[++j]; kb[kn++] = (char)(u >= 'a' && u <= 'z' ? u - 32 : u); continue; }
+            kb[kn++] = (char)(!custom && c >= 'A' && c <= 'Z' ? c + 32 : c);
+        }
+        uint8_t e = st->estilo; st->estilo = 0;
+        por_prop(st, intern_n(kb, kn), vS(novo_str(t + v0, v1 - v0)));
+        st->estilo = e;
+    }
+}
 static void estilo_b(buf *b, obj *st)
 {
     for (int i = 0; i < st->np; i++) {
         str *k = st->p[i].k;
-        if (!k || st->p[i].v.t == U || st->p[i].v.t == NUL || st->p[i].v.t == OB) continue;
+        if (!k || st->p[i].v.t == U || st->p[i].v.t == NUL || st->p[i].v.t == OB || st->p[i].v.t == AC) continue;
+        if (st->p[i].v.t == ST && !st->p[i].v.s->n) continue;   /* removida */
         for (int j = 0; j < k->n; j++) {
             char c = k->s[j];
             if (c >= 'A' && c <= 'Z') { char t[2] = { '-', (char)(c + 32) }; b_por(b, t, 2); } else b_por(b, &c, 1);
@@ -1413,16 +1455,18 @@ static void serial(buf *b, dn *d, int final)
         if (st && a->k == s_style) continue;
         b_attr(b, a->k, a->v->s, a->v->n);
     }
-    if (st && st->v.t == OB) {
+    if (st && st->v.t == OB) {   /* com el.style criado, ele é o atributo (já leu o que havia) */
         buf t = { 0, 0, 0 };
-        str *o = attr(d, s_style);
-        if (o) { b_por(&t, o->s, o->n); b_t(&t, ";"); }
         estilo_b(&t, st->v.o);
         if (t.n) b_attr(b, s_style, t.b, t.n);
     }
     if (id >= 0 && e_link) b_attr(b, I("href"), alvo, (int)tam_texto(alvo));
     /* clique do JavaScript e campos: o próprio elemento leva a marca, sem mudar a árvore */
     char num[16];
+    if (final) {   /* todo elemento: o motor devolve a caixa dele por este número */
+        d->nk = qtd_n++; d->nk_ger = ser_ger;
+        formatar_texto(num, sizeof num, "%d", d->nk); b_attr(b, I("data-sagui-n"), num, (int)tam_texto(num));
+    }
     if (id >= 0 && !e_link) { formatar_texto(num, sizeof num, "%d", id); b_attr(b, I("data-sagui-js"), num, (int)tam_texto(num)); }
     if (cid >= 0) { formatar_texto(num, sizeof num, "%d", cid); b_attr(b, I("data-sagui-campo"), num, (int)tam_texto(num)); }
     b_t(b, ">");
@@ -1472,7 +1516,7 @@ static dn *por_tag(dn *d, str *t)
 }
 static dn *prox_el(dn *d, int ant) { while (d && d->tipo != 1) d = ant ? d->ant : d->prox; return d; }
 static void limpar(dn *d) { while (d->pri) d_tirar(d->pri); }
-static void por_texto(dn *d, str *t) { limpar(d); if (t->n) { dn *x = d_novo(3, NULL); x->txt = t; d_por(d, x, NULL); } sujo = 1; }
+static void por_texto(dn *d, str *t) { limpar(d); if (t->n) { dn *x = d_novo(3, NULL); x->txt = t; d_por(d, x, NULL); } SUJAR(); }
 enum { D_NADA, D_TYPE, D_NAME, D_TAG, D_PAI, D_PAIEL, D_PRI, D_ULT, D_PROX, D_ANT, D_PRIEL, D_ULTEL, D_PROXEL, D_ANTEL, D_FILHOS, D_NOS, D_TEXTO, D_INNERT, D_INNER, D_OUTER,
        D_ID, D_CLASS, D_VALUE, D_HREF, D_SRC, D_DATA, D_NVALUE, D_TITLE, D_BODY, D_HEAD, D_DOCEL, D_STYLE, D_NCHILD, D_DOC, D_ALT, D_NAMEA, D_TYPEA, D_CHECKED, D_CWIN, D_CDOC, D_DEFVIEW };
 static const char *const dnomes[] = { "", "nodeType", "nodeName", "tagName", "parentNode", "parentElement", "firstChild", "lastChild", "nextSibling", "previousSibling", "firstElementChild", "lastElementChild", "nextElementSibling", "previousElementSibling", "children", "childNodes", "textContent", "innerText", "innerHTML", "outerHTML",
@@ -1532,7 +1576,13 @@ static int el_get(obj *o, str *k, val *r)
     /* iframes compartilham a janela e o documento da página */
     case D_CWIN: case D_DEFVIEW: if (k->dom == D_DEFVIEW && d->tipo != 9) return 0; *r = vO(global); break;
     case D_CDOC: *r = embrulhar(raiz); break;
-    case D_STYLE: { val s = vO(novo_obj(p_obj)); por_prop(o, s_style, s); *r = s; break; }
+    case D_STYLE: {
+        val c = get(vO(global), I("CSSStyleDeclaration")), pr = c.t == OB ? get(c, s_prototype) : vU();
+        val s = vO(novo_obj(pr.t == OB ? pr.o : p_obj));
+        str *at0 = attr(d, s_style);
+        if (at0) estilo_ler(s.o, at0->s, at0->n);
+        s.o->estilo = 1; por_prop(o, s_style, s); *r = s; break;
+    }
     default: return 0;
     }
     return 1;
@@ -1542,18 +1592,18 @@ static int el_set(obj *o, str *k, val v)
     dn *d = o->d;
     if (!k->dom) return 0;
     switch (k->dom) {
-    case D_TEXTO: case D_INNERT: if (d->tipo == 3) { d->txt = escapar(to_str(v)); sujo = 1; } else por_texto(d, escapar(to_str(v))); return 1;
-    case D_DATA: case D_NVALUE: if (d->tipo == 3) { d->txt = escapar(to_str(v)); sujo = 1; } return 1;
-    case D_INNER: { str *s = to_str(v); limpar(d); html_ler(s->s, s->n, d); sujo = 1; return 1; }
-    case D_ID: attr_por(d, I("id"), to_str(v)); sujo = 1; return 1;
-    case D_CLASS: attr_por(d, I("class"), to_str(v)); sujo = 1; return 1;
+    case D_TEXTO: case D_INNERT: if (d->tipo == 3) { d->txt = escapar(to_str(v)); SUJAR(); } else por_texto(d, escapar(to_str(v))); return 1;
+    case D_DATA: case D_NVALUE: if (d->tipo == 3) { d->txt = escapar(to_str(v)); SUJAR(); } return 1;
+    case D_INNER: { str *s = to_str(v); limpar(d); html_ler(s->s, s->n, d); SUJAR(); return 1; }
+    case D_ID: attr_por(d, I("id"), to_str(v)); SUJAR(); return 1;
+    case D_CLASS: attr_por(d, I("class"), to_str(v)); SUJAR(); return 1;
     case D_VALUE: case D_HREF: case D_SRC: case D_ALT: case D_NAMEA: case D_TYPEA:
         if (k->dom == D_SRC && d->tipo == 1 && (d->tag == I("video") || d->tag == I("audio") || d->tag == I("source"))) {
             str *u = to_str(v);
             registrar("js: video src (%d)\n", u->n);
             video_src = u;
         }
-        attr_por(d, I(dnomes[k->dom]), to_str(v)); sujo = 1; return 1;
+        attr_por(d, I(dnomes[k->dom]), to_str(v)); SUJAR(); return 1;
     case D_CHECKED: if (to_bool(v)) attr_por(d, I("checked"), I("")); return 1;
     case D_TITLE:
         if (d->tipo == 9) {
@@ -1653,17 +1703,19 @@ static dn *por_id(dn *d, str *id)
 static val n_byid(val este, val *a, int n) { (void)este; return embrulhar(por_id(raiz, to_str(ARG(0)))); }
 static val n_create_el(val este, val *a, int n) { (void)este; str *t = to_str(ARG(0)); if (t->n == 5 && (t->s[0] | 32) == 'v' && (t->s[1] | 32) == 'i' && (t->s[2] | 32) == 'd') registrar("js: criou <video>\n"); return embrulhar(d_novo(1, baixo_n(t->s, t->n))); }
 static val n_create_txt(val este, val *a, int n) { (void)este; dn *t = d_novo(3, NULL); t->txt = escapar(to_str(ARG(0))); return embrulhar(t); }
-static val n_sombra(val este, val *a, int n) { (void)este; dn *d = de_val(ARG(0)); if (!d) return vU(); if (!d->sombra) { d->sombra = d_novo(11, NULL); sujo = 1; } return embrulhar(d->sombra); }
+static val n_sombra(val este, val *a, int n) { (void)este; dn *d = de_val(ARG(0)); if (!d) return vU(); if (!d->sombra) { d->sombra = d_novo(11, NULL); SUJAR(); } return embrulhar(d->sombra); }
 static val n_frag(val este, val *a, int n) { (void)este; (void)a; (void)n; return embrulhar(d_novo(11, NULL)); }
-static val n_append(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), NULL); sujo = 1; return a[0]; }
-static val n_insert(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), ARG(1).t == OB ? de_val(a[1]) : NULL); sujo = 1; return a[0]; }
-static val n_remove_ch(val este, val *a, int n) { (void)este; d_tirar(de_val(ARG(0))); sujo = 1; return a[0]; }
+static val n_append(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), NULL); SUJAR(); return a[0]; }
+static val n_insert(val este, val *a, int n) { d_por(de_val(este), de_val(ARG(0)), ARG(1).t == OB ? de_val(a[1]) : NULL); SUJAR(); return a[0]; }
+static val n_remove_ch(val este, val *a, int n) { (void)este; d_tirar(de_val(ARG(0))); SUJAR(); return a[0]; }
 static val n_getattr(val este, val *a, int n) { str *t = to_str(ARG(0)), *v = attr(de_val(este), baixo_n(t->s, t->n)); return v ? vS(v) : vNul(); }
-static val n_setattr(val este, val *a, int n) { str *t = to_str(ARG(0)); dn *d = de_val(este); if (t->n == 3 && !memcmp(t->s, "src", 3) && (d->tag == I("video") || d->tag == I("source"))) { registrar("js: video src attr\n"); video_src = to_str(ARG(1)); } attr_por(d, baixo_n(t->s, t->n), to_str(ARG(1))); sujo = 1; return vU(); }
+static val n_setattr(val este, val *a, int n) { str *t = to_str(ARG(0)); dn *d = de_val(este); if (t->n == 3 && !memcmp(t->s, "src", 3) && (d->tag == I("video") || d->tag == I("source"))) { registrar("js: video src attr\n"); video_src = to_str(ARG(1)); } str *k = baixo_n(t->s, t->n); attr_por(d, k, to_str(ARG(1)));
+    if (k == s_style && d->w) { prop *st = achar(d->w, s_style); if (st && st->v.t == OB) { st->v.o->np = 0; if (st->v.o->idx) memset(st->v.o->idx, 0, (size_t)st->v.o->cidx * sizeof(int)); str *v = to_str(ARG(1)); estilo_ler(st->v.o, v->s, v->n); } }
+    SUJAR(); return vU(); }
 static val n_rmattr(val este, val *a, int n)
 {
     dn *d = de_val(este); str *t = to_str(ARG(0)), *k = baixo_n(t->s, t->n);
-    for (at **p = &d->at; *p; p = &(*p)->prox) if ((*p)->k == k) { *p = (*p)->prox; sujo = 1; break; }
+    for (at **p = &d->at; *p; p = &(*p)->prox) if ((*p)->k == k) { *p = (*p)->prox; SUJAR(); break; }
     return vU();
 }
 static dn *script_atual; static buf escrito;
@@ -1675,9 +1727,225 @@ static val n_write(val este, val *a, int n)
 }
 
 /* ---- Início, páginas e cliques ---- */
+
+/* ---- Canvas 2D: um despachante só (__c2(op, ...)); o estado fica em canvas2d.c */
+int  tela2d_nova(int l, int a); void tela2d_tamanho(int id, int l, int a);
+void tela2d_salvar(int id); void tela2d_restaurar(int id);
+void tela2d_matriz(int id, const double m[6], int definir); void tela2d_ler_matriz(int id, double m[6]);
+void tela2d_alfa(int id, double a); void tela2d_composicao(int id, int op);
+void tela2d_cor(int id, int traco, uint32_t argb); void tela2d_usar_grad(int id, int traco, int g);
+void tela2d_linha(int id, double lw, int cap, int join, double miter); void tela2d_suave(int id, int s);
+void tela2d_tracejado(int id, const double *p, int n, double desl);
+int  tela2d_grad_novo(int radial, const double p[6]); void tela2d_grad_parada(int g, double pos, uint32_t argb);
+void tela2d_caminho_novo(int id); void tela2d_mover(int id, double x, double y); void tela2d_linha_para(int id, double x, double y);
+void tela2d_quad(int id, double cx, double cy, double x, double y);
+void tela2d_bezier(int id, double a, double b, double c, double d, double x, double y);
+void tela2d_arco(int id, double x, double y, double r, double a0, double a1, int anti);
+void tela2d_arco_para(int id, double x1, double y1, double x2, double y2, double r);
+void tela2d_elipse(int id, double x, double y, double rx, double ry, double rot, double a0, double a1, int anti);
+void tela2d_ret(int id, double x, double y, double w, double h); void tela2d_fechar(int id);
+void tela2d_preencher(int id, int parimpar); void tela2d_tracar(int id); void tela2d_recortar(int id, int parimpar);
+void tela2d_ret_cheio(int id, double x, double y, double w, double h); void tela2d_ret_limpar(int id, double x, double y, double w, double h);
+void tela2d_ret_traco(int id, double x, double y, double w, double h);
+void tela2d_texto(int id, const char *s, double x, double y, double tam, int alinha, int base, int traco, double maxw);
+double tela2d_medir(const char *s, double tam);
+void tela2d_desenhar(int id, int src, double sx, double sy, double sw, double sh, double dx, double dy, double dw, double dh);
+int  tela2d_de_pixels(const uint32_t *px, int l, int a, int alfa);
+void tela2d_ler(int id, int x, int y, int w, int h, uint8_t *rgba);
+void tela2d_escrever(int id, const uint8_t *rgba, int w, int h, int dx, int dy, int rx, int ry, int rw, int rh);
+uint32_t tela2d_cor_css(const char *s, int *ok);
+bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
+
+
+/* ---- Medidas do layout (getBoundingClientRect & cia.) ----
+ * Como num navegador, uma medida pedida pelo script força o layout do DOM
+ * atual: serializa, o Cipó diagrama (gancho layout) e as caixas ficam em
+ * cache até o DOM ou algum el.style mudar. */
+static int *lay; static int lay_cap, lay_n, lay_ok; static unsigned lay_ger = 0xFFFFFFFFu, lay_ser;
+static int jan_l = 1024, jan_a = 768, jan_rx, jan_ry;
+void js_janela(int l, int a, int rx, int ry) { jan_l = l; jan_a = a; jan_rx = rx; jan_ry = ry; }
+static int layout_atual(void)
+{
+    if (lay_ger == dom_ger) return lay_ok;
+    lay_ger = dom_ger; lay_ok = 0;
+    if (!gancho || !gancho->layout || !raiz) return 0;
+    buf b = { 0, 0, 0 };
+    qtd_cliques = 0; qtd_campos = 0; qtd_n = 0; ser_ger++;
+    serial(&b, raiz, 1);
+    if (qtd_n > lay_cap) {
+        int c = qtd_n + 256;
+        int *nl = aloca((unsigned)c * 16 * sizeof(int));
+        if (!nl) return 0;
+        if (lay) libera(lay);
+        lay = nl; lay_cap = c;
+    }
+    lay_n = qtd_n; lay_ser = ser_ger;
+    char *h = aloca((unsigned)b.n + 1);
+    if (!h) return 0;
+    memcpy(h, b.b, (size_t)b.n); h[b.n] = 0;
+    lay_ok = gancho->layout(h, b.n, lay, lay_n);
+    libera(h);
+    return lay_ok;
+}
+static const int *caixa_de(dn *d)
+{
+    if (!d || d->tipo != 1 || !layout_atual()) return NULL;
+    if (d->nk_ger != lay_ser || d->nk < 0 || d->nk >= lay_n) return NULL;   /* fora do documento */
+    return lay + d->nk * 16;
+}
+static val n_caixa(val este, val *a, int n)
+{
+    (void)este;
+    const int *c = caixa_de(de_val(ARG(0)));
+    if (!c) return vNul();
+    obj *r = novo_arr(0);
+    for (int i = 0; i < 15; i++) arr_push(r, vI(c[i]));
+    return vO(r);
+}
+static val n_estilo_c(val este, val *a, int n)
+{
+    (void)este;
+    dn *d = de_val(ARG(0));
+    if (!caixa_de(d) || !gancho->estilo) return vNul();
+    char o[256];
+    return gancho->estilo(d->nk, to_str(ARG(1))->s, o, sizeof o) ? vT(o) : vNul();
+}
+static int rol_pedido, rol_px_ped, rol_py_ped;
+static val n_rolar_c(val este, val *a, int n) { (void)este; rol_pedido = 1; rol_px_ped = to_i(ARG(0)); rol_py_ped = to_i(ARG(1)); return vU(); }
+int js_rolagem_pedida(int *x, int *y) { if (!rol_pedido) return 0; rol_pedido = 0; *x = rol_px_ped; *y = rol_py_ped; return 1; }
+static val n_jan(val este, val *a, int n) { (void)este; (void)a; (void)n; obj *r = novo_arr(0); arr_push(r, vI(jan_l)); arr_push(r, vI(jan_a)); arr_push(r, vI(jan_rx)); arr_push(r, vI(jan_ry)); return vO(r); }
+/* el.dataset: DOMStringMap montado dos atributos data-* (camelCase); escrever reflete no atributo */
+static void ds_escreve(obj *o, str *k, val v)
+{
+    dn *d = o->d;
+    if (!d) return;
+    char b[160]; int n = 0;
+    memcpy(b, "data-", 5); n = 5;
+    for (int i = 0; i < k->n && n < 150; i++) {
+        char c = k->s[i];
+        if (c >= 'A' && c <= 'Z') { b[n++] = '-'; b[n++] = (char)(c + 32); } else b[n++] = c;
+    }
+    attr_por(d, intern_n(b, n), to_str(v));
+    SUJAR();
+}
+static val n_dataset(val este, val *a, int n)
+{
+    (void)este;
+    dn *d = de_val(ARG(0));
+    obj *o = novo_obj(p_obj);
+    for (at *x = d->at; x; x = x->prox) {
+        if (x->k->n <= 5 || memcmp(x->k->s, "data-", 5)) continue;
+        char b[160]; int k = 0;
+        for (int i = 5; i < x->k->n && k < 159; i++) {
+            char c = x->k->s[i];
+            if (c == '-' && i + 1 < x->k->n && x->k->s[i + 1] >= 'a' && x->k->s[i + 1] <= 'z') { b[k++] = (char)(x->k->s[++i] - 32); continue; }
+            b[k++] = c;
+        }
+        por_prop(o, intern_n(b, k), vS(x->v));
+    }
+    o->d = d; o->estilo = 2;
+    return vO(o);
+}
+static val n_script_atual(val este, val *a, int n) { (void)este; (void)a; (void)n; return script_atual ? embrulhar(script_atual) : vNul(); }
+static double NA(val *a, int n, int i) { return i < n ? to_num(a[i]) : 0; }
+static val n_c2(val este, val *a, int n)
+{
+    (void)este;
+    int op = to_i(ARG(0)), id = to_i(ARG(1));
+    switch (op) {
+    case 0: return vI(tela2d_nova(to_i(ARG(1)), to_i(ARG(2))));
+    case 1: tela2d_tamanho(id, to_i(ARG(2)), to_i(ARG(3))); break;
+    case 2: tela2d_salvar(id); break;
+    case 3: tela2d_restaurar(id); break;
+    case 4: { double m[6]; for (int i = 0; i < 6; i++) m[i] = NA(a, n, 2 + i); tela2d_matriz(id, m, to_i(ARG(8))); break; }
+    case 5: { double m[6]; tela2d_ler_matriz(id, m); obj *r = novo_arr(0); for (int i = 0; i < 6; i++) arr_push(r, vN(m[i])); return vO(r); }
+    case 6: tela2d_alfa(id, NA(a, n, 2)); break;
+    case 7: tela2d_composicao(id, to_i(ARG(2))); break;
+    case 8: { int ok; uint32_t c = tela2d_cor_css(to_str(ARG(3))->s, &ok); if (ok) tela2d_cor(id, to_i(ARG(2)), c); return vB(ok); }
+    case 9: tela2d_usar_grad(id, to_i(ARG(2)), to_i(ARG(3))); break;
+    case 10: tela2d_linha(id, NA(a, n, 2), to_i(ARG(3)), to_i(ARG(4)), NA(a, n, 5)); break;
+    case 11: tela2d_suave(id, to_i(ARG(2))); break;
+    case 14: {   /* setLineDash(lista) + lineDashOffset */
+        val l = ARG(2); double p[16]; int k = 0;
+        if (l.t == OB) for (int i = 0; i < l.o->na && k < 16; i++) p[k++] = to_num(l.o->a[i]);
+        tela2d_tracejado(id, p, k, NA(a, n, 3));
+        break;
+    }
+    case 12: { double p[6]; for (int i = 0; i < 6; i++) p[i] = NA(a, n, 2 + i); return vI(tela2d_grad_novo(to_i(ARG(1)), p)); }
+    case 13: { int ok; uint32_t c = tela2d_cor_css(to_str(ARG(3))->s, &ok); if (ok) tela2d_grad_parada(id, NA(a, n, 2), c); return vB(ok); }
+    case 20: tela2d_caminho_novo(id); break;
+    case 21: tela2d_mover(id, NA(a, n, 2), NA(a, n, 3)); break;
+    case 22: tela2d_linha_para(id, NA(a, n, 2), NA(a, n, 3)); break;
+    case 23: tela2d_quad(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
+    case 24: tela2d_bezier(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), NA(a, n, 6), NA(a, n, 7)); break;
+    case 25: tela2d_arco(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), NA(a, n, 6), to_bool(ARG(7))); break;
+    case 26: tela2d_arco_para(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), NA(a, n, 6)); break;
+    case 27: tela2d_elipse(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), NA(a, n, 6), NA(a, n, 7), NA(a, n, 8), to_bool(ARG(9))); break;
+    case 28: tela2d_ret(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
+    case 29: tela2d_fechar(id); break;
+    case 30: tela2d_preencher(id, to_i(ARG(2))); break;
+    case 31: tela2d_tracar(id); break;
+    case 32: tela2d_recortar(id, to_i(ARG(2))); break;
+    case 33: tela2d_ret_cheio(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
+    case 34: tela2d_ret_limpar(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
+    case 35: tela2d_ret_traco(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
+    case 40: tela2d_texto(id, to_str(ARG(2))->s, NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), to_i(ARG(6)), to_i(ARG(7)), to_i(ARG(8)), NA(a, n, 9)); break;
+    case 41: return vN(tela2d_medir(to_str(ARG(1))->s, NA(a, n, 2)));
+    case 42: tela2d_desenhar(id, to_i(ARG(2)), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), NA(a, n, 6), NA(a, n, 7), NA(a, n, 8), NA(a, n, 9), NA(a, n, 10)); break;
+    case 43: {   /* getImageData -> Uint8ClampedArray */
+        int x = to_i(ARG(2)), y = to_i(ARG(3)), w = to_i(ARG(4)), h = to_i(ARG(5));
+        if (w <= 0 || h <= 0 || (long)w * h > 4096L * 4096) erro("RangeError", "getImageData: tamanho inválido", NULL);
+        obj *o = bytes_ta(NULL, 0, ARG(6).t == OB ? ARG(6).o : NULL);
+        o->vtipo = 2; o->vbuf = buf_novo(w * h * 4, vU()); o->vlen = w * h * 4;
+        tela2d_ler(id, x, y, w, h, o->vbuf->mem);
+        return vO(o);
+    }
+    case 44: {   /* putImageData(dados, w, h, dx, dy, rx, ry, rw, rh) */
+        val d = ARG(2);
+        if (d.t != OB || d.o->cl != C_TA) break;
+        int w = to_i(ARG(3)), h = to_i(ARG(4));
+        if ((long)w * h * 4 > (long)d.o->vlen * ta_tam[d.o->vtipo]) break;
+        tela2d_escrever(id, d.o->vbuf->mem + d.o->voff, w, h, to_i(ARG(5)), to_i(ARG(6)), to_i(ARG(7)), to_i(ARG(8)), to_i(ARG(9)), to_i(ARG(10)));
+        break;
+    }
+    case 45: {   /* imagem de um endereço -> tela (ou -1) */
+        if (!gancho || !gancho->baixar) return vI(-1);
+        unsigned k = 0;
+        uint8_t *d = gancho->baixar(to_str(ARG(1))->s, &k);
+        if (!d) return vI(-1);
+        uint32_t *px = NULL; int l = 0, al = 0;
+        bool ok = imagem_decodificar(d, k, &px, &l, &al);
+        libera(d);
+        if (!ok) return vI(-1);
+        int alfa = 0;
+        for (int i = 0; i < l * al && !alfa; i++) if (px[i] >> 24) alfa = 1;
+        int t = tela2d_de_pixels(px, l, al, alfa);
+        libera(px);
+        obj *r = novo_arr(0); arr_push(r, vI(t)); arr_push(r, vI(l)); arr_push(r, vI(al));
+        return vO(r);
+    }
+    case 46: {   /* cor CSS normalizada como o canvas devolve no getter */
+        int ok; uint32_t c = tela2d_cor_css(to_str(ARG(1))->s, &ok);
+        if (!ok) return vNul();
+        char b[48];
+        if ((c >> 24) == 255) formatar_texto(b, sizeof b, "#%02x%02x%02x", (c >> 16) & 255, (c >> 8) & 255, c & 255);
+        else {
+            int al = (int)(c >> 24), cent = (al * 1000 + 127) / 255;   /* alfa com até 3 casas */
+            char fa[12];
+            if (al == 0) copia_texto(fa, "0", sizeof fa);
+            else formatar_texto(fa, sizeof fa, "0.%03d", cent >= 1000 ? 999 : cent);
+            int k = (int)tam_texto(fa); while (k > 2 && fa[k - 1] == '0') fa[--k] = 0;
+            formatar_texto(b, sizeof b, "rgba(%d, %d, %d, %s)", (c >> 16) & 255, (c >> 8) & 255, c & 255, fa);
+        }
+        return vT(b);
+    }
+    }
+    return vU();
+}
 static void iniciar(const js_hooks_t *h, const char *url)
 {
     gancho = h;
+    ds_escrever = ds_escreve;
     for (unsigned i = 1; i < sizeof kws / sizeof *kws; i++) I(kws[i])->kw = (short)i;
     for (unsigned i = 1; i < sizeof dnomes / sizeof *dnomes; i++) I(dnomes[i])->dom = (short)i;
     s_length = I("length"); s_prototype = I("prototype"); s_constructor = I("constructor"); s_arguments = I("arguments");
@@ -1710,7 +1978,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());
@@ -1759,7 +2027,7 @@ static void rodar_um(dn *s)
         dn tmp; memset(&tmp, 0, sizeof tmp); tmp.tipo = 9;
         html_ler(escrito.b, escrito.n, &tmp);
         while (tmp.pri) d_por(s->pai, tmp.pri, s->prox);
-        sujo = 1;
+        SUJAR();
     }
     script_atual = NULL;
 }
@@ -1778,7 +2046,8 @@ static int __attribute__((noinline)) proteger(void (*f)(void))
 static void serial_final(void)
 {
     buf b = { 0, 0, 0 };
-    qtd_cliques = 0; qtd_campos = 0;
+    qtd_cliques = 0; qtd_campos = 0; qtd_n = 0;
+    ger_serial = dom_ger; ser_ger++;
     serial(&b, raiz, 1);
     saida = aloca((size_t)b.n + 1);
     if (!saida) return;
@@ -1879,6 +2148,8 @@ static void na_pilha(void (*f)(void))
 }
 void js_fim(void)
 {
+    tela2d_liberar_todas();
+    lay_ger = 0xFFFFFFFFu; lay_ok = 0; lay_n = 0;
     video_src = NULL;
     while (blocos) { bloco *b = blocos; blocos = b->prox; libera(b); }
     ar = NULL; ar_u = ar_c = ar_total = 0;
@@ -1900,7 +2171,7 @@ char *js_pagina(const char *h, int n, const char *url, const js_hooks_t *g, int 
 /* Página viva: roda os timers que venceram em ms e devolve o HTML se o DOM mudou. */
 static void tique_interno(void)
 {
-    t_limite = tempo_ms() + 120;
+    t_limite = tempo_ms() + 3000;   /* um quadro pesado (canvas com milhares de pontos) não é laço infinito */
     val a = vI(tique_ms);
     vivo = to_bool(chamar(get(vO(global), I("__tique")), vU(), &a, 1));
 }
@@ -1910,7 +2181,7 @@ static void tique_seguro(void)
     if (!proteger(tique_interno)) vivo = 0;
     proteger(antes_serial);
     fatal = 0;
-    if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
+    if ((sujo || dom_ger != ger_serial) && raiz) { ar_total = 0; proteger(serial_final); }
 }
 char *js_tique(int ms, int *saida_tam)
 {
@@ -1922,6 +2193,42 @@ char *js_tique(int ms, int *saida_tam)
     return saida;
 }
 int js_vivo(void) { return global && vivo; }
+int js_ativo(void) { return global != NULL; }
+/* rolagem e tamanho: o script recebe scroll/resize e os observadores olham de novo */
+static int evento_jan;
+static void janela_interno(void)
+{
+    t_limite = tempo_ms() + 500;
+    val a = vI(evento_jan);
+    chamar(get(vO(global), I("__janela_mudou")), vU(), &a, 1);
+}
+static void janela_seguro(void)
+{
+    sujo = 0;
+    proteger(janela_interno);
+    proteger(antes_serial);
+    fatal = 0;
+    if ((sujo || dom_ger != ger_serial) && raiz) { ar_total = 0; proteger(serial_final); }
+}
+char *js_rolar(int rx, int ry, int *saida_tam)
+{
+    *saida_tam = 0;
+    if (!global || !raiz) return NULL;
+    jan_rx = rx; jan_ry = ry; evento_jan = 0; saida = NULL; saida_n = 0;
+    na_pilha(janela_seguro);
+    *saida_tam = saida_n;
+    return saida;
+}
+char *js_redimensionar(int l, int a, int *saida_tam)
+{
+    *saida_tam = 0;
+    jan_l = l; jan_a = a;
+    if (!global || !raiz) return NULL;
+    evento_jan = 1; saida = NULL; saida_n = 0;
+    na_pilha(janela_seguro);
+    *saida_tam = saida_n;
+    return saida;
+}
 int js_enviar(int id, char **html, int *saida_tam)
 {
     *html = NULL; *saida_tam = 0;

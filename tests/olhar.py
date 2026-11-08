@@ -27,10 +27,12 @@ def main():
             jl, ja, jx, jy = (int(x) for x in jan.groups())
             m.clique(jx + 200, jy + 8, duplo=True)   # duplo clique no título: maximiza
             fim = time.time() + tempo
-            while m.serial().count("cipo: pronto") < 2 and time.time() < fim:
+            n0 = m.serial().count("motor diagramando")
+            time.sleep(1)
+            while m.serial().count("motor diagramando") <= n0 and time.time() < fim:
                 time.sleep(0.5)
             print(f"maximizado e pronto em {time.time() - t0:.1f} s")
-        time.sleep(3)
+        time.sleep(float(os.environ.get('ESPERA', '3')))
         png = m.captura(nome, guardar=False)
         with open(os.path.join(SAIDA, nome + ".log"), "w", encoding="latin-1") as f:
             f.write(m.serial())

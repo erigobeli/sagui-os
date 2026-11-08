@@ -16,6 +16,7 @@ static inline char *junta_texto(char *d, const char *s, size_t m) { size_t k = s
 static inline char *acha_char(const char *s, int c) { return strchr(s, c); }
 static inline bool comeca_com(const char *s, const char *p) { return strncmp(s, p, strlen(p)) == 0; }
 #define formatar_texto snprintf
+static inline int texto_para_int(const char *s) { return atoi(s); }
 static inline void registrar(const char *f, ...) { va_list a; va_start(a, f); vfprintf(stderr, f, a); va_end(a); }
 static inline unsigned tempo_ms(void) { return (unsigned)(clock() / (CLOCKS_PER_SEC / 1000)); }
 typedef struct fonte fonte_t;

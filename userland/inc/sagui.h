@@ -117,8 +117,17 @@ typedef struct {
     void (*alerta)(const char *t);
     /* resposta completa (fetch): corpo de qualquer código, código, cabeçalhos e URL final */
     uint8_t *(*resposta)(const char *url, unsigned *n, int *codigo, char *cab, int cmax, char *final, int fmax);
+    /* Layout síncrono (o script pediu uma medida): diagrama o HTML e preenche
+     * 16 ints por elemento data-sagui-n (motor_caixas). 0 = não deu. */
+    int (*layout)(const char *html, int n, int *caixas, int qtd);
+    /* getComputedStyle do elemento k do último layout. */
+    bool (*estilo)(int k, const char *prop, char *o, int max);
 } js_hooks_t;
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
+/* Canvas 2D (libsagui/canvas2d.c): telas com pixels ARGB sem pré-multiplicar. */
+const uint32_t *tela2d_pixels(int id, int *l, int *a);
+unsigned tela2d_versao(void);            /* muda a cada desenho */
+void tela2d_liberar_todas(void);
 char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */
 int   js_clique_cancelado(void);          /* o último clique teve preventDefault */
 void js_fim(void);
@@ -154,6 +163,13 @@ int      fonte_descendente(fonte_t *f, int px);
 const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int *ox, int *oy);
 char *js_tique(int ms, int *saida_n);   /* timers depois do load; HTML novo se o DOM mudou */
 int   js_vivo(void);
+int   js_ativo(void);                     /* a página tem JavaScript rodando */
+/* Janela do navegador: tamanho da área da página e rolagem (innerWidth, scrollY...). */
+void  js_janela(int l, int a, int rx, int ry);
+/* A página rolou ou mudou de tamanho: eventos scroll/resize e observadores; HTML novo se mudou. */
+char *js_rolar(int rx, int ry, int *saida_n);
+char *js_redimensionar(int l, int a, int *saida_n);
+int   js_rolagem_pedida(int *x, int *y);   /* scrollTo do script: 1 = há pedido */
 /* Campo n (data-sagui-campo) recebeu valor e a tecla (13 Enter, 8 apagar, ou o caractere):
  * roda keydown/input/keyup; HTML novo se os scripts mudaram o DOM. */
 char *js_campo(int n, const char *valor, int tecla, int *saida_n);

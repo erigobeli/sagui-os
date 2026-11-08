@@ -10,6 +10,8 @@ typedef struct {
     uint8_t *(*baixar)(const char *url, unsigned *n);
     /* Decodifica uma imagem já baixada (PNG/JPEG). */
     bool (*imagem)(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
+    /* Pixels atuais de um <canvas> (data-sagui-canvas); NULL se não houver. */
+    const uint32_t *(*tela)(int id, int *l, int *a);
 } motor_ganchos_t;
 
 /* Tipos de alvo de clique. */
@@ -57,5 +59,8 @@ bool     motor_focar_campo(motor_t *m, int campo);         /* depois de reler a 
  * endereço GET: acao?nome=valor&... com todos os campos que têm nome. */
 bool     motor_envio(motor_t *m, const motor_alvo_t *quem, char *url, int max);
 bool     motor_envio_campo(motor_t *m, int campo, char *url, int max);   /* quem = o elemento data-sagui-campo */
+/* Caixas dos elementos marcados com data-sagui-n (16 ints por elemento) e estilo computado. */
+int      motor_caixas(motor_t *m, int *d, int max);
+bool     motor_estilo_de(motor_t *m, int k, const char *prop, char *o, int max);
 void     motor_sem_esconder(motor_t *m, bool sim);   /* ignora display:none do autor */   /* quantos links a página tem */
 #endif
