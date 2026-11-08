@@ -2,6 +2,29 @@ static str *video_src;   /* último src dado a um <video> pelo JavaScript */
 /* js_nativo.h - biblioteca nativa, expressões regulares e DOM do motor (js.c). */
 #define ARG(i) ((i) < n ? a[i] : vU())
 
+/* Ganchos que saem do JS (rede, TLS, imagens, layout) usam muita pilha C e não
+ * checam limite: rodam sempre numa pilha própria de 2 MB, nunca na pilha de
+ * 192 KB de uma corrotina async. */
+static char *pilha_ext;
+static void em_pilha_grande(void (*f)(void))
+{
+    enum { PILHA_EXT = 2 * 1024 * 1024 };
+    if (!pilha_ext) pilha_ext = aloca(PILHA_EXT);
+    if (!pilha_ext) { f(); return; }
+    char *atual; __asm__ volatile("movl %%esp, %0" : "=r"(atual));
+    if (atual >= pilha_ext && atual < pilha_ext + PILHA_EXT) { f(); return; }   /* já nela */
+    char *topo = pilha_ext + PILHA_EXT - 16;
+    __asm__ volatile("movl %%esp, %%ebx\n\tmovl %0, %%esp\n\tcall *%1\n\tmovl %%ebx, %%esp"
+                     :: "r"(topo), "r"(f) : "ebx", "eax", "ecx", "edx", "memory", "cc");
+}
+static const char *gb_url; static unsigned gb_n; static uint8_t *gb_d;
+static int *gb_cod; static char *gb_cab, *gb_fin; static int gb_cmax, gb_fmax;
+static void gb_baixar(void) { gb_d = gancho->baixar(gb_url, &gb_n); }
+static void gb_resposta(void) { gb_d = gancho->resposta(gb_url, &gb_n, gb_cod, gb_cab, gb_cmax, gb_fin, gb_fmax); }
+static uint8_t *baixar_seguro(const char *u, unsigned *n) { gb_url = u; gb_d = NULL; gb_n = 0; em_pilha_grande(gb_baixar); *n = gb_n; return gb_d; }
+static uint8_t *resposta_segura(const char *u, unsigned *n, int *cod, char *cab, int cmax, char *fin, int fmax)
+{ gb_url = u; gb_d = NULL; gb_n = 0; gb_cod = cod; gb_cab = cab; gb_cmax = cmax; gb_fin = fin; gb_fmax = fmax; em_pilha_grande(gb_resposta); *n = gb_n; return gb_d; }
+
 /* ---- Object, Function ---- */
 static val chaves_de(obj *o, int herda)
 {
@@ -806,7 +829,7 @@ static val n_baixar(val este, val *a, int n)
 {
     (void)este; unsigned t = 0;
     if (!gancho || tempo_ms() > t_limite) return vNul();
-    uint8_t *d = gancho->baixar(to_str(ARG(0))->s, &t);
+    uint8_t *d = baixar_seguro(to_str(ARG(0))->s, &t);
     if (!d) return vNul();
     str *s = de_utf8(d, (int)t);
     libera(d);
@@ -831,7 +854,7 @@ static val n_pedir(val este, val *a, int n)
     int prep = !(m[0] == 'G' && m[1] == 'E' && m[2] == 'T' && !m[3]) || c[0];
     if (prep) http_preparar(m, c, cp, cn);
     int codigo = 200; rc[0] = 0; copia_texto(fin, url->s, sizeof fin);
-    uint8_t *d = gancho->resposta ? gancho->resposta(url->s, &t, &codigo, rc, sizeof rc, fin, sizeof fin) : gancho->baixar(url->s, &t);
+    uint8_t *d = gancho->resposta ? resposta_segura(url->s, &t, &codigo, rc, sizeof rc, fin, sizeof fin) : baixar_seguro(url->s, &t);
     if (prep) http_preparar(NULL, NULL, NULL, 0);
     if (!d && !codigo) return vNul();
     obj *r = novo_arr(4);
@@ -1764,6 +1787,8 @@ bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int
 static int *lay; static int lay_cap, lay_n, lay_ok; static unsigned lay_ger = 0xFFFFFFFFu, lay_ser;
 static int jan_l = 1024, jan_a = 768, jan_rx, jan_ry;
 void js_janela(int l, int a, int rx, int ry) { jan_l = l; jan_a = a; jan_rx = rx; jan_ry = ry; }
+static const char *lay_h; static int lay_hn;
+static void layout_na_pilha(void) { lay_ok = gancho->layout(lay_h, lay_hn, lay, lay_n); }
 static int layout_atual(void)
 {
     if (lay_ger == dom_ger) return lay_ok;
@@ -1783,7 +1808,8 @@ static int layout_atual(void)
     char *h = aloca((unsigned)b.n + 1);
     if (!h) return 0;
     memcpy(h, b.b, (size_t)b.n); h[b.n] = 0;
-    lay_ok = gancho->layout(h, b.n, lay, lay_n);
+    lay_h = h; lay_hn = b.n;
+    em_pilha_grande(layout_na_pilha);   /* parser e cascata do motor: fundo, sem checar limite */
     libera(h);
     return lay_ok;
 }
@@ -1911,7 +1937,7 @@ static val n_c2(val este, val *a, int n)
     case 45: {   /* imagem de um endereço -> tela (ou -1) */
         if (!gancho || !gancho->baixar) return vI(-1);
         unsigned k = 0;
-        uint8_t *d = gancho->baixar(to_str(ARG(1))->s, &k);
+        uint8_t *d = baixar_seguro(to_str(ARG(1))->s, &k);
         if (!d) return vI(-1);
         uint32_t *px = NULL; int l = 0, al = 0;
         bool ok = imagem_decodificar(d, k, &px, &l, &al);
@@ -2013,7 +2039,7 @@ static void rodar_um(dn *s)
         if (tempo_ms() > t_limite || !gancho->baixar) return;
         val pode = get(vO(global), I("__permite"));
         if (pode.t == OB) { val u = vS(src_a); if (!to_bool(chamar(pode, vU(), &u, 1))) return; }
-        d = gancho->baixar(src_a->s, &t);
+        d = baixar_seguro(src_a->s, &t);
         if (!d) return;
         c = (const char *)d; n = (int)t;
     } else if (s->pri) { c = s->pri->txt->s; n = s->pri->txt->n; }

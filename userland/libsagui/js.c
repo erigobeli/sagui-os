@@ -1284,7 +1284,10 @@ static val nova_funcao(no *x, env *e)
 {
     obj *o = novo_obj(p_fn);
     o->cl = C_FN; o->fn = x; o->e = e;
-    if (x->f->seta) o->q = qa;
+    /* arrow: this/new.target de quem a criou. Cópia, não ponteiro: o quadro de
+     * quem criou mora na pilha C e morre antes de uma arrow chamada depois
+     * (timer, evento, corrotina async) */
+    if (x->f->seta) { quadro *c = novo(sizeof(quadro)); *c = *qa; o->q = c; }
     return vO(o);
 }
 static void hoist(no *l, env *e) { for (; l; l = l->prox) if (l->k == S_FUNC) decl(e, l->s, nova_funcao(l->a, e)); }
@@ -1321,11 +1324,29 @@ static void ligar(no *p, val v, env *e, int d)
     }
     atribuir(p, v, e, d);
 }
+/* RangeError de pilha montado sem rodar JavaScript (o construtor do Error
+ * recursaria de novo, já sem pilha) */
+static __attribute__((noreturn, noinline)) void estouro_pilha(void)
+{
+    static unsigned ult;
+    if (no_atual && no_atual->fonte && tempo_ms() - ult > 2000) {   /* onde a recursão estava (para o log) */
+        char b[90]; int k = 0; const char *q = no_atual->fonte - 40;
+        for (int z = 0; z < 80 && q[z] && k < 88; z++) b[k++] = q[z] == '\n' ? ' ' : q[z];
+        b[k] = 0; ult = tempo_ms();
+        registrar("js: pilha estourou perto de [%s]\n", b);
+    }
+    val c = get(vO(global), I("RangeError")), pr = c.t == OB ? get(c, s_prototype) : vU();
+    obj *o = novo_obj(pr.t == OB ? pr.o : p_obj);
+    por_prop(o, I("message"), vT("Maximum call stack size exceeded"));
+    por_prop(o, I("name"), vT("RangeError"));
+    exc = vO(o);
+    lancar(exc);
+}
 static void chk(void)
 {
     char c;
     if (t_suave && !(passos & 1023) && tempo_ms() > t_suave) limite_suave();
-    if (&c < lim_pilha) erro("RangeError", "Maximum call stack size exceeded", NULL);
+    if (&c < lim_pilha) estouro_pilha();
     if (!(++passos & 8191) && tempo_ms() > t_limite) lancar_fatal("tempo");
 }
 static val novo_gerador(obj *o, val este, val *a, int n);
@@ -1893,7 +1914,7 @@ static int __attribute__((noinline)) rodar(const char *s, int n, val *res)
 
 
 /* ---- geradores: cada um roda numa pilha própria; yield troca de pilha ---- */
-#define GER_PILHA (192 * 1024)
+#define GER_PILHA (1024 * 1024)   /* async: o mesmo fôlego de uma chamada comum */
 typedef struct ger {
     obj *fo; val este; val *args; int n;
     char *pilha;
@@ -1955,7 +1976,7 @@ static val nova_corrotina(obj *o, val este, val *a, int n)
 static __attribute__((noinline, noreturn)) void ger_entrada(void)
 {
     ger *g = ger_novo;
-    lim_pilha = g->pilha + 8192;
+    lim_pilha = g->pilha + 32768;   /* folga para montar o RangeError */
     salto b; b.ant = NULL;
     topo_s = &b;
     if (__builtin_setjmp(b.b)) {

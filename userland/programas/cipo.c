@@ -2066,40 +2066,16 @@ static void codificar(const char *t, char *d, int max)
     d[k] = 0;
 }
 
-/* Texto solto na barra vira busca. A busca do Google exige JavaScript real e
- * devolve página vazia, então vai para o Bing, que responde sem JavaScript. */
+/* Texto solto na barra vira busca no Google, como no Chrome. */
 static void trocar_busca(char *url, int max)
 {
-    char q[300] = "";
-    const char *g = NULL;
-    for (const char *p = url; *p; p++) if (comeca_com(p, "google.")) { g = p; break; }
-    if (g) {
-        const char *b = g;
-        while (*b && *b != '/') b++;
-        if (comeca_com(b, "/search?")) {
-            const char *p = b;
-            while (*p) {
-                if ((*p == '?' || *p == '&') && p[1] == 'q' && p[2] == '=') {
-                    int k = 0;
-                    for (p += 3; *p && *p != '&' && k < (int)sizeof q - 1; p++) q[k++] = *p;
-                    q[k] = 0;
-                    break;
-                }
-                p++;
-            }
-            if (q[0]) {
-                formatar_texto(url, (size_t)max, "https://www.bing.com/search?q=%s", q);
-                copia_texto(nota_busca, "A busca do Google exige JavaScript: resultados do Bing.", sizeof nota_busca);
-            }
-        }
-        return;
-    }
     if (comeca_com(url, "http://") || comeca_com(url, "https://") || comeca_com(url, "sobre:")) return;
     bool ponto = false, espaco = false;
     for (const char *p = url; *p; p++) { ponto |= *p == '.' || *p == ':'; espaco |= *p == ' '; }
     if (ponto && !espaco) return;
+    char q[300];
     codificar(url, q, sizeof q);
-    formatar_texto(url, (size_t)max, "https://www.bing.com/search?q=%s", q);
+    formatar_texto(url, (size_t)max, "https://www.google.com/search?q=%s", q);
 }
 
 /* Baixa o endereço (seguindo redirecionamentos) e monta a página. */
