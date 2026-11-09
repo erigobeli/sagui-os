@@ -16,6 +16,7 @@
 #include "teclado.h"
 #include "sgfs.h"
 #include "lz.h"
+#include "lzma.h"
 #include "paginacao.h"
 #include "processo.h"
 #include "sistema.h"
@@ -94,6 +95,19 @@ static void registrar_mapa(void)
 static void expandir_ramdisk(void)
 {
     const uint8_t *rd = (const uint8_t *)info_boot.ramdisk_inicio;
+    /* "SGXZ": LZMA com filtro x86 (bem menor que o LZ simples) */
+    if (info_boot.ramdisk_bytes >= 13 && memcmp(rd, "SGXZ", 4) == 0) {
+        uint32_t real = *(const uint32_t *)(rd + 4);
+        uint8_t props = rd[8];
+        uint8_t *d = kmalloc(real);
+        if (!d) { kprintf("Ramdisk: sem memoria para %u bytes\n", real); return; }
+        uint32_t saiu = lzma_expandir(rd + 13, info_boot.ramdisk_bytes - 13, d, real, props);
+        if (saiu != real) { kprintf("Ramdisk: LZMA parou em %u de %u bytes\n", saiu, real); return; }
+        bcj_x86_desfazer(d, real);
+        info_boot.ramdisk_inicio = (uint32_t)d;
+        info_boot.ramdisk_bytes = real;
+        return;
+    }
     if (info_boot.ramdisk_bytes < 8 || memcmp(rd, "SGLZ", 4) != 0) return;
     uint32_t real = *(const uint32_t *)(rd + 4);
     uint8_t *d = kmalloc(real);

@@ -1202,3 +1202,16 @@ int svg_arco_pontos(int x1, int y1, int rx_, int ry_, int rot100, int grande, in
     }
     return n;
 }
+
+/* libera uma tela (as do SVG são temporárias) e um gradiente */
+void tela2d_liberar(int id)
+{
+    tela_t *t = T(id);
+    if (!t) return;
+    tela_limpar_estado(t);
+    if (t->px) libera(t->px);
+    if (t->pts) libera(t->pts);
+    if (t->subs) libera(t->subs);
+    memset(t, 0, sizeof *t);
+}
+void tela2d_grad_liberar(int g) { if (g >= 0 && g < 256) grads[g].usado = 0; }

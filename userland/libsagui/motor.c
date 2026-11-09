@@ -68,6 +68,7 @@ typedef struct {
     uint16_t largura;                   /* font-stretch em décimos de % (1000 = normal) */
     const char *fvs;                    /* font-variation-settings (texto), NULL = normal */
     int16_t ls64;                       /* letter-spacing em 1/64 px (herdado; em vira px no elemento que declara) */
+    uint8_t generica;                   /* família genérica da lista: 0 sans-serif, 1 serif, 2 monospace */
 } estilo_t;
 
 typedef struct atr { char *nome, *valor; struct atr *prox; } atr_t;
@@ -160,7 +161,10 @@ typedef struct { int x, y, l, a; int alvo; ctx_m *ctx; uint16_t b; int seq; int 
 /* fixed: desloca pela rolagem; sticky: desloca até prender no topo, sem sair do pai */
 typedef struct { uint8_t fixo; int y0, topo, lim; } camada_t;
 
-typedef struct { char *url; uint32_t *px; int l, a; uint8_t tentou, alfa; } imagem_m;
+typedef struct { char *url; uint32_t *px; int l, a; uint8_t tentou, alfa;
+                 const char *svg; int svg_n, nl, na; } imagem_m;   /* SVG: o texto (rasteriza no tamanho exibido) e o tamanho natural */
+bool svg_tamanho(const char *xml, int n, int *l, int *a);
+uint32_t *svg_rasterizar(const char *xml, int n, int l, int a, uint32_t cor);
 
 struct motor {
     motor_ganchos_t g;
@@ -188,6 +192,7 @@ struct motor {
     struct { int8_t fam; uint8_t peso, italico, tentou; char *url; fonte_t *f;
              uint16_t p_min, p_max, l_min, l_max;   /* faixas do @font-face: peso, largura (décimos de %) */
              uint8_t quer;                          /* o casamento de fontes escolheu esta face: baixar */
+             fonte_t *obl;                          /* itálico sintético desta face */
              struct { uint16_t w, l; unsigned fvs; fonte_t *f; } inst[24]; int n_inst; } faces[40]; int n_faces;
     unsigned fam_usada;     /* famílias que algum texto pediu (motor_imagens baixa as fontes delas) */
     int rolagem;            /* y da última pintura (para fixed/sticky nos cliques) */
@@ -1325,7 +1330,8 @@ static const char folha_padrao[] =
     "hr{border:1px solid #c4cbd2;margin:.5em 0}center{text-align:center}mark{background-color:#ff0}"
     "img,video,canvas,iframe,input,button,select,textarea,object,embed,meter,progress{display:inline-block}"
     /* controles como no html.css do Chromium: fonte própria (não herdada), 13,333px */
-    "input,select,textarea,button{font-size:13.333px;font-weight:normal;font-style:normal;color:#000;text-transform:none;text-indent:0;line-height:normal}"
+    "pre,code,kbd,samp,tt,listing,xmp,plaintext{font-family:monospace;font-size:.8125em}pre code,pre kbd,pre samp,pre tt,code code{font-size:1em}"
+    "input,select,textarea,button{font-family:sans-serif;font-size:13.333px;font-weight:normal;font-style:normal;color:#000;text-transform:none;text-indent:0;line-height:normal}"
     "input,textarea{border:1px solid #767676;border-radius:2px;padding:1px 2px;background-color:#fff}textarea{padding:2px}"
     "select{border:1px solid #767676;border-radius:2px;background-color:#fff;box-sizing:border-box}"
     "button,input[type=submit],input[type=button],input[type=reset],input[type=image]{border:1px solid #767676;border-radius:2px;padding:1px 6px;"
@@ -1487,8 +1493,8 @@ static void estilo_inicial(estilo_t *e, const estilo_t *pai)
         e->cor = pai->cor; e->tam = pai->tam; e->peso = pai->peso; e->italico = pai->italico; e->alinha = pai->alinha;
         e->branco = pai->branco; e->lista = pai->lista; e->visivel = pai->visivel; e->linha = pai->linha; e->maiusc = pai->maiusc;
         e->sublinha = pai->sublinha; e->risca = pai->risca; e->fam = pai->fam;
-        e->pesonum = pai->pesonum; e->largura = pai->largura; e->fvs = pai->fvs; e->ls64 = pai->ls64;
-    } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; e->pesonum = 400; e->largura = 1000; }
+        e->pesonum = pai->pesonum; e->largura = pai->largura; e->fvs = pai->fvs; e->ls64 = pai->ls64; e->generica = pai->generica;
+    } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; e->pesonum = 400; e->largura = 1000; e->generica = 1; }   /* padrão do Chrome: serif */
 }
 
 static int px_de(const medida_t *m, int tam)
@@ -1564,6 +1570,30 @@ static uint8_t ler_display(const char *v)
 
 /* font-family: primeira família da lista que veio de @font-face; -1 se nenhuma.
  * Serve também para o atalho font (a família é a última palavra do primeiro item). */
+/* Família genérica de uma lista de font-family: a primeira genérica ou conhecida;
+ * nomes desconhecidos caem em sans-serif (como o fontconfig faz no Linux). */
+static int generica_de(const char *v)
+{
+    static const char *const serif[] = { "serif", "times", "times new roman", "georgia", "cambria", "garamond", "palatino", "palatino linotype",
+        "book antiqua", "baskerville", "noto serif", "dejavu serif", "liberation serif", "ui-serif", "constantia", "pt serif", "merriweather", "lora" };
+    static const char *const mono[] = { "monospace", "courier", "courier new", "consolas", "menlo", "monaco", "lucida console", "source code pro",
+        "sf mono", "sfmono-regular", "dejavu sans mono", "liberation mono", "ui-monospace", "roboto mono", "fira code", "fira mono", "jetbrains mono", "ubuntu mono", "andale mono" };
+    const char *p = v;
+    while (*p) {
+        const char *f = p; int prof = 0;
+        while (*f && (*f != ',' || prof)) { if (*f == '(') prof++; else if (*f == ')') prof--; f++; }
+        const char *a = p, *b = f;
+        while (a < b && (eh_esp(*a) || *a == '"' || *a == '\'')) a++;
+        while (b > a && (eh_esp(b[-1]) || b[-1] == '"' || b[-1] == '\'')) b--;
+        int n = (int)(b - a);
+        for (unsigned i = 0; i < sizeof serif / sizeof serif[0]; i++) if ((int)tam_texto(serif[i]) == n && igual_n(a, serif[i], n)) return 1;
+        for (unsigned i = 0; i < sizeof mono / sizeof mono[0]; i++) if ((int)tam_texto(mono[i]) == n && igual_n(a, mono[i], n)) return 2;
+        if (n == 10 && igual_n(a, "sans-serif", 10)) return 0;
+        p = *f ? f + 1 : f;
+    }
+    return 0;
+}
+
 static int achar_familia(motor_t *m, const char *v)
 {
     if (!m || !m->n_fams) return -2;
@@ -1814,9 +1844,15 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         }
         break;
     case PR_FSTYLE: e->italico = igual(v, "italic") || igual(v, "oblique"); break;
-    case PR_FFAMILY: { int f = achar_familia(m, v); if (f != -2) e->fam = (int8_t)f; break; }
+    case PR_FFAMILY: { int f = achar_familia(m, v); e->fam = (int8_t)(f == -2 ? -1 : f); e->generica = (uint8_t)generica_de(v); break; }
     case PR_FONT: {
-        { int f = achar_familia(m, v); if (f != -2) e->fam = (int8_t)f; }
+        { int f = achar_familia(m, v); e->fam = (int8_t)(f == -2 ? -1 : f); }
+        { const char *q = v; int tem = 0; for (; *q; q++) if (*q == ',' || ((q == v || eh_esp(q[-1])) && (*q == '"' || *q == '\'' || (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z')))) tem = 1;
+          if (tem) { /* a família é o que vem depois do tamanho */
+              const char *t = v; while (*t) { if (eh_dig(*t)) { while (*t && !eh_esp(*t)) t++; break; } t++; }
+              while (*t && eh_esp(*t)) t++;
+              if (*t) e->generica = (uint8_t)generica_de(t);
+          } }
         e->pesonum = 400; e->peso = 0; e->largura = 1000; e->italico = 0;
         int k = palavras(v, nv, p, t, 6);
         for (int i = 0; i < k; i++) {
@@ -2232,9 +2268,14 @@ static int res_med(const medida_t *v, int base, const estilo_t *e)
     }
 }
 
+static fonte_t *fonte_de(const estilo_t *e);
 static int altura_linha(const estilo_t *e)
 {
-    if (e->linha.u == U_AUTO) return e->tam * 5 / 4 + 1;
+    if (e->linha.u == U_AUTO) {   /* normal: métricas da fonte (ascendente + descendente + entrelinha) */
+        fonte_t *f = fonte_de(e);
+        if (f) { int a = fonte_altura_normal(f, e->tam); if (a > 0) return a; }
+        return e->tam * 5 / 4 + 1;
+    }
     if (e->linha.u == U_NONE) { int a = e->linha.v * e->tam / 100; return a < e->tam ? e->tam : a; }
     return e->linha.v > 0 ? e->linha.v : e->tam;
 }
@@ -2296,6 +2337,7 @@ static int extra_v(no_m *n) { return n->bl[0] + n->bl[2] + n->pl[0] + n->pl[2]; 
 static void tamanho_img(no_m *n, int *l, int *a)
 {
     *l = *a = 0;
+    if (n->img >= 0 && mo->imgs[n->img].svg) { *l = mo->imgs[n->img].nl; *a = mo->imgs[n->img].na; return; }
     if (n->img >= 0 && mo->imgs[n->img].px) { *l = mo->imgs[n->img].l; *a = mo->imgs[n->img].a; return; }
     const char *v;
     int u;
@@ -2412,7 +2454,59 @@ static int ler_fvs(const char *v, uint32_t *tags, int *vals, int max)
     }
     return n;
 }
+/* Fontes do sistema (DejaVu em /fontes): família genérica x negrito x itálico.
+ * Carregadas uma vez por processo e nunca liberadas (servem a todas as páginas). */
+static fonte_t *sist[3][2][2]; static uint8_t sist_tentou[3][2][2];
+static fonte_t *fonte_sistema(int g, int negrito, int italico)
+{
+    /* NULL no itálico: inclinado na hora a partir da regular/negrito (fonte_obliqua) */
+    static const char *const nomes[3][2][2] = {
+        { { "/fontes/DejaVuSans.ttf", NULL }, { "/fontes/DejaVuSans-Bold.ttf", NULL } },
+        { { "/fontes/DejaVuSerif.ttf", "/fontes/DejaVuSerif-Italic.ttf" }, { "/fontes/DejaVuSerif-Bold.ttf", NULL } },
+        { { "/fontes/DejaVuSansMono.ttf", NULL }, { "/fontes/DejaVuSansMono-Bold.ttf", NULL } } };
+    if (g < 0 || g > 2) g = 0;
+    negrito = !!negrito; italico = !!italico;
+    if (sist[g][negrito][italico] || sist_tentou[g][negrito][italico]) return sist[g][negrito][italico];
+    sist_tentou[g][negrito][italico] = 1;
+    const char *c = nomes[g][negrito][italico];
+    if (!c) {
+        fonte_t *reta = fonte_sistema(g, negrito, 0);
+        sist[g][negrito][italico] = reta ? fonte_obliqua(reta) : NULL;
+        return sist[g][negrito][italico];
+    }
+#ifdef MOTOR_HOST
+    char cam[300]; formatar_texto(cam, sizeof cam, "../../rootfs%s", c);
+    FILE *fp = fopen(cam, "rb");
+    if (!fp) return NULL;
+    fseek(fp, 0, SEEK_END); long n = ftell(fp); fseek(fp, 0, SEEK_SET);
+    uint8_t *d = malloc((size_t)n);
+    if (fread(d, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); free(d); return NULL; }
+    fclose(fp);
+#else
+    int fd = abrir(c, 0);
+    if (fd < 0) return NULL;
+    unsigned cap = 1u << 20, n = 0;
+    uint8_t *d = aloca(cap);
+    int r;
+    while (d && (r = ler(fd, d + n, cap - n)) > 0) {
+        n += (unsigned)r;
+        if (n == cap) { uint8_t *q = realoca(d, cap * 2); if (!q) break; d = q; cap *= 2; }
+    }
+    fechar(fd);
+    if (!d) return NULL;
+#endif
+    sist[g][negrito][italico] = fonte_abrir(d, (unsigned)n);
+    libera(d);
+    return sist[g][negrito][italico];
+}
+
+static fonte_t *fonte_de_web(const estilo_t *e);
 static fonte_t *fonte_de(const estilo_t *e)
+{
+    fonte_t *f = e->fam >= 0 && mo ? fonte_de_web(e) : NULL;
+    return f ? f : fonte_sistema(e->generica, (e->pesonum ? e->pesonum : 400) >= 600, e->italico);
+}
+static fonte_t *fonte_de_web(const estilo_t *e)
 {
     if (e->fam < 0 || !mo) return NULL;
     mo->fam_usada |= 1u << e->fam;
@@ -2429,6 +2523,10 @@ static fonte_t *fonte_de(const estilo_t *e)
     if (melhor < 0) return NULL;
     fonte_t *f = mo->faces[melhor].f;
     if (!f) { mo->faces[melhor].quer = 1; return NULL; }   /* até chegar, a fonte de reserva */
+    if (e->italico && !mo->faces[melhor].italico) {   /* pediu itálico e a família não tem: inclina */
+        if (!mo->faces[melhor].obl) mo->faces[melhor].obl = fonte_obliqua(f);
+        if (mo->faces[melhor].obl) return mo->faces[melhor].obl;
+    }
     if (!fonte_variavel(f)) return f;
     /* fonte variável: instância com o peso e a largura pedidos (presos à faixa da face) e o font-variation-settings por cima */
     typeof(mo->faces[0]) *F = &mo->faces[melhor];
@@ -3807,400 +3905,7 @@ static int alvo_form(no_m *n, int tipo)
 }
 
 
-/* ================================================================ SVG
- * Desenha os <svg> embutidos: path (M L H V C S Q T A Z), rect, circle,
- * ellipse, polygon, polyline e line, com fill (e stroke simples em polyline/
- * line), grupos com fill herdado e transform translate/scale. Preenchimento
- * com regra não-zero e cobertura 4x16 por pixel. Ponto fixo: 1/64 px. */
-
-#define SVG_F 64
-/* a / b com a de 64 bits, sem __divdi3 */
-static int64_t div64(int64_t a, int b)
-{
-    if (!b) return 0;
-    int neg = (a < 0) ^ (b < 0);
-    uint64_t ua = (uint64_t)(a < 0 ? -a : a), q = 0, r = 0;
-    uint32_t ub = (uint32_t)(b < 0 ? -b : b);
-    for (int i = 63; i >= 0; i--) { r = (r << 1) | ((ua >> i) & 1); if (r >= ub) { r -= ub; q |= (uint64_t)1 << i; } }
-    return neg ? -(int64_t)q : (int64_t)q;
-}
-typedef struct { int x0, y0, x1, y1; } aresta_t;
-static aresta_t *svg_ar; static int svg_n, svg_cap;
-static int svg_mx[2], svg_tx, svg_ty;   /* escala x256 e translação (1/64 px) */
-
-static void svg_aresta(int x0, int y0, int x1, int y1)
-{
-    if (y0 == y1) return;
-    if (svg_n == svg_cap) {
-        int nc = svg_cap ? svg_cap * 2 : 1024;
-        aresta_t *q = m_novo(mo, nc * (int)sizeof(aresta_t));
-        if (!q) return;
-        if (svg_n) memcpy(q, svg_ar, (size_t)svg_n * sizeof(aresta_t));
-        svg_ar = q; svg_cap = nc;
-    }
-    svg_ar[svg_n].x0 = x0; svg_ar[svg_n].y0 = y0; svg_ar[svg_n].x1 = x1; svg_ar[svg_n].y1 = y1;
-    svg_n++;
-}
-
-/* número SVG em x256 */
-static const char *svg_num(const char *s, int *v)
-{
-    while (*s == ' ' || *s == ',' || *s == '\n' || *s == '\t' || *s == '\r') s++;
-    int neg = 0, i = 0, f = 0, d = 0, esc = 256;
-    if (*s == '-' || *s == '+') { neg = *s == '-'; s++; }
-    while (eh_dig(*s)) { if (i < 1000000) i = i * 10 + (*s - '0'); s++; d++; }
-    if (*s == '.') { s++; while (eh_dig(*s)) { if (esc > 1) { esc /= 10; f += (*s - '0') * esc; } s++; d++; } }
-    if (*s == 'e' || *s == 'E') { s++; int en = 0, eneg = 0; if (*s == '-' || *s == '+') { eneg = *s == '-'; s++; } while (eh_dig(*s)) en = en * 10 + (*s++ - '0'); int x = i * 256 + f * 256 / 256; for (int k = 0; k < en; k++) x = eneg ? x / 10 : x * 10; *v = neg ? -x : x; return s; }
-    *v = d ? (neg ? -(i * 256 + f) : i * 256 + f) : 0;
-    if (f && esc < 256) { int frac = f * 256 / 256; (void)frac; }
-    return d ? s : NULL;
-}
-
-/* x256 do usuário -> 1/64 px do dispositivo */
-static int svg_dx(int x) { return (int)(((int64_t)x * svg_mx[0]) >> 10) + svg_tx; }
-static int svg_dy(int y) { return (int)(((int64_t)y * svg_mx[1]) >> 10) + svg_ty; }
-
-static int px_ant, py_ant, mov_x, mov_y;
-static void svg_linha(int x, int y) { svg_aresta(svg_dx(px_ant), svg_dy(py_ant), svg_dx(x), svg_dy(y)); px_ant = x; py_ant = y; }
-
-static void svg_cubica(int x1, int y1, int x2, int y2, int x3, int y3)
-{
-    int x0 = px_ant, y0 = py_ant;
-    int n = 12;
-    for (int i = 1; i <= n; i++) {
-        int t = i * 256 / n, u = 256 - t;
-        int64_t a = (int64_t)u * u * u, b = 3LL * u * u * t, c = 3LL * u * t * t, d = (int64_t)t * t * t;
-        int x = (int)((a * x0 + b * x1 + c * x2 + d * x3) >> 24);
-        int y = (int)((a * y0 + b * y1 + c * y2 + d * y3) >> 24);
-        svg_linha(x, y);
-    }
-}
-static void svg_quad(int x1, int y1, int x2, int y2)
-{
-    int x0 = px_ant, y0 = py_ant;
-    int n = 10;
-    for (int i = 1; i <= n; i++) {
-        int t = i * 256 / n, u = 256 - t;
-        int x = (int)(((int64_t)u * u * x0 + 2LL * u * t * x1 + (int64_t)t * t * x2) >> 16);
-        int y = (int)(((int64_t)u * u * y0 + 2LL * u * t * y1 + (int64_t)t * t * y2) >> 16);
-        svg_linha(x, y);
-    }
-}
-
-/* arco: conversão exata do SVG (F.6.5), feita em canvas2d.c (que tem ponto flutuante) */
-int svg_arco_pontos(int x1, int y1, int rx, int ry, int rot100, int grande, int varre, int x2, int y2, int *xs, int *ys, int max);
-static void svg_arco(int rx, int ry, int rot100, int grande, int varre, int x, int y)
-{
-    int xs[256], ys[256];
-    int n = svg_arco_pontos(px_ant, py_ant, rx, ry, rot100, grande, varre, x, y, xs, ys, 256);
-    for (int i = 0; i < n; i++) svg_linha(xs[i], ys[i]);
-}
-
-static void svg_path(const char *d)
-{
-    char cmd = 0;
-    int qx = 0, qy = 0;   /* último controle (para S/T) */
-    char ult = 0;
-    const char *p = d;
-    while (p && *p) {
-        while (*p == ' ' || *p == ',' || *p == '\n' || *p == '\t' || *p == '\r') p++;
-        if (!*p) break;
-        if (eh_letra(*p)) { cmd = *p++; }
-        else if (!cmd) break;
-        int rel = cmd >= 'a';
-        char C = (char)(rel ? cmd - 32 : cmd);
-        int bx = rel ? px_ant : 0, by = rel ? py_ant : 0;
-        int v[7];
-        const char *q = p;
-        switch (C) {
-        case 'M':
-            if (!(q = svg_num(q, &v[0])) || !(q = svg_num(q, &v[1]))) return;
-            px_ant = mov_x = bx + v[0]; py_ant = mov_y = by + v[1];
-            cmd = rel ? 'l' : 'L';
-            break;
-        case 'L':
-            if (!(q = svg_num(q, &v[0])) || !(q = svg_num(q, &v[1]))) return;
-            svg_linha(bx + v[0], by + v[1]);
-            break;
-        case 'H': if (!(q = svg_num(q, &v[0]))) return; svg_linha((rel ? px_ant : 0) + v[0], py_ant); break;
-        case 'V': if (!(q = svg_num(q, &v[0]))) return; svg_linha(px_ant, (rel ? py_ant : 0) + v[0]); break;
-        case 'C':
-            for (int i = 0; i < 6; i++) if (!(q = svg_num(q, &v[i]))) return;
-            qx = bx + v[2]; qy = by + v[3];
-            svg_cubica(bx + v[0], by + v[1], bx + v[2], by + v[3], bx + v[4], by + v[5]);
-            break;
-        case 'S': {
-            for (int i = 0; i < 4; i++) if (!(q = svg_num(q, &v[i]))) return;
-            int c1x = (ult == 'C' || ult == 'S') ? 2 * px_ant - qx : px_ant, c1y = (ult == 'C' || ult == 'S') ? 2 * py_ant - qy : py_ant;
-            qx = bx + v[0]; qy = by + v[1];
-            svg_cubica(c1x, c1y, bx + v[0], by + v[1], bx + v[2], by + v[3]);
-            break;
-        }
-        case 'Q':
-            for (int i = 0; i < 4; i++) if (!(q = svg_num(q, &v[i]))) return;
-            qx = bx + v[0]; qy = by + v[1];
-            svg_quad(bx + v[0], by + v[1], bx + v[2], by + v[3]);
-            break;
-        case 'T': {
-            for (int i = 0; i < 2; i++) if (!(q = svg_num(q, &v[i]))) return;
-            int cx = (ult == 'Q' || ult == 'T') ? 2 * px_ant - qx : px_ant, cy = (ult == 'Q' || ult == 'T') ? 2 * py_ant - qy : py_ant;
-            qx = cx; qy = cy;
-            svg_quad(cx, cy, bx + v[0], by + v[1]);
-            break;
-        }
-        case 'A': {
-            for (int i = 0; i < 7; i++) {
-                if (i == 3 || i == 4) {   /* bandeiras podem vir coladas: "0 01 5 5" ou "011" */
-                    while (*q == ' ' || *q == ',') q++;
-                    if (*q != '0' && *q != '1') return;
-                    v[i] = *q++ - '0';
-                    continue;
-                }
-                if (!(q = svg_num(q, &v[i]))) return;
-            }
-            svg_arco(v[0] < 0 ? -v[0] : v[0], v[1] < 0 ? -v[1] : v[1], v[2] * 100 / 256, v[3], v[4], bx + v[5], by + v[6]);
-            break;
-        }
-        case 'Z': svg_linha(mov_x, mov_y); cmd = 0; q = p; break;
-        default: return;
-        }
-        ult = C;
-        if (q == p && C != 'Z') return;
-        p = q;
-    }
-}
-
-static void svg_fechar_sub(void) { if (px_ant != mov_x || py_ant != mov_y) svg_linha(mov_x, mov_y); }
-
-/* rasteriza as arestas em px (l x a) com a cor (regra não-zero) */
-static void svg_preencher(uint32_t *px, int l, int a, uint32_t cor)
-{
-    if (!svg_n) return;
-    int *cob = m_novo(mo, (l + 2) * (int)sizeof(int));
-    int *xs = m_novo(mo, svg_n * 2 * (int)sizeof(int));
-    if (!cob || !xs) return;
-    for (int y = 0; y < a; y++) {
-        memset(cob, 0, (size_t)(l + 2) * sizeof(int));
-        bool algo = false;
-        for (int sub = 0; sub < 4; sub++) {
-            int sy = y * SVG_F + sub * (SVG_F / 4) + SVG_F / 8;
-            int k = 0;
-            for (int i = 0; i < svg_n; i++) {
-                aresta_t *e = &svg_ar[i];
-                int ya = e->y0, yb = e->y1, dir = 1;
-                if (ya > yb) { int t = ya; ya = yb; yb = t; dir = -1; }
-                if (sy < ya || sy >= yb) continue;
-                int x = e->x0 + muldiv(sy - e->y0, e->x1 - e->x0, e->y1 - e->y0);
-                xs[k++] = x * 2 + (dir > 0 ? 1 : 0);   /* bit 0 = direção */
-            }
-            if (k < 2) continue;
-            for (int i = 1; i < k; i++) { int v = xs[i], j = i - 1; while (j >= 0 && (xs[j] >> 1) > (v >> 1)) { xs[j + 1] = xs[j]; j--; } xs[j + 1] = v; }
-            int w = 0;
-            for (int i = 0; i + 1 < k; i++) {
-                w += (xs[i] & 1) ? 1 : -1;
-                if (!w) continue;
-                int xa = (xs[i] >> 1), xb = (xs[i + 1] >> 1);
-                if (xa < 0) xa = 0;
-                if (xb > l * SVG_F) xb = l * SVG_F;
-                if (xb <= xa) continue;
-                algo = true;
-                int pa = xa / SVG_F, pb = xb / SVG_F;
-                if (pa == pb) { cob[pa] += xb - xa; continue; }
-                cob[pa] += SVG_F - xa % SVG_F;
-                for (int q = pa + 1; q < pb; q++) cob[q] += SVG_F;
-                if (pb < l) cob[pb] += xb % SVG_F;
-            }
-        }
-        if (!algo) continue;
-        uint32_t *lin = px + y * l;
-        uint32_t ca = cor >> 24;
-        for (int x = 0; x < l; x++) {
-            if (!cob[x]) continue;
-            int al = cob[x] * 255 / (4 * SVG_F);
-            if (al > 255) al = 255;
-            al = (int)(al * ca / 255);
-            uint32_t ant = lin[x], aa = ant >> 24;
-            /* "sobre" com alfa (fundo transparente começa com 0) */
-            uint32_t na = (uint32_t)al + aa * (255 - (uint32_t)al) / 255;
-            if (!na) continue;
-            uint32_t r = (((cor >> 16) & 255) * (uint32_t)al + ((ant >> 16) & 255) * aa * (255 - (uint32_t)al) / 255) / na;
-            uint32_t g = (((cor >> 8) & 255) * (uint32_t)al + ((ant >> 8) & 255) * aa * (255 - (uint32_t)al) / 255) / na;
-            uint32_t b = ((cor & 255) * (uint32_t)al + (ant & 255) * aa * (255 - (uint32_t)al) / 255) / na;
-            lin[x] = (na << 24) | (r << 16) | (g << 8) | b;
-        }
-    }
-}
-
-static bool svg_attr(const char *tag, int n, const char *nome, char *v, int max)
-{
-    int ln = (int)tam_texto(nome);
-    for (int i = 0; i + ln < n; i++) {
-        if ((i == 0 || tag[i - 1] == ' ' || tag[i - 1] == '\n' || tag[i - 1] == '\t') && igual_n(tag + i, nome, ln) && tag[i + ln] == '=') {
-            int k = i + ln + 1;
-            char q = tag[k];
-            if (q != '"' && q != '\'') return false;
-            k++;
-            int j = 0;
-            while (k < n && tag[k] != q && j < max - 1) v[j++] = tag[k++];
-            v[j] = 0;
-            return true;
-        }
-    }
-    /* style="fill:..." */
-    if (igual(nome, "fill") || igual(nome, "stroke")) {
-        char st[256];
-        if (svg_attr(tag, n, "style", st, sizeof st)) {
-            const char *f = st;
-            for (; *f; f++) if (igual_n(f, nome, ln) && f[ln] == ':') {
-                f += ln + 1;
-                while (*f == ' ') f++;
-                int j = 0;
-                while (*f && *f != ';' && j < max - 1) v[j++] = *f++;
-                v[j] = 0;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-static int svg_val(const char *tag, int n, const char *nome, int padrao)
-{
-    char v[32];
-    if (!svg_attr(tag, n, nome, v, sizeof v)) return padrao;
-    int x;
-    return svg_num(v, &x) ? x : padrao;
-}
-
-/* Desenha o SVG do nó num quadro l x a (pixels com alfa). */
-static uint32_t *svg_desenhar(no_m *n, int l, int a)
-{
-    if (l <= 0 || a <= 0 || l > 2000 || a > 2000) return NULL;
-    uint32_t *px = aloca((size_t)l * (size_t)a * 4);
-    if (!px) return NULL;
-    memset(px, 0, (size_t)l * (size_t)a * 4);
-    /* viewBox */
-    int vb[4] = { 0, 0, 0, 0 };
-    const char *vbs = atributo_m(n, "viewbox");
-    if (!vbs) vbs = atributo_m(n, "viewBox");
-    if (vbs) { const char *q = vbs; for (int i = 0; i < 4 && q; i++) q = svg_num(q, &vb[i]); }
-    if (vb[2] <= 0 || vb[3] <= 0) { vb[0] = vb[1] = 0; vb[2] = l * 256; vb[3] = a * 256; }
-    /* escala uniforme (xMidYMid meet): x256 -> 1/64 px, guardada x1024 */
-    int64_t sx = div64((int64_t)l * SVG_F * 1024 * 256, vb[2]), sy = div64((int64_t)a * SVG_F * 1024 * 256, vb[3]);
-    int64_t es = sx < sy ? sx : sy;
-    int base_tx = (int)((l * SVG_F - (es * vb[2] >> 18)) / 2) - (int)((es * vb[0]) >> 18);
-    int base_ty = (int)((a * SVG_F - (es * vb[3] >> 18)) / 2) - (int)((es * vb[1]) >> 18);
-    const char *s = n->t; int ns = n->nt;
-    uint32_t cor_atual = 0xFF000000u | n->e.cor;
-    /* pilha de grupos: fill e translação */
-    uint32_t fill_g[16]; int tx_g[16], ty_g[16], sc_g[16], ng = 0, pula = 0;
-    fill_g[0] = cor_atual; tx_g[0] = 0; ty_g[0] = 0; sc_g[0] = 1024;
-    { char v[48]; const char *sf = NULL;
-      for (atr_t *at = n->atr; at; at = at->prox) if (igual(at->nome, "fill")) sf = at->valor;
-      if (sf) { uint32_t c; if (igual(sf, "none")) fill_g[0] = 0; else if (ler_cor(sf, (int)tam_texto(sf), &c, n->e.cor)) fill_g[0] = c; }
-      (void)v; }
-    for (int i = 0; i < ns;) {
-        if (s[i] != '<') { i++; continue; }
-        int k = i + 1;
-        bool fecha = s[k] == '/';
-        if (fecha) k++;
-        int t0 = k;
-        while (k < ns && (eh_letra(s[k]) || eh_dig(s[k]) || s[k] == '-' || s[k] == ':')) k++;
-        int tn = k - t0;
-        const char *tag = s + t0;
-        int fim = k;
-        while (fim < ns && s[fim] != '>') { if (s[fim] == '"' || s[fim] == '\'') { char q = s[fim++]; while (fim < ns && s[fim] != q) fim++; } fim++; }
-        bool auto_f = fim > 0 && s[fim - 1] == '/';
-        const char *at = s + k; int na = fim - k;
-        i = fim + 1;
-        if (tn == 0 || s[t0] == '!' ) continue;
-        bool eh_g = tn == 1 && tag[0] == 'g';
-        bool esconde = (tn == 4 && igual_n(tag, "defs", 4)) || (tn == 8 && igual_n(tag, "clipPath", 8)) || (tn == 4 && igual_n(tag, "mask", 4)) ||
-                       (tn == 6 && igual_n(tag, "symbol", 6)) || (tn == 5 && igual_n(tag, "title", 5)) || (tn == 5 && igual_n(tag, "style", 5)) ||
-                       (tn == 14 && igual_n(tag, "linearGradient", 14)) || (tn == 14 && igual_n(tag, "radialGradient", 14)) || (tn == 7 && igual_n(tag, "pattern", 7)) || (tn == 6 && igual_n(tag, "filter", 6));
-        if (fecha) {
-            if (esconde && pula) pula--;
-            else if (eh_g && ng) ng--;
-            continue;
-        }
-        if (esconde) { if (!auto_f) pula++; continue; }
-        if (pula) continue;
-        uint32_t fill = fill_g[ng];
-        char v[1024];
-        if (svg_attr(at, na, "fill", v, sizeof v)) {
-            uint32_t c;
-            if (igual(v, "none")) fill = 0;
-            else if (comeca_com(v, "url(")) fill = cor_atual;
-            else if (ler_cor(v, (int)tam_texto(v), &c, n->e.cor)) fill = c;
-        }
-        int op = svg_val(at, na, "opacity", 256);
-        int fop = svg_val(at, na, "fill-opacity", 256);
-        if (op < 256 || fop < 256) { uint32_t al = (fill >> 24) * (uint32_t)(op < 256 ? op : 256) / 256 * (uint32_t)(fop < 256 ? fop : 256) / 256; fill = (al << 24) | (fill & 0xFFFFFF); }
-        int gtx = tx_g[ng], gty = ty_g[ng], gsc = sc_g[ng];
-        if (svg_attr(at, na, "transform", v, sizeof v)) {
-            const char *tt = v;
-            for (; *tt; tt++) {
-                if (igual_n(tt, "translate(", 10)) { int a2 = 0, b2 = 0; const char *q = svg_num(tt + 10, &a2); if (q) svg_num(q, &b2); gtx += a2; gty += b2; }
-                if (igual_n(tt, "scale(", 6)) { int a2 = 256; svg_num(tt + 6, &a2); gsc = gsc * a2 / 256; }
-                if (igual_n(tt, "matrix(", 7)) { int m6[6] = { 256, 0, 0, 256, 0, 0 }; const char *q = tt + 7; for (int z = 0; z < 6 && q; z++) q = svg_num(q, &m6[z]); gsc = gsc * m6[0] / 256; gtx += m6[4]; gty += m6[5]; }
-            }
-        }
-        if (eh_g) {
-            if (!auto_f && ng < 15) { ng++; fill_g[ng] = fill; tx_g[ng] = gtx; ty_g[ng] = gty; sc_g[ng] = gsc; }
-            continue;
-        }
-        if (!(fill >> 24)) {
-            /* sem preenchimento: linhas com stroke viram contorno fino */
-            if (!svg_attr(at, na, "stroke", v, sizeof v) || igual(v, "none")) continue;
-            uint32_t c;
-            if (!ler_cor(v, (int)tam_texto(v), &c, n->e.cor)) c = cor_atual;
-            fill = c;
-            if (!((tn == 4 && igual_n(tag, "line", 4)) || (tn == 8 && igual_n(tag, "polyline", 8)) || (tn == 4 && igual_n(tag, "path", 4)) ||
-                  (tn == 6 && igual_n(tag, "circle", 6)) || (tn == 4 && igual_n(tag, "rect", 4)))) continue;
-            /* contorno: desenha o caminho como linhas de 1,5 px (aproximado como preenchimento de faixa) */
-        }
-        svg_mx[0] = svg_mx[1] = (int)((es * gsc) >> 18);
-        svg_tx = base_tx + (int)((es * gtx) >> 18); svg_ty = base_ty + (int)((es * gty) >> 18);
-        svg_n = 0;
-        px_ant = py_ant = mov_x = mov_y = 0;
-        if (tn == 4 && igual_n(tag, "path", 4)) {
-            if (svg_attr(at, na, "d", v, sizeof v)) {
-                /* subcaminhos: fecha cada um */
-                svg_path(v);
-                svg_fechar_sub();
-            }
-        } else if (tn == 4 && igual_n(tag, "rect", 4)) {
-            int x = svg_val(at, na, "x", 0), y = svg_val(at, na, "y", 0), w = svg_val(at, na, "width", 0), h = svg_val(at, na, "height", 0);
-            px_ant = mov_x = x; py_ant = mov_y = y;
-            svg_linha(x + w, y); svg_linha(x + w, y + h); svg_linha(x, y + h); svg_linha(x, y);
-        } else if ((tn == 6 && igual_n(tag, "circle", 6)) || (tn == 7 && igual_n(tag, "ellipse", 7))) {
-            int cx = svg_val(at, na, "cx", 0), cy = svg_val(at, na, "cy", 0);
-            int rx = tn == 6 ? svg_val(at, na, "r", 0) : svg_val(at, na, "rx", 0), ry = tn == 6 ? rx : svg_val(at, na, "ry", 0);
-            /* 4 cúbicas (k = 0,5523) */
-            int kx = rx * 141 / 256, ky = ry * 141 / 256;
-            px_ant = mov_x = cx + rx; py_ant = mov_y = cy;
-            svg_cubica(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry);
-            svg_cubica(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy);
-            svg_cubica(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry);
-            svg_cubica(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy);
-        } else if ((tn == 7 && igual_n(tag, "polygon", 7)) || (tn == 8 && igual_n(tag, "polyline", 8))) {
-            if (svg_attr(at, na, "points", v, sizeof v)) {
-                const char *q = v; int x, y, pri = 1;
-                while (q && (q = svg_num(q, &x)) && (q = svg_num(q, &y))) {
-                    if (pri) { px_ant = mov_x = x; py_ant = mov_y = y; pri = 0; } else svg_linha(x, y);
-                }
-                svg_fechar_sub();
-            }
-        } else if (tn == 4 && igual_n(tag, "line", 4)) {
-            int x1 = svg_val(at, na, "x1", 0), y1 = svg_val(at, na, "y1", 0), x2 = svg_val(at, na, "x2", 0), y2 = svg_val(at, na, "y2", 0);
-            int w = svg_val(at, na, "stroke-width", 256) / 2 + 64;
-            px_ant = mov_x = x1 - w; py_ant = mov_y = y1 - w;
-            svg_linha(x2 + w, y2 - w); svg_linha(x2 + w, y2 + w); svg_linha(x1 - w, y1 + w); svg_linha(x1 - w, y1 - w);
-        } else continue;
-        svg_preencher(px, l, a, fill);
-    }
-    return px;
-}
+/* ================================================================ SVG: svg.c (renderizador completo, pelo Canvas 2D) */
 
 typedef struct { no_m *n; int sx, sy; int clip[4]; int cb[4]; ctx_m *ctx, *real; int cam; } adiado_t;
 static adiado_t adiados[512]; static int n_adiados;
@@ -4566,6 +4271,7 @@ static void fundo_posicao(const estilo_t *e, int livre_x, int livre_y, int *ox, 
     *ox = xkt || xot ? fundo_eixo(xk, xkt, xo, xot, livre_x, e) : 0;
     *oy = ykt || yot ? fundo_eixo(yk, ykt, yo, yot, livre_y, e) : 0;
 }
+static void svg_no_tamanho(imagem_m *im, int w, int h, uint32_t cor);
 static void fundo_imagem(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
@@ -4574,12 +4280,13 @@ static void fundo_imagem(no_m *n, int x, int y)
     int al = n->l - n->bl[3] - n->bl[1], aa = n->a - n->bl[0] - n->bl[2];
     if (al <= 0 || aa <= 0) { px0 = x; py0 = y; al = n->l; aa = n->a; }
     int l, a;
-    fundo_tamanho(e, al, aa, im->l, im->a, &l, &a);
+    fundo_tamanho(e, al, aa, im->svg ? im->nl : im->l, im->svg ? im->na : im->a, &l, &a);
     int rx = e->bg_rep & 3, ry = e->bg_rep >> 2 & 3;
     /* round: ajusta o tamanho para caber um número inteiro de vezes */
     if (rx == 3 && l > 0) { int q = (al + l / 2) / l; if (q < 1) q = 1; int nl = al / q; if (ry != 3 && e->bg_size == NULL) a = muldiv(a, nl, l); l = nl; }
     if (ry == 3 && a > 0) { int q = (aa + a / 2) / a; if (q < 1) q = 1; a = aa / q; }
     if (l <= 0 || a <= 0) return;
+    svg_no_tamanho(im, l, a, 0xFF000000u | e->cor);   /* SVG de fundo: nítido no tamanho do ladrilho */
     int ox, oy;
     fundo_posicao(e, al - l, aa - a, &ox, &oy);
     int salvo[4]; memcpy(salvo, mo->clip, sizeof salvo);
@@ -4604,6 +4311,16 @@ static void fundo_imagem(no_m *n, int x, int y)
     memcpy(mo->clip, salvo, sizeof salvo);
 }
 
+/* SVG de arquivo: vetores desenhados de novo no tamanho em que aparecem (nítido em qualquer escala) */
+static void svg_no_tamanho(imagem_m *im, int w, int h, uint32_t cor)
+{
+    if (!im->svg || w <= 0 || h <= 0 || w > 4096 || h > 4096 || (long)w * h > 4096L * 2048) return;
+    if (im->px && im->l == w && im->a == h) return;
+    uint32_t *px = svg_rasterizar(im->svg, im->svg_n, w, h, cor);
+    if (!px) return;
+    if (im->px) libera(im->px);
+    im->px = px; im->l = w; im->a = h; im->alfa = 1;
+}
 static void controle(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
@@ -4612,6 +4329,7 @@ static void controle(no_m *n, int x, int y)
     if (igual(n->tag, "img")) {
         if (n->img >= 0 && mo->imgs[n->img].px) {
             cmd_t c; memset(&c, 0, sizeof c);
+            svg_no_tamanho(&mo->imgs[n->img], cl, ca, 0xFF000000u | e->cor);
             c.tipo = C_IMG; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.img = n->img; c.raio = e->raio;
             cmd_novo(&c);
         } else {
@@ -4627,7 +4345,20 @@ static void controle(no_m *n, int x, int y)
             if (n->img < 0) { if (mo->n_imgs >= 96) return; n->img = mo->n_imgs++; mo->imgs[n->img].url = (char *)"svg"; mo->imgs[n->img].tentou = 1; mo->imgs[n->img].alfa = 1; }
             imagem_m *im = &mo->imgs[n->img];
             if (im->px) libera(im->px);
-            im->px = svg_desenhar(n, cl, ca);
+            /* o <svg> embutido volta a ser texto (atributos + conteúdo cru) para o renderizador */
+            int tam = 8 + n->nt;
+            for (atr_t *a = n->atr; a; a = a->prox) tam += (int)tam_texto(a->nome) + (int)tam_texto(a->valor) + 4;
+            char *xml = aloca((unsigned)tam + 16);
+            im->px = NULL;
+            if (xml) {
+                int k = formatar_texto(xml, (size_t)tam + 16, "<svg");
+                for (atr_t *a = n->atr; a; a = a->prox) k += formatar_texto(xml + k, (size_t)(tam + 16 - k), " %s=\"%s\"", a->nome, a->valor);
+                xml[k++] = '>';
+                memcpy(xml + k, n->t, (size_t)n->nt); k += n->nt;
+                memcpy(xml + k, "</svg>", 6); k += 6;
+                im->px = svg_rasterizar(xml, k, cl, ca, 0xFF000000u | e->cor);
+                libera(xml);
+            }
             im->l = cl; im->a = ca;
         }
         cmd_t c; memset(&c, 0, sizeof c);
@@ -5125,7 +4856,6 @@ motor_t *motor_novo(const motor_ganchos_t *g)
 {
     /* estado estático vinha da arena do motor anterior: zera */
     itens = NULL; n_itens = cap_itens = 0;
-    svg_ar = NULL; svg_n = svg_cap = 0;
     largura_regras = -1; n_folhas = 0; n_adiados = 0;
     motor_t *m = aloca(sizeof(motor_t));
     if (!m) return NULL;
@@ -5140,6 +4870,7 @@ void motor_fim(motor_t *m)
     for (int i = 0; i < m->n_imgs; i++) if (m->imgs[i].px) libera(m->imgs[i].px);
     for (int i = 0; i < m->n_faces; i++) {
         for (int j = 0; j < m->faces[i].n_inst; j++) if (m->faces[i].inst[j].f) fonte_fechar(m->faces[i].inst[j].f);
+        if (m->faces[i].obl) fonte_fechar(m->faces[i].obl);
         if (m->faces[i].f) fonte_fechar(m->faces[i].f);
     }
     while (m->blocos) { bloco_m *b = m->blocos; m->blocos = b->prox; libera(b); }
@@ -5286,70 +5017,6 @@ static uint8_t *dados_url(const char *u, unsigned *n)
     return d;
 }
 
-/* Arquivo SVG (texto): monta um nó de mentira e usa o rasterizador do motor,
- * no tamanho de width/height ou da viewBox (até 512 px). NULL se não é SVG. */
-static uint32_t *svg_arquivo(motor_t *m, const char *s, int n, int *l, int *a)
-{
-    int i = 0;
-    while (i + 4 < n && !igual_n(s + i, "<svg", 4)) { if (i > 2048) return NULL; i++; }
-    if (i + 4 >= n) return NULL;
-    int f = i + 4;
-    while (f < n && s[f] != '>') { if (s[f] == '"' || s[f] == '\'') { char q = s[f++]; while (f < n && s[f] != q) f++; } f++; }
-    if (f >= n) return NULL;
-    no_m *g = m_novo(m, sizeof(no_m));
-    if (!g) return NULL;
-    copia_texto(g->tag, "svg", sizeof g->tag);
-    g->img = -1; g->bg_img = -1; g->mask_img = -1; g->alvo = -1;
-    estilo_inicial(&g->e, NULL);
-    /* atributos do <svg> */
-    for (int p = i + 4; p < f;) {
-        while (p < f && (eh_esp(s[p]) || s[p] == '/')) p++;
-        int k0 = p; while (p < f && s[p] != '=' && !eh_esp(s[p]) && s[p] != '>') p++;
-        int k1 = p;
-        if (k1 == k0) { p++; continue; }
-        if (p < f && s[p] == '=') {
-            p++;
-            char q = s[p] == '"' || s[p] == '\'' ? s[p++] : 0;
-            int v0 = p; while (p < f && (q ? s[p] != q : !eh_esp(s[p]))) p++;
-            atr_t *at = m_novo(m, sizeof(atr_t));
-            if (!at) break;
-            at->nome = m_dup(m, s + k0, k1 - k0); at->valor = m_dup(m, s + v0, p - v0);
-            for (char *c = at->nome; *c; c++) if (*c >= 'A' && *c <= 'Z' && !igual(at->nome, "viewBox")) *c = (char)(*c + 32);
-            at->prox = g->atr; g->atr = at;
-            if (q) p++;
-        }
-    }
-    int fim = n;
-    for (int p = n - 6; p > f; p--) if (igual_n(s + p, "</svg>", 6)) { fim = p; break; }
-    g->t = m_dup(m, s + f + 1, fim - f - 1); g->nt = fim - f - 1;
-    int w = 0, h = 0, u;
-    const char *aw = atributo_m(g, "width"), *ah = atributo_m(g, "height");
-    if (aw) w = num100(aw, (int)tam_texto(aw), &u) / 100;
-    if (ah) h = num100(ah, (int)tam_texto(ah), &u) / 100;
-    if (aw && acha_char(aw, '%')) w = 0;
-    if (ah && acha_char(ah, '%')) h = 0;
-    if (w <= 0 || h <= 0) {
-        const char *vb = atributo_m(g, "viewBox"); if (!vb) vb = atributo_m(g, "viewbox");
-        int v4[4] = { 0, 0, 0, 0 }; const char *q = vb;
-        for (int k = 0; k < 4 && q; k++) q = svg_num(q, &v4[k]);
-        if (v4[2] > 0 && v4[3] > 0) { w = v4[2] / 256; h = v4[3] / 256; } else { w = 300; h = 150; }
-    }
-    if (!atributo_m(g, "viewBox") && !atributo_m(g, "viewbox")) {   /* sem viewBox: as unidades são as de width/height */
-        atr_t *at = m_novo(m, sizeof(atr_t));
-        char vb[48]; formatar_texto(vb, sizeof vb, "0 0 %d %d", w, h);
-        if (at) { at->nome = m_dup(m, "viewBox", 7); at->valor = m_dup(m, vb, (int)tam_texto(vb)); at->prox = g->atr; g->atr = at; }
-    }
-    /* ícones pequenos: desenha maior para escalar bem */
-    while (w < 96 && h < 96 && w > 0 && h > 0) { w *= 2; h *= 2; }
-    while (w > 512 || h > 512) { w /= 2; h /= 2; }
-    if (w <= 0 || h <= 0) return NULL;
-    motor_t *antes = mo; mo = m;
-    uint32_t *px = svg_desenhar(g, w, h);
-    mo = antes;
-    *l = w; *a = h;
-    return px;
-}
-
 int motor_imagens(motor_t *m, int max)
 {
     int k = 0;
@@ -5376,8 +5043,13 @@ int motor_imagens(motor_t *m, int max)
         else if (m->g.baixar) d = m->g.baixar(im->url, &n);
         if (!d) continue;
         int l, a;
-        uint32_t *px = svg_arquivo(m, (const char *)d, (int)n, &l, &a);
-        if (px) { im->px = px; im->l = l; im->a = a; im->alfa = 1; }
+        uint32_t *px = NULL;
+        if (svg_tamanho((const char *)d, (int)n, &l, &a)) {   /* SVG: guarda o texto; rasteriza no tamanho natural agora e no exibido depois */
+            im->svg = m_dup(m, (const char *)d, (int)n); im->svg_n = (int)n; im->nl = l; im->na = a;
+            motor_t *antes = mo; mo = m;
+            svg_no_tamanho(im, l > 2048 ? 2048 : l, a > 2048 ? 2048 : a, 0xFF000000u);
+            mo = antes;
+        }
         else if (m->g.imagem && m->g.imagem(d, n, &px, &l, &a)) { im->px = px; im->l = l; im->a = a; }
         libera(d);
     }

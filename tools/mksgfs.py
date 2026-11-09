@@ -93,7 +93,13 @@ def main():
     itens = coletar(sys.argv[1])
     img = montar(itens)
     tam_real = len(img)
-    img = b"SGLZ" + struct.pack("<I", tam_real) + lz.comprimir(img)   # o kernel desfaz no boot
+    # LZMA (com o filtro x86 do xz, que deixa o código de máquina mais repetitivo);
+    # o kernel desfaz no boot (kernel/lib/lzma.c). Antes era o LZ simples de lz.py.
+    import lzma
+    lc, lp, pb, dic = 3, 0, 2, 1 << 22
+    filtros = [{"id": lzma.FILTER_X86}, {"id": lzma.FILTER_LZMA1, "preset": 9 | lzma.PRESET_EXTREME, "dict_size": dic, "lc": lc, "lp": lp, "pb": pb}]
+    dados = lzma.compress(img, format=lzma.FORMAT_RAW, filters=filtros)
+    img = b"SGXZ" + struct.pack("<IBI", tam_real, (pb * 5 + lp) * 9 + lc, dic) + dados
     os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
     with open(sys.argv[2], "wb") as f:
         f.write(img)

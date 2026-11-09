@@ -51,7 +51,7 @@ def main():
         m.esperar_serial("arquivos: pronto", 20)
         time.sleep(0.5)
         a = janela(m.serial(), "Arquivos")
-        verificar("arquivos: pasta / (9 itens)" in m.serial(), "Arquivos abre na raiz: 7 pastas e 2 arquivos")
+        verificar("arquivos: pasta / (10 itens)" in m.serial(), "Arquivos abre na raiz: 8 pastas (com fontes/) e 2 arquivos")
         m.captura("H23-arquivos-raiz")
 
         m.clique(*item(a, 3), duplo=True)                         # historia/

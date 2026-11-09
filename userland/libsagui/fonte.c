@@ -26,7 +26,7 @@ struct fonte {
     const uint8_t *cmap, *glyf, *loca, *aw;
     unsigned n_cmap, n_glyf, n_loca;
     int cmap_fmt, aw_passo;
-    int upem, ngl, nhm, loca_longo, asc, desc;
+    int upem, ngl, nhm, loca_longo, asc, desc, gap;
     gdec *gd;                               /* WOFF2: glifos decodificados */
     /* CFF (OpenType com contornos PostScript) */
     const uint8_t *cff; unsigned n_cff;
@@ -41,6 +41,7 @@ struct fonte {
     float coord[16]; int variada;          /* coordenadas normalizadas desta instância */
     int16_t *aw_var;                        /* avanços desta instância; -32768 = ainda não calculado */
     struct fonte *base;                     /* instância: as tabelas são da base */
+    int obliquo;                            /* itálico sintético: inclina 12 graus */
 };
 
 static void *guardar(fonte_t *f, unsigned n)
@@ -500,7 +501,7 @@ static fonte_t *montar_fonte(fonte_t *f, tabela *t, int nt)
     f->upem = (int)u16(head->p + 18);
     f->loca_longo = s16(head->p + 50);
     f->ngl = (int)u16(maxp->p + 4);
-    f->asc = s16(hhea->p + 4); f->desc = s16(hhea->p + 6);
+    f->asc = s16(hhea->p + 4); f->desc = s16(hhea->p + 6); f->gap = s16(hhea->p + 8);
     f->nhm = (int)u16(hhea->p + 34);
     if (f->upem < 16 || f->nhm < 1) goto ruim;
     if (!ler_cmap(f, cmap->p, cmap->n)) goto ruim;
@@ -814,6 +815,21 @@ fonte_t *fonte_instancia(fonte_t *b, const uint32_t *tags, const int *valores100
 }
 bool fonte_variavel(fonte_t *f) { return f && f->neixos > 0; }
 
+/* Itálico sintético (o navegador faz o mesmo quando a família não tem a face):
+ * a mesma fonte, contornos inclinados 12 graus. Compartilha as tabelas. */
+fonte_t *fonte_obliqua(fonte_t *b)
+{
+    if (!b) return NULL;
+    fonte_t *f = aloca(sizeof(fonte_t));
+    if (!f) return NULL;
+    memcpy(f, b, sizeof *f);
+    memset(f->cache, 0, sizeof f->cache);
+    f->cache_bytes = 0; f->nblocos = 0; f->aw_var = NULL;
+    f->base = b->base ? b->base : b;
+    f->obliquo = 1;
+    return f;
+}
+
 static void glifo_contorno(const fonte_t *f, unsigned gid, contorno *k, const afim *m, int prof)
 {
     if (gid >= (unsigned)f->ngl || prof > 6) return;
@@ -1042,7 +1058,7 @@ const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int 
     if (f->cff) return cff_rasterizar(f, gid, px, c, l, a, ox, oy);
     static fpt pts[MAXP]; static uint16_t ends[MAXP];
     contorno k = { pts, ends, 0, 0 };
-    afim id = { 16384, 0, 0, 16384, 0, 0 };
+    afim id = { 16384, 0, f->obliquo ? 3483 : 0, 16384, 0, 0 };   /* tan(12 graus) x 16384 */
     glifo_contorno(f, gid, &k, &id, 0);
     if (!k.np) return NULL;
     float esc = (float)px / (float)f->upem;
@@ -1171,3 +1187,9 @@ int fonte_avanco(fonte_t *f, unsigned cp, int px)
 bool fonte_tem(fonte_t *f, unsigned cp) { return gid_de(f, cp) != 0; }
 int fonte_ascendente(fonte_t *f, int px) { return f->asc * px / f->upem; }
 int fonte_descendente(fonte_t *f, int px) { return -f->desc * px / f->upem; }
+/* line-height: normal = ascendente + descendente + entrelinha (hhea), cada um arredondado como no Chrome */
+int fonte_altura_normal(fonte_t *f, int px)
+{
+    int u = f->upem;
+    return (f->asc * px + u / 2) / u + (-f->desc * px + u / 2) / u + (f->gap > 0 ? (f->gap * px + u / 2) / u : 0);
+}
