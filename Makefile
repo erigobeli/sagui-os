@@ -120,8 +120,8 @@ $(B)/userland/libsagui/canvas2d.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$
 $(B)/userland/libsagui/svg.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
 $(B)/userland/libsagui/glsl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
 $(B)/userland/libsagui/webgl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
-# código frio (certificados na conexão, gerenciador de arquivos): -Os para caber em 1,44 MB
-$(B)/userland/libsagui/certificado.o $(B)/userland/programas/arquivos.o: UCFLAGS := $(filter-out -O2,$(UCFLAGS)) -Os
+# código frio (certificados na conexão, gerenciador de arquivos, calculadora, shell, editor, terminal, sobre): -Os para caber em 1,44 MB
+$(B)/userland/libsagui/certificado.o $(B)/userland/programas/arquivos.o $(B)/userland/programas/calculadora.o $(B)/userland/programas/sagsh.o $(B)/userland/programas/editor.o $(B)/userland/programas/terminal.o $(B)/userland/programas/sobre-o-sistema.o: UCFLAGS := $(filter-out -O2,$(UCFLAGS)) -Os
 $(B)/userland/testes/fpu.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=387 -fno-tree-vectorize
 
 $(B)/userland/libsagui/js.o: userland/libsagui/js_base.h userland/libsagui/js_nativo.h

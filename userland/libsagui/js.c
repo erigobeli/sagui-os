@@ -28,7 +28,7 @@ typedef struct { str *k; val v; } prop;
 typedef struct no no;
 typedef struct env env;
 typedef val (*nat)(val este, val *a, int n);
-enum { C_OBJ, C_ARR, C_FN, C_EL, C_BUF, C_TA };
+enum { C_OBJ, C_ARR, C_FN, C_EL, C_BUF, C_TA, C_PX };   /* C_PX: Proxy */
 typedef struct dn dn;
 struct obj {
     int cl; obj *proto; prop *p; int np, cp; int *idx, cidx;
@@ -40,6 +40,8 @@ struct obj {
     uint8_t estilo;                     /* objeto el.style: escrever nele muda a página */
     uint8_t reino;                      /* janela (página ou iframe) onde nasceu: funções rodam nela */
     void **pc;                          /* Error: pilha capturada (n, depois pares função/trecho) */
+    struct obj *px_a, *px_h;            /* Proxy: alvo e tratador (tratador NULL = revogado) */
+    uint8_t trava;                      /* 1 não extensível, 2 selado, 3 congelado */
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
@@ -368,15 +370,23 @@ static val chamar(val f, val este, val *a, int n);
 static val chamar_reino(val f, val este, val *a, int n, val novo_t);
 static val construir(val f, val *a, int n);
 static val get(val b, str *k);
-static no *no_atual;   /* último acesso a membro: dá o trecho do código nas mensagens */
+static no *no_atual;   /* último acesso a membro: dá o lugar do código no Error.stack */
+/* Textos já lidos pelo parser: um trecho "antes" de um nó nunca sai do texto dele. */
+static struct { const char *ini, *fim; } fontes_lidas[64]; static int n_fontes_lidas;
+static void fonte_lida(const char *s, int n) { int i = n_fontes_lidas++ & 63; fontes_lidas[i].ini = s; fontes_lidas[i].fim = s + n; }
+static const char *antes_de(const char *f, int volta)
+{
+    for (int j = 1; j <= 64; j++) {   /* do mais novo ao mais velho */
+        int i = (n_fontes_lidas - j) & 63;
+        if (fontes_lidas[i].ini && f >= fontes_lidas[i].ini && f <= fontes_lidas[i].fim)
+            return f - fontes_lidas[i].ini < volta ? fontes_lidas[i].ini : f - volta;
+    }
+    return f;
+}
 static __attribute__((noreturn)) void erro(const char *tipo, const char *m, const char *x)
 {
     char b[240];
     formatar_texto(b, sizeof b, "%s%s", m, x ? x : "");
-    if (no_atual && no_atual->fonte) {   /* trecho perto do erro, para o log */
-        int k = (int)tam_texto(b);
-        if (k < 160) { b[k++] = ' '; b[k++] = '['; const char *q = no_atual->fonte - 40; for (int z = 0; z < 60 && q[z] && k < 236; z++) b[k++] = q[z] == '\n' ? ' ' : q[z]; b[k++] = ']'; b[k] = 0; }
-    }
     val a = vT(b), c = get(vO(global), I(tipo));
     if (c.t != OB) { exc = a; lancar(a); }
     lancar(construir(c, &a, 1));
@@ -578,8 +588,14 @@ static int el_get(obj *o, str *k, val *r);
 static int el_set(obj *o, str *k, val v);
 static str *s_length, *s_prototype, *s_constructor, *s_arguments;
 
-/* typed arrays: 0 Int8, 1 Uint8, 2 Uint8Clamped, 3 Int16, 4 Uint16, 5 Int32, 6 Uint32, 7 Float32, 8 Float64 */
-static const int ta_tam[9] = { 1, 1, 1, 2, 2, 4, 4, 4, 8 };
+/* typed arrays: 0 Int8, 1 Uint8, 2 Uint8Clamped, 3 Int16, 4 Uint16, 5 Int32, 6 Uint32, 7 Float32, 8 Float64,
+   9 BigInt64, 10 BigUint64 */
+static const int ta_tam[11] = { 1, 1, 1, 2, 2, 4, 4, 4, 8, 8, 8 };
+static void bi_c2(const bint *a, uint16_t *o, int n);
+static bint *bi_de_c2(const uint16_t *o, int n);
+static bint *bi_norm(bint *b);
+static bint *para_big(val v);
+static val vG(bint *g);
 static double to_num(val v);
 static int para_i32(double n);
 static val vN(double n);
@@ -594,12 +610,22 @@ static val ta_ler(obj *o, int i)
     case 5: return vI((int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24));
     case 6: { uint32_t u = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; return vN((double)u); }
     case 7: { float q; memcpy(&q, p, 4); return vN((double)q); }   /* Float32: IEEE 754 */
+    case 9: case 10: {
+        uint16_t d[5]; for (int k = 0; k < 4; k++) d[k] = (uint16_t)(p[2 * k] | p[2 * k + 1] << 8);
+        d[4] = 0; return vG(bi_de_c2(d, o->vtipo == 9 ? 4 : 5));
+    }
     default: { double q; memcpy(&q, p, 8); return vN(q); }      /* Float64 */
     }
 }
 static void ta_gravar(obj *o, int i, val v)
 {
     uint8_t *p = o->vbuf->mem + o->voff + i * ta_tam[o->vtipo];
+    if (o->vtipo >= 9) {   /* BigInt64/BigUint64: ToBigInt, módulo 2^64 */
+        if (v.t == NU || v.t == U || v.t == NUL) erro("TypeError", "Cannot convert value to a BigInt", NULL);
+        uint16_t d[4]; bi_c2(para_big(v), d, 4);
+        for (int k = 0; k < 4; k++) { p[2 * k] = (uint8_t)d[k]; p[2 * k + 1] = (uint8_t)(d[k] >> 8); }
+        return;
+    }
     double n = to_num(v);
     if (o->vtipo == 2) {   /* Uint8Clamped: limita e arredonda meio para o par */
         int x;
@@ -624,6 +650,17 @@ static val get_o(obj *o, str *k, val este)
     }
     return vU();
 }
+/* Proxy: devolve a armadilha `nome` do tratador (ou U); revogado dá TypeError */
+static val px_arm(obj *p, const char *nome)
+{
+    if (!p->px_h) erro("TypeError", "Cannot perform operation on a revoked proxy", NULL);
+    val h = vO(p->px_h);
+    val f = get(h, I(nome));
+    if (f.t == U || f.t == NUL) return vU();
+    if (f.t != OB || (f.o->cl != C_FN && f.o->cl != C_PX)) erro("TypeError", "proxy trap is not a function: ", nome);
+    return f;
+}
+static int px_chamavel(obj *o) { while (o && o->cl == C_PX) o = o->px_a; return o && o->cl == C_FN; }
 static val get(val b, str *k)
 {
     k = intern(k);
@@ -639,6 +676,12 @@ static val get(val b, str *k)
     default: break;
     }
     obj *o = b.o;
+    if (o->cl == C_PX) {
+        val f = px_arm(o, "get");
+        if (f.t == U) return get(vO(o->px_a), k);
+        val ar[3] = { vO(o->px_a), vS(k), b };
+        return chamar(f, vO(o->px_h), ar, 3);
+    }
     if (o->cl == C_ARR) {
         if (k == s_length) return vI(o->na);
         int i = indice(k);
@@ -670,10 +713,22 @@ static void put(val b, str *k, val v)
     if (b.t == U || b.t == NUL) erro("TypeError", "Cannot set properties of null: ", k->s);
     if (b.t != OB) return;
     obj *o = b.o;
+    if (o->cl == C_PX) {
+        val f = px_arm(o, "set");
+        if (f.t == U) { put(vO(o->px_a), k, v); return; }
+        val ar[4] = { vO(o->px_a), vS(k), v, b };
+        chamar(f, vO(o->px_h), ar, 4);
+        return;
+    }
+    if (o->trava == 3 && o->cl != C_TA) return;   /* congelado: escrita ignorada (sem modo estrito) */
     if (o->cl == C_TA) {
         int i = indice(k);
         if (i >= 0) { if (i < o->vlen) ta_gravar(o, i, v); return; }
         if (k == s_length) return;
+    }
+    if (o->cl == C_ARR && o->trava) {
+        int i = indice(k);
+        if (i >= o->na || (k == s_length && to_i(v) != o->na && o->trava >= 2)) return;
     }
     if (o->cl == C_ARR) {
         if (k == s_length) { int n = to_i(v); if (n < o->na) o->na = n < 0 ? 0 : n; else while (o->na < n && n < 1000000) arr_push(o, vU()); return; }
@@ -687,6 +742,7 @@ static void put(val b, str *k, val v)
             break;
         }
     }
+    if (o->trava && !achar(o, k)) return;   /* não extensível: propriedade nova não entra */
     por_prop(o, k, v);
 }
 static str *chave(val k) { return intern(to_str(k)); }
@@ -1389,6 +1445,7 @@ static no *stmt(void)
 }
 static no *programa(const char *s, int n, fdef *d)
 {
+    fonte_lida(s, n);
     lex_t sv = L; fdef *ant = cf;
     memset(&L, 0, sizeof L);
     L.src = s; L.tam = n; L.tk = ';';
@@ -1494,7 +1551,7 @@ static __attribute__((noreturn, noinline)) void estouro_pilha(void)
 {
     static unsigned ult;
     if (no_atual && no_atual->fonte && tempo_ms() - ult > 2000) {   /* onde a recursão estava (para o log) */
-        char b[90]; int k = 0; const char *q = no_atual->fonte - 40;
+        char b[90]; int k = 0; const char *q = antes_de(no_atual->fonte, 40);
         for (int z = 0; z < 80 && q[z] && k < 88; z++) b[k++] = q[z] == '\n' ? ' ' : q[z];
         b[k] = 0; ult = tempo_ms();
         registrar("js: pilha estourou perto de [%s]\n", b);
@@ -1558,6 +1615,22 @@ static val executar_fn_(obj *o, val este, val *a, int n, val novo_t)
 }
 static val chamar_n(val f, val este, val *a, int n, val novo_t)
 {
+    if (f.t == OB && f.o->cl == C_PX && px_chamavel(f.o)) {
+        obj *p = f.o;
+        int cons = novo_t.t != U;
+        val t = px_arm(p, cons ? "construct" : "apply");
+        obj *l = novo_arr(n); for (int i = 0; i < n; i++) arr_push(l, a[i]);
+        if (cons) {
+            if (t.t == U) return construir(vO(p->px_a), a, n);
+            val ar[3] = { vO(p->px_a), vO(l), novo_t.t == OB && novo_t.o == p ? vO(p->px_a) : novo_t };
+            val r = chamar(t, vO(p->px_h), ar, 3);
+            if (r.t != OB) erro("TypeError", "proxy [[Construct]] must return an object", NULL);
+            return r;
+        }
+        if (t.t == U) return chamar(vO(p->px_a), este, a, n);
+        val ar[3] = { vO(p->px_a), este, vO(l) };
+        return chamar(t, vO(p->px_h), ar, 3);
+    }
     if (f.t != OB || f.o->cl != C_FN) erro("TypeError", "is not a function", NULL);
     obj *o = f.o;
     chk();
@@ -1585,6 +1658,7 @@ static void campos(obj *c, val este)
 }
 static val construir(val f, val *a, int n)
 {
+    if (f.t == OB && f.o->cl == C_PX && px_chamavel(f.o)) return chamar_n(f, vU(), a, n, f);
     if (f.t != OB || f.o->cl != C_FN) erro("TypeError", "is not a constructor", NULL);
     val p = get(f, s_prototype);
     obj *o = novo_obj(p.t == OB ? p.o : p_obj);
@@ -1612,7 +1686,10 @@ static int avaliar_args(no *l, env *e, val **saida)
     *saida = r->a;
     return r->na;
 }
+#pragma GCC push_options
+#pragma GCC optimize("Os")   /* BigInt: código frio, otimizado para tamanho */
 #include "js_big.h"
+#pragma GCC pop_options
 static val aritmetica(int op, val a, val b)
 {
     if (op == '+') {
@@ -1652,12 +1729,19 @@ static val aritmetica(int op, val a, val b)
     case 'i': {
         if (b.t != OB) erro("TypeError", "in: not an object", NULL);
         str *k = chave(a);
+        while (b.o->cl == C_PX) {
+            val f = px_arm(b.o, "has");
+            if (f.t == U) { b = vO(b.o->px_a); continue; }
+            val ar[2] = { vO(b.o->px_a), vS(k) };
+            return vB(to_bool(chamar(f, vO(b.o->px_h), ar, 2)));
+        }
         if (b.o->cl == C_ARR) { int i = indice(k); if (i >= 0) return vB(i < b.o->na); if (k == s_length) return vB(1); }
         for (obj *c = b.o; c; c = c->proto) if (achar(c, k)) return vB(1);
         return vB(b.o->cl == C_EL ? ({ val r; el_get(b.o, k, &r); }) : 0);
     }
     case 'o': {
-        if (b.t != OB || b.o->cl != C_FN) erro("TypeError", "instanceof: not callable", NULL);
+        if (b.t != OB || (b.o->cl != C_FN && !(b.o->cl == C_PX && px_chamavel(b.o)))) erro("TypeError", "instanceof: not callable", NULL);
+        if (a.t == OB && a.o->cl == C_PX) { val gp = get(vO(global), I("Object")); gp = get(gp, I("getPrototypeOf")); a = chamar(gp, vU(), &a, 1); if (a.t != OB) return vB(0); val p = get(b, s_prototype); for (obj *c = a.o; c; c = c->proto) if (p.t == OB && c == p.o) return vB(1); return vB(0); }
         if (a.t != OB) return vB(0);
         val p = get(b, s_prototype);
         for (obj *c = a.o->proto; c; c = c->proto) if (p.t == OB && c == p.o) return vB(1);
@@ -1807,7 +1891,7 @@ static val ev(no *x, env *e)
             else { int tem = 0; for (obj *c = global; c; c = c->proto) if (achar(c, x->a->s)) tem = 1; if (!tem) return vS(I("undefined")); a = var_get(e, x->a->s); }
         } else a = ev(x->a, e);
         static const char *const n[] = { "undefined", "object", "boolean", "number", "string", "object", "object", "bigint" };
-        if (a.t == OB && a.o->cl == C_FN) return vS(I("function"));
+        if (a.t == OB && (a.o->cl == C_FN || (a.o->cl == C_PX && px_chamavel(a.o)))) return vS(I("function"));
         return vS(I(n[a.t]));
     }
     case K_DEL: {
@@ -1815,6 +1899,12 @@ static val ev(no *x, env *e)
         if (t->k != K_MEM && t->k != K_IDX) return vB(1);
         val o = ev(t->a, e);
         str *k = t->k == K_MEM ? intern(t->s) : chave(ev(t->b, e));
+        while (o.t == OB && o.o->cl == C_PX) {
+            val f = px_arm(o.o, "deleteProperty");
+            if (f.t != U) { val ar[2] = { vO(o.o->px_a), vS(k) }; return vB(to_bool(chamar(f, vO(o.o->px_h), ar, 2))); }
+            o = vO(o.o->px_a);
+        }
+        if (o.t == OB && o.o->trava >= 2) return vB(!achar(o.o, k));
         if (o.t == OB) {
             prop *p = achar(o.o, k);
             if (p) { int i = (int)(p - o.o->p); memmove(p, p + 1, (size_t)(o.o->np - i - 1) * sizeof(prop)); o.o->np--; if (o.o->idx) reindexar(o.o); }
@@ -1899,23 +1989,9 @@ static val ev(no *x, env *e)
         else f = ev(c, e);
         if (x->op && (f.t == U || f.t == NUL)) return vU();
         int n = avaliar_args(x->b, e, &a);
-        if (f.t != OB || f.o->cl != C_FN) {
-            /* diz em que tipo de objeto a função faltou (ajuda a achar o que implementar) */
-            char dica[240] = " is not a function";
-            if (c->k == K_MEM || c->k == K_IDX) {
-                const char *tipo = este.t == ST ? "string" : este.t == NU ? "number" : este.t == U ? "undefined" : este.t == NUL ? "null" : este.t == BO ? "boolean" :
-                                   este.o->cl == C_ARR ? "Array" : este.o->cl == C_TA ? "TypedArray" : este.o->cl == C_BUF ? "ArrayBuffer" : este.o->cl == C_EL ? "Element" : este.o->cl == C_FN ? "Function" : "Object";
-                val cn = este.t == OB ? get(este, s_constructor) : vU();
-                val nm = cn.t == OB ? get(cn, I("name")) : vU();
-                const char *fn = qa && qa->func && qa->func->fn && qa->func->fn->f && qa->func->fn->f->nome ? qa->func->fn->f->nome->s : "?";
-                int np = este.t == OB ? este.o->np : -1;
-                const char *k0 = este.t == OB && este.o->np > 0 ? este.o->p[0].k->s : "";
-                char trecho[72] = "";
-                if (x->fonte) { int k = 0; const char *q = x->fonte - 40; for (int z = 0; z < 70 && q[z]; z++) trecho[k++] = q[z] == '\n' ? ' ' : q[z]; trecho[k] = 0; }
-                formatar_texto(dica, sizeof dica, " is not a function (em %s %s, %d props, 1a %s) [%s]", tipo, nm.t == ST ? nm.s->s : "", np, k0, trecho);
-                (void)fn;
-            }
-            erro("TypeError", c->k == K_MEM || c->k == K_ID ? c->s->s : "expressao", dica);
+        if (f.t != OB || (f.o->cl != C_FN && !(f.o->cl == C_PX && px_chamavel(f.o)))) {
+            /* como o V8: "nome is not a function" (sem efeitos colaterais: nada de getters aqui) */
+            erro("TypeError", c->k == K_MEM || c->k == K_ID ? c->s->s : "expression", " is not a function");
         }
         no_atual = x;   /* lugar da chamada: Error.stack */
         return chamar(f, este, a, n);
@@ -2289,7 +2365,7 @@ static val n_pilha_cap(val este, val *a, int n)
 static int trecho_de(char *b, int k, int max, no *x)
 {
     if (!x || !x->fonte) { const char *t = "<anonymous>"; while (*t && k < max) b[k++] = *t++; return k; }
-    const char *q = x->fonte - 24;
+    const char *q = antes_de(x->fonte, 24);
     for (int z = 0; z < 56 && q[z] && k < max; z++) b[k++] = q[z] == '\n' || q[z] == '\r' ? ' ' : q[z];
     return k;
 }

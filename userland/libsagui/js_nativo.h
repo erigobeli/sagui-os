@@ -29,8 +29,28 @@ static uint8_t *resposta_segura(const char *u, unsigned *n, int *cod, char *cab,
 { gb_url = u; gb_d = NULL; gb_n = 0; gb_cod = cod; gb_cab = cab; gb_cmax = cmax; gb_fin = fin; gb_fmax = fmax; em_pilha_grande(gb_resposta); *n = gb_n; return gb_d; }
 
 /* ---- Object, Function ---- */
+static val n_hasown(val este, val *a, int n);
 static val chaves_de(obj *o, int herda)
 {
+    if (o->cl == C_PX) {
+        val f = px_arm(o, "ownKeys");
+        if (f.t == U) return chaves_de(o->px_a, herda == 2 ? 0 : herda);
+        val t = vO(o->px_a), l = chamar(f, vO(o->px_h), &t, 1);
+        if (l.t != OB) erro("TypeError", "ownKeys trap result must be an object", NULL);
+        l = para_vetor(l);
+        obj *r = novo_arr(0);
+        val gd = px_arm(o, "getOwnPropertyDescriptor");
+        for (int i = 0; i < l.o->na; i++) {
+            if (l.o->a[i].t != ST) continue;
+            if (herda == 2) { arr_push(r, l.o->a[i]); continue; }   /* Reflect.ownKeys: tudo */
+            /* Object.keys / for-in: só as próprias e enumeráveis (descritor do tratador ou do alvo) */
+            int tem;
+            if (gd.t != U) { val ar[2] = { vO(o->px_a), l.o->a[i] }; val d = chamar(gd, vO(o->px_h), ar, 2); tem = d.t == OB && (get(d, I("enumerable")).t == U || to_bool(get(d, I("enumerable")))); }
+            else { val t2 = vO(o->px_a), k = l.o->a[i]; tem = to_bool(n_hasown(t2, &k, 1)); }
+            if (tem) arr_push(r, l.o->a[i]);
+        }
+        return vO(r);
+    }
     obj *r = novo_arr(0);
     if (o->cl == C_ARR) for (int i = 0; i < o->na; i++) arr_push(r, vS(num_str((double)i)));
     for (obj *c = o; c; c = herda ? c->proto : NULL) {
@@ -64,6 +84,11 @@ static val n_getproto(val este, val *a, int n)
 {
     (void)este; val v = ARG(0);
     if (v.t == ST) return vO(p_str);
+    while (v.t == OB && v.o->cl == C_PX) {
+        val f = px_arm(v.o, "getPrototypeOf");
+        if (f.t != U) { val t = vO(v.o->px_a); return chamar(f, vO(v.o->px_h), &t, 1); }
+        v = vO(v.o->px_a);
+    }
     return v.t == OB && v.o->proto ? vO(v.o->proto) : vNul();
 }
 static val n_setproto(val este, val *a, int n) { (void)este; if (ARG(0).t == OB) a[0].o->proto = ARG(1).t == OB ? a[1].o : NULL; return ARG(0); }
@@ -74,6 +99,12 @@ static val n_defprop(val este, val *a, int n)
     val o = ARG(0), d = ARG(2);
     if (o.t != OB || d.t != OB) erro("TypeError", "defineProperty", NULL);
     str *k = chave(ARG(1));
+    while (o.o->cl == C_PX) {
+        val f = px_arm(o.o, "defineProperty");
+        if (f.t != U) { val ar[3] = { vO(o.o->px_a), vS(k), d }; if (!to_bool(chamar(f, vO(o.o->px_h), ar, 3))) erro("TypeError", "'defineProperty' on proxy: trap returned falsish", NULL); return ARG(0); }
+        o = vO(o.o->px_a);
+    }
+    if ((o.o->trava == 3 && !(achar(o.o, k) && get(d, I("value")).t != U && estrito(achar(o.o, k)->v, get(d, I("value"))))) || (o.o->trava && !achar(o.o, k))) erro("TypeError", "Cannot define property, object is not extensible: ", k->s);
     val g = get(d, I("get")), s = get(d, I("set"));
     if (g.t == OB || s.t == OB) {
         obj *ac = novo_obj(NULL); val w; w.t = AC; w.n = 0; w.o = ac;
@@ -100,6 +131,13 @@ static val n_hasown(val este, val *a, int n)
     str *k = chave(ARG(0));
     if (este.t == ST) { int i = indice(k); return vB(k == s_length || (i >= 0 && i < este.s->n)); }
     if (este.t != OB) return vB(0);
+    while (este.o->cl == C_PX) {
+        val f = px_arm(este.o, "getOwnPropertyDescriptor");
+        if (f.t != U) { val ar[2] = { vO(este.o->px_a), vS(k) }; val d = chamar(f, vO(este.o->px_h), ar, 2); return vB(d.t == OB); }
+        f = px_arm(este.o, "has");
+        if (f.t != U) { val ar[2] = { vO(este.o->px_a), vS(k) }; return vB(to_bool(chamar(f, vO(este.o->px_h), ar, 2))); }
+        este = vO(este.o->px_a);
+    }
     if (este.o->cl == C_ARR) { int i = indice(k); if (i >= 0) return vB(i < este.o->na); if (k == s_length) return vB(1); }
     return vB(achar(este.o, k) != NULL);
 }
@@ -150,6 +188,7 @@ static val n_fnstr(val este, val *a, int n)
 
 /* ---- Array ---- */
 static obj *arr_de(val v) { if (v.t != OB || v.o->cl != C_ARR) erro("TypeError", "not an array", NULL); return v.o; }
+static obj *arr_mut(val v) { obj *o = arr_de(v); if (o->trava) erro("TypeError", "Cannot add/remove elements: object is not extensible", NULL); return o; }
 static val n_array(val este, val *a, int n)
 {
     (void)este;
@@ -158,12 +197,41 @@ static val n_array(val este, val *a, int n)
     else for (int i = 0; i < n; i++) arr_push(r, a[i]);
     return vO(r);
 }
-static val n_isarr(val este, val *a, int n) { (void)este; return vB(ARG(0).t == OB && a[0].o->cl == C_ARR); }
-static val n_push(val este, val *a, int n) { obj *o = arr_de(este); for (int i = 0; i < n; i++) arr_push(o, a[i]); return vI(o->na); }
-static val n_pop(val este, val *a, int n) { (void)a; (void)n; obj *o = arr_de(este); return o->na ? o->a[--o->na] : vU(); }
+static val n_chaves_proprias(val este, val *a, int n) { (void)este; return ARG(0).t == OB ? chaves_de(a[0].o, ARG(0).o->cl == C_PX ? 2 : 0) : vO(novo_arr(0)); }
+/* __travar(o, nível): 1 preventExtensions, 2 seal, 3 freeze; nível 0 lê */
+static val n_travar(val este, val *a, int n)
+{
+    (void)este; val o = ARG(0);
+    if (o.t != OB) return n > 1 && to_i(a[1]) == 0 ? vI(3) : o;
+    if (n < 2 || to_i(a[1]) == 0) {
+        int t = o.o->trava;
+        if (t == 1 && o.o->np == 0 && !(o.o->cl == C_ARR && o.o->na)) t = 3;   /* vazio e não extensível = congelado */
+        return vI(t);
+    }
+    int t = to_i(a[1]); if (t > o.o->trava) o.o->trava = (uint8_t)t;
+    return o;
+}
+static val n_isarr(val este, val *a, int n)
+{
+    (void)este; val v = ARG(0);
+    while (v.t == OB && v.o->cl == C_PX) { if (!v.o->px_h) erro("TypeError", "Cannot perform 'IsArray' on a proxy that has been revoked", NULL); v = vO(v.o->px_a); }
+    return vB(v.t == OB && v.o->cl == C_ARR);
+}
+/* __proxy(alvo, tratador) */
+static val n_proxy(val este, val *a, int n)
+{
+    (void)este;
+    if (ARG(0).t != OB || ARG(1).t != OB) erro("TypeError", "Cannot create proxy with a non-object as target or handler", NULL);
+    obj *p = novo_obj(a[0].o->proto);
+    p->cl = C_PX; p->px_a = a[0].o; p->px_h = a[1].o;
+    return vO(p);
+}
+static val n_proxy_revogar(val este, val *a, int n) { (void)este; if (ARG(0).t == OB && a[0].o->cl == C_PX) a[0].o->px_h = NULL; return vU(); }
+static val n_push(val este, val *a, int n) { obj *o = arr_mut(este); for (int i = 0; i < n; i++) arr_push(o, a[i]); return vI(o->na); }
+static val n_pop(val este, val *a, int n) { (void)a; (void)n; obj *o = arr_mut(este); return o->na ? o->a[--o->na] : vU(); }
 static val n_shift(val este, val *a, int n)
 {
-    (void)a; (void)n; obj *o = arr_de(este);
+    (void)a; (void)n; obj *o = arr_mut(este);
     if (!o->na) return vU();
     val r = o->a[0];
     o->a++; o->na--; o->ca--;
@@ -171,7 +239,7 @@ static val n_shift(val este, val *a, int n)
 }
 static val n_unshift(val este, val *a, int n)
 {
-    obj *o = arr_de(este);
+    obj *o = arr_mut(este);
     for (int i = 0; i < n; i++) arr_push(o, vU());
     memmove(o->a + n, o->a, (size_t)(o->na - n) * sizeof(val));
     for (int i = 0; i < n; i++) o->a[i] = a[i];
@@ -198,7 +266,7 @@ static val n_aslice(val este, val *a, int n)
 }
 static val n_splice(val este, val *a, int n)
 {
-    obj *o = arr_de(este);
+    obj *o = arr_mut(este);
     int i = rel(ARG(0), o->na, 0), c = n < 2 ? o->na - i : to_i(a[1]);
     if (c < 0) c = 0;
     if (c > o->na - i) c = o->na - i;
@@ -245,7 +313,7 @@ static val n_concat(val este, val *a, int n)
 }
 static val n_reverse(val este, val *a, int n)
 {
-    (void)a; (void)n; obj *o = arr_de(este);
+    (void)a; (void)n; obj *o = arr_mut(este);
     for (int i = 0, j = o->na - 1; i < j; i++, j--) { val t = o->a[i]; o->a[i] = o->a[j]; o->a[j] = t; }
     return este;
 }
@@ -725,7 +793,7 @@ static val n_novo_ta(val este, val *a, int n)
 {
     (void)este;
     int tipo = to_i(ARG(0));
-    if (tipo < 0 || tipo > 8) tipo = 1;
+    if (tipo < 0 || tipo > 10) tipo = 1;
     val x = ARG(1), proto = ARG(4);
     obj *o = novo_obj(proto.t == OB ? proto.o : p_obj);
     o->cl = C_TA; o->vtipo = tipo;
@@ -2189,7 +2257,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar); reg(global, "__pilha", n_pilha); reg(global, "__pilha_cap", n_pilha_cap); reg(global, "__quadro_janela", n_quadro_janela); reg(global, "__quadros", n_quadros); reg(global, "__chamador", n_chamador);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar); reg(global, "__pilha", n_pilha); reg(global, "__pilha_cap", n_pilha_cap); reg(global, "__quadro_janela", n_quadro_janela); reg(global, "__quadros", n_quadros); reg(global, "__chamador", n_chamador); reg(global, "__proxy", n_proxy); reg(global, "__travar", n_travar); reg(global, "__chaves_proprias", n_chaves_proprias); reg(global, "__proxy_revogar", n_proxy_revogar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());

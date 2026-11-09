@@ -70,6 +70,8 @@ typedef struct {
     int16_t ls64;                       /* letter-spacing em 1/64 px (herdado; em vira px no elemento que declara) */
     uint8_t generica;                   /* família genérica da lista: 0 sans-serif, 1 serif, 2 monospace */
     const char *svg_fill, *svg_stroke, *svg_sw;   /* fill/stroke/stroke-width do CSS (herdados; vão para o <svg>) */
+    uint8_t esp_cel;                    /* border-spacing + 1 (herdado); 0 = não declarado */
+    uint8_t colapsa;                    /* border-collapse: collapse (herdado) */
 } estilo_t;
 
 typedef struct atr { char *nome, *valor; struct atr *prox; } atr_t;
@@ -100,6 +102,7 @@ typedef struct no_m {
     int bg_img;                     /* índice da imagem de fundo, -1 */
     int mask_img;                   /* índice da imagem da máscara, -1 */
     int ax, ay; uint8_t pintado;    /* posição final (depois de posicionados e relativos), para o JavaScript */
+    int alt_def;                    /* altura do conteúdo + 1 quando definida (base de height:%); 0 = auto */
 } no_m;
 
 /* ================================================================ CSS */
@@ -568,7 +571,7 @@ enum {
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
-    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING, PR_FILL, PR_STROKE, PR_SWIDTH,
+    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING, PR_FILL, PR_STROKE, PR_SWIDTH, PR_BSPACING, PR_BCOLLAPSE,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -582,7 +585,7 @@ static const char *const nomes_prop[] = {
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
-    "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing", "fill", "stroke", "stroke-width",
+    "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing", "fill", "stroke", "stroke-width", "border-spacing", "border-collapse",
 };
 
 static int achar_prop(const char *p, int n)
@@ -953,7 +956,7 @@ static no_m *irmao_prox(no_m *n) { for (n = n->prox; n; n = n->prox) if (!n->tex
 
 static bool bate_composto_m(const composto_t *c, no_m *n)
 {
-    if (n->texto || c->nunca) return false;
+    if (n->texto || c->nunca || n->tag[0] == '#') return false;   /* o nó do documento não é elemento: `* html` nunca casa */
     if (c->tag[0] && !igual(c->tag, n->tag)) return false;
     if (c->id && (!n->id || !igual(c->id, n->id))) return false;
     for (int i = 0; i < c->nc; i++) if (!tem_classe(n->classe, c->classes[i])) return false;
@@ -1337,7 +1340,7 @@ static const char folha_padrao[] =
     "select{border:1px solid #767676;border-radius:2px;background-color:#fff;box-sizing:border-box}"
     "button,input[type=submit],input[type=button],input[type=reset],input[type=image]{border:1px solid #767676;border-radius:2px;padding:1px 6px;"
     "background-color:#efefef;text-align:center;box-sizing:border-box}"
-    "input[type=checkbox],input[type=radio]{padding:0}textarea{white-space:pre}summary{font-weight:bold}legend{padding:0 2px}fieldset{border:1px solid #c4cbd2;padding:4px 8px}";
+    "input[type=checkbox],input[type=radio]{padding:0}input[type=checkbox]{margin:3px 3px 3px 4px}input[type=radio]{margin:3px 3px 0 5px;border-radius:50%}textarea{white-space:pre}summary{font-weight:bold}legend{padding:0 2px}fieldset{border:1px solid #c4cbd2;padding:4px 8px}";
 
 /* ================================================================ cascata */
 
@@ -1494,7 +1497,7 @@ static void estilo_inicial(estilo_t *e, const estilo_t *pai)
         e->cor = pai->cor; e->tam = pai->tam; e->peso = pai->peso; e->italico = pai->italico; e->alinha = pai->alinha;
         e->branco = pai->branco; e->lista = pai->lista; e->visivel = pai->visivel; e->linha = pai->linha; e->maiusc = pai->maiusc;
         e->sublinha = pai->sublinha; e->risca = pai->risca; e->fam = pai->fam;
-        e->pesonum = pai->pesonum; e->largura = pai->largura; e->fvs = pai->fvs; e->ls64 = pai->ls64; e->generica = pai->generica;
+        e->pesonum = pai->pesonum; e->largura = pai->largura; e->fvs = pai->fvs; e->ls64 = pai->ls64; e->generica = pai->generica; e->esp_cel = pai->esp_cel; e->colapsa = pai->colapsa;
         e->svg_fill = pai->svg_fill; e->svg_stroke = pai->svg_stroke; e->svg_sw = pai->svg_sw;
     } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; e->pesonum = 400; e->largura = 1000; e->generica = 1; }   /* padrão do Chrome: serif */
 }
@@ -1897,6 +1900,8 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         else if (strstr_m(v, "disc") || strstr_m(v, "circle") || strstr_m(v, "square")) e->lista = 1;
         else if (prop == PR_LISTTYPE) e->lista = 1;
         break;
+    case PR_BSPACING: { medida_t m; if (ler_medida_m(v, (int)tam_texto(v), &m)) { int x = px_de(&m, e->tam); e->esp_cel = (uint8_t)((x < 0 ? 0 : x > 200 ? 200 : x) + 1); } break; }
+    case PR_BCOLLAPSE: e->colapsa = igual(v, "collapse"); break;
     case PR_VISIBILITY: e->visivel = igual(v, "hidden") || igual(v, "collapse") ? 1 : 0; break;
     case PR_OVERFLOW: case PR_OVX: case PR_OVY: if (strstr_m(v, "hidden") || strstr_m(v, "clip") || strstr_m(v, "auto") || strstr_m(v, "scroll")) e->corta = 1; else if (igual(v, "visible")) e->corta = 0; break;
     case PR_BOXSIZING: e->caixa_borda = igual(v, "border-box"); break;
@@ -3593,7 +3598,7 @@ static int grid(no_m *n, int cw)
 /* ------------------------------------------------------------ tabela */
 
 #define MAX_COLS 32
-static int tabela(no_m *n, int cw)
+static int tabela(no_m *n, int cw, int ch)
 {
     /* linhas */
     no_m **linhas = m_novo(mo, 1024 * (int)sizeof(no_m *)), **grupo_de = m_novo(mo, 1024 * (int)sizeof(no_m *)); int nl = 0;
@@ -3610,7 +3615,11 @@ static int tabela(no_m *n, int cw)
         /* outra coisa: vira uma linha de uma célula */
         grupo_de[nl] = NULL; linhas[nl++] = c;
     }
-    int esp = 2;
+    /* espaço entre células: border-spacing; <table> sem CSS usa cellspacing (padrão 2); display:table em outro elemento, 0 */
+    int esp = 0;
+    if (n->e.colapsa) esp = 0;
+    else if (n->e.esp_cel) esp = n->e.esp_cel - 1;
+    else if (igual(n->tag, "table")) { const char *cs = atributo_m(n, "cellspacing"); int u; esp = cs ? num100(cs, (int)tam_texto(cs), &u) / 100 : 2; if (esp < 0) esp = 0; }
     int cmax[MAX_COLS], cmin[MAX_COLS], ncol = 0;
     memset(cmax, 0, sizeof cmax); memset(cmin, 0, sizeof cmin);
     for (int r = 0; r < nl; r++) {
@@ -3697,8 +3706,35 @@ static int tabela(no_m *n, int cw)
         y += ha + esp;
     }
     if (grupo_atual) grupo_atual->a = y - y_grupo;
+    /* altura definida maior que o conteúdo: a sobra vai para as linhas (por igual), como no navegador */
+    int conteudo = y - (n->bl[0] + n->pl[0]);
+    if (ch > conteudo && nl > 0 && !legenda) {
+        int sobra = ch - conteudo, acum = 0, acum_g = 0;   /* acum: desde o início; acum_g: dentro do grupo atual */
+        for (int r = 0; r < nl; r++) {
+            no_m *L = linhas[r];
+            int dr = sobra / nl + (r < sobra % nl ? 1 : 0);
+            if (grupo_de[r]) {
+                if (r == 0 || grupo_de[r - 1] != grupo_de[r]) { grupo_de[r]->y += acum; acum_g = 0; }
+                L->y += acum_g; grupo_de[r]->a += dr; acum_g += dr;
+            } else L->y += acum;
+            L->a += dr;
+            if (L->e.display == D_CELL) {   /* célula solta (linha anônima) */
+                int va = L->e.vert ? L->e.vert : 1;
+                if (va == 1) deslocar_conteudo(L, dr / 2); else if (va == 3) deslocar_conteudo(L, dr);
+            }
+            if (L->e.display == D_ROW)
+                for (no_m *c = L->filho; c; c = c->prox) {
+                    if (c->texto || c->e.display != D_CELL) continue;
+                    int va = c->e.vert ? c->e.vert : 1;
+                    c->a += dr;
+                    if (va == 1) deslocar_conteudo(c, dr / 2); else if (va == 3) deslocar_conteudo(c, dr);
+                }
+            acum += dr;
+        }
+        conteudo = ch;
+    }
     n->l = largura_tab + n->bl[3] + n->pl[3] + n->bl[1] + n->pl[1];
-    return y - (n->bl[0] + n->pl[0]);
+    return conteudo;
 }
 
 /* ------------------------------------------------------------ nó */
@@ -3720,7 +3756,7 @@ static void layout_conteudo(no_m *n, int cw, int ch)
     switch (e->display) {
     case D_FLEX: case D_IFLEX: h = flex(n, cw, ch); break;
     case D_GRID: h = grid(n, cw); break;
-    case D_TABLE: h = tabela(n, cw); break;
+    case D_TABLE: h = tabela(n, cw, ch); break;
     default: h = fluxo(n, cw, &usado); break;
     }
     n->a = h;
@@ -3753,12 +3789,14 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
     int h = forca_a >= 0 ? forca_a : -1;
     if (h < 0) {
         int hh = res_med(&e->alt, -1, e);
-        if (e->alt.u == U_PCT && n->pai && n->pai->e.alt.u == U_PX) hh = res_med(&e->alt, n->pai->e.alt.v, e);
+        if (e->alt.u == U_PCT && n->pai && n->pai->alt_def && !fora_do_fluxo(n)) hh = res_med(&e->alt, n->pai->alt_def - 1, e);
+        else if (e->alt.u == U_PCT && n->pai && n->pai->e.alt.u == U_PX) hh = res_med(&e->alt, n->pai->e.alt.v, e);
         if (e->alt.u == U_PCT && (igual(n->tag, "html") || igual(n->tag, "body"))) hh = res_med(&e->alt, mo->vh, e);
         if (hh >= 0) h = e->caixa_borda ? hh : hh + extra_v(n);
     }
     if (h >= 0 && h < extra_v(n)) h = extra_v(n);   /* border-box nunca fica menor que bordas + padding */
     int ch = h >= 0 ? h - extra_v(n) : -1;
+    n->alt_def = ch >= 0 ? ch + 1 : 0;
     layout_conteudo(n, ccw, ch);
     int ah = n->a + extra_v(n);
     if (e->display == D_TABLE) w = n->l;
@@ -4376,7 +4414,7 @@ static void controle(no_m *n, int x, int y)
         int tipo_alvo = MA_CAMPO;
         if (igual(n->tag, "input")) {
             if (t && (igual(t, "checkbox") || igual(t, "radio"))) {
-                if (atributo_m(n, "checked")) { cmd_t c; memset(&c, 0, sizeof c); c.tipo = C_RET; c.x = cx + 3; c.y = cy + 3; c.l = cl - 6; c.a = ca - 6; c.cor = 0xFF0B7A3E; c.raio = igual(t, "radio") ? 4 : 0; cmd_novo(&c); }
+                if (atributo_m(n, "checked")) { cmd_t c; memset(&c, 0, sizeof c); c.tipo = C_RET; c.x = cx + 3; c.y = cy + 3; c.l = cl - 6; c.a = ca - 6; c.cor = 0xFF0B7A3E; c.raio = igual(t, "radio") ? (cl - 6) / 2 : 0; cmd_novo(&c); }
                 return;
             }
             if (t && (igual(t, "submit") || igual(t, "button") || igual(t, "reset") || igual(t, "image"))) { txt = atributo_m(n, "value"); if (!txt) txt = "Enviar"; tipo_alvo = MA_BOTAO; }
