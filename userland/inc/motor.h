@@ -18,6 +18,7 @@ typedef struct {
 #define MA_LINK  1     /* href */
 #define MA_CAMPO 2     /* <input> de texto: nome do campo, ação do formulário */
 #define MA_BOTAO 3     /* botão de envio */
+#define MA_QUADRO 4    /* iframe pintado: js = tela do quadro; rx, ry = canto dele */
 
 typedef struct {
     int tipo;
@@ -29,6 +30,7 @@ typedef struct {
     int js;                /* clique tratado pelo JavaScript (data-sagui-js), ou -1 */
     bool envia;            /* botão que envia o formulário (submit, image, <button> sem type) */
     int campo;             /* data-sagui-campo (campos e botões depois do JavaScript), ou -1 */
+    int rx, ry;            /* canto da região clicada (coordenadas da página) */
 } motor_alvo_t;
 
 motor_t *motor_novo(const motor_ganchos_t *g);

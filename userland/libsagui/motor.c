@@ -3058,6 +3058,18 @@ static int montar_linhas(no_m *bloco, int i0, int i1, int y, int cw, contexto_t 
 
 static int alvo_link(no_m *n)
 {
+    /* iframe pintado (js_quadros.h): o clique vai para dentro dele */
+    if (igual(n->tag, "iframe")) {
+        const char *q = atributo_m(n, "data-sagui-quadro");
+        if (!q) return -1;
+        if (n->alvo >= 0) return n->alvo;
+        if (!crescer_v(mo, (void **)&mo->alvos, &mo->cap_alvos, mo->n_alvos + 1, sizeof(motor_alvo_t))) return -1;
+        motor_alvo_t *a = &mo->alvos[mo->n_alvos];
+        memset(a, 0, sizeof *a);
+        a->tipo = MA_QUADRO; a->js = texto_para_int(q); a->campo = -1; a->href = "";
+        n->alvo = mo->n_alvos;
+        return mo->n_alvos++;
+    }
     /* (alvos de link não têm campo) */
     const char *js = atributo_m(n, "data-sagui-js");
     if (js && !igual(n->tag, "a") && !igual(n->tag, "button") && !igual(n->tag, "input") && !igual(n->tag, "textarea") && !igual(n->tag, "select")) {
@@ -4340,11 +4352,13 @@ static void controle(no_m *n, int x, int y)
     }
     if (igual(n->tag, "video") || igual(n->tag, "iframe") || igual(n->tag, "embed") || igual(n->tag, "object") || igual(n->tag, "canvas")) {
         cmd_t c; memset(&c, 0, sizeof c);
-        const char *tv = igual(n->tag, "canvas") ? atributo_m(n, "data-sagui-canvas") : NULL;
-        if (tv && mo->g.tela) {   /* canvas com contexto 2D: pixels lidos na hora de pintar */
+        const char *tv = igual(n->tag, "canvas") || igual(n->tag, "iframe") ? atributo_m(n, "data-sagui-canvas") : NULL;
+        if (tv && mo->g.tela) {   /* canvas com contexto 2D (ou iframe já pintado): pixels lidos na hora de pintar */
+            if (igual(n->tag, "iframe")) alvo_link(n);
             c.tipo = C_TELA; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.img = texto_para_int(tv);
             cmd_novo(&c);
-            regiao(x, y, n->l, n->a, n->alvo);
+            if (igual(n->tag, "iframe")) regiao(cx, cy, cl, ca, n->alvo);   /* o quadro: coordenadas a partir do conteúdo */
+            else regiao(x, y, n->l, n->a, n->alvo);
             return;
         }
         c.tipo = C_RET; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.cor = igual(n->tag, "canvas") ? 0 : 0xFF202428;
@@ -5576,7 +5590,10 @@ const motor_alvo_t *motor_alvo(motor_t *m, int x, int y)
         int ry = r->y + desloc_camada(m, r->cam, m->rolagem);
         if (x >= r->x && x < r->x + r->l && y >= ry && y < ry + r->a && r->alvo < m->n_alvos && (!melhor || cmp_ordem(r->ctx, r->b, r->seq, melhor->ctx, melhor->b, melhor->seq) > 0)) melhor = r;
     }
-    return melhor ? &m->alvos[melhor->alvo] : NULL;
+    if (!melhor) return NULL;
+    motor_alvo_t *a = &m->alvos[melhor->alvo];
+    a->rx = melhor->x; a->ry = melhor->y + desloc_camada(m, melhor->cam, m->rolagem);
+    return a;
 }
 
 const char *motor_titulo(motor_t *m) { return m->titulo; }

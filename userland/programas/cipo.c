@@ -1497,9 +1497,51 @@ static int js_layout(const char *html, int n, int *caixas, int qtd)
 static bool js_estilo(int k, const char *prop, char *o, int max) { return medidor && motor_estilo_de(medidor, k, prop, o, max); }
 static struct fonte *js_fonte(const char *fam, int peso, int ital, int larg) { return medidor ? motor_fonte_nomeada(medidor, fam, peso, ital, larg) : NULL; }
 
+/* iframes: cada quadro tem o seu motor (para pintar e para achar o clique) */
+#define MAX_QM 16
+static struct { int tela; motor_t *m; } qm[MAX_QM];
+static int js_quadro_pintar(int tela, const char *html, int n, const char *url, int l, int a)
+{
+    static const motor_ganchos_t g = { baixar_recurso, decodificar_registrando, tela2d_pixels };
+    int k = 0;
+    while (k < MAX_QM && !(qm[k].m && qm[k].tela == tela)) k++;
+    if (k == MAX_QM) { k = 0; while (k < MAX_QM && qm[k].m) k++; }
+    if (k == MAX_QM) return 0;
+    unsigned t0 = tempo_ms();
+    if (qm[k].m) motor_fim(qm[k].m);
+    motor_t *m = motor_novo(&g);
+    qm[k].m = m; qm[k].tela = tela;
+    if (!m) return 0;
+    motor_ler(m, html, n, url);
+    motor_layout(m, l, a);
+    while (motor_imagens(m, 8)) motor_layout(m, l, a);
+    int tl, ta;
+    uint32_t *px = tela2d_px_escrita(tela, &tl, &ta);
+    if (!px) return 0;
+    int w = l < tl ? l : tl, h = a < ta ? a : ta;
+    motor_pintar(m, px, w, tl, 0, h);
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) px[y * tl + x] |= 0xFF000000u;
+    registrar("cipo: quadro (tela %d) %dx%d pintado em %u ms\n", tela, w, h, tempo_ms() - t0);
+    return 1;
+}
+static int js_quadro_alvo(int tela, int x, int y)
+{
+    for (int k = 0; k < MAX_QM; k++) {
+        if (!qm[k].m || qm[k].tela != tela) continue;
+        const motor_alvo_t *a = motor_alvo(qm[k].m, x, y);
+        if (!a) return -1;
+        if (a->js >= 0) return a->js;
+        if (a->href && comeca_com(a->href, "sagui-js:")) return texto_para_int(a->href + 9);
+        return -1;
+    }
+    return -1;
+}
+static void quadros_esquecer(void) { for (int k = 0; k < MAX_QM; k++) { if (qm[k].m) motor_fim(qm[k].m); qm[k].m = NULL; } }
+
 static char *rodar_scripts(char *h, int *n)
 {
-    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta, js_layout, js_estilo, js_fonte };
+    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta, js_layout, js_estilo, js_fonte, js_quadro_pintar, js_quadro_alvo };
+    quadros_esquecer();
     if (!achar_tag(h, *n, "<script")) return h;
     rodape("Rodando scripts...");
     int t = 0;
@@ -2630,6 +2672,10 @@ int principal(int argc, char **argv)
                     copia_texto(url, ma->href, sizeof url);
                     if (comeca_com(url, "sagui-js:")) clique_js(texto_para_int(url + 9));
                     else if (!comeca_com(url, "javascript:") && !comeca_com(url, "mailto:")) navegar(url);
+                } else if (ma && ma->tipo == MA_QUADRO) {
+                    /* dentro de um iframe: o quadro acha o elemento e roda o clique na janela dele */
+                    js_clicar_quadro(ma->js, e.x - ma->rx, e.y - TOPO + rol_px - ma->ry);
+                    desenhar_pagina();
                 } else if (ma && ma->tipo == MA_CAMPO) {
                     /* foco no campo: a digitação vai para dentro da caixa */
                     if (endereco.foco) { endereco.foco = false; desenhar_barra(); }

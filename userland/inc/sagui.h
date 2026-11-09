@@ -127,10 +127,16 @@ typedef struct {
     bool (*estilo)(int k, const char *prop, char *o, int max);
     /* Fonte de uma família do @font-face da página (canvas, document.fonts); NULL se não há. */
     struct fonte *(*fonte)(const char *familia, int peso, int italico, int largura);
+    /* iframes: diagrama o HTML do quadro e pinta na tela tela2d (l x a); e acha o
+     * elemento clicado nele (data-sagui-js do alvo, ou -1) */
+    int (*quadro_pintar)(int tela, const char *html, int n, const char *url, int l, int a);
+    int (*quadro_alvo)(int tela, int x, int y);
 } js_hooks_t;
+void js_clicar_quadro(int tela, int x, int y);   /* clique em (x, y) dentro do iframe pintado na tela */
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 /* Canvas 2D (libsagui/canvas2d.c): telas com pixels ARGB sem pré-multiplicar. */
 const uint32_t *tela2d_pixels(int id, int *l, int *a);
+uint32_t *tela2d_px_escrita(int id, int *l, int *a);   /* para pintar nela (iframes) */
 unsigned tela2d_versao(void);            /* muda a cada desenho */
 void tela2d_liberar_todas(void);
 char *js_clicar(int id, int *saida_n);   /* HTML novo depois do clique, ou NULL */

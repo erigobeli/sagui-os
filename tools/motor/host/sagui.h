@@ -20,7 +20,7 @@ static inline bool comeca_com(const char *s, const char *p) { return strncmp(s, 
 #define formatar_texto snprintf
 static inline int texto_para_int(const char *s) { return atoi(s); }
 static inline void registrar(const char *f, ...) { va_list a; va_start(a, f); vfprintf(stderr, f, a); va_end(a); }
-static inline unsigned tempo_ms(void) { return (unsigned)(clock() / (CLOCKS_PER_SEC / 1000)); }
+static inline unsigned tempo_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (unsigned)(t.tv_sec * 1000u + t.tv_nsec / 1000000); }   /* relógio de parede, como no SaguiOS */
 typedef struct fonte fonte_t;
 fonte_t *fonte_abrir(const uint8_t *d, unsigned n);
 void     fonte_fechar(fonte_t *f);

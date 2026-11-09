@@ -557,7 +557,7 @@ static val n_json_q(val este, val *a, int n)
 }
 
 /* ---- Number e globais ---- */
-static val n_number(val este, val *a, int n) { (void)este; return n ? vN(to_num(a[0])) : vI(0); }
+static val n_number(val este, val *a, int n) { (void)este; if (n && prim(a[0]).t == BI) return vN(bi_para_double(prim(a[0]).g)); return n ? vN(to_num(a[0])) : vI(0); }
 static val n_boolean(val este, val *a, int n) { (void)este; return vB(to_bool(ARG(0))); }
 /* Number.prototype.toString(raiz): mesmo algoritmo do V8 (DoubleToRadixCString):
  * fração até a precisão do número (delta = meia distância ao vizinho) */
@@ -1277,6 +1277,9 @@ static dn *dcampos[MAX_CLIQUES]; static int qtd_campos;   /* input/textarea/sele
 static int qtd_n; static unsigned ser_ger;   /* data-sagui-n: número de cada elemento na serialização (e de qual) */
 
 static dn *d_novo(int tipo, str *tag) { dn *d = novo(sizeof(dn)); d->tipo = tipo; d->tag = tag; return d; }
+/* documento (nó tipo 9) de um nó; o da janela ativa se ele está solto */
+static dn *raiz_de(dn *d) { if (!d) return raiz; if (d->tipo == 9) return d; while (d->pai) d = d->pai; return d->tipo == 9 ? d : raiz; }
+static val janela_do_documento(dn *d); static val n_quadro_janela(val este, val *a, int n);
 static void d_tirar(dn *c)
 {
     dn *p = c->pai;
@@ -1626,13 +1629,22 @@ static int el_get(obj *o, str *k, val *r)
         if (d->tipo == 9) { dn *t = por_tag(d, I("title")); buf b = { 0, 0, 0 }; if (t) texto_de(&b, t); *r = b.n ? vS(novo_str(b.b, b.n)) : vS(I("")); }
         else *r = attr_val(d, "title");
         break;
-    case D_BODY: { dn *t = por_tag(raiz, I("body")); *r = embrulhar(t ? t : raiz); break; }
-    case D_HEAD: { dn *t = por_tag(raiz, I("head")); *r = embrulhar(t ? t : raiz); break; }
-    case D_DOCEL: { dn *t = por_tag(raiz, I("html")); *r = embrulhar(t ? t : raiz); break; }
-    case D_DOC: *r = embrulhar(raiz); break;
-    /* iframes compartilham a janela e o documento da página */
-    case D_CWIN: case D_DEFVIEW: if (k->dom == D_DEFVIEW && d->tipo != 9) return 0; *r = vO(global); break;
-    case D_CDOC: *r = embrulhar(raiz); break;
+    /* o documento de cada nó: o da janela dele (iframes têm o seu) */
+    case D_BODY: { dn *rz = raiz_de(d); dn *t = por_tag(rz, I("body")); *r = embrulhar(t ? t : rz); break; }
+    case D_HEAD: { dn *rz = raiz_de(d); dn *t = por_tag(rz, I("head")); *r = embrulhar(t ? t : rz); break; }
+    case D_DOCEL: { dn *rz = raiz_de(d); dn *t = por_tag(rz, I("html")); *r = embrulhar(t ? t : rz); break; }
+    case D_DOC: *r = embrulhar(raiz_de(d)); break;
+    case D_CWIN: case D_DEFVIEW:
+        if (k->dom == D_DEFVIEW) { if (d->tipo != 9) return 0; *r = janela_do_documento(d); break; }
+        if (d->tag != I("iframe")) return 0;
+        { val a0 = embrulhar(d); *r = n_quadro_janela(vU(), &a0, 1); }
+        break;
+    case D_CDOC: {
+        if (d->tag != I("iframe")) return 0;
+        val a0 = embrulhar(d); val w = n_quadro_janela(vU(), &a0, 1);
+        *r = w.t == OB ? get(w, I("document")) : vNul();
+        break;
+    }
     case D_STYLE: {
         val c = get(vO(global), I("CSSStyleDeclaration")), pr = c.t == OB ? get(c, s_prototype) : vU();
         val s = vO(novo_obj(pr.t == OB ? pr.o : p_obj));
@@ -2128,6 +2140,10 @@ static val n_c2(val este, val *a, int n)
     }
     return vU();
 }
+static obj *global_reusar;
+static val n_quadro_janela(val este, val *a, int n); static val n_quadros(val este, val *a, int n); static val n_chamador(val este, val *a, int n);
+static void reinos_sincronizar(void); static int reinos_tique(void); static void reinos_zerar(void);
+static int quadros_vivos;
 static void iniciar(const js_hooks_t *h, const char *url)
 {
     gancho = h;
@@ -2138,7 +2154,10 @@ static void iniciar(const js_hooks_t *h, const char *url)
     s_style = I("style"); s_onclick = I("onclick"); s_ls = I("__ls"); s_click = I("click");
     p_obj = novo_obj(NULL); p_fn = novo_obj(p_obj); p_fn->cl = C_FN; p_fn->f = n_mesmo;
     p_arr = novo_obj(p_obj); p_arr->cl = C_ARR; p_str = novo_obj(p_obj); p_num = novo_obj(p_obj); p_bool = novo_obj(p_obj); p_el = novo_obj(p_obj);
-    global = novo_obj(p_obj);
+    if (global_reusar) {   /* navegação num iframe: a mesma window, vazia */
+        global = global_reusar; global->proto = p_obj; global->p = NULL; global->np = global->cp = 0; global->idx = NULL; global->cidx = 0; global->na = 0;
+    } else global = novo_obj(p_obj);
+    p_big = novo_obj(p_obj);
     q_global.este = vO(global); q_global.func = NULL; q_global.novo = vU(); qa = &q_global;
     static const struct { const char *n; nat f; obj **p; } ctor[] = { { "Object", n_object, &p_obj }, { "Function", n_mesmo, &p_fn }, { "Array", n_array, &p_arr }, { "String", n_string, &p_str }, { "Number", n_number, &p_num }, { "Boolean", n_boolean, &p_bool }, { "Node", n_mesmo, &p_el } };
     for (unsigned i = 0; i < sizeof ctor / sizeof *ctor; i++) {
@@ -2160,11 +2179,17 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(p_str, "__split", n_ssplit); reg(p_str, "toString", n_str_valor); reg(p_str, "valueOf", n_str_valor);
     reg(p_num, "toString", n_numstr); reg(p_num, "toFixed", n_tofixed); reg(p_num, "valueOf", n_mesmo);
     reg(p_bool, "toString", n_bool_texto); reg(p_bool, "valueOf", n_bool_valor);
+    {   /* BigInt */
+        val c = novo_nat(n_bigint, "BigInt");
+        por_prop(c.o, s_prototype, vO(p_big)); por_prop(p_big, s_constructor, c); por_prop(global, I("BigInt"), c);
+        reg(c.o, "asIntN", n_big_asint); reg(c.o, "asUintN", n_big_asuint);
+        reg(p_big, "toString", n_big_texto); reg(p_big, "toLocaleString", n_big_texto); reg(p_big, "valueOf", n_big_valor);
+    }
     reg(p_el, "querySelectorAll", n_qsa); reg(p_el, "querySelector", n_qs); reg(p_el, "matches", n_matches); reg(p_el, "getElementById", n_byid);
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar); reg(global, "__pilha", n_pilha); reg(global, "__pilha_cap", n_pilha_cap);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar); reg(global, "__pilha", n_pilha); reg(global, "__pilha_cap", n_pilha_cap); reg(global, "__quadro_janela", n_quadro_janela); reg(global, "__quadros", n_quadros); reg(global, "__chamador", n_chamador);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());
@@ -2260,6 +2285,7 @@ static void pagina_interna(void)
     registrar("cipo: js %d scripts, %d parados%s\n", feitos, parados, fatal ? ", cortado" : "");
     fatal = 0;
     if (raiz) proteger(antes_serial);
+    if (raiz) proteger(reinos_sincronizar);
     /* Sempre serializa: mesmo sem mudar o DOM, os scripts podem ter posto
      * cliques (data-sagui-js), e os campos levam data-sagui-campo. */
     if (raiz) { ar_total = 0; proteger(serial_final); }
@@ -2281,6 +2307,7 @@ static void clique_seguro(void)
 {
     proteger(clique_interno);
     proteger(antes_serial);
+    proteger(reinos_sincronizar);
     fatal = 0;
     ar_total = 0;
     proteger(serial_final);
@@ -2303,6 +2330,7 @@ static void campo_seguro(void)
 {
     proteger(campo_interno);
     proteger(antes_serial);
+    proteger(reinos_sincronizar);
     fatal = 0;
     if (sujo && raiz) { ar_total = 0; proteger(serial_final); }
 }
@@ -2332,6 +2360,8 @@ static void na_pilha(void (*f)(void))
     __asm__ volatile("movl %%esp, %%ebx\n\tmovl %0, %%esp\n\tcall *%1\n\tmovl %%ebx, %%esp"
                      :: "r"(topo), "r"(f) : "ebx", "eax", "ecx", "edx", "memory", "cc");
 }
+static void tique_interno(void);
+#include "js_quadros.h"
 static void gc_liberar_tudo(void);
 void js_fim(void)
 {
@@ -2344,6 +2374,7 @@ void js_fim(void)
     ar = NULL; ar_u = ar_c = ar_total = 0;
     tab = NULL; tab_c = tab_n = 0; tb = NULL; tb_c = 0;
     raiz = NULL; global = NULL; vivo = 1; qtd_cliques = 0; topo_s = NULL; fatal = 0;
+    reinos_zerar(); quadros_vivos = 0; global_reusar = NULL;
     memset(&escrito, 0, sizeof escrito);
 }
 /* Roda os scripts da página. Devolve o HTML novo (aloca) ou NULL se nada mudou. */
@@ -2351,6 +2382,7 @@ char *js_pagina(const char *h, int n, const char *url, const js_hooks_t *g, int 
 {
     js_fim();
     pg_h = h; pg_n = n; pg_url = url; pg_g = g;
+    copia_texto(reinos[0].url, url, sizeof reinos[0].url);
     saida = NULL; saida_n = 0;
     t_limite = tempo_ms() + 15000;
     na_pilha(pagina_interna);
@@ -2371,6 +2403,9 @@ static void tique_seguro(void)
     if (!proteger(tique_interno)) vivo = 0;
     proteger(antes_serial);
     fatal = 0;
+    proteger(reinos_sincronizar);
+    quadros_vivos = reinos_tique();
+    fatal = 0;
     if ((sujo || dom_ger != ger_serial) && raiz) { ar_total = 0; proteger(serial_final); }
 }
 char *js_tique(int ms, int *saida_tam)
@@ -2382,7 +2417,7 @@ char *js_tique(int ms, int *saida_tam)
     *saida_tam = saida_n;
     return saida;
 }
-int js_vivo(void) { return global && vivo; }
+int js_vivo(void) { return global && (vivo || quadros_vivos); }
 int js_animando(void) { return global && vivo == 2; }   /* há requestAnimationFrame pendente */
 int js_ativo(void) { return global != NULL; }
 /* rolagem e tamanho: o script recebe scroll/resize e os observadores olham de novo */

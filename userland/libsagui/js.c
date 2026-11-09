@@ -21,8 +21,9 @@ typedef unsigned long long u64;
  * ascii = 1 quando byte e unidade coincidem. cu/cb: cache do último índice. */
 typedef struct str { int n; unsigned h; struct str *in; short kw, dom; int u, cu, cb; uint8_t ascii; char s[]; } str;
 typedef struct obj obj;
-enum { U, NUL, BO, NU, ST, OB, AC };
-typedef struct { int t; union { double n; str *s; obj *o; int b; }; } val;
+enum { U, NUL, BO, NU, ST, OB, AC, BI };   /* BI: BigInt (js_big.h) */
+typedef struct bint bint;
+typedef struct { int t; union { double n; str *s; obj *o; int b; bint *g; }; } val;
 typedef struct { str *k; val v; } prop;
 typedef struct no no;
 typedef struct env env;
@@ -37,6 +38,7 @@ struct obj {
     uint8_t *mem; int mem_n;            /* ArrayBuffer */
     struct obj *vbuf; int voff, vlen, vtipo;   /* typed array: buffer, deslocamento, elementos, tipo */
     uint8_t estilo;                     /* objeto el.style: escrever nele muda a página */
+    uint8_t reino;                      /* janela (página ou iframe) onde nasceu: funções rodam nela */
     void **pc;                          /* Error: pilha capturada (n, depois pares função/trecho) */
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
@@ -45,7 +47,7 @@ typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; 
 struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; double n; fdef *f; const char *fonte; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
-       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD,
+       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD, K_BIG,
        S_VAR, S_DECL, S_EXP, S_BLOCK, S_IF, S_FOR, S_FORIN, S_WHILE, S_DO, S_RET, S_BRK, S_CONT, S_THROW, S_TRY, S_SWITCH, S_CASE, S_LABEL, S_FUNC, S_CLASS, S_VAZIO };
 enum { KW_NADA, KW_VAR, KW_LET, KW_CONST, KW_FUNCTION, KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_DO, KW_BREAK, KW_CONTINUE, KW_NEW, KW_DELETE, KW_TYPEOF,
        KW_VOID, KW_THIS, KW_NULL, KW_TRUE, KW_FALSE, KW_IN, KW_INSTANCEOF, KW_THROW, KW_TRY, KW_CATCH, KW_FINALLY, KW_SWITCH, KW_CASE, KW_DEFAULT, KW_CLASS, KW_EXTENDS,
@@ -346,7 +348,8 @@ static val vS(str *s) { val v; v.t = ST; v.n = 0; v.s = s; return v; }
 static val vT(const char *s) { return vS(novo_str(s, (int)tam_texto(s))); }
 static val vO(obj *o) { val v; v.t = OB; v.n = 0; v.o = o; return v; }
 
-static obj *global, *p_obj, *p_fn, *p_arr, *p_str, *p_num, *p_bool, *p_el;
+static obj *global, *p_obj, *p_fn, *p_arr, *p_str, *p_num, *p_bool, *p_el, *p_big;
+static int reino_atual;   /* 0 = a página; 1.. = iframes (js_quadros.h) */
 static quadro q_global, *qa;
 typedef struct salto { void *b[5]; struct salto *ant; } salto;
 static salto *topo_s;
@@ -362,6 +365,7 @@ static unsigned t_limite; static unsigned passos;
 static __attribute__((noinline, noreturn)) void lancar(val v) { exc = v; __builtin_longjmp(topo_s->b, 1); }
 static void lancar_fatal(const char *m) { registrar("js: abortado: %s\n", m); fatal = 1; exc = vU(); __builtin_longjmp(topo_s->b, 1); }
 static val chamar(val f, val este, val *a, int n);
+static val chamar_reino(val f, val este, val *a, int n, val novo_t);
 static val construir(val f, val *a, int n);
 static val get(val b, str *k);
 static no *no_atual;   /* último acesso a membro: dá o trecho do código nas mensagens */
@@ -378,7 +382,7 @@ static __attribute__((noreturn)) void erro(const char *tipo, const char *m, cons
     lancar(construir(c, &a, 1));
 }
 
-static obj *novo_obj(obj *proto) { obj *o = novo(sizeof(obj)); o->proto = proto; return o; }
+static obj *novo_obj(obj *proto) { obj *o = novo(sizeof(obj)); o->proto = proto; o->reino = (uint8_t)reino_atual; return o; }
 static obj *novo_arr(int cap)
 {
     obj *o = novo_obj(p_arr);
@@ -441,6 +445,9 @@ static val novo_nat(nat f, const char *nome)
 static void reg(obj *o, const char *n, nat f) { por_prop(o, I(n), novo_nat(f, n)); }
 
 static val prim(val v);
+static str *bi_texto(const bint *a, int base);
+static int bi_nao_zero(const bint *a);
+static int bi_cmp_v(val a, val b);   /* js_big.h: -1/0/1, 2 = incomparável */
 static str *num_str(double n)
 {
     char b[40];
@@ -455,6 +462,7 @@ static str *to_str(val v)
     case BO: return I(v.b ? "true" : "false");
     case NU: return num_str(v.n);
     case ST: return v.s;
+    case BI: return bi_texto(v.g, 10);
     default: return to_str(prim(v));
     }
 }
@@ -486,6 +494,7 @@ static double to_num(val v)
     case BO: return v.b;
     case NU: return v.n;
     case ST: return str_num(v.s);
+    case BI: erro("TypeError", "Cannot convert a BigInt value to a number", NULL);
     default: return to_num(prim(v));
     }
 }
@@ -496,6 +505,7 @@ static int to_bool(val v)
     case BO: return v.b;
     case NU: return v.n != 0 && !d_nan(v.n);
     case ST: return v.s->n != 0;
+    case BI: return bi_nao_zero(v.g);
     default: return 1;
     }
 }
@@ -540,6 +550,7 @@ static int estrito(val a, val b)
     case BO: return a.b == b.b;
     case NU: return a.n == b.n;
     case ST: return str_igual(a.s, b.s);
+    case BI: return bi_cmp_v(a, b) == 0;
     default: return a.o == b.o;
     }
 }
@@ -550,6 +561,7 @@ static int solto(val a, val b)
     if (a.t == U || a.t == NUL || b.t == U || b.t == NUL) return 0;
     if (a.t == OB) return solto(prim(a), b);
     if (b.t == OB) return solto(a, prim(b));
+    if (a.t == BI || b.t == BI) return bi_cmp_v(a, b) == 0;
     double x = to_num(a), y = to_num(b);
     return x == y;
 }
@@ -623,6 +635,7 @@ static val get(val b, str *k)
         return get_o(p_str, k, b);
     case NU: return get_o(p_num, k, b);
     case BO: return get_o(p_bool, k, b);
+    case BI: return get_o(p_big ? p_big : p_obj, k, b);
     default: break;
     }
     obj *o = b.o;
@@ -698,7 +711,7 @@ static void put_i(val b, val k, val v)
 }
 
 /* ------------------------------------------------------------ léxico */
-enum { T_FIM = 0, T_NUM = 256, T_STR, T_TPL, T_ID, T_RE, T_OP = 300 };
+enum { T_FIM = 0, T_NUM = 256, T_STR, T_TPL, T_ID, T_RE, T_BIG, T_OP = 300 };
 static const char *const ops[] = { ">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "?\?=", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "**" };
 enum { O_URSA, O_3P, O_SEQ, O_SNE, O_POWA, O_SHLA, O_SHRA, O_URS, O_ANDA, O_ORA, O_NNA, O_SETA, O_EQ, O_NE, O_LE, O_GE, O_AND, O_OR, O_NN, O_OPT, O_INC, O_DEC, O_ADDA, O_SUBA, O_MULA, O_DIVA, O_MODA, O_BANDA, O_BORA, O_XORA, O_SHL, O_SHR, O_POW };
 #define OP(x) (T_OP + (x))
@@ -763,6 +776,7 @@ static void prox(void)
     if (p >= n) { L.tk = T_FIM; L.p = p; return; }
     uint8_t c = (uint8_t)s[p];
     if (dig((char)c) || (c == '.' && p + 1 < n && dig(s[p + 1]))) {
+        int ini_num = p;
         if (c == '0' && p + 1 < n && ((s[p + 1] | 32) == 'x' || (s[p + 1] | 32) == 'b' || (s[p + 1] | 32) == 'o')) {
             int b = (s[p + 1] | 32) == 'x' ? 16 : (s[p + 1] | 32) == 'b' ? 2 : 8;
             p += 2;
@@ -776,7 +790,13 @@ static void prox(void)
             while (consumidos < u && q < f) { if (s[q] != '_') consumidos++; q++; }
             p = q;
         }
-        if (p < n && s[p] == 'n') p++;
+        if (p < n && s[p] == 'n') {   /* BigInt: o texto do literal (sem os _) */
+            char tb2[512]; int kb = 0;
+            for (int z = ini_num; z < p && kb < 510; z++) if (s[z] != '_') tb2[kb++] = s[z];
+            L.s = novo_str(tb2, kb);
+            p++;
+            L.tk = T_BIG; L.p = p; return;
+        }
         L.tk = T_NUM; L.p = p; return;
     }
     if (id_ini(c) || c == '\\') {
@@ -800,7 +820,7 @@ static void prox(void)
     if (c == '/') {
         int a = L.ant;
         int kwv = a == T_ID ? L.s->kw : 0;
-        int valor = a == T_NUM || a == T_STR || a == T_TPL || a == T_RE || a == ')' || a == ']' || a == '}' || (a == T_ID && !(kwv == KW_RETURN || kwv == KW_TYPEOF || kwv == KW_IN || kwv == KW_DELETE || kwv == KW_VOID || kwv == KW_THROW || kwv == KW_CASE || kwv == KW_ELSE || kwv == KW_NEW || kwv == KW_INSTANCEOF));
+        int valor = a == T_NUM || a == T_BIG || a == T_STR || a == T_TPL || a == T_RE || a == ')' || a == ']' || a == '}' || (a == T_ID && !(kwv == KW_RETURN || kwv == KW_TYPEOF || kwv == KW_IN || kwv == KW_DELETE || kwv == KW_VOID || kwv == KW_THROW || kwv == KW_CASE || kwv == KW_ELSE || kwv == KW_NEW || kwv == KW_INSTANCEOF));
         if (!valor) {
             int i = ++p, cl = 0;
             while (p < n && (s[p] != '/' || cl) && s[p] != '\n') { if (s[p] == '\\') p++; else if (s[p] == '[') cl = 1; else if (s[p] == ']') cl = 0; p++; }
@@ -957,6 +977,7 @@ static no *primario(void)
     no *x;
     switch (L.tk) {
     case T_NUM: x = N(K_NUM); x->n = L.num; prox(); return x;
+    case T_BIG: x = N(K_BIG); x->s = L.s; prox(); return x;
     case T_STR: x = N(K_STR); x->s = L.s; prox(); return x;
     case T_TPL: return modelo();
     case T_RE: x = N(K_RE); x->s = L.s; x->a = N(K_STR); x->a->s = L.re_f; prox(); return x;
@@ -1540,6 +1561,7 @@ static val chamar_n(val f, val este, val *a, int n, val novo_t)
     if (f.t != OB || f.o->cl != C_FN) erro("TypeError", "is not a function", NULL);
     obj *o = f.o;
     chk();
+    if (o->reino != reino_atual) return chamar_reino(f, este, a, n, novo_t);   /* função de outra janela: roda lá */
     if (o->ligado) {
         val *b = novo((unsigned)(o->nlig + n + 1) * sizeof(val));
         if (o->nlig) memcpy(b, o->ligados, (size_t)o->nlig * sizeof(val));
@@ -1590,11 +1612,13 @@ static int avaliar_args(no *l, env *e, val **saida)
     *saida = r->a;
     return r->na;
 }
+#include "js_big.h"
 static val aritmetica(int op, val a, val b)
 {
     if (op == '+') {
         a = prim(a); b = prim(b);
         if (a.t == ST || b.t == ST) return concat(to_str(a), to_str(b));
+        if (a.t == BI || b.t == BI) { if (a.t != BI || b.t != BI) erro("TypeError", "Cannot mix BigInt and other types, use explicit conversions", NULL); return bi_op('+', a.g, b.g); }
         return vN(to_num(a) + to_num(b));
     }
     switch (op) {
@@ -1615,6 +1639,9 @@ static val aritmetica(int op, val a, val b)
                 for (int i = 0; i < m && !c; i++) c = unidade(a.s, i) - unidade(b.s, i);
                 if (!c) c = a.s->u - b.s->u;
             }
+        } else if (a.t == BI || b.t == BI) {
+            c = bi_cmp_v(a, b);
+            if (c == 2) return vB(0);
         } else {
             double x = to_num(a), y = to_num(b);
             if (d_nan(x) || d_nan(y)) return vB(0);
@@ -1637,6 +1664,11 @@ static val aritmetica(int op, val a, val b)
         return vB(0);
     }
     default: break;
+    }
+    if (a.t == BI || b.t == BI || ((a.t == OB || b.t == OB) && (prim(a).t == BI || prim(b).t == BI))) {
+        a = prim(a); b = prim(b);
+        if (a.t != BI || b.t != BI) erro("TypeError", "Cannot mix BigInt and other types, use explicit conversions", NULL);
+        return bi_op(op, a.g, b.g);
     }
     double x = to_num(a), y = to_num(b);
     switch (op) {
@@ -1756,13 +1788,14 @@ static val ev(no *x, env *e)
     case K_OR: { val a = ev(x->a, e); return to_bool(a) ? a : ev(x->b, e); }
     case K_NN: { val a = ev(x->a, e); return a.t == U || a.t == NUL ? ev(x->b, e) : a; }
     case K_BIN: { val a = ev(x->a, e); return aritmetica(x->op, a, ev(x->b, e)); }
+    case K_BIG: { bint *b = bi_de_texto(x->s->s, x->s->n, 1); if (!b) erro("SyntaxError", "Invalid BigInt literal ", x->s->s); return vG(b); }
     case K_UN: {
         val a = ev(x->a, e);
         switch (x->op) {
         case '!': return vB(!to_bool(a));
-        case '-': return vN(-to_num(a));
+        case '-': if (a.t == BI) return vG(bi_neg(a.g)); return vN(-to_num(a));
         case '+': return vN(to_num(a));
-        case '~': return vI(~to_i(a));
+        case '~': if (a.t == BI) return vG(bi_sub(bi_neg(a.g), bi_u32(1, 0))); return vI(~to_i(a));
         default: return vU();
         }
     }
@@ -1773,7 +1806,7 @@ static val ev(no *x, env *e)
             if (r) a = *r;
             else { int tem = 0; for (obj *c = global; c; c = c->proto) if (achar(c, x->a->s)) tem = 1; if (!tem) return vS(I("undefined")); a = var_get(e, x->a->s); }
         } else a = ev(x->a, e);
-        static const char *const n[] = { "undefined", "object", "boolean", "number", "string", "object" };
+        static const char *const n[] = { "undefined", "object", "boolean", "number", "string", "object", "object", "bigint" };
         if (a.t == OB && a.o->cl == C_FN) return vS(I("function"));
         return vS(I(n[a.t]));
     }
@@ -1796,6 +1829,11 @@ static val ev(no *x, env *e)
         if (t->k == K_ID) v = var_get(e, t->s);
         else if (t->k == K_MEM) { o = ev(t->a, e); v = get(o, t->s); }
         else { o = ev(t->a, e); k = ev(t->b, e); v = get_i(o, k); }
+        if (v.t == BI) {   /* ++/-- de BigInt */
+            val m = vG(bi_soma(v.g, bi_u32(1, x->op < 0)));
+            if (t->k == K_ID) var_set(e, t->s, m); else if (t->k == K_MEM) put(o, t->s, m); else put_i(o, k, m);
+            return x->n ? m : v;
+        }
         double n = to_num(v), m = n + (double)x->op;
         if (t->k == K_ID) var_set(e, t->s, vN(m)); else if (t->k == K_MEM) put(o, t->s, vN(m)); else put_i(o, k, vN(m));
         return vN(x->n ? m : n);

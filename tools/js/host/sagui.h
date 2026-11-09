@@ -19,9 +19,13 @@ typedef struct {
     int (*layout)(const char *html, int n, int *caixas, int qtd);
     bool (*estilo)(int k, const char *prop, char *o, int max);
     struct fonte *(*fonte)(const char *familia, int peso, int italico, int largura);
+    int (*quadro_pintar)(int tela, const char *html, int n, const char *url, int l, int a);
+    int (*quadro_alvo)(int tela, int x, int y);
 } js_hooks_t;
+void js_clicar_quadro(int tela, int x, int y);
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 const uint32_t *tela2d_pixels(int id, int *l, int *a);
+uint32_t *tela2d_px_escrita(int id, int *l, int *a);
 unsigned tela2d_versao(void);
 void tela2d_liberar_todas(void);
 char *js_clicar(int id, int *saida_n);
