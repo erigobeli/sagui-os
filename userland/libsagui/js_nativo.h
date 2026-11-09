@@ -30,6 +30,7 @@ static uint8_t *resposta_segura(const char *u, unsigned *n, int *cod, char *cab,
 
 /* ---- Object, Function ---- */
 static val n_hasown(val este, val *a, int n);
+static int n_tem(val d, const char *k) { for (obj *c = d.t == OB ? d.o : NULL; c; c = c->proto) if (achar(c, I(k))) return 1; return 0; }
 static val chaves_de(obj *o, int herda)
 {
     if (o->cl == C_PX) {
@@ -53,15 +54,31 @@ static val chaves_de(obj *o, int herda)
     }
     obj *r = novo_arr(0);
     if (o->cl == C_ARR) for (int i = 0; i < o->na; i++) arr_push(r, vS(num_str((double)i)));
-    for (obj *c = o; c; c = herda ? c->proto : NULL) {
+    if (o->cl == C_TA) for (int i = 0; i < o->vlen; i++) arr_push(r, vS(num_str((double)i)));
+    int ini = r->na;
+    for (obj *c = o; c; c = herda == 1 ? c->proto : NULL) {
         if (c == p_obj || c == p_arr || c == p_fn || c == p_str || c == p_el) break;
         for (int i = 0; i < c->np; i++) {
-            if (!c->p[i].k || (c->p[i].k->s[0] == '_' && c->p[i].k->s[1] == '_')) continue;   /* __x: internas do Cipó */
+            if (!c->p[i].k || (c->p[i].k->s[0] == '_' && c->p[i].k->s[1] == '_') || (c->p[i].k->s[0] == '@' && c->p[i].k->s[1] == '@')) continue;   /* __x: internas do Cipó; @@x: símbolos */
             if (c != o && (c->p[i].v.t == OB && c->p[i].v.o->cl == C_FN)) continue;
-            if (c->p[i].k == s_constructor || c->p[i].k == s_prototype) continue;
+            if ((c->p[i].at & A_NE) && herda != 2) continue;
+            if ((c->p[i].k == s_constructor && c->p[i].v.t == OB && c->p[i].v.o->cl == C_FN) || (c->p[i].k == s_prototype && c->cl == C_FN)) continue;
             arr_push(r, vS(c->p[i].k));
         }
     }
+    /* ordem do JavaScript: chaves inteiras em ordem crescente primeiro, depois as outras na ordem de criação */
+    {
+        int ni = 0;
+        for (int i = ini; i < r->na; i++) if (indice(r->a[i].s) >= 0) ni++;
+        if (ni && herda != 1) {
+            val *tmp = novo((unsigned)(r->na - ini) * sizeof(val)); int k = 0;
+            for (int i = ini; i < r->na; i++) if (indice(r->a[i].s) >= 0) tmp[k++] = r->a[i];
+            for (int i = 1; i < k; i++) { val x = tmp[i]; int j = i - 1; while (j >= 0 && indice(tmp[j].s) > indice(x.s)) { tmp[j + 1] = tmp[j]; j--; } tmp[j + 1] = x; }
+            for (int i = ini; i < r->na; i++) if (indice(r->a[i].s) < 0) tmp[k++] = r->a[i];
+            memcpy(r->a + ini, tmp, (size_t)k * sizeof(val));
+        }
+    }
+    if (herda == 2 && (o->cl == C_ARR || o->cl == C_FN)) { if (!achar(o, s_length)) arr_push(r, vS(s_length)); if (o->cl == C_FN && !achar(o, I("name"))) arr_push(r, vT("name")); }
     return vO(r);
 }
 static val n_chaves(val este, val *a, int n)
@@ -105,13 +122,64 @@ static val n_defprop(val este, val *a, int n)
         o = vO(o.o->px_a);
     }
     if ((o.o->trava == 3 && !(achar(o.o, k) && get(d, I("value")).t != U && estrito(achar(o.o, k)->v, get(d, I("value"))))) || (o.o->trava && !achar(o.o, k))) erro("TypeError", "Cannot define property, object is not extensible: ", k->s);
+    prop *ja = achar(o.o, k);
+    if (ja && (ja->at & A_NC)) {   /* não configurável: só pode baixar writable ou repetir o mesmo valor */
+        val nv = get(d, I("value"));
+        int muda = (nv.t != U && !estrito(nv, ja->v) && (ja->at & A_NW)) || to_bool(get(d, I("configurable")))
+                   || get(d, I("get")).t == OB || get(d, I("set")).t == OB;
+        if (muda) erro("TypeError", "Cannot redefine property: ", k->s);
+    }
+    int tem_enum = n_tem(d, "enumerable"), tem_conf = n_tem(d, "configurable"), tem_grav = n_tem(d, "writable");
+    uint8_t at = ja ? ja->at : (A_NW | A_NE | A_NC);   /* propriedade nova: tudo falso por padrão */
+    if (tem_enum) at = to_bool(get(d, I("enumerable"))) ? at & ~A_NE : at | A_NE;
+    if (tem_conf) at = to_bool(get(d, I("configurable"))) ? at & ~A_NC : at | A_NC;
     val g = get(d, I("get")), s = get(d, I("set"));
-    if (g.t == OB || s.t == OB) {
+    if (g.t == OB || s.t == OB || n_tem(d, "get") || n_tem(d, "set")) {
         obj *ac = novo_obj(NULL); val w; w.t = AC; w.n = 0; w.o = ac;
+        if (ja && ja->v.t == AC) { if (!n_tem(d, "get")) g = get(vO(ja->v.o), I("get")); if (!n_tem(d, "set")) s = get(vO(ja->v.o), I("set")); }
         por_prop(ac, I("get"), g); por_prop(ac, I("set"), s);
         por_prop(o.o, k, w);
-    } else por_prop(o.o, k, get(d, I("value")));
+        at &= ~A_NW;
+    } else {
+        if (tem_grav) at = to_bool(get(d, I("writable"))) ? at & ~A_NW : at | A_NW;
+        if (n_tem(d, "value") || !ja) por_prop(o.o, k, get(d, I("value")));
+        else if (ja->v.t == AC) por_prop(o.o, k, vU());
+    }
+    if (o.o->cl == C_ARR && indice(k) >= 0) at = 0;   /* elementos de array não guardam atributos aqui */
+    prop *p = achar(o.o, k); if (p) p->at = at;
     return o;
+}
+/* __gopd(o, k): descritor completo da própria propriedade, ou undefined */
+static val n_gopd(val este, val *a, int n)
+{
+    (void)este;
+    val o = ARG(0);
+    if (o.t == ST) { str *k = chave(ARG(1)); int i = indice(k); if (k == s_length || (i >= 0 && i < o.s->u)) { obj *r = novo_obj(p_obj); por_prop(r, I("value"), get(o, k)); por_prop(r, I("writable"), vB(0)); por_prop(r, I("enumerable"), vB(k != s_length)); por_prop(r, I("configurable"), vB(0)); return vO(r); } return vU(); }
+    if (o.t != OB) return vU();
+    str *k = chave(ARG(1));
+    while (o.o->cl == C_PX) {
+        val f = px_arm(o.o, "getOwnPropertyDescriptor");
+        if (f.t != U) { val ar[2] = { vO(o.o->px_a), vS(k) }; return chamar(f, vO(o.o->px_h), ar, 2); }
+        o = vO(o.o->px_a);
+    }
+    obj *r = novo_obj(p_obj);
+    prop *p = achar(o.o, k);
+    int tr = o.o->trava;
+    if (!p) {
+        val kk = vS(k);
+        if (!to_bool(n_hasown(o, &kk, 1))) return vU();
+        int i = indice(k);
+        por_prop(r, I("value"), get(o, k));
+        por_prop(r, I("writable"), vB(tr < 3 && !(o.o->cl == C_TA && i < 0)));
+        por_prop(r, I("enumerable"), vB(!(k == s_length)));
+        por_prop(r, I("configurable"), vB(tr < 2 && k != s_length && o.o->cl != C_TA));
+        return vO(r);
+    }
+    if (p->v.t == AC) { por_prop(r, I("get"), get(vO(p->v.o), I("get"))); por_prop(r, I("set"), get(vO(p->v.o), I("set"))); }
+    else { por_prop(r, I("value"), p->v); por_prop(r, I("writable"), vB(!(p->at & A_NW) && tr < 3)); }
+    por_prop(r, I("enumerable"), vB(!(p->at & A_NE)));
+    por_prop(r, I("configurable"), vB(!(p->at & A_NC) && tr < 2));
+    return vO(r);
 }
 /* __desc(o, k): descritor de um acessor próprio ({get, set}); null se não for acessor */
 static val n_desc(val este, val *a, int n)
@@ -139,6 +207,7 @@ static val n_hasown(val este, val *a, int n)
         este = vO(este.o->px_a);
     }
     if (este.o->cl == C_ARR) { int i = indice(k); if (i >= 0) return vB(i < este.o->na); if (k == s_length) return vB(1); }
+    if (este.o->cl == C_FN && (k == s_length || k == I("name"))) return vB(1);
     return vB(achar(este.o, k) != NULL);
 }
 static val n_objstr(val este, val *a, int n)
@@ -150,7 +219,65 @@ static val n_objstr(val este, val *a, int n)
     if (este.t == NU) return vS(I("[object Number]"));
     if (este.t == U) return vS(I("[object Undefined]"));
     if (este.t == NUL) return vS(I("[object Null]"));
+    if (este.t == OB || este.t == SY || este.t == BI || este.t == BO) {
+        val tg = get(este, I("@@toStringTag"));
+        if (tg.t == ST) { char b[200]; formatar_texto(b, sizeof b, "[object %s]", tg.s->s); return vT(b); }
+    }
+    if (este.t == BO) return vS(I("[object Boolean]"));
+    if (este.t == OB && este.o->cl == C_PX && px_chamavel(este.o)) return vS(I("[object Function]"));
     return vS(I("[object Object]"));
+}
+/* ---- Symbol: chave única "@@desc\x01n"; Symbol.for: "@@\x02chave"; bem conhecidos: "@@iterator" ---- */
+static int n_simbolos;
+static val n_symbol(val este, val *a, int n)
+{
+    (void)este;
+    str *d = n && a[0].t != U ? to_str(a[0]) : NULL;
+    char num[16]; formatar_texto(num, sizeof num, "%d", ++n_simbolos);
+    int k = 0, t = 2 + (d ? d->n : 0) + 1 + (int)tam_texto(num) + (d ? 0 : 1);
+    char *b = novo((unsigned)t + 1);
+    b[k++] = '@'; b[k++] = '@';
+    if (d) { memcpy(b + k, d->s, (size_t)d->n); k += d->n; } else b[k++] = '\x03';   /* \x03: sem descrição */
+    b[k++] = '\x01'; for (const char *c = num; *c; c++) b[k++] = *c;
+    return vY(intern(novo_str(b, k)));
+}
+static str *sym_de(val v) { if (v.t == SY) return v.s; if (v.t == OB) { val p = get(v, I("__primitivo")); if (p.t == SY) return p.s; } erro("TypeError", "not a Symbol", NULL); }
+/* descrição: undefined se Symbol() sem argumento */
+static val sym_desc(str *k)
+{
+    const char *s = k->s + 2; int n = k->n - 2;
+    if (n > 0 && s[0] == '\x02') return vS(novo_str(s + 1, n - 1));
+    const char *f = NULL; for (int i = 0; i < n; i++) if (s[i] == '\x01') { f = s + i; break; }
+    if (!f) { char b[120]; formatar_texto(b, sizeof b, "Symbol.%s", s); return vT(b); }   /* bem conhecido */
+    if (s[0] == '\x03') return vU();
+    return vS(novo_str(s, (int)(f - s)));
+}
+static val n_sym_texto(val este, val *a, int n)
+{
+    (void)a; (void)n; val d = sym_desc(sym_de(este));
+    str *t = d.t == U ? I("") : d.s;
+    str *r = novo_str(NULL, t->n + 8); memcpy(r->s, "Symbol(", 7); memcpy(r->s + 7, t->s, (size_t)t->n); r->s[t->n + 7] = ')'; r->s[t->n + 8] = 0; medir_str(r);
+    return vS(r);
+}
+static val n_sym_desc(val este, val *a, int n) { (void)a; (void)n; return sym_desc(sym_de(este)); }
+static val n_sym_valor(val este, val *a, int n) { (void)a; (void)n; return vY(sym_de(este)); }
+static val n_sym_for(val este, val *a, int n)
+{
+    (void)este; str *k = to_str(ARG(0));
+    str *r = novo_str(NULL, k->n + 3); r->s[0] = '@'; r->s[1] = '@'; r->s[2] = '\x02'; memcpy(r->s + 3, k->s, (size_t)k->n); r->s[k->n + 3] = 0; medir_str(r);
+    return vY(intern(r));
+}
+static val n_sym_keyfor(val este, val *a, int n)
+{
+    (void)este; if (ARG(0).t != SY) erro("TypeError", "is not a symbol", NULL);
+    str *k = a[0].s; return k->n > 2 && k->s[2] == '\x02' ? vS(novo_str(k->s + 3, k->n - 3)) : vU();
+}
+/* Object.getOwnPropertySymbols */
+static val n_simbolos_de(val este, val *a, int n)
+{
+    (void)este; obj *r = novo_arr(0);
+    if (ARG(0).t == OB) for (int i = 0; i < a[0].o->np; i++) { str *k = a[0].o->p[i].k; if (k && k->n > 2 && k->s[0] == '@' && k->s[1] == '@' && k->s[2] != '#') arr_push(r, vY(k)); }
+    return vO(r);
 }
 static val n_mesmo(val este, val *a, int n) { (void)a; (void)n; return este; }
 static val n_object(val este, val *a, int n) { (void)este; val v = ARG(0); return v.t == OB ? v : vO(novo_obj(p_obj)); }
@@ -197,7 +324,7 @@ static val n_array(val este, val *a, int n)
     else for (int i = 0; i < n; i++) arr_push(r, a[i]);
     return vO(r);
 }
-static val n_chaves_proprias(val este, val *a, int n) { (void)este; return ARG(0).t == OB ? chaves_de(a[0].o, ARG(0).o->cl == C_PX ? 2 : 0) : vO(novo_arr(0)); }
+static val n_chaves_proprias(val este, val *a, int n) { (void)este; return ARG(0).t == OB ? chaves_de(a[0].o, 2) : vO(novo_arr(0)); }
 /* __travar(o, nível): 1 preventExtensions, 2 seal, 3 freeze; nível 0 lê */
 static val n_travar(val este, val *a, int n)
 {
@@ -896,7 +1023,24 @@ static val n_utf8_dec(val este, val *a, int n)
     return vS(de_utf8(p, len));
 }
 static val n_log(val este, val *a, int n) { (void)este; registrar_linhas("js: ", to_str(ARG(0))->s); return vU(); }
-static val n_eval(val este, val *a, int n) { (void)este; str *s = to_str(ARG(0)); return avaliar(s->s, s->n); }
+/* new Function(a, b, corpo): "(function anonymous(a,b\n) {\ncorpo\n})" avaliado no escopo global */
+static val n_function(val este, val *a, int n)
+{
+    (void)este;
+    int tot = 64;
+    str **p = novo((unsigned)(n > 0 ? n : 1) * sizeof(str *));
+    for (int i = 0; i < n; i++) { p[i] = to_str(a[i]); tot += p[i]->n + 1; }
+    char *b = novo((unsigned)tot); int k = 0;
+    const char *ini = "(function anonymous(";
+    for (const char *c = ini; *c; c++) b[k++] = *c;
+    for (int i = 0; i < n - 1; i++) { if (i) b[k++] = ','; memcpy(b + k, p[i]->s, (size_t)p[i]->n); k += p[i]->n; }
+    const char *meio = "\n) {\n"; for (const char *c = meio; *c; c++) b[k++] = *c;
+    if (n > 0) { memcpy(b + k, p[n - 1]->s, (size_t)p[n - 1]->n); k += p[n - 1]->n; }
+    const char *fim = "\n})"; for (const char *c = fim; *c; c++) b[k++] = *c;
+    b[k] = 0;
+    return avaliar(b, k);
+}
+static val n_eval(val este, val *a, int n) { (void)este; if (ARG(0).t != ST) return ARG(0); str *s = a[0].s; return avaliar(s->s, s->n); }
 /* Date.now: relógio do sistema (RTC, tomado como UTC) + milissegundos do contador */
 static double agora_base; static unsigned agora_ms0;
 static val n_now(val este, val *a, int n)
@@ -2225,9 +2369,9 @@ static void iniciar(const js_hooks_t *h, const char *url)
     if (global_reusar) {   /* navegação num iframe: a mesma window, vazia */
         global = global_reusar; global->proto = p_obj; global->p = NULL; global->np = global->cp = 0; global->idx = NULL; global->cidx = 0; global->na = 0;
     } else global = novo_obj(p_obj);
-    p_big = novo_obj(p_obj);
+    p_big = novo_obj(p_obj); p_sym = novo_obj(p_obj);
     q_global.este = vO(global); q_global.func = NULL; q_global.novo = vU(); qa = &q_global;
-    static const struct { const char *n; nat f; obj **p; } ctor[] = { { "Object", n_object, &p_obj }, { "Function", n_mesmo, &p_fn }, { "Array", n_array, &p_arr }, { "String", n_string, &p_str }, { "Number", n_number, &p_num }, { "Boolean", n_boolean, &p_bool }, { "Node", n_mesmo, &p_el } };
+    static const struct { const char *n; nat f; obj **p; } ctor[] = { { "Object", n_object, &p_obj }, { "Function", n_function, &p_fn }, { "Array", n_array, &p_arr }, { "String", n_string, &p_str }, { "Number", n_number, &p_num }, { "Boolean", n_boolean, &p_bool }, { "Node", n_mesmo, &p_el } };
     for (unsigned i = 0; i < sizeof ctor / sizeof *ctor; i++) {
         val c = novo_nat(ctor[i].f, ctor[i].n);
         por_prop(c.o, s_prototype, vO(*ctor[i].p));
@@ -2235,7 +2379,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
         por_prop(global, I(ctor[i].n), c);
     }
     obj *O = get(vO(global), I("Object")).o, *A = get(vO(global), I("Array")).o, *S = get(vO(global), I("String")).o;
-    reg(O, "keys", n_keys); reg(O, "getOwnPropertyNames", n_keys); reg(O, "getPrototypeOf", n_getproto); reg(O, "setPrototypeOf", n_setproto); reg(O, "create", n_create); reg(O, "defineProperty", n_defprop); reg(global, "__desc", n_desc);
+    reg(O, "keys", n_keys); reg(O, "getOwnPropertyNames", n_chaves_proprias); reg(global, "__gopd", n_gopd); reg(O, "getPrototypeOf", n_getproto); reg(O, "setPrototypeOf", n_setproto); reg(O, "create", n_create); reg(O, "defineProperty", n_defprop); reg(global, "__desc", n_desc);
     reg(p_obj, "hasOwnProperty", n_hasown); reg(p_obj, "toString", n_objstr); reg(p_obj, "valueOf", n_mesmo);
     reg(p_fn, "call", n_call); reg(p_fn, "apply", n_apply); reg(p_fn, "bind", n_bind); reg(p_fn, "toString", n_fnstr);
     reg(A, "isArray", n_isarr);
@@ -2252,6 +2396,16 @@ static void iniciar(const js_hooks_t *h, const char *url)
         por_prop(c.o, s_prototype, vO(p_big)); por_prop(p_big, s_constructor, c); por_prop(global, I("BigInt"), c);
         reg(c.o, "asIntN", n_big_asint); reg(c.o, "asUintN", n_big_asuint);
         reg(p_big, "toString", n_big_texto); reg(p_big, "toLocaleString", n_big_texto); reg(p_big, "valueOf", n_big_valor);
+    }
+    {   /* Symbol */
+        val c = novo_nat(n_symbol, "Symbol");
+        por_prop(c.o, s_prototype, vO(p_sym)); por_prop(p_sym, s_constructor, c); por_prop(global, I("Symbol"), c);
+        reg(c.o, "for", n_sym_for); reg(c.o, "keyFor", n_sym_keyfor);
+        static const char *const bem[] = { "iterator", "asyncIterator", "hasInstance", "toPrimitive", "toStringTag", "species", "isConcatSpreadable", "match", "matchAll", "replace", "search", "split", "unscopables" };
+        for (unsigned i = 0; i < sizeof bem / sizeof *bem; i++) { char b[40]; formatar_texto(b, sizeof b, "@@%s", bem[i]); por_prop(c.o, I(bem[i]), vY(I(b))); }
+        reg(p_sym, "toString", n_sym_texto); reg(p_sym, "valueOf", n_sym_valor); reg(global, "__sym_desc", n_sym_desc);
+        por_prop(p_sym, I("@@toStringTag"), vT("Symbol"));
+        reg(global, "__simbolos", n_simbolos_de);
     }
     reg(p_el, "querySelectorAll", n_qsa); reg(p_el, "querySelector", n_qs); reg(p_el, "matches", n_matches); reg(p_el, "getElementById", n_byid);
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);

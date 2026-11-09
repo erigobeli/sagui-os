@@ -21,10 +21,11 @@ typedef unsigned long long u64;
  * ascii = 1 quando byte e unidade coincidem. cu/cb: cache do último índice. */
 typedef struct str { int n; unsigned h; struct str *in; short kw, dom; int u, cu, cb; uint8_t ascii; char s[]; } str;
 typedef struct obj obj;
-enum { U, NUL, BO, NU, ST, OB, AC, BI };   /* BI: BigInt (js_big.h) */
+enum { U, NUL, BO, NU, ST, OB, AC, BI, SY };   /* BI: BigInt (js_big.h); SY: Symbol (s = chave única "@@...") */
 typedef struct bint bint;
 typedef struct { int t; union { double n; str *s; obj *o; int b; bint *g; }; } val;
-typedef struct { str *k; val v; } prop;
+typedef struct { str *k; val v; uint8_t at; } prop;   /* at: atributos negados (0 = gravável, enumerável, configurável) */
+enum { A_NW = 1, A_NE = 2, A_NC = 4 };
 typedef struct no no;
 typedef struct env env;
 typedef val (*nat)(val este, val *a, int n);
@@ -44,12 +45,12 @@ struct obj {
     uint8_t trava;                      /* 1 não extensível, 2 selado, 3 congelado */
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
-struct env { env *pai; int n, c; str **k; val *v; };
-typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador; const char *src; int nsrc; } fdef;   /* src: texto (Function.prototype.toString) */
+struct env { env *pai; int n, c; str **k; val *v; uint8_t *cst; };   /* cst: 1 = const (NULL = nenhuma) */
+typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador, estrito; const char *src; int nsrc; } fdef;   /* src: texto (Function.prototype.toString) */
 struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; double n; fdef *f; const char *fonte; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
-       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD, K_BIG,
+       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD, K_BIG, K_TPLSTR,
        S_VAR, S_DECL, S_EXP, S_BLOCK, S_IF, S_FOR, S_FORIN, S_WHILE, S_DO, S_RET, S_BRK, S_CONT, S_THROW, S_TRY, S_SWITCH, S_CASE, S_LABEL, S_FUNC, S_CLASS, S_VAZIO };
 enum { KW_NADA, KW_VAR, KW_LET, KW_CONST, KW_FUNCTION, KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_DO, KW_BREAK, KW_CONTINUE, KW_NEW, KW_DELETE, KW_TYPEOF,
        KW_VOID, KW_THIS, KW_NULL, KW_TRUE, KW_FALSE, KW_IN, KW_INSTANCEOF, KW_THROW, KW_TRY, KW_CATCH, KW_FINALLY, KW_SWITCH, KW_CASE, KW_DEFAULT, KW_CLASS, KW_EXTENDS,
@@ -347,10 +348,11 @@ static val vB(int b) { val v; v.t = BO; v.n = 0; v.b = !!b; return v; }
 static val vN(double n) { val v; v.t = NU; v.n = n; return v; }
 static val vI(int n) { return vN((double)n); }
 static val vS(str *s) { val v; v.t = ST; v.n = 0; v.s = s; return v; }
+static val vY(str *s) { val v; v.t = SY; v.n = 0; v.s = s; return v; }
 static val vT(const char *s) { return vS(novo_str(s, (int)tam_texto(s))); }
 static val vO(obj *o) { val v; v.t = OB; v.n = 0; v.o = o; return v; }
 
-static obj *global, *p_obj, *p_fn, *p_arr, *p_str, *p_num, *p_bool, *p_el, *p_big;
+static obj *global, *p_obj, *p_fn, *p_arr, *p_str, *p_num, *p_bool, *p_el, *p_big, *p_sym;
 static int reino_atual;   /* 0 = a página; 1.. = iframes (js_quadros.h) */
 static quadro q_global, *qa;
 typedef struct salto { void *b[5]; struct salto *ant; } salto;
@@ -442,7 +444,7 @@ static void por_prop(obj *o, str *k, val v)
         o->p = n; o->cp = c;
         if (c >= 16) reindexar(o);
     }
-    o->p[o->np].k = k; o->p[o->np].v = v; o->np++;
+    o->p[o->np].k = k; o->p[o->np].v = v; o->p[o->np].at = 0; o->np++;
     if (o->idx) { int m = o->cidx - 1, j = (int)(k->h & (unsigned)m); while (o->idx[j]) j = (j + 1) & m; o->idx[j] = o->np; }
 }
 static val novo_nat(nat f, const char *nome)
@@ -455,6 +457,7 @@ static val novo_nat(nat f, const char *nome)
 static void reg(obj *o, const char *n, nat f) { por_prop(o, I(n), novo_nat(f, n)); }
 
 static val prim(val v);
+static val prim_h(val v, int texto);
 static str *bi_texto(const bint *a, int base);
 static int bi_nao_zero(const bint *a);
 static int bi_cmp_v(val a, val b);   /* js_big.h: -1/0/1, 2 = incomparável */
@@ -473,7 +476,8 @@ static str *to_str(val v)
     case NU: return num_str(v.n);
     case ST: return v.s;
     case BI: return bi_texto(v.g, 10);
-    default: return to_str(prim(v));
+    case SY: erro("TypeError", "Cannot convert a Symbol value to a string", NULL);
+    default: return to_str(prim_h(v, 1));
     }
 }
 /* ToNumber de um texto: espaços do JS em volta, 0x/0o/0b, Infinity, decimal */
@@ -505,6 +509,7 @@ static double to_num(val v)
     case NU: return v.n;
     case ST: return str_num(v.s);
     case BI: erro("TypeError", "Cannot convert a BigInt value to a number", NULL);
+    case SY: erro("TypeError", "Cannot convert a Symbol value to a number", NULL);
     default: return to_num(prim(v));
     }
 }
@@ -520,16 +525,26 @@ static int to_bool(val v)
     }
 }
 static int to_i(val v) { return para_i32(to_num(v)); }
-static val prim(val v)
+/* ToPrimitive: Symbol.toPrimitive com a dica; senão valueOf/toString (toString primeiro na dica "string") */
+static val prim_h(val v, int texto)
 {
     if (v.t != OB) return v;
+    val tp = get(v, I("@@toPrimitive"));
+    if (tp.t != U && tp.t != NUL) {
+        val h = vT(texto == 1 ? "string" : texto == 2 ? "number" : "default");
+        val r = chamar(tp, v, &h, 1);
+        if (r.t == OB) erro("TypeError", "Cannot convert object to primitive value", NULL);
+        return r;
+    }
     static const char *const ms[2] = { "valueOf", "toString" };
-    for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+        int i = texto == 1 ? 1 - j : j;
         val f = get(v, I(ms[i]));
         if (f.t == OB && f.o->cl == C_FN) { val r = chamar(f, v, NULL, 0); if (r.t != OB) return r; }
     }
-    return vS(I("[object Object]"));
+    erro("TypeError", "Cannot convert object to primitive value", NULL);
 }
+static val prim(val v) { return prim_h(v, 0); }
 static val concat(str *a, str *b)
 {
     str *r = novo_str(NULL, a->n + b->n);
@@ -561,6 +576,7 @@ static int estrito(val a, val b)
     case NU: return a.n == b.n;
     case ST: return str_igual(a.s, b.s);
     case BI: return bi_cmp_v(a, b) == 0;
+    case SY: return a.s == b.s;
     default: return a.o == b.o;
     }
 }
@@ -571,6 +587,7 @@ static int solto(val a, val b)
     if (a.t == U || a.t == NUL || b.t == U || b.t == NUL) return 0;
     if (a.t == OB) return solto(prim(a), b);
     if (b.t == OB) return solto(a, prim(b));
+    if (a.t == SY || b.t == SY) return 0;
     if (a.t == BI || b.t == BI) return bi_cmp_v(a, b) == 0;
     double x = to_num(a), y = to_num(b);
     return x == y;
@@ -584,9 +601,10 @@ static int indice(str *k)
 }
 
 /* ------------------------------------------------------------ propriedades */
+static int modo_estrito(void);
 static int el_get(obj *o, str *k, val *r);
 static int el_set(obj *o, str *k, val v);
-static str *s_length, *s_prototype, *s_constructor, *s_arguments;
+static str *s_length, *s_prototype, *s_constructor, *s_arguments, *s_name;
 
 /* typed arrays: 0 Int8, 1 Uint8, 2 Uint8Clamped, 3 Int16, 4 Uint16, 5 Int32, 6 Uint32, 7 Float32, 8 Float64,
    9 BigInt64, 10 BigUint64 */
@@ -673,6 +691,7 @@ static val get(val b, str *k)
     case NU: return get_o(p_num, k, b);
     case BO: return get_o(p_bool, k, b);
     case BI: return get_o(p_big ? p_big : p_obj, k, b);
+    case SY: return get_o(p_sym ? p_sym : p_obj, k, b);
     default: break;
     }
     obj *o = b.o;
@@ -700,6 +719,14 @@ static val get(val b, str *k)
     } else if (o->cl == C_EL) {
         val r;
         if (!achar(o, k) && el_get(o, k, &r)) return r;
+    } else if (o->cl == C_FN && (k == s_length || k == (s_name ? s_name : (s_name = I("name")))) && !achar(o, k)) {
+        if (k == s_length) {
+            if (o->ligado) { val l = get(vO(o->ligado), s_length); int n = (l.t == NU ? (int)l.n : 0) - o->nlig; return vI(n > 0 ? n : 0); }
+            int n = 0; if (o->fn && o->fn->f) for (no *p = o->fn->f->params; p; p = p->prox) { if (p->a && (p->a->k == K_ASG || p->a->k == K_SPREAD)) break; n++; }
+            return vI(n);
+        }
+        if (o->ligado) { val t = get(vO(o->ligado), k); str *nt = t.t == ST ? t.s : I(""); str *r = novo_str(NULL, nt->n + 6); memcpy(r->s, "bound ", 6); memcpy(r->s + 6, nt->s, (size_t)nt->n); r->s[r->n] = 0; medir_str(r); return vS(r); }
+        return vS(o->fn && o->fn->f && o->fn->f->nome ? o->fn->f->nome : I(""));
     } else if (o->cl == C_FN && k == s_prototype && !achar(o, k) && o->fn) {
         obj *p = novo_obj(p_obj);
         por_prop(p, s_constructor, b);
@@ -720,7 +747,7 @@ static void put(val b, str *k, val v)
         chamar(f, vO(o->px_h), ar, 4);
         return;
     }
-    if (o->trava == 3 && o->cl != C_TA) return;   /* congelado: escrita ignorada (sem modo estrito) */
+    if (o->trava == 3 && o->cl != C_TA) { if (modo_estrito()) erro("TypeError", "Cannot assign to read only property of frozen object: ", k->s); return; }
     if (o->cl == C_TA) {
         int i = indice(k);
         if (i >= 0) { if (i < o->vlen) ta_gravar(o, i, v); return; }
@@ -738,14 +765,15 @@ static void put(val b, str *k, val v)
     for (obj *c = o; c; c = c->proto) {
         prop *p = achar(c, k);
         if (p) {
-            if (p->v.t == AC) { prop *x = achar(p->v.o, I("set")); if (x && x->v.t == OB) chamar(x->v, b, &v, 1); return; }
+            if (p->v.t == AC) { prop *x = achar(p->v.o, I("set")); if (x && x->v.t == OB) chamar(x->v, b, &v, 1); else if (modo_estrito()) erro("TypeError", "Cannot set property which has only a getter: ", k->s); return; }
+            if (p->at & A_NW) { if (modo_estrito()) erro("TypeError", "Cannot assign to read only property: ", k->s); return; }
             break;
         }
     }
-    if (o->trava && !achar(o, k)) return;   /* não extensível: propriedade nova não entra */
+    if (o->trava && !achar(o, k)) { if (modo_estrito()) erro("TypeError", "Cannot add property, object is not extensible: ", k->s); return; }
     por_prop(o, k, v);
 }
-static str *chave(val k) { return intern(to_str(k)); }
+static str *chave(val k) { if (k.t == SY) return k.s; if (k.t == OB) { k = prim_h(k, 1); if (k.t == SY) return k.s; } return intern(to_str(k)); }
 static val get_i(val b, val k)
 {
     int i;
@@ -766,6 +794,8 @@ static void put_i(val b, val k, val v)
     put(b, chave(k), v);
 }
 
+#pragma GCC push_options
+#pragma GCC optimize("Os")   /* léxico e parser: tamanho (rodam uma vez por script) */
 /* ------------------------------------------------------------ léxico */
 enum { T_FIM = 0, T_NUM = 256, T_STR, T_TPL, T_ID, T_RE, T_BIG, T_OP = 300 };
 static const char *const ops[] = { ">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "?\?=", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "**" };
@@ -902,7 +932,18 @@ static void exige(int t) { if (L.tk != t) sintaxe("sintaxe"); prox(); }
 static int aceita_kw(int k) { if (kw(k)) { prox(); return 1; } return 0; }
 
 /* ------------------------------------------------------------ sintaxe */
-static fdef *cf; static int nfuncs, vem_async, vem_gerador;
+static fdef *cf; static int nfuncs, vem_async, vem_gerador, em_classe;
+/* #privado: chave escondida "@@#nome\x01<classe>" (não aparece em keys; só o código da classe a escreve) */
+static int classe_atual, n_classes;
+static str *priv_chave(str *nome)
+{
+    char b[300]; int k = 0; b[k++] = '@'; b[k++] = '@'; b[k++] = '#';
+    for (int i = 0; i < nome->n && k < 270; i++) b[k++] = nome->s[i];
+    b[k++] = '\x01'; k += formatar_texto(b + k, sizeof b - (size_t)k, "%d", classe_atual);
+    return intern(novo_str(b, k));
+}
+/* diretiva "use strict" no começo de um corpo (o token atual é a string) */
+static int diretiva_estrita(void) { return L.tk == T_STR && L.s && L.s->n == 10 && !memcmp(L.s->s, "use strict", 10); }
 static no *N(int k) { no *x = novo(sizeof(no)); x->k = (short)k; x->fonte = L.src && L.ini >= 0 && L.ini < L.tam ? L.src + L.ini : NULL; return x; }
 static no *N2(int k, no *a, no *b) { no *x = N(k); x->a = a; x->b = b; return x; }
 static no *expr(void), *atrib(int sem_in), *stmt(void), *funcao(str *nome, int metodo, int seta);
@@ -932,12 +973,13 @@ static no *modelo(void)
     const char *s = L.src; int n = L.tam, p = L.p;
     no *t = N(K_TPL); lista l = { 0, 0 };
     for (;;) {
-        int k = 0;
+        int k = 0, p0 = p;
         while (p < n && s[p] != '`' && !(s[p] == '$' && p + 1 < n && s[p + 1] == '{')) {
             if (s[p] == '\\' && p + 1 < n) p = escape(s, p + 1, n, &k);
             else tb_por(&k, s[p++]);
         }
         no *x = N(K_STR); x->s = novo_str(tb, k); lpor(&l, x);
+        x->b = N(K_STR); x->b->s = novo_str(s + p0, p - p0);   /* texto cru (String.raw / tag) */
         if (p >= n || s[p] == '`') { p++; break; }
         L.p = p + 2; L.tk = ';';
         prox();
@@ -1035,6 +1077,7 @@ static no *primario(void)
     case T_NUM: x = N(K_NUM); x->n = L.num; prox(); return x;
     case T_BIG: x = N(K_BIG); x->s = L.s; prox(); return x;
     case T_STR: x = N(K_STR); x->s = L.s; prox(); return x;
+    case '#': prox(); if (L.tk != T_ID) sintaxe("nome privado"); x = N(K_STR); x->s = priv_chave(L.s); prox(); return x;   /* #x in obj */
     case T_TPL: return modelo();
     case T_RE: x = N(K_RE); x->s = L.s; x->a = N(K_STR); x->a->s = L.re_f; prox(); return x;
     case '(':
@@ -1106,11 +1149,18 @@ static no *sufixos(no *x, int sem_call)
             prox();
             if (opt && L.tk == '(') { prox(); no *c = N2(K_CALL, x, argumentos()); c->op = 1; x = c; continue; }
             if (opt && L.tk == '[') { prox(); no *m = N2(K_IDX, x, expr()); m->op = 1; exige(']'); x = m; continue; }
+            int priv = 0;
+            if (L.tk == '#') { prox(); priv = 1; }
             if (L.tk != T_ID) sintaxe("nome depois do ponto");
-            no *m = N2(K_MEM, x, NULL); m->s = L.s; m->op = (short)opt; prox(); x = m;
+            no *m = N2(K_MEM, x, NULL); m->s = priv ? priv_chave(L.s) : L.s; m->op = (short)opt; prox(); x = m;
         } else if (L.tk == '[') { prox(); x = N2(K_IDX, x, expr()); exige(']'); }
         else if (L.tk == '(' && !sem_call) { prox(); x = N2(K_CALL, x, argumentos()); }
-        else if (L.tk == T_TPL) { no *t = modelo(); no *h = N(K_SEQ); h->a = t; x = N2(K_CALL, x, h); }
+        else if (L.tk == T_TPL) {   /* tag`...`: tag(strings, ...valores) */
+            no *t = modelo(); lista a = { 0, 0 };
+            no *h = N(K_SEQ); h->a = N(K_TPLSTR); h->a->a = t; lpor(&a, h);
+            for (no *c = t->a; c; c = c->prox) if (c->k != K_STR) { no *v = N(K_SEQ); v->a = c->a; lpor(&a, v); }
+            x = N2(K_CALL, x, a.pri);
+        }
         else return x;
     }
 }
@@ -1263,6 +1313,7 @@ static no *funcao(str *nome, int metodo, int seta)
     (void)metodo;
     no *f = N(K_FUNC); fdef *d = novo(sizeof(fdef)), *ant = cf;
     f->f = d; d->nome = nome; d->seta = !!seta; d->assinc = vem_async; vem_async = 0; d->gerador = vem_gerador; vem_gerador = 0;
+    d->estrito = (ant && ant->estrito) || em_classe;
     nfuncs++;
     cf = d;
     if (seta != 3) {
@@ -1282,13 +1333,24 @@ static no *funcao(str *nome, int metodo, int seta)
     }
     if (seta == 1 || seta == 2) exige(OP(O_SETA));
     if (seta && L.tk != '{') { d->expr = 1; d->corpo = atrib(0); }
-    else { exige('{'); d->corpo = bloco_corpo(); }
+    else { exige('{'); if (diretiva_estrita()) d->estrito = 1; d->corpo = bloco_corpo(); }
     if (f->fonte && L.src && L.fa > f->fonte - L.src && L.fa <= L.tam) { d->src = inicio_funcao(f->fonte, seta, metodo); d->nsrc = (int)(L.src + L.fa - d->src); }
     cf = ant;
     if (ant && d->seta && d->usa_args) ant->usa_args = 1;
     return f;
 }
-static no *classe(void)
+static no *classe_(void);
+static no *classe__(void);
+static no *classe(void) { em_classe++; no *c = classe_(); em_classe--; return c; }   /* corpo de classe é sempre estrito */
+static no *funcao(str *nome, int metodo, int seta);
+static no *classe_(void)
+{
+    int cl_ant = classe_atual; classe_atual = ++n_classes;
+    no *r = classe__();
+    classe_atual = cl_ant;
+    return r;
+}
+static no *classe__(void)
 {
     prox();
     no *c = N(K_CLASS); lista l = { 0, 0 };
@@ -1306,9 +1368,19 @@ static no *classe(void)
             if (L.tk == '(' || L.tk == '=' || L.tk == ';' || L.tk == '}') { L = sv; break; }
             if (w == KW_STATIC) est = 1; else mod = w;
         }
-        if (L.tk == '#') { prox(); }
+        if (est && L.tk == '{') {   /* static { ... }: roda uma vez com this = a classe */
+            no *f = N(K_FUNC); fdef *d = novo(sizeof(fdef)), *ant = cf;
+            f->f = d; d->estrito = 1; nfuncs++; cf = d;
+            prox(); d->corpo = bloco_corpo();
+            cf = ant;
+            m->op = 5; m->n = 1; m->b = f; m->s = I("");
+            lpor(&l, m); continue;
+        }
+        int priv = 0;
+        if (L.tk == '#') { prox(); priv = 1; }
         if (aceita('*')) vem_gerador = 1;
         chave_prop(m);
+        if (priv) m->s = priv_chave(m->s);
         m->op = mod == KW_GET ? 1 : mod == KW_SET ? 2 : 0;
         m->n = est;
         if (L.tk == '(') { vem_async = mod == KW_ASYNC; m->b = funcao(m->s, 1, 0); }
@@ -1446,11 +1518,13 @@ static no *stmt(void)
 static no *programa(const char *s, int n, fdef *d)
 {
     fonte_lida(s, n);
+    em_classe = 0;   /* erro de sintaxe dentro de uma classe sai por longjmp sem descer o contador */
     lex_t sv = L; fdef *ant = cf;
     memset(&L, 0, sizeof L);
     L.src = s; L.tam = n; L.tk = ';';
     cf = d;
     prox();
+    if (diretiva_estrita()) d->estrito = 1;
     no *b = N(S_BLOCK); lista l = { 0, 0 };
     while (L.tk != T_FIM) lpor(&l, stmt());
     b->a = l.pri;
@@ -1458,6 +1532,7 @@ static no *programa(const char *s, int n, fdef *d)
     return b;
 }
 
+#pragma GCC pop_options
 /* ------------------------------------------------------------ execução */
 enum { C_N, C_BRK, C_CONT, C_RET };
 static val rv; static str *rot;
@@ -1479,9 +1554,20 @@ static void decl(env *e, str *k, val v)
         int c = e->c ? e->c * 2 : 4;
         str **nk = novo((unsigned)c * sizeof(str *)); val *nv = novo((unsigned)c * sizeof(val));
         if (e->n) { memcpy(nk, e->k, (size_t)e->n * sizeof(str *)); memcpy(nv, e->v, (size_t)e->n * sizeof(val)); }
+        if (e->cst) { uint8_t *nc = novo((unsigned)c); memcpy(nc, e->cst, (size_t)e->n); e->cst = nc; }
         e->k = nk; e->v = nv; e->c = c;
     }
+    if (e->cst) e->cst[e->n] = 0;
     e->k[e->n] = k; e->v[e->n++] = v;
+}
+static void decl_const(env *e, str *k, val v)
+{
+    decl(e, k, v);
+    if (!e) return;
+    for (int i = 0; i < e->n; i++) if (e->k[i] == k) {
+        if (!e->cst) { e->cst = novo((unsigned)e->c); memset(e->cst, 0, (size_t)e->c); }
+        e->cst[i] = 1; return;
+    }
 }
 static val *var_ref(env *e, str *k)
 {
@@ -1496,10 +1582,20 @@ static val var_get(env *e, str *k)
     if (k->s[0] == 'u' && k == I("undefined")) return vU();
     erro("ReferenceError", k->s, " is not defined");
 }
+static int prog_estrito;   /* o script global que está rodando tem "use strict" */
+static int modo_estrito(void)
+{
+    if (qa && qa != &q_global && qa->func && qa->func->fn && qa->func->fn->f) return qa->func->fn->f->estrito;
+    return prog_estrito;
+}
 static void var_set(env *e, str *k, val v)
 {
-    val *r = var_ref(e, k);
-    if (r) *r = v; else put(vO(global), k, v);
+    for (env *f = e; f; f = f->pai) for (int i = 0; i < f->n; i++) if (f->k[i] == k) {
+        if (f->cst && f->cst[i]) erro("TypeError", "Assignment to constant variable.", NULL);
+        f->v[i] = v; return;
+    }
+    if (modo_estrito()) { int tem = 0; for (obj *c = global; c; c = c->proto) if (achar(c, k)) { tem = 1; break; } if (!tem) erro("ReferenceError", k->s, " is not defined"); }
+    put(vO(global), k, v);
 }
 static val nova_funcao(no *x, env *e)
 {
@@ -1513,7 +1609,7 @@ static val nova_funcao(no *x, env *e)
 }
 static void hoist(no *l, env *e) { for (; l; l = l->prox) if (l->k == S_FUNC) decl(e, l->s, nova_funcao(l->a, e)); }
 static void ligar(no *p, val v, env *e, int d);
-static void ligar_id(no *p, val v, env *e, int d) { if (d) decl(e, p->s, v); else var_set(e, p->s, v); }
+static void ligar_id(no *p, val v, env *e, int d) { if (d == 2) decl_const(e, p->s, v); else if (d) decl(e, p->s, v); else var_set(e, p->s, v); }
 static void atribuir(no *t, val v, env *e, int d)
 {
     switch (t->k) {
@@ -1524,6 +1620,7 @@ static void atribuir(no *t, val v, env *e, int d)
     }
 }
 static val para_vetor(val v);
+static val get_chaves_proprias(val v) { val f = get(vO(global), I("Object")); f = get(f, I("keys")); return chamar(f, vU(), &v, 1); }
 static void ligar(no *p, val v, env *e, int d)
 {
     if (p->k == K_ASG) { if (v.t == U) v = ev(p->b, e); atribuir(p->a, v, e, d); return; }
@@ -1537,9 +1634,24 @@ static void ligar(no *p, val v, env *e, int d)
         return;
     }
     if (p->k == K_OBJ) {
+        if (v.t == U || v.t == NUL) erro("TypeError", "Cannot destructure 'undefined' or 'null'", NULL);
+        str *usadas[64]; int nu = 0;
         for (no *h = p->a; h; h = h->prox) {
-            if (h->op == 3) { atribuir(h->a, vO(novo_obj(p_obj)), e, d); continue; }
-            atribuir(h->b, h->c ? get_i(v, ev(h->c, e)) : get(v, h->s), e, d);
+            if (h->op == 3) {   /* ...resto: as próprias enumeráveis que sobraram */
+                obj *r = novo_obj(p_obj);
+                if (v.t == OB) {
+                    val ks = get_chaves_proprias(v);
+                    for (int i = 0; i < ks.o->na; i++) {
+                        str *k = intern(ks.o->a[i].s); int fora = 0;
+                        for (int j = 0; j < nu; j++) if (usadas[j] == k) { fora = 1; break; }
+                        if (!fora) por_prop(r, k, get(v, k));
+                    }
+                }
+                atribuir(h->a, vO(r), e, d); continue;
+            }
+            str *k = h->c ? chave(ev(h->c, e)) : intern(h->s);
+            if (nu < 64) usadas[nu++] = k;
+            atribuir(h->b, get(v, k), e, d);
         }
         return;
     }
@@ -1592,7 +1704,7 @@ static val executar_fn_(obj *o, val este, val *a, int n, val novo_t)
     if (prof < PILHA_CH) { pilha_ch[prof].f = o; pilha_ch[prof].site = no_atual; }
     prof++;
     if (d->seta) qa = o->q;
-    else { q.este = este.t == U || este.t == NUL ? vO(global) : este; q.func = o; q.novo = novo_t; qa = &q; }   /* modo não estrito: this = janela */
+    else { q.este = (este.t == U || este.t == NUL) && !o->fn->f->estrito ? vO(global) : este; q.func = o; q.novo = novo_t; qa = &q; }   /* não estrito: this vazio = janela */
     int i = 0;
     for (no *p = d->params; p; p = p->prox, i++) {
         if (p->a->k == K_SPREAD) { obj *r = novo_arr(0); for (int j = i; j < n; j++) arr_push(r, a[j]); ligar(p->a->a, vO(r), e, 1); break; }
@@ -1656,8 +1768,10 @@ static void campos(obj *c, val este)
         put(este, m->c ? chave(ev(m->c, c->e)) : m->s, v);
     }
 }
+static val n_symbol(val este, val *a, int n);
 static val construir(val f, val *a, int n)
 {
+    if (f.t == OB && f.o->f == n_symbol) erro("TypeError", "Symbol is not a constructor", NULL);
     if (f.t == OB && f.o->cl == C_PX && px_chamavel(f.o)) return chamar_n(f, vU(), a, n, f);
     if (f.t != OB || f.o->cl != C_FN) erro("TypeError", "is not a constructor", NULL);
     val p = get(f, s_prototype);
@@ -1740,7 +1854,11 @@ static val aritmetica(int op, val a, val b)
         return vB(b.o->cl == C_EL ? ({ val r; el_get(b.o, k, &r); }) : 0);
     }
     case 'o': {
-        if (b.t != OB || (b.o->cl != C_FN && !(b.o->cl == C_PX && px_chamavel(b.o)))) erro("TypeError", "instanceof: not callable", NULL);
+        if (b.t == OB) {   /* Symbol.hasInstance próprio (o padrão de Function.prototype é o algoritmo abaixo) */
+            val h = get(b, I("@@hasInstance"));
+            if (h.t == OB && (h.o->cl == C_FN || h.o->cl == C_PX)) return vB(to_bool(chamar(h, b, &a, 1)));
+        }
+        if (b.t != OB || (b.o->cl != C_FN && !(b.o->cl == C_PX && px_chamavel(b.o)))) erro("TypeError", "Right-hand side of 'instanceof' is not callable", NULL);
         if (a.t == OB && a.o->cl == C_PX) { val gp = get(vO(global), I("Object")); gp = get(gp, I("getPrototypeOf")); a = chamar(gp, vU(), &a, 1); if (a.t != OB) return vB(0); val p = get(b, s_prototype); for (obj *c = a.o; c; c = c->proto) if (p.t == OB && c == p.o) return vB(1); return vB(0); }
         if (a.t != OB) return vB(0);
         val p = get(b, s_prototype);
@@ -1774,6 +1892,15 @@ static val aritmetica(int op, val a, val b)
     default: return vU();
     }
 }
+/* name de uma função anônima recebida por nome (var f = function(){}, {m: () => 1}, f = class {}) */
+static void nomear(val v, no *ini, str *nome)
+{
+    if (v.t != OB || v.o->cl != C_FN || !nome || !ini) return;
+    if (!((ini->k == K_FUNC && !ini->f->nome) || (ini->k == K_CLASS && !ini->s))) return;
+    if (achar(v.o, I("name"))) return;
+    por_prop(v.o, I("name"), vS(nome)); prop *p = achar(v.o, I("name")); if (p) p->at = A_NW | A_NE;
+}
+static void pp_oculta(obj *o, str *k, val v) { por_prop(o, k, v); prop *p = achar(o, k); if (p) p->at |= A_NE; }
 static val nova_classe(no *x, env *e)
 {
     env *ce = novo_env(e, 2);
@@ -1795,7 +1922,8 @@ static val nova_classe(no *x, env *e)
         c->fn = x->a ? herda_ctor : vazio_ctor;
     }
     obj *pr = novo_obj(p_obj);
-    por_prop(pr, s_constructor, vO(c));
+    pp_oculta(pr, s_constructor, vO(c));
+    if (x->s) { por_prop(c, I("name"), vS(x->s)); achar(c, I("name"))->at = A_NW | A_NE; }
     por_prop(c, s_prototype, vO(pr));
     if (pai.t == OB) { c->proto = pai.o; val pp = get(pai, s_prototype); if (pp.t == OB) pr->proto = pp.o; }
     else if (x->a && pai.t == NUL) pr->proto = NULL;
@@ -1805,6 +1933,7 @@ static val nova_classe(no *x, env *e)
         if (m->b == ctor && ctor) continue;
         obj *alvo = m->n ? c : pr;
         str *k = m->c ? chave(ev(m->c, ce)) : m->s;
+        if (m->op == 5) continue;
         if (m->op == 4) { if (m->n) { quadro q = { vO(c), c, vU() }, *ant = qa; qa = &q; val v = m->b ? ev(m->b, ce) : vU(); qa = ant; por_prop(c, k, v); } continue; }
         val f = nova_funcao(m->b, ce);
         f.o->casa = alvo;
@@ -1812,8 +1941,10 @@ static val nova_classe(no *x, env *e)
             prop *p = achar(alvo, k); obj *ac;
             if (p && p->v.t == AC) ac = p->v.o; else { ac = novo_obj(NULL); val w; w.t = AC; w.n = 0; w.o = ac; por_prop(alvo, k, w); }
             por_prop(ac, I(m->op == 1 ? "get" : "set"), f);
-        } else por_prop(alvo, k, f);
+            achar(alvo, k)->at |= A_NE;
+        } else pp_oculta(alvo, k, f);   /* métodos de classe não são enumeráveis */
     }
+    for (no *m = x->b; m; m = m->prox) if (m->op == 5) { val f = nova_funcao(m->b, ce); f.o->casa = c; chamar(f, vO(c), NULL, 0); }
     return vO(c);
 }
 static obj *casa_atual(void) { obj *f = qa->func; return f ? f->casa : NULL; }
@@ -1828,6 +1959,14 @@ static val ev(no *x, env *e)
         val r = vS(I(""));
         for (no *h = x->a; h; h = h->prox) r = concat(r.s, to_str(h->k == K_STR ? vS(h->s) : ev(h->a, e)));
         return r;
+    }
+    case K_TPLSTR: {   /* o mesmo objeto congelado a cada avaliação do mesmo lugar */
+        if (x->f) return vO((obj *)x->f);
+        obj *r = novo_arr(0), *w = novo_arr(0);
+        for (no *c = x->a->a; c; c = c->prox) if (c->k == K_STR) { arr_push(r, vS(c->s)); arr_push(w, vS(c->b ? c->b->s : c->s)); }
+        w->trava = 3; por_prop(r, I("raw"), vO(w)); prop *pr = achar(r, I("raw")); if (pr) pr->at = A_NW | A_NE | A_NC; r->trava = 3;
+        x->f = (fdef *)r;
+        return vO(r);
     }
     case K_ID: return var_get(e, x->s);
     case K_THIS: return qa->este;
@@ -1848,13 +1987,18 @@ static val ev(no *x, env *e)
     case K_OBJ: {
         obj *r = novo_obj(p_obj);
         for (no *h = x->a; h; h = h->prox) {
-            if (h->op == 3) {
+            if (h->op == 3) {   /* {...x}: próprias enumeráveis (inclui índices de array/string e símbolos) */
                 val s = ev(h->a, e);
-                if (s.t == OB) for (int i = 0; i < s.o->np; i++) if (s.o->p[i].k) por_prop(r, s.o->p[i].k, get(s, s.o->p[i].k));
+                if (s.t == OB || s.t == ST) {
+                    val ks = get_chaves_proprias(s);
+                    for (int i = 0; i < ks.o->na; i++) { str *k = intern(ks.o->a[i].s); por_prop(r, k, get(s, k)); }
+                    if (s.t == OB) for (int i = 0; i < s.o->np; i++) { str *k = s.o->p[i].k; if (k && k->n > 2 && k->s[0] == '@' && k->s[1] == '@' && k->s[2] != '#' && !(s.o->p[i].at & A_NE)) por_prop(r, k, get(s, k)); }
+                }
                 continue;
             }
             str *k = h->c ? chave(ev(h->c, e)) : h->s;
             val v = ev(h->b, e);
+            if (!h->op) nomear(v, h->b, k);
             if (v.t == OB && v.o->cl == C_FN && h->b->k == K_FUNC) v.o->casa = r;
             if (h->op == 1 || h->op == 2) {
                 prop *p = achar(r, k); obj *ac;
@@ -1890,7 +2034,7 @@ static val ev(no *x, env *e)
             if (r) a = *r;
             else { int tem = 0; for (obj *c = global; c; c = c->proto) if (achar(c, x->a->s)) tem = 1; if (!tem) return vS(I("undefined")); a = var_get(e, x->a->s); }
         } else a = ev(x->a, e);
-        static const char *const n[] = { "undefined", "object", "boolean", "number", "string", "object", "object", "bigint" };
+        static const char *const n[] = { "undefined", "object", "boolean", "number", "string", "object", "object", "bigint", "symbol" };
         if (a.t == OB && (a.o->cl == C_FN || (a.o->cl == C_PX && px_chamavel(a.o)))) return vS(I("function"));
         return vS(I(n[a.t]));
     }
@@ -1904,7 +2048,11 @@ static val ev(no *x, env *e)
             if (f.t != U) { val ar[2] = { vO(o.o->px_a), vS(k) }; return vB(to_bool(chamar(f, vO(o.o->px_h), ar, 2))); }
             o = vO(o.o->px_a);
         }
-        if (o.t == OB && o.o->trava >= 2) return vB(!achar(o.o, k));
+        if (o.t == OB && (o.o->trava >= 2 || (achar(o.o, k) && (achar(o.o, k)->at & A_NC)))) {
+            if (!achar(o.o, k)) return vB(1);
+            if (modo_estrito()) erro("TypeError", "Cannot delete property: ", k->s);
+            return vB(0);
+        }
         if (o.t == OB) {
             prop *p = achar(o.o, k);
             if (p) { int i = (int)(p - o.o->p); memmove(p, p + 1, (size_t)(o.o->np - i - 1) * sizeof(prop)); o.o->np--; if (o.o->idx) reindexar(o.o); }
@@ -1933,7 +2081,7 @@ static val ev(no *x, env *e)
         if (x->op == '=') {
             if (t->k == K_ID) {
                 val v = ev(x->b, e);
-                if (v.t == OB && v.o->cl == C_FN && v.o->fn && !v.o->fn->f->nome) { /* sem nome */ }
+                nomear(v, x->b, t->s);
                 var_set(e, t->s, v);
                 return v;
             }
@@ -2041,9 +2189,10 @@ static int ex(no *x, env *e)
         for (no *d = x->a; d; d = d->prox) {
             if (!d->b && !x->op) continue;
             val v = d->b ? ev(d->b, e) : vU();
+            if (d->a->k == K_ID) nomear(v, d->b, d->a->s);
             if (!x->op) { if (d->a->k == K_ID) var_set(e, d->a->s, v); else ligar(d->a, v, e, 0); }
-            else if (d->a->k == K_ID) decl(e, d->a->s, v);
-            else ligar(d->a, v, e, 1);
+            else if (d->a->k == K_ID) { if (x->op == 2) decl_const(e, d->a->s, v); else decl(e, d->a->s, v); }
+            else ligar(d->a, v, e, x->op == 2 ? 2 : 1);
         }
         return C_N;
     case S_EXP: ev(x->a, e); return C_N;
@@ -2079,6 +2228,42 @@ static int ex(no *x, env *e)
     }
     case S_FORIN: {
         val o = ev(x->b, e), l;
+        if (x->op && o.t == OB && o.o->cl != C_ARR) {
+            /* for-of com o protocolo de iteração, um valor por vez (gerador infinito + break funciona) */
+            val itf = get(o, I("@@iterator"));
+            if (itf.t == OB && (itf.o->cl == C_FN || itf.o->cl == C_PX)) {
+                val it = chamar(itf, o, NULL, 0);
+                if (it.t != OB) erro("TypeError", "Result of the Symbol.iterator method is not an object", NULL);
+                val nx = get(it, I("next"));
+                for (;;) {
+                    val r = chamar(nx, it, NULL, 0);
+                    if (r.t != OB) erro("TypeError", "Iterator result is not an object", NULL);
+                    if (to_bool(get(r, I("done")))) break;
+                    env *f = e; no *alvo = x->a; int d = 0;
+                    if (alvo->k == S_VAR) { d = alvo->op != 0; if (d) f = novo_env(e, 2); alvo = alvo->a->a; }
+                    atribuir(alvo, get(r, I("value")), f, d);
+                    int c = ex(x->c, f), q = laco(c, meu);
+                    if (q) {   /* saída antecipada: iterator.return() */
+                        val rf = get(it, I("return"));
+                        if (rf.t == OB && rf.o->cl == C_FN) { val sv = rv; str *sr = rot; chamar(rf, it, NULL, 0); rv = sv; rot = sr; }
+                        if (q == 1) break;
+                        return c;
+                    }
+                }
+                return C_N;
+            }
+        }
+        if (x->op && o.t == OB && o.o->cl == C_ARR) {   /* array: lê o tamanho a cada volta, como o iterador do array */
+            for (int i = 0; i < o.o->na; i++) {
+                env *f = e; no *alvo = x->a; int d = 0;
+                if (alvo->k == S_VAR) { d = alvo->op != 0; if (d) f = novo_env(e, 2); alvo = alvo->a->a; }
+                atribuir(alvo, o.o->a[i], f, d);
+                int c = ex(x->c, f), r = laco(c, meu);
+                if (r == 1) break;
+                if (r == 2) return c;
+            }
+            return C_N;
+        }
         if (x->op) l = para_vetor(o);
         else if (o.t == U || o.t == NUL) return C_N;
         else { val f = get(vO(global), I("__chaves")); l = chamar(f, vU(), &o, 1); }
@@ -2145,11 +2330,13 @@ static val avaliar(const char *s, int n)
     no *p = programa(s, n, h);
     for (int i = 0; i < h->nv; i++) if (!achar(global, h->vars[i])) por_prop(global, h->vars[i], vU());
     hoist(p->a, NULL);
+    int ant = prog_estrito; prog_estrito = h->estrito;
     val r = vU();
     for (no *x = p->a; x; x = x->prox) {
         if (x->k == S_EXP) r = ev(x->a, NULL);
         else if (ex(x, NULL) == C_RET) break;
     }
+    prog_estrito = ant;
     return r;
 }
 /* texto longo no log: uma linha por \n, cortada em pedaços que cabem no registrar */
@@ -2167,7 +2354,7 @@ static int __attribute__((noinline)) rodar(const char *s, int n, val *res)
     salto b; salto *volatile ant = topo_s;
     b.ant = ant;
     if (__builtin_setjmp(b.b)) {
-        topo_s = ant; qa = &q_global;
+        topo_s = ant; qa = &q_global; prog_estrito = 0;
         if (fatal) return 0;
         val m = exc;
         if (m.t == OB) { val t = get_o(m.o, I("stack"), m); val w = get_o(m.o, I("message"), m); val nm = get_o(m.o, I("name"), m); registrar("js: excecao %s: %s\n", nm.t == ST ? nm.s->s : "?", w.t == ST ? w.s->s : "?"); if (t.t == ST && t.s->n) registrar_linhas("js: ", t.s->s); }
@@ -2445,4 +2632,7 @@ static val n_gnext(val este, val *a, int n)
     return vO(r);
 }
 
+#pragma GCC push_options
+#pragma GCC optimize("Os")   /* biblioteca nativa: tamanho; o laço do intérprete (ev/ex) fica em -O2 */
 #include "js_nativo.h"
+#pragma GCC pop_options
