@@ -123,6 +123,8 @@ $(B)/userland/libsagui/webgl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,
 $(B)/userland/testes/fpu.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=387 -fno-tree-vectorize
 
 $(B)/userland/libsagui/js.o: userland/libsagui/js_base.h userland/libsagui/js_nativo.h
+userland/libsagui/js_base.h: userland/libsagui/js_base.js tools/mkjsbase.py
+	python3 tools/mkjsbase.py
 $(B)/userland/libsagui/glsl.o: userland/libsagui/glsl.h userland/libsagui/glsl_emb.h userland/libsagui/glsl_gen.h
 $(B)/userland/libsagui/webgl.o: userland/libsagui/glsl.h
 

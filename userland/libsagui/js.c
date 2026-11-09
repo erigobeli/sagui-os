@@ -37,10 +37,11 @@ struct obj {
     uint8_t *mem; int mem_n;            /* ArrayBuffer */
     struct obj *vbuf; int voff, vlen, vtipo;   /* typed array: buffer, deslocamento, elementos, tipo */
     uint8_t estilo;                     /* objeto el.style: escrever nele muda a página */
+    void **pc;                          /* Error: pilha capturada (n, depois pares função/trecho) */
 };
 typedef struct quadro { val este; obj *func; val novo; } quadro;
 struct env { env *pai; int n, c; str **k; val *v; };
-typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador; } fdef;
+typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; int seta, expr, usa_args, assinc, gerador; const char *src; int nsrc; } fdef;   /* src: texto (Function.prototype.toString) */
 struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; double n; fdef *f; const char *fonte; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
@@ -61,7 +62,9 @@ static const char *const kws[] = { "", "var", "let", "const", "function", "retur
  * (a do interpretador, a de cada corrotina e a dos ganchos externos) e os
  * registradores. O que não é alcançado vira bloco livre (vizinhos se juntam);
  * bloco de 2 MB todo livre volta ao sistema. */
+#ifndef MOTOR_HOST
 typedef unsigned long uintptr_t;
+#endif
 typedef struct bloco { struct bloco *prox; unsigned tam, usado; uint32_t *ini; } bloco;
 #define BLOCO_CAB 16
 #define GC_MARCA 1u
@@ -348,6 +351,9 @@ static quadro q_global, *qa;
 typedef struct salto { void *b[5]; struct salto *ant; } salto;
 static salto *topo_s;
 static val exc; static int fatal, prof;
+/* pilha de chamadas para Error.stack: prof é a profundidade (os saltos já a restauram) */
+#define PILHA_CH 256
+static struct { obj *f; no *site; } pilha_ch[PILHA_CH];
 static char *lim_pilha;
 static int gerador_entrando;
 static val produzir(val v, int delega);
@@ -696,7 +702,7 @@ enum { T_FIM = 0, T_NUM = 256, T_STR, T_TPL, T_ID, T_RE, T_OP = 300 };
 static const char *const ops[] = { ">>>=", "...", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "?\?=", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "**" };
 enum { O_URSA, O_3P, O_SEQ, O_SNE, O_POWA, O_SHLA, O_SHRA, O_URS, O_ANDA, O_ORA, O_NNA, O_SETA, O_EQ, O_NE, O_LE, O_GE, O_AND, O_OR, O_NN, O_OPT, O_INC, O_DEC, O_ADDA, O_SUBA, O_MULA, O_DIVA, O_MODA, O_BANDA, O_BORA, O_XORA, O_SHL, O_SHR, O_POW };
 #define OP(x) (T_OP + (x))
-typedef struct { const char *src; int tam, p, tk, nl, ant, ini; double num; str *s, *re_f; } lex_t;
+typedef struct { const char *src; int tam, p, tk, nl, ant, ini, fa; double num; str *s, *re_f; } lex_t;   /* fa: fim do token anterior */
 static lex_t L;
 static __attribute__((noreturn)) void sintaxe(const char *m)
 {
@@ -745,7 +751,7 @@ static int escape(const char *s, int p, int fim, int *k)
 static void prox(void)
 {
     const char *s = L.src; int n = L.tam, p = L.p;
-    L.ant = L.tk; L.nl = 0;
+    L.ant = L.tk; L.nl = 0; L.fa = p;
     for (;;) {
         while (p < n && ((uint8_t)s[p] <= ' ')) { if (s[p] == '\n') L.nl = 1; p++; }
         if (p + 1 < n && s[p] == '/' && s[p + 1] == '/') { while (p < n && s[p] != '\n') p++; continue; }
@@ -1141,6 +1147,40 @@ static no *bloco_corpo(void)
     return b;
 }
 /* seta: 0 function, 1 seta com "(" já consumido, 2 async x =>, 3 x => (já depois do =>) */
+/* Começo do texto de uma função para Function.prototype.toString: o parser
+ * chega aqui já depois de "function nome" (ou do nome do método, ou do "(" da
+ * seta); volta pelo código até o começo da declaração. */
+static int id_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '$' || (uint8_t)c >= 0x80; }
+static const char *volta_ws(const char *q, const char *ini) { while (q > ini && (uint8_t)q[-1] <= ' ') q--; return q; }
+static const char *volta_palavra(const char *q, const char *ini, const char *w)
+{
+    int n = (int)tam_texto(w); const char *r = volta_ws(q, ini);
+    if (r - ini >= n && !memcmp(r - n, w, (size_t)n) && (r - n == ini || !id_char(r[-n - 1]))) return r - n;
+    return NULL;
+}
+static const char *inicio_funcao(const char *f, int seta, int metodo)
+{
+    const char *ini = L.src, *q = f, *r;
+    if (seta == 1) { q = volta_ws(q, ini); if (q > ini && q[-1] == '(') q--; if ((r = volta_palavra(q, ini, "async"))) q = r; return q; }
+    if (seta == 3) {   /* x => já lido: volta pela seta e pelo nome */
+        q = volta_ws(q, ini); if (q - ini >= 2 && q[-2] == '=' && q[-1] == '>') q -= 2;
+        q = volta_ws(q, ini); while (q > ini && id_char(q[-1])) q--;
+    }
+    if (seta) { if ((r = volta_palavra(q, ini, "async"))) q = r; return q; }
+    /* f aponta para o "(" dos parâmetros: antes vem o nome (opcional), "*", "function" / get / set / static / async */
+    q = volta_ws(q, ini);
+    if (q > ini && (q[-1] == '"' || q[-1] == '\'')) { char c = q[-1]; q--; while (q > ini && q[-1] != c) q--; if (q > ini) q--; }
+    else if (q > ini && q[-1] == ']') { int prof_ = 0; while (q > ini) { q--; if (*q == ']') prof_++; else if (*q == '[' && --prof_ == 0) break; } }
+    else while (q > ini && id_char(q[-1])) q--;
+    if (q > ini && q[-1] == '#') q--;
+    for (;;) {
+        const char *s0 = volta_ws(q, ini);
+        if (s0 > ini && s0[-1] == '*') { q = s0 - 1; continue; }
+        if ((r = volta_palavra(q, ini, "function"))) { q = r; if ((r = volta_palavra(q, ini, "async"))) q = r; return q; }
+        if (metodo && ((r = volta_palavra(q, ini, "get")) || (r = volta_palavra(q, ini, "set")) || (r = volta_palavra(q, ini, "async")))) { q = r; continue; }
+        return q;
+    }
+}
 static no *funcao(str *nome, int metodo, int seta)
 {
     (void)metodo;
@@ -1166,6 +1206,7 @@ static no *funcao(str *nome, int metodo, int seta)
     if (seta == 1 || seta == 2) exige(OP(O_SETA));
     if (seta && L.tk != '{') { d->expr = 1; d->corpo = atrib(0); }
     else { exige('{'); d->corpo = bloco_corpo(); }
+    if (f->fonte && L.src && L.fa > f->fonte - L.src && L.fa <= L.tam) { d->src = inicio_funcao(f->fonte, seta, metodo); d->nsrc = (int)(L.src + L.fa - d->src); }
     cf = ant;
     if (ant && d->seta && d->usa_args) ant->usa_args = 1;
     return f;
@@ -1470,6 +1511,8 @@ static val executar_fn_(obj *o, val este, val *a, int n, val novo_t)
     gerador_entrando = 0;
     env *e = novo_env(o->e, d->nv + 4);
     quadro q, *ant = qa;
+    if (prof < PILHA_CH) { pilha_ch[prof].f = o; pilha_ch[prof].site = no_atual; }
+    prof++;
     if (d->seta) qa = o->q;
     else { q.este = este.t == U || este.t == NUL ? vO(global) : este; q.func = o; q.novo = novo_t; qa = &q; }   /* modo não estrito: this = janela */
     int i = 0;
@@ -1489,6 +1532,7 @@ static val executar_fn_(obj *o, val este, val *a, int n, val novo_t)
     }
     if (!d->seta && novo_t.t == OB && r.t != OB && q.este.t == OB) r = q.este;   /* super() pode ter trocado o this */
     qa = ant;
+    prof--;
     return r;
 }
 static val chamar_n(val f, val este, val *a, int n, val novo_t)
@@ -1835,9 +1879,10 @@ static val ev(no *x, env *e)
             }
             erro("TypeError", c->k == K_MEM || c->k == K_ID ? c->s->s : "expressao", dica);
         }
+        no_atual = x;   /* lugar da chamada: Error.stack */
         return chamar(f, este, a, n);
     }
-    case K_NEW: { val f = ev(x->a, e), *a; int n = avaliar_args(x->b, e, &a); return construir(f, a, n); }
+    case K_NEW: { val f = ev(x->a, e), *a; int n = avaliar_args(x->b, e, &a); no_atual = x; return construir(f, a, n); }
     case K_AWAIT: return aguardar(ev(x->a, e));
     case K_YIELD: return produzir(x->a ? ev(x->a, e) : vU(), x->op);
     default: return vU();
@@ -1993,6 +2038,15 @@ static val avaliar(const char *s, int n)
     }
     return r;
 }
+/* texto longo no log: uma linha por \n, cortada em pedaços que cabem no registrar */
+static void registrar_linhas(const char *pre, const char *t)
+{
+    while (*t) {
+        char b[208]; int k = 0; while (t[k] && t[k] != '\n' && k < 200) { b[k] = t[k]; k++; }
+        b[k] = 0; registrar("%s%s\n", pre, b);
+        t += k; if (*t == '\n') t++;
+    }
+}
 /* Roda um programa no escopo global. true se terminou sem exceção. */
 static int __attribute__((noinline)) rodar(const char *s, int n, val *res)
 {
@@ -2002,7 +2056,7 @@ static int __attribute__((noinline)) rodar(const char *s, int n, val *res)
         topo_s = ant; qa = &q_global;
         if (fatal) return 0;
         val m = exc;
-        if (m.t == OB) { val t = get_o(m.o, I("stack_txt"), m); (void)t; val w = get_o(m.o, I("message"), m); val nm = get_o(m.o, I("name"), m); registrar("js: excecao %s: %s\n", nm.t == ST ? nm.s->s : "?", w.t == ST ? w.s->s : "?"); }
+        if (m.t == OB) { val t = get_o(m.o, I("stack"), m); val w = get_o(m.o, I("message"), m); val nm = get_o(m.o, I("name"), m); registrar("js: excecao %s: %s\n", nm.t == ST ? nm.s->s : "?", w.t == ST ? w.s->s : "?"); if (t.t == ST && t.s->n) registrar_linhas("js: ", t.s->s); }
         else if (m.t == ST) registrar("js: excecao %s\n", m.s->s);
         return 0;
     }
@@ -2175,6 +2229,51 @@ static val n_limite(val este, val *a, int n)
     t_suave = n > 0 && a[0].t == NU ? tempo_ms() + (unsigned)a[0].n : 0;
     if (t_limite < tempo_ms() + 5000) t_limite = tempo_ms() + 5000;   /* ferramenta de diagnóstico: estende a página */
     return vU();
+}
+/* Error.stack: __pilha_cap(o) guarda só ponteiros (barato: o Google cria muitos
+ * erros); __pilha(o) monta o texto no formato do V8 ("    at nome (trecho)")
+ * quando alguém lê. Sem arquivo/linha: o trecho do código-fonte faz esse papel.
+ * A captura pula o quadro do próprio construtor do erro. */
+static val n_pilha_cap(val este, val *a, int n)
+{
+    (void)este;
+    val o = n > 0 ? a[0] : vU(); if (o.t != OB) return vU();
+    int topo = prof < PILHA_CH ? prof : PILHA_CH, k = 0;
+    void **pc = novo(sizeof(void *) * 21);
+    for (int i = topo - 2; i >= -1 && k < 10; i--, k++) {
+        pc[1 + 2 * k] = i >= 0 ? pilha_ch[i].f : NULL;
+        pc[2 + 2 * k] = i == topo - 2 ? pilha_ch[topo - 1 >= 0 ? topo - 1 : 0].site : pilha_ch[i + 1].site;
+    }
+    pc[0] = (void *)(uintptr_t)k;
+    o.o->pc = pc;
+    return vU();
+}
+static int trecho_de(char *b, int k, int max, no *x)
+{
+    if (!x || !x->fonte) { const char *t = "<anonymous>"; while (*t && k < max) b[k++] = *t++; return k; }
+    const char *q = x->fonte - 24;
+    for (int z = 0; z < 56 && q[z] && k < max; z++) b[k++] = q[z] == '\n' || q[z] == '\r' ? ' ' : q[z];
+    return k;
+}
+static val n_pilha(val este, val *a, int n)
+{
+    (void)este;
+    val o = n > 0 ? a[0] : vU(); if (o.t != OB || !o.o->pc) return vT("");
+    void **pc = o.o->pc; int nq = (int)(uintptr_t)pc[0];
+    static char b[2048]; int k = 0, max = (int)sizeof b - 8;
+    for (int q = 0; q < nq && k < max - 80; q++) {
+        obj *f = pc[1 + 2 * q]; no *onde = pc[2 + 2 * q];
+        str *nm = f && f->fn ? f->fn->f->nome : NULL;
+        const char *pre = q ? "\n    at " : "    at ";
+        while (*pre) b[k++] = *pre++;
+        const char *t = !f ? "<global>" : nm ? nm->s : "<anonymous>";
+        while (*t && k < max - 60) b[k++] = *t++;
+        b[k++] = ' '; b[k++] = '(';
+        k = trecho_de(b, k, max - 2, onde);
+        b[k++] = ')';
+    }
+    b[k] = 0;
+    return vT(b);
 }
 /* __tentar(f, arg, ms): chama f(arg) com limite de tempo; [true, valor] ou [false, erro]. */
 static val r_tentar;

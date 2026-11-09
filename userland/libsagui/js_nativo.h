@@ -132,7 +132,21 @@ static val n_bind(val este, val *a, int n)
     if (n > 1) { f->nlig = n - 1; f->ligados = novo((unsigned)n * sizeof(val)); memcpy(f->ligados, a + 1, (size_t)(n - 1) * sizeof(val)); }
     return vO(f);
 }
-static val n_fnstr(val este, val *a, int n) { (void)este; (void)a; (void)n; return vS(I("function () { [native code] }")); }
+/* Function.prototype.toString: o texto da função como está na página; as
+ * nativas e as ligadas (bind) no formato dos navegadores. */
+static val n_fnstr(val este, val *a, int n)
+{
+    (void)a; (void)n;
+    if (este.t != OB || este.o->cl != C_FN) erro("TypeError", "Function.prototype.toString requires that 'this' be a Function", NULL);
+    obj *o = este.o;
+    /* as da biblioteca base (js_base) são "nativas" para a página, como num navegador */
+    const char *src = o->fn && o->fn->f ? o->fn->f->src : NULL;
+    int base = src && src >= JS_BASE && src < JS_BASE + sizeof JS_BASE;
+    if (src && !base && o->fn->f->nsrc > 0) return vS(novo_str(src, o->fn->f->nsrc));
+    char b[160]; val nm = o->ligado ? vU() : get_o(o, I("name"), este);
+    formatar_texto(b, sizeof b, "function %s() { [native code] }", nm.t == ST ? nm.s->s : "");
+    return vT(b);
+}
 
 /* ---- Array ---- */
 static obj *arr_de(val v) { if (v.t != OB || v.o->cl != C_ARR) erro("TypeError", "not an array", NULL); return v.o; }
@@ -239,6 +253,10 @@ static val n_reverse(val este, val *a, int n)
 /* ---- String (índices em unidades UTF-16; texto guardado em WTF-8) ---- */
 static str *este_str(val v) { return to_str(v); }
 static val sub(str *s, int i, int f) { if (f <= i) return vS(I("")); return vS(fatia_u(s, i, f)); }
+/* String.prototype.toString/valueOf e os de Boolean: o valor do próprio this */
+static val n_str_valor(val este, val *a, int n) { (void)a; (void)n; if (este.t == ST) return este; if (este.t == OB) { val v = get_o(este.o, I("__primitivo"), este); if (v.t == ST) return v; } erro("TypeError", "String.prototype.toString requires that 'this' be a String", NULL); }
+static val n_bool_valor(val este, val *a, int n) { (void)a; (void)n; if (este.t == BO) return este; if (este.t == OB) { val v = get_o(este.o, I("__primitivo"), este); if (v.t == BO) return v; } erro("TypeError", "Boolean.prototype.valueOf requires that 'this' be a Boolean", NULL); }
+static val n_bool_texto(val este, val *a, int n) { val v = n_bool_valor(este, a, n); return vS(I(v.b ? "true" : "false")); }
 static val n_string(val este, val *a, int n) { (void)este; return n ? vS(to_str(a[0])) : vS(I("")); }
 static val n_charat(val este, val *a, int n) { str *s = este_str(este); int i = to_i(ARG(0)); return i >= 0 && i < s->u ? vS(fatia_u(s, i, i + 1)) : vS(I("")); }
 static val n_charcode(val este, val *a, int n) { str *s = este_str(este); int c = unidade(s, to_i(ARG(0))); return c >= 0 ? vI(c) : vN(D_NAN); }
@@ -809,7 +827,7 @@ static val n_utf8_dec(val este, val *a, int n)
     else return vT("");
     return vS(de_utf8(p, len));
 }
-static val n_log(val este, val *a, int n) { (void)este; registrar("js: %s\n", to_str(ARG(0))->s); return vU(); }
+static val n_log(val este, val *a, int n) { (void)este; registrar_linhas("js: ", to_str(ARG(0))->s); return vU(); }
 static val n_eval(val este, val *a, int n) { (void)este; str *s = to_str(ARG(0)); return avaliar(s->s, s->n); }
 /* Date.now: relógio do sistema (RTC, tomado como UTC) + milissegundos do contador */
 static double agora_base; static unsigned agora_ms0;
@@ -2139,14 +2157,14 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(S, "fromCharCode", n_fromcode); reg(S, "fromCodePoint", n_fromcodepoint); reg(p_str, "codePointAt", n_codepoint);
     reg(p_str, "charAt", n_charat); reg(p_str, "charCodeAt", n_charcode); reg(p_str, "indexOf", n_sindex); reg(p_str, "lastIndexOf", n_slast); reg(p_str, "slice", n_sslice);
     reg(p_str, "substring", n_substring); reg(p_str, "substr", n_substr); reg(p_str, "toLowerCase", n_lower); reg(p_str, "toUpperCase", n_upper); reg(p_str, "trim", n_trim);
-    reg(p_str, "__split", n_ssplit); reg(p_str, "toString", n_string); reg(p_str, "valueOf", n_mesmo);
+    reg(p_str, "__split", n_ssplit); reg(p_str, "toString", n_str_valor); reg(p_str, "valueOf", n_str_valor);
     reg(p_num, "toString", n_numstr); reg(p_num, "toFixed", n_tofixed); reg(p_num, "valueOf", n_mesmo);
-    reg(p_bool, "toString", n_string); reg(p_bool, "valueOf", n_mesmo);
+    reg(p_bool, "toString", n_bool_texto); reg(p_bool, "valueOf", n_bool_valor);
     reg(p_el, "querySelectorAll", n_qsa); reg(p_el, "querySelector", n_qs); reg(p_el, "matches", n_matches); reg(p_el, "getElementById", n_byid);
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar); reg(global, "__pilha", n_pilha); reg(global, "__pilha_cap", n_pilha_cap);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());
