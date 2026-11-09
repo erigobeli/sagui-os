@@ -64,6 +64,10 @@ static grad_t grads[256];
 static unsigned versao;
 
 unsigned tela2d_versao(void) { return versao; }
+void tela2d_mudou(void) { versao++; }
+/* WebGL desenha num buffer próprio e só copia para a tela quando alguém lê */
+void (*tela2d_sincronizar)(int id);
+uint32_t *tela2d_px_escrita(int id, int *l, int *a);
 
 static tela_t *T(int id) { return id >= 0 && id < MAX_TELAS && telas[id].usada ? &telas[id] : NULL; }
 
@@ -132,8 +136,16 @@ void tela2d_liberar_todas(void)
     memset(grads, 0, sizeof grads);
 }
 
+uint32_t *tela2d_px_escrita(int id, int *l, int *a)
+{
+    tela_t *t = T(id);
+    if (!t || !t->px) { *l = *a = 0; return NULL; }
+    *l = t->l; *a = t->a; versao++;
+    return t->px;
+}
 const uint32_t *tela2d_pixels(int id, int *l, int *a)
 {
+    if (tela2d_sincronizar) tela2d_sincronizar(id);
     tela_t *t = T(id);
     if (!t || !t->px) { *l = *a = 0; return NULL; }
     *l = t->l; *a = t->a;
@@ -1002,6 +1014,95 @@ double tela2d_medir(const char *s, double tam)
     for (const uint8_t *p = (const uint8_t *)s; *p; p++) if ((*p & 0xC0) != 0x80) n++;
     return n * tam / 2;
 }
+/* largura com uma fonte de verdade (px de fonte = tam) */
+static double medir_fonte(fonte_t *f, const char *s, double tam, double ls)
+{
+    int px = (int)(tam + 0.5); if (px < 1) px = 1;
+    double w = 0;
+    for (int i = 0; s[i];) { uint32_t cp; i += utf8_ler(s + i, (int)tam_texto(s + i), &cp); w += fonte_avanco(f, cp, px) / 64.0 * (tam / px) + ls; }
+    return w;
+}
+double tela2d_medir_fonte(fonte_t *f, const char *s, double tam, double ls) { return f ? medir_fonte(f, s, tam, ls) : tela2d_medir(s, tam); }
+
+/* Texto com fonte de verdade: a linha é rasterizada no tamanho da tela (a escala
+ * da matriz) e cada pixel da tela busca a cobertura de volta pela inversa,
+ * então translação, escala, rotação e cisalhamento valem. */
+void tela2d_texto_fonte(int id, fonte_t *f, const char *s, double x, double y, double tam, int alinha, int base, int traco, double maxw, double ls)
+{
+    tela_t *t = T(id);
+    if (!t || !t->px || !ok_num(x) || !ok_num(y) || tam <= 0 || !f) return;
+    const double *m = t->st.m.m;
+    double det = m[0] * m[3] - m[1] * m[2];
+    if (det == 0) return;
+    double esc = c_sqrt(c_abs(det));
+    int px = (int)(tam * esc + 0.5);
+    if (px < 1) px = 1;
+    if (px > 600) px = 600;
+    double k = px / (tam * esc);                     /* ajuste do arredondamento do tamanho */
+    double lw = medir_fonte(f, s, tam, ls);         /* largura no espaço do usuário */
+    double sx = 1;
+    if (maxw > 0 && lw > maxw) { sx = maxw / lw; lw = maxw; }
+    int asc = fonte_ascendente(f, px), des = fonte_descendente(f, px);
+    double asc_u = asc / esc / k, des_u = des / esc / k;
+    double x0 = alinha == 1 ? x - lw : alinha == 2 ? x - lw / 2 : x;
+    /* posição da linha de base pelo textBaseline (top/hanging ~ topo, middle = meio do em, bottom/ideographic = fundo) */
+    double yb = base == 1 || base == 4 ? y + asc_u : base == 2 ? y + (asc_u - des_u) / 2 : base == 3 || base == 5 ? y - des_u : y;
+    /* linha no espaço do texto, em pixels da tela */
+    int W = (int)(lw * esc * k / sx) + px + 4, H = asc + des + 4;
+    if (W <= 0 || H <= 0 || (long)W * H > 8L * 1024 * 1024) return;
+    uint8_t *cob = aloca((unsigned)(W * H));
+    if (!cob) return;
+    memset(cob, 0, (unsigned)(W * H));
+    int pen = 2 * 64;
+    for (int i = 0; s[i];) {
+        uint32_t cp; i += utf8_ler(s + i, (int)tam_texto(s + i), &cp);
+        int gl, ga, ox, oy;
+        const uint8_t *g = fonte_glifo(f, cp, px, &gl, &ga, &ox, &oy);
+        int gx = (pen >> 6) + ox, gy = asc + 2 + oy;
+        if (g) for (int yy = 0; yy < ga; yy++) {
+            int py = gy + yy; if (py < 0 || py >= H) continue;
+            for (int xx = 0; xx < gl; xx++) {
+                int qx = gx + xx; if (qx < 0 || qx >= W) continue;
+                int v = cob[py * W + qx] + g[yy * gl + xx];
+                cob[py * W + qx] = (uint8_t)(v > 255 ? 255 : v);
+            }
+        }
+        pen += fonte_avanco(f, cp, px) + (int)(ls * esc * k * 64);
+    }
+    /* caixa na tela */
+    double topo_u = yb - asc_u - 2 / esc / k;
+    pt_t c[4]; ponto_tela(t, x0, topo_u, &c[0]); ponto_tela(t, x0 + lw, topo_u, &c[1]);
+    ponto_tela(t, x0 + lw, topo_u + H / esc / k, &c[2]); ponto_tela(t, x0, topo_u + H / esc / k, &c[3]);
+    double mx = 1e30, my = 1e30, Mx = -1e30, My = -1e30;
+    for (int i = 0; i < 4; i++) { mx = c_min(mx, c[i].x); my = c_min(my, c[i].y); Mx = c_max(Mx, c[i].x); My = c_max(My, c[i].y); }
+    int bx = (int)c_floor(c_max(mx - 2, 0)), by = (int)c_floor(c_max(my - 2, 0)), ex = (int)c_ceil(c_min(Mx + 2, t->l)), ey = (int)c_ceil(c_min(My + 2, t->a));
+    if (ex > bx && ey > by) {
+        int bl = ex - bx, ba = ey - by;
+        uint8_t *mk = aloca((unsigned)(bl * ba));
+        if (mk) {
+            double fx = esc * k / sx, fy = esc * k;   /* usuário -> pixels da linha */
+            for (int yy = 0; yy < ba; yy++)
+                for (int xx = 0; xx < bl; xx++) {
+                    double dx = bx + xx + 0.5 - m[4], dy = by + yy + 0.5 - m[5];
+                    double ux = (m[3] * dx - m[2] * dy) / det - x0, uy = (-m[1] * dx + m[0] * dy) / det - topo_u;
+                    double qx = ux * fx + 2 - 0.5, qy = uy * fy - 0.5;   /* centro do pixel da linha */
+                    int ix = (int)c_floor(qx), iy = (int)c_floor(qy);
+                    double ax = qx - ix, ay = qy - iy, v = 0;
+                    for (int j = 0; j < 2; j++)
+                        for (int i = 0; i < 2; i++) {
+                            int px2 = ix + i, py2 = iy + j;
+                            if (px2 < 0 || py2 < 0 || px2 >= W || py2 >= H) continue;
+                            v += cob[py2 * W + px2] * (i ? ax : 1 - ax) * (j ? ay : 1 - ay);
+                        }
+                    mk[yy * bl + xx] = (uint8_t)(v > 255 ? 255 : v + 0.5);
+                }
+            pintar_mascara(t, mk, bx, by, bl, ba, traco ? 1 : 0);
+            libera(mk);
+        }
+    }
+    libera(cob);
+}
+
 /* alinha: 0 start/left, 1 end/right, 2 center; base: 0 alphabetic, 1 top, 2 middle, 3 bottom, 4 hanging, 5 ideographic */
 void tela2d_texto(int id, const char *s, double x, double y, double tam, int alinha, int base, int traco, double maxw)
 {
@@ -1056,6 +1157,7 @@ void tela2d_texto(int id, const char *s, double x, double y, double tam, int ali
 /* drawImage de outra tela (ou de uma imagem decodificada guardada numa tela) */
 void tela2d_desenhar(int id, int src, double sx, double sy, double sw, double sh, double dx, double dy, double dw, double dh)
 {
+    if (tela2d_sincronizar) tela2d_sincronizar(src);
     tela_t *t = T(id), *f = T(src);
     if (!t || !t->px || !f || !f->px || !sw || !sh || !dw || !dh) return;
     if (sw < 0) { sx += sw; sw = -sw; }
@@ -1136,6 +1238,7 @@ int tela2d_de_pixels(const uint32_t *px, int l, int a, int alfa)
 /* getImageData: RGBA sem pré-multiplicar; fora da tela = 0 */
 void tela2d_ler(int id, int x, int y, int w, int h, uint8_t *rgba)
 {
+    if (tela2d_sincronizar) tela2d_sincronizar(id);
     tela_t *t = T(id);
     for (int yy = 0; yy < h; yy++)
         for (int xx = 0; xx < w; xx++) {

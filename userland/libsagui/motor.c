@@ -69,6 +69,7 @@ typedef struct {
     const char *fvs;                    /* font-variation-settings (texto), NULL = normal */
     int16_t ls64;                       /* letter-spacing em 1/64 px (herdado; em vira px no elemento que declara) */
     uint8_t generica;                   /* família genérica da lista: 0 sans-serif, 1 serif, 2 monospace */
+    const char *svg_fill, *svg_stroke, *svg_sw;   /* fill/stroke/stroke-width do CSS (herdados; vão para o <svg>) */
 } estilo_t;
 
 typedef struct atr { char *nome, *valor; struct atr *prox; } atr_t;
@@ -567,7 +568,7 @@ enum {
     PR_GTC, PR_GCOL, PR_GCS, PR_GCE, PR_GROW_L, PR_TOP, PR_RIGHT, PR_BOTTOM, PR_LEFT, PR_INSET, PR_TTRANSFORM, PR_VALIGN, PR_ZINDEX,
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
-    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING,
+    PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING, PR_FILL, PR_STROKE, PR_SWIDTH,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -581,7 +582,7 @@ static const char *const nomes_prop[] = {
     "align-content", "place-items", "overflow-x", "overflow-y", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
-    "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing",
+    "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing", "fill", "stroke", "stroke-width",
 };
 
 static int achar_prop(const char *p, int n)
@@ -1494,6 +1495,7 @@ static void estilo_inicial(estilo_t *e, const estilo_t *pai)
         e->branco = pai->branco; e->lista = pai->lista; e->visivel = pai->visivel; e->linha = pai->linha; e->maiusc = pai->maiusc;
         e->sublinha = pai->sublinha; e->risca = pai->risca; e->fam = pai->fam;
         e->pesonum = pai->pesonum; e->largura = pai->largura; e->fvs = pai->fvs; e->ls64 = pai->ls64; e->generica = pai->generica;
+        e->svg_fill = pai->svg_fill; e->svg_stroke = pai->svg_stroke; e->svg_sw = pai->svg_sw;
     } else { e->cor = 0x000000; e->tam = 16; e->linha.u = U_AUTO; e->fam = -1; e->pesonum = 400; e->largura = 1000; e->generica = 1; }   /* padrão do Chrome: serif */
 }
 
@@ -1835,6 +1837,9 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_FWEIGHT: { int w = ler_peso_de(v, pai ? pai->pesonum : 400); if (w >= 0) { e->pesonum = (uint16_t)w; e->peso = w >= 600; } break; }
     case PR_FSTRETCH: { int l = ler_largura(v); if (l > 0) e->largura = (uint16_t)l; break; }
     case PR_FVS: e->fvs = igual(v, "normal") ? NULL : m_dup(m, v, nv); break;
+    case PR_FILL: e->svg_fill = m_dup(m, v, nv); break;
+    case PR_STROKE: e->svg_stroke = m_dup(m, v, nv); break;
+    case PR_SWIDTH: e->svg_sw = m_dup(m, v, nv); break;
     case PR_LSPACING:
         if (igual(v, "normal")) e->ls64 = 0;
         else if (ler_medida_m(v, nv, &md) && md.u != U_PCT && md.u != U_AUTO) {
@@ -2454,52 +2459,6 @@ static int ler_fvs(const char *v, uint32_t *tags, int *vals, int max)
     }
     return n;
 }
-/* Fontes do sistema (DejaVu em /fontes): família genérica x negrito x itálico.
- * Carregadas uma vez por processo e nunca liberadas (servem a todas as páginas). */
-static fonte_t *sist[3][2][2]; static uint8_t sist_tentou[3][2][2];
-static fonte_t *fonte_sistema(int g, int negrito, int italico)
-{
-    /* NULL no itálico: inclinado na hora a partir da regular/negrito (fonte_obliqua) */
-    static const char *const nomes[3][2][2] = {
-        { { "/fontes/DejaVuSans.ttf", NULL }, { "/fontes/DejaVuSans-Bold.ttf", NULL } },
-        { { "/fontes/DejaVuSerif.ttf", "/fontes/DejaVuSerif-Italic.ttf" }, { "/fontes/DejaVuSerif-Bold.ttf", NULL } },
-        { { "/fontes/DejaVuSansMono.ttf", NULL }, { "/fontes/DejaVuSansMono-Bold.ttf", NULL } } };
-    if (g < 0 || g > 2) g = 0;
-    negrito = !!negrito; italico = !!italico;
-    if (sist[g][negrito][italico] || sist_tentou[g][negrito][italico]) return sist[g][negrito][italico];
-    sist_tentou[g][negrito][italico] = 1;
-    const char *c = nomes[g][negrito][italico];
-    if (!c) {
-        fonte_t *reta = fonte_sistema(g, negrito, 0);
-        sist[g][negrito][italico] = reta ? fonte_obliqua(reta) : NULL;
-        return sist[g][negrito][italico];
-    }
-#ifdef MOTOR_HOST
-    char cam[300]; formatar_texto(cam, sizeof cam, "../../rootfs%s", c);
-    FILE *fp = fopen(cam, "rb");
-    if (!fp) return NULL;
-    fseek(fp, 0, SEEK_END); long n = ftell(fp); fseek(fp, 0, SEEK_SET);
-    uint8_t *d = malloc((size_t)n);
-    if (fread(d, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); free(d); return NULL; }
-    fclose(fp);
-#else
-    int fd = abrir(c, 0);
-    if (fd < 0) return NULL;
-    unsigned cap = 1u << 20, n = 0;
-    uint8_t *d = aloca(cap);
-    int r;
-    while (d && (r = ler(fd, d + n, cap - n)) > 0) {
-        n += (unsigned)r;
-        if (n == cap) { uint8_t *q = realoca(d, cap * 2); if (!q) break; d = q; cap *= 2; }
-    }
-    fechar(fd);
-    if (!d) return NULL;
-#endif
-    sist[g][negrito][italico] = fonte_abrir(d, (unsigned)n);
-    libera(d);
-    return sist[g][negrito][italico];
-}
-
 static fonte_t *fonte_de_web(const estilo_t *e);
 static fonte_t *fonte_de(const estilo_t *e)
 {
@@ -3786,6 +3745,7 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
         if (e->alt.u == U_PCT && (igual(n->tag, "html") || igual(n->tag, "body"))) hh = res_med(&e->alt, mo->vh, e);
         if (hh >= 0) h = e->caixa_borda ? hh : hh + extra_v(n);
     }
+    if (h >= 0 && h < extra_v(n)) h = extra_v(n);   /* border-box nunca fica menor que bordas + padding */
     int ch = h >= 0 ? h - extra_v(n) : -1;
     layout_conteudo(n, ccw, ch);
     int ah = n->a + extra_v(n);
@@ -3795,6 +3755,7 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
     if (mxh >= 0) { if (!e->caixa_borda) mxh += extra_v(n); if (ah > mxh) ah = mxh; }
     int mnh = res_med(&e->min_a, -1, e);
     if (e->min_a.u == U_VH || e->min_a.u == U_PX) { if (mnh > 0) { if (!e->caixa_borda) mnh += extra_v(n); if (ah < mnh) ah = mnh; } }
+    if (ah < extra_v(n)) ah = extra_v(n);
     n->a = ah;
     n->l = w;
     return ah;
@@ -4351,8 +4312,17 @@ static void controle(no_m *n, int x, int y)
             char *xml = aloca((unsigned)tam + 16);
             im->px = NULL;
             if (xml) {
-                int k = formatar_texto(xml, (size_t)tam + 16, "<svg");
-                for (atr_t *a = n->atr; a; a = a->prox) k += formatar_texto(xml + k, (size_t)(tam + 16 - k), " %s=\"%s\"", a->nome, a->valor);
+                /* fill/stroke do CSS da página entram como estilo do <svg> (antes do style próprio, que vale mais) */
+                char css[200]; int kc = 0; css[0] = 0;
+                if (e->svg_fill) kc += formatar_texto(css + kc, sizeof css - (size_t)kc, "fill:%s;", e->svg_fill);
+                if (e->svg_stroke) kc += formatar_texto(css + kc, sizeof css - (size_t)kc, "stroke:%s;", e->svg_stroke);
+                if (e->svg_sw) kc += formatar_texto(css + kc, sizeof css - (size_t)kc, "stroke-width:%s;", e->svg_sw);
+                const char *st0 = atributo_m(n, "style");
+                tam += kc + 16;
+                xml = realoca(xml, (unsigned)tam + 16);
+                if (!xml) { im->l = cl; im->a = ca; goto svg_fim; }
+                int k = formatar_texto(xml, (size_t)tam + 16, "<svg style=\"%s%s\"", css, st0 ? st0 : "");
+                for (atr_t *a = n->atr; a; a = a->prox) if (!igual(a->nome, "style")) k += formatar_texto(xml + k, (size_t)(tam + 16 - k), " %s=\"%s\"", a->nome, a->valor);
                 xml[k++] = '>';
                 memcpy(xml + k, n->t, (size_t)n->nt); k += n->nt;
                 memcpy(xml + k, "</svg>", 6); k += 6;
@@ -4360,6 +4330,7 @@ static void controle(no_m *n, int x, int y)
                 libera(xml);
             }
             im->l = cl; im->a = ca;
+        svg_fim:;
         }
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_IMG; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.img = n->img;
@@ -4864,6 +4835,7 @@ motor_t *motor_novo(const motor_ganchos_t *g)
     return m;
 }
 
+static bool fonte_em_cache(fonte_t *f);
 void motor_fim(motor_t *m)
 {
     if (!m) return;
@@ -4871,7 +4843,7 @@ void motor_fim(motor_t *m)
     for (int i = 0; i < m->n_faces; i++) {
         for (int j = 0; j < m->faces[i].n_inst; j++) if (m->faces[i].inst[j].f) fonte_fechar(m->faces[i].inst[j].f);
         if (m->faces[i].obl) fonte_fechar(m->faces[i].obl);
-        if (m->faces[i].f) fonte_fechar(m->faces[i].f);
+        if (m->faces[i].f && !fonte_em_cache(m->faces[i].f)) fonte_fechar(m->faces[i].f);
     }
     while (m->blocos) { bloco_m *b = m->blocos; m->blocos = b->prox; libera(b); }
     libera(m);
@@ -5017,6 +4989,31 @@ static uint8_t *dados_url(const char *u, unsigned *n)
     return d;
 }
 
+/* Fontes da web por URL, valendo a página toda (o motor da tela e o das medidas
+ * do JavaScript usam as mesmas; abrir uma WOFF2 de novo custa caro). */
+static struct { char *url; fonte_t *f; } cache_f[32]; static int n_cache_f;
+void motor_fontes_limpar(void)
+{
+    for (int i = 0; i < n_cache_f; i++) { libera(cache_f[i].url); if (cache_f[i].f) fonte_fechar(cache_f[i].f); }
+    n_cache_f = 0;
+}
+static fonte_t *fonte_da_url(motor_t *m, const char *url, const char *fam)
+{
+    for (int i = 0; i < n_cache_f; i++) if (compara_texto(cache_f[i].url, url) == 0) return cache_f[i].f;
+    unsigned n = 0;
+    uint8_t *d = m->g.baixar ? m->g.baixar(url, &n) : NULL;
+    fonte_t *f = d ? fonte_abrir(d, n) : NULL;
+    if (d) libera(d);
+    if (n_cache_f < 32) {
+        int k = (int)tam_texto(url);
+        char *u = aloca((unsigned)k + 1);
+        if (u) { memcpy(u, url, (size_t)k + 1); cache_f[n_cache_f].url = u; cache_f[n_cache_f].f = f; n_cache_f++; }
+    }
+    registrar("cipo: fonte %s %s (%u bytes)\n", fam, f ? "ok" : "nao abriu", n);
+    return f;
+}
+static bool fonte_em_cache(fonte_t *f) { for (int i = 0; i < n_cache_f; i++) if (cache_f[i].f == f) return true; return false; }
+
 int motor_imagens(motor_t *m, int max)
 {
     int k = 0;
@@ -5025,12 +5022,7 @@ int motor_imagens(motor_t *m, int max)
         if (m->faces[i].tentou || !m->faces[i].quer || !m->g.baixar) continue;
         m->faces[i].tentou = 1;
         k++;
-        unsigned n = 0;
-        uint8_t *d = m->g.baixar(m->faces[i].url, &n);
-        if (!d) continue;
-        m->faces[i].f = fonte_abrir(d, n);
-        registrar("cipo: fonte %s %s (%u bytes)\n", m->fams[m->faces[i].fam], m->faces[i].f ? "ok" : "nao abriu", n);
-        libera(d);
+        m->faces[i].f = fonte_da_url(m, m->faces[i].url, m->fams[m->faces[i].fam]);
     }
     for (int i = 0; i < m->n_imgs && k < max; i++) {
         imagem_m *im = &m->imgs[i];
@@ -5886,4 +5878,32 @@ bool motor_estilo_de(motor_t *m, int k, const char *prop, char *o, int max)
     else return false;
     #undef PX
     return true;
+}
+
+/* Fonte de uma família do @font-face pelo nome (para o canvas): o mesmo
+ * casamento das faces; se a escolhida ainda não chegou, baixa agora. */
+fonte_t *motor_fonte_nomeada(motor_t *m, const char *familia, int peso, int italico, int largura)
+{
+    int f = -1;
+    for (int k = 0; k < m->n_fams; k++) {
+        const char *a = m->fams[k], *b = familia;
+        while (*a && *b && ((*a | 32) == (*b | 32))) { a++; b++; }
+        if (!*a && !*b) { f = k; break; }
+    }
+    if (f < 0) return NULL;
+    estilo_t e; memset(&e, 0, sizeof e);
+    estilo_inicial(&e, NULL);
+    e.fam = (int8_t)f; e.pesonum = (uint16_t)(peso > 0 ? peso : 400); e.peso = e.pesonum >= 600; e.italico = (uint8_t)!!italico;
+    e.largura = (uint16_t)(largura > 0 ? largura : 1000);
+    motor_t *antes = mo; mo = m;
+    fonte_t *r = fonte_de_web(&e);
+    for (int volta = 0; !r && volta < 3; volta++) {
+        bool algum = false;
+        for (int i = 0; i < m->n_faces; i++)
+            if (m->faces[i].quer && !m->faces[i].tentou) { m->faces[i].tentou = 1; m->faces[i].f = fonte_da_url(m, m->faces[i].url, m->fams[m->faces[i].fam]); algum = true; }
+        if (!algum) break;
+        r = fonte_de_web(&e);
+    }
+    mo = antes;
+    return r;
 }

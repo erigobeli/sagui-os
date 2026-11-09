@@ -118,9 +118,13 @@ $(B)/userland/libsagui/fonte.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UC
 $(B)/userland/libsagui/js.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
 $(B)/userland/libsagui/canvas2d.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
 $(B)/userland/libsagui/svg.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/glsl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/webgl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
 $(B)/userland/testes/fpu.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=387 -fno-tree-vectorize
 
 $(B)/userland/libsagui/js.o: userland/libsagui/js_base.h userland/libsagui/js_nativo.h
+$(B)/userland/libsagui/glsl.o: userland/libsagui/glsl.h userland/libsagui/glsl_emb.h userland/libsagui/glsl_gen.h
+$(B)/userland/libsagui/webgl.o: userland/libsagui/glsl.h
 
 $(B)/userland/bin/%: $(B)/userland/programas/%.o $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)

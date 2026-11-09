@@ -62,5 +62,7 @@ bool     motor_envio_campo(motor_t *m, int campo, char *url, int max);   /* quem
 /* Caixas dos elementos marcados com data-sagui-n (16 ints por elemento) e estilo computado. */
 int      motor_caixas(motor_t *m, int *d, int max);
 bool     motor_estilo_de(motor_t *m, int k, const char *prop, char *o, int max);
+fonte_t *motor_fonte_nomeada(motor_t *m, const char *familia, int peso, int italico, int largura);
+void     motor_fontes_limpar(void);   /* nova página: esquece as fontes da web baixadas */
 void     motor_sem_esconder(motor_t *m, bool sim);   /* ignora display:none do autor */   /* quantos links a página tem */
 #endif

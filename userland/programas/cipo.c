@@ -1495,10 +1495,11 @@ static int js_layout(const char *html, int n, int *caixas, int qtd)
     return 1;
 }
 static bool js_estilo(int k, const char *prop, char *o, int max) { return medidor && motor_estilo_de(medidor, k, prop, o, max); }
+static struct fonte *js_fonte(const char *fam, int peso, int ital, int larg) { return medidor ? motor_fonte_nomeada(medidor, fam, peso, ital, larg) : NULL; }
 
 static char *rodar_scripts(char *h, int *n)
 {
-    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta, js_layout, js_estilo };
+    static const js_hooks_t ganchos = { js_baixar, js_titulo, js_alerta, js_resposta, js_layout, js_estilo, js_fonte };
     if (!achar_tag(h, *n, "<script")) return h;
     rodape("Rodando scripts...");
     int t = 0;
@@ -2124,6 +2125,8 @@ static void carregar(const char *pedido)
     inicio_pagina = tempo_ms();
     t_rede = t_js = 0; canvas_vivo = false; refresh_ativo = false;
     if (medidor) { motor_fim(medidor); medidor = NULL; }
+    if (motor) { motor_fim(motor); motor = NULL; }   /* o motor da página anterior solta as fontes dele antes */
+    motor_fontes_limpar();   /* fontes da web são da página anterior */
     js_rol = 0; rol_pedida = -1;
     js_fim();
     cache_limpar();
@@ -2543,7 +2546,7 @@ int principal(int argc, char **argv)
         if (js_vivo() || refresh_ativo || (js_ativo() && motor && pos_px() != js_rol)) {
             if (proximo_evento(j->id, &e, false) != 1) {
                 /* ritmo: redesenho caro espera mais */
-                unsigned agora = tempo_ms(), passo = canvas_vivo ? 40 : agora - ult_redesenho < 2000 ? 1000 : 250;
+                unsigned agora = tempo_ms(), passo = js_animando() ? 16 : canvas_vivo ? 40 : agora - ult_redesenho < 2000 ? 1000 : 250;
                 if (!js_vivo() && !(js_ativo() && motor && pos_px() != js_rol)) { dormir(50); continue; }   /* só esperando o refresh */
                 if (agora - ult_tique >= passo || pos_px() != js_rol) { pagina_viva(); aplicar_rolagem_pedida(); } else dormir(20);
                 continue;

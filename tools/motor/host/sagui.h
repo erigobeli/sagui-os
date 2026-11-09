@@ -34,6 +34,8 @@ const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int 
 fonte_t *fonte_instancia(fonte_t *b, const uint32_t *tags, const int *valores100, int n);
 bool     fonte_variavel(fonte_t *f);
 fonte_t *fonte_obliqua(fonte_t *b);   /* itálico sintético */
+/* Fontes do sistema (DejaVu em /fontes): g 0 sans-serif, 1 serif, 2 monospace. Uma vez por processo. */
+fonte_t *fonte_sistema(int g, int negrito, int italico);
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
 /* UTF-8: lê um caractere (byte inválido vale por si: cp = byte) e escreve um. */
 static inline int utf8_ler(const char *p, int resto, uint32_t *cp)

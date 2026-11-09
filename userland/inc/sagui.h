@@ -125,6 +125,8 @@ typedef struct {
     int (*layout)(const char *html, int n, int *caixas, int qtd);
     /* getComputedStyle do elemento k do último layout. */
     bool (*estilo)(int k, const char *prop, char *o, int max);
+    /* Fonte de uma família do @font-face da página (canvas, document.fonts); NULL se não há. */
+    struct fonte *(*fonte)(const char *familia, int peso, int italico, int largura);
 } js_hooks_t;
 char *js_pagina(const char *html, int n, const char *url, const js_hooks_t *h, int *saida_n);
 /* Canvas 2D (libsagui/canvas2d.c): telas com pixels ARGB sem pré-multiplicar. */
@@ -169,8 +171,11 @@ const uint8_t *fonte_glifo(fonte_t *f, unsigned cp, int px, int *l, int *a, int 
 fonte_t *fonte_instancia(fonte_t *b, const uint32_t *tags, const int *valores100, int n);
 bool     fonte_variavel(fonte_t *f);
 fonte_t *fonte_obliqua(fonte_t *b);   /* itálico sintético */
+/* Fontes do sistema (DejaVu em /fontes): g 0 sans-serif, 1 serif, 2 monospace. Uma vez por processo. */
+fonte_t *fonte_sistema(int g, int negrito, int italico);
 char *js_tique(int ms, int *saida_n);   /* timers depois do load; HTML novo se o DOM mudou */
 int   js_vivo(void);
+int   js_animando(void);   /* requestAnimationFrame pendente: ritmo de quadro */
 int   js_ativo(void);                     /* a página tem JavaScript rodando */
 /* Janela do navegador: tamanho da área da página e rolagem (innerWidth, scrollY...). */
 void  js_janela(int l, int a, int rx, int ry);

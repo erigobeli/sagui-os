@@ -82,6 +82,19 @@ static val n_defprop(val este, val *a, int n)
     } else por_prop(o.o, k, get(d, I("value")));
     return o;
 }
+/* __desc(o, k): descritor de um acessor próprio ({get, set}); null se não for acessor */
+static val n_desc(val este, val *a, int n)
+{
+    (void)este;
+    val o = ARG(0);
+    if (o.t != OB) return vNul();
+    prop *p = achar(o.o, chave(ARG(1)));
+    if (!p || p->v.t != AC) return vNul();
+    obj *r = novo_obj(NULL);
+    por_prop(r, I("get"), get(vO(p->v.o), I("get"))); por_prop(r, I("set"), get(vO(p->v.o), I("set")));
+    por_prop(r, I("enumerable"), vB(1)); por_prop(r, I("configurable"), vB(1));
+    return vO(r);
+}
 static val n_hasown(val este, val *a, int n)
 {
     str *k = chave(ARG(0));
@@ -1775,6 +1788,38 @@ void tela2d_ret_cheio(int id, double x, double y, double w, double h); void tela
 void tela2d_ret_traco(int id, double x, double y, double w, double h);
 void tela2d_texto(int id, const char *s, double x, double y, double tam, int alinha, int base, int traco, double maxw);
 double tela2d_medir(const char *s, double tam);
+void tela2d_texto_fonte(int id, fonte_t *f, const char *s, double x, double y, double tam, int alinha, int base, int traco, double maxw, double ls);
+double tela2d_medir_fonte(fonte_t *f, const char *s, double tam, double ls);
+static int layout_atual(void);
+/* fonte do canvas pela lista de famílias (CSS): genéricas = DejaVu; nomes = @font-face da página */
+static fonte_t *fonte_canvas(const char *fams, int peso, int ital, int larg, bool baixar)
+{
+    for (const char *p = fams; p && *p;) {
+        while (*p == ' ' || *p == ',') p++;
+        if (!*p) break;
+        char q = 0;
+        if (*p == '"' || *p == '\'') q = *p++;
+        const char *a = p;
+        while (*p && (q ? *p != q : *p != ',')) p++;
+        int n = (int)(p - a);
+        if (q && *p) p++;
+        while (n && a[n - 1] == ' ') n--;
+        char nome[64]; if (n > 63) n = 63; memcpy(nome, a, (size_t)n); nome[n] = 0;
+        for (int i = 0; nome[i]; i++) if (nome[i] >= 'A' && nome[i] <= 'Z' && !q) { /* genéricas sem diferença de caixa */ }
+        int g = -1;
+        if (!compara_texto(nome, "serif") || !compara_texto(nome, "ui-serif")) g = 1;
+        else if (!compara_texto(nome, "monospace") || !compara_texto(nome, "ui-monospace")) g = 2;
+        else if (!compara_texto(nome, "sans-serif") || !compara_texto(nome, "system-ui") || !compara_texto(nome, "ui-sans-serif") ||
+                 !compara_texto(nome, "-apple-system") || !compara_texto(nome, "cursive") || !compara_texto(nome, "fantasy") || !compara_texto(nome, "emoji")) g = 0;
+        if (g >= 0) return fonte_sistema(g, peso >= 600, ital);
+        if (baixar && gancho && gancho->fonte) {
+            layout_atual();   /* as @font-face estão no CSS que o motor das medidas leu */
+            fonte_t *f = gancho->fonte(nome, peso, ital, larg);
+            if (f) return f;
+        }
+    }
+    return fonte_sistema(0, peso >= 600, ital);   /* padrão do canvas: sans-serif */
+}
 void tela2d_desenhar(int id, int src, double sx, double sy, double sw, double sh, double dx, double dy, double dw, double dh);
 int  tela2d_de_pixels(const uint32_t *px, int l, int a, int alfa);
 void tela2d_ler(int id, int x, int y, int w, int h, uint8_t *rgba);
@@ -1900,6 +1945,46 @@ int js_navegacao(char *url, int max, int *substituir)
     return 1;
 }
 static val n_script_atual(val este, val *a, int n) { (void)este; (void)a; (void)n; return script_atual ? embrulhar(script_atual) : vNul(); }
+
+/* WebGL (webgl.c): __gl(op, ctx, dado, modo, números...); modo 1 = floats, 2 = bytes, 3 = texto */
+int webgl_op(int op, const double *a, int na, void *dados, int ndados, const char *txt, double *o, int maxo, char *s, int maxs, int *eh_arr);
+void webgl_liberar_todos(void);
+static val n_gl(val este, val *a, int n)
+{
+    (void)este;
+    int op = to_i(ARG(0));
+    val d = ARG(2); int modo = to_i(ARG(3));
+    double num[16]; int nn = 0;
+    num[nn++] = to_num(ARG(1));
+    for (int i = 4; i < n && nn < 16; i++) num[nn++] = to_num(a[i]);
+    void *dados = NULL; int nd = 0; float *tmp = NULL; const char *txt = NULL;
+    if (modo == 1 && d.t == OB) {
+        int k = d.o->cl == C_TA ? d.o->vlen : d.o->cl == C_ARR ? d.o->na : 0;
+        tmp = aloca((unsigned)k * 4 + 4);
+        if (!tmp) erro("RangeError", "sem memoria", NULL);
+        for (int i = 0; i < k; i++) tmp[i] = (float)to_num(d.o->cl == C_TA ? ta_ler(d.o, i) : d.o->a[i]);
+        dados = tmp; nd = k;
+    } else if (modo == 1 && d.t == NU) { static float um; um = (float)d.n; dados = &um; nd = 1; }
+    else if (modo == 2 && d.t == OB) {
+        if (d.o->cl == C_TA) { dados = d.o->vbuf->mem + d.o->voff; nd = d.o->vlen * ta_tam[d.o->vtipo]; }
+        else if (d.o->cl == C_BUF) { dados = d.o->mem; nd = d.o->mem_n; }
+    } else if (modo == 3) txt = to_str(d)->s;
+    double o[72]; static char s[4096]; int arr = 0;
+    s[0] = 0;
+    unsigned t0 = tempo_ms();
+    int r = webgl_op(op, num, nn, dados, nd, txt, o, 64, s, sizeof s, &arr);
+    t_limite += tempo_ms() - t0;   /* desenho em software não é laço infinito do script */
+    if (tmp) libera(tmp);
+    if (r == -1) return vU();
+    if (r == -2) { int k = 0; while (s[k]) k++; return vS(novo_str(s, k)); }
+    if (r < 0) return vNul();
+    if (op == 83) { obj *v = novo_arr(0); for (int i = 0; i <= r; i++) arr_push(v, vN(o[i])); return vO(v); }
+    if (!arr) return vN(o[0]);
+    obj *v = novo_arr(0);
+    for (int i = 0; i < r; i++) arr_push(v, vN(o[i]));
+    if (op == 79 || op == 80) arr_push(v, vS(novo_str(s, (int)tam_texto(s))));
+    return vO(v);
+}
 static double NA(val *a, int n, int i) { return i < n ? to_num(a[i]) : 0; }
 static val n_c2(val este, val *a, int n)
 {
@@ -1942,8 +2027,38 @@ static val n_c2(val este, val *a, int n)
     case 33: tela2d_ret_cheio(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
     case 34: tela2d_ret_limpar(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
     case 35: tela2d_ret_traco(id, NA(a, n, 2), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5)); break;
-    case 40: tela2d_texto(id, to_str(ARG(2))->s, NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), to_i(ARG(6)), to_i(ARG(7)), to_i(ARG(8)), NA(a, n, 9)); break;
-    case 41: return vN(tela2d_medir(to_str(ARG(1))->s, NA(a, n, 2)));
+    case 40: {   /* fillText/strokeText(id, texto, x, y, tam, alinha, base, traço, maxw, famílias, peso, itálico, largura, letter-spacing) */
+        fonte_t *f = fonte_canvas(to_str(ARG(10))->s, to_i(ARG(11)), to_i(ARG(12)), to_i(ARG(13)), true);
+        if (f) tela2d_texto_fonte(id, f, to_str(ARG(2))->s, NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), to_i(ARG(6)), to_i(ARG(7)), to_i(ARG(8)), NA(a, n, 9), NA(a, n, 14));
+        else tela2d_texto(id, to_str(ARG(2))->s, NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), to_i(ARG(6)), to_i(ARG(7)), to_i(ARG(8)), NA(a, n, 9));
+        break;
+    }
+    case 41: {   /* measureText(texto, tam, famílias, peso, itálico, largura, ls) -> [largura, ascendente, descendente] */
+        double tam = NA(a, n, 2);
+        fonte_t *f = fonte_canvas(to_str(ARG(3))->s, to_i(ARG(4)), to_i(ARG(5)), to_i(ARG(6)), true);
+        obj *r = novo_arr(0);
+        arr_push(r, vN(tela2d_medir_fonte(f, to_str(ARG(1))->s, tam, NA(a, n, 7))));
+        int px = (int)(tam * 64 + 0.5);
+        arr_push(r, vN(f ? fonte_ascendente(f, px) / 64.0 : tam * 0.75));
+        arr_push(r, vN(f ? fonte_descendente(f, px) / 64.0 : tam * 0.25));
+        return vO(r);
+    }
+    case 48: { void tela2d_liberar(int); tela2d_liberar(id); break; }
+    case 47: {   /* document.fonts.load: baixa as famílias pedidas; true se alguma da página casou */
+        if (!gancho || !gancho->fonte) return vB(0);
+        layout_atual();
+        const char *fams = to_str(ARG(1))->s; int achou = 0;
+        for (const char *p = fams; *p;) {
+            while (*p == ' ' || *p == ',') p++;
+            char q = 0; if (*p == '"' || *p == '\'') q = *p++;
+            const char *ini = p; while (*p && (q ? *p != q : *p != ',')) p++;
+            int k = (int)(p - ini); if (q && *p) p++;
+            while (k && ini[k - 1] == ' ') k--;
+            char nome[64]; if (k > 63) k = 63; memcpy(nome, ini, (size_t)k); nome[k] = 0;
+            if (k && gancho->fonte(nome, to_i(ARG(2)), to_i(ARG(3)), to_i(ARG(4)))) achou = 1;
+        }
+        return vB(achou);
+    }
     case 42: tela2d_desenhar(id, to_i(ARG(2)), NA(a, n, 3), NA(a, n, 4), NA(a, n, 5), NA(a, n, 6), NA(a, n, 7), NA(a, n, 8), NA(a, n, 9), NA(a, n, 10)); break;
     case 43: {   /* getImageData -> Uint8ClampedArray */
         int x = to_i(ARG(2)), y = to_i(ARG(3)), w = to_i(ARG(4)), h = to_i(ARG(5));
@@ -2015,7 +2130,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
         por_prop(global, I(ctor[i].n), c);
     }
     obj *O = get(vO(global), I("Object")).o, *A = get(vO(global), I("Array")).o, *S = get(vO(global), I("String")).o;
-    reg(O, "keys", n_keys); reg(O, "getOwnPropertyNames", n_keys); reg(O, "getPrototypeOf", n_getproto); reg(O, "setPrototypeOf", n_setproto); reg(O, "create", n_create); reg(O, "defineProperty", n_defprop);
+    reg(O, "keys", n_keys); reg(O, "getOwnPropertyNames", n_keys); reg(O, "getPrototypeOf", n_getproto); reg(O, "setPrototypeOf", n_setproto); reg(O, "create", n_create); reg(O, "defineProperty", n_defprop); reg(global, "__desc", n_desc);
     reg(p_obj, "hasOwnProperty", n_hasown); reg(p_obj, "toString", n_objstr); reg(p_obj, "valueOf", n_mesmo);
     reg(p_fn, "call", n_call); reg(p_fn, "apply", n_apply); reg(p_fn, "bind", n_bind); reg(p_fn, "toString", n_fnstr);
     reg(A, "isArray", n_isarr);
@@ -2031,7 +2146,7 @@ static void iniciar(const js_hooks_t *h, const char *url)
     reg(p_el, "createElement", n_create_el); reg(p_el, "createTextNode", n_create_txt); reg(p_el, "appendChild", n_append); reg(p_el, "insertBefore", n_insert); reg(p_el, "removeChild", n_remove_ch);
     reg(p_el, "getAttribute", n_getattr); reg(p_el, "setAttribute", n_setattr); reg(p_el, "removeAttribute", n_rmattr); reg(p_el, "write", n_write); reg(p_el, "writeln", n_write);
     reg(global, "__chaves", n_chaves); reg(global, "parseInt", n_parseint); reg(global, "parseFloat", n_parsefloat); reg(global, "isNaN", n_isnan);
-    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
+    reg(global, "__gnext", n_gnext); reg(global, "__novo_buf", n_novo_buf); reg(global, "__buf_slice", n_buf_slice); reg(global, "__novo_ta", n_novo_ta); reg(global, "__ta_info", n_ta_info); reg(global, "__ta_copiar", n_ta_copiar); reg(global, "__utf8_cod", n_utf8_cod); reg(global, "__utf8_dec", n_utf8_dec); reg(global, "__c2", n_c2); reg(global, "__gl", n_gl); reg(global, "__copiar", n_copiar); reg(global, "__script_atual", n_script_atual); reg(global, "__dataset", n_dataset); reg(global, "__cookie", n_cookie); reg(global, "__navegar", n_navegar); reg(global, "__caixa", n_caixa); reg(global, "__estilo_c", n_estilo_c); reg(global, "__jan", n_jan); reg(global, "__rolar_c", n_rolar_c); reg(global, "__escopo", n_escopo); reg(global, "__limite", n_limite); reg(global, "__tentar", n_tentar);
     reg(global, "__log", n_log); reg(global, "__eval", n_eval); reg(global, "eval", n_eval); reg(global, "__now", n_now); reg(global, "__rand", n_rand); reg(global, "alert", n_alert);
     reg(global, "__baixar", n_baixar);  reg(global, "__json_parse", n_json_parse); reg(global, "__json_q", n_json_q); reg(global, "__pedir_n", n_pedir); reg(global, "__sombra", n_sombra); reg(global, "__frag", n_frag); reg(global, "__re", n_re);
     por_prop(global, I("NaN"), vN(D_NAN)); por_prop(global, I("Infinity"), vN(D_INF)); reg(global, "__mat", n_mat); reg(global, "__numfmt", n_numfmt); por_prop(global, I("undefined"), vU());
@@ -2203,6 +2318,7 @@ static void gc_liberar_tudo(void);
 void js_fim(void)
 {
     nav_pedido = 0;
+    webgl_liberar_todos();
     tela2d_liberar_todas();
     lay_ger = 0xFFFFFFFFu; lay_ok = 0; lay_n = 0;
     video_src = NULL;
@@ -2228,7 +2344,8 @@ static void tique_interno(void)
 {
     t_limite = tempo_ms() + 3000;   /* um quadro pesado (canvas com milhares de pontos) não é laço infinito */
     val a = vI(tique_ms);
-    vivo = to_bool(chamar(get(vO(global), I("__tique")), vU(), &a, 1));
+    val r = chamar(get(vO(global), I("__tique")), vU(), &a, 1);
+    vivo = r.t == NU ? (int)r.n : to_bool(r);
 }
 static void tique_seguro(void)
 {
@@ -2248,6 +2365,7 @@ char *js_tique(int ms, int *saida_tam)
     return saida;
 }
 int js_vivo(void) { return global && vivo; }
+int js_animando(void) { return global && vivo == 2; }   /* há requestAnimationFrame pendente */
 int js_ativo(void) { return global != NULL; }
 /* rolagem e tamanho: o script recebe scroll/resize e os observadores olham de novo */
 static int evento_jan;
