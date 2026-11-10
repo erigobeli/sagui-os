@@ -129,14 +129,12 @@ def main():
         verificar(fundo == (240, 230, 200), f"fundo do body pintado ({fundo})")
     with Maquina("h42-a", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/app.html", ["--vesa"]), extras=extras) as m:
         m.esperar_serial('cipo: pronto "App"', 120)
-        verificar("pagina so com JavaScript" in m.serial(), "casca de aplicativo mostra a explicação, não tela branca")
+        verificar("JavaScript completo" not in m.serial() and "so com JavaScript" not in m.serial(), "casca de aplicativo carrega como está, sem página de aviso")
 
     with Maquina("h42-o", "ide", imagem=imagem_de_teste(f"/bin/cipo http://10.0.2.2:{porta}/oculta.html", ["--vesa"]), extras=extras) as m:
         m.esperar_serial('cipo: pronto "Oculta"', 120)
         s = m.serial()
-        verificar("css escondeu a pagina" in s, "percebeu a página escondida pelo CSS")
-        n = int(re.search(r'pronto "Oculta" \((\d+) linhas', s).group(1))
-        verificar(n >= 3, f"página escondida fica legível ({n} linhas)")
+        verificar("css escondeu a pagina" not in s, "conteúdo escondido pelo CSS continua escondido, como no Chrome")
     srv.shutdown()
     return 0
 

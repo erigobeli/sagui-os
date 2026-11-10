@@ -2295,26 +2295,11 @@ static void carregar(const char *pedido)
             corpo = converter_corpo(corpo, &tam);
             if (html) {
                 titulo_js[0] = alerta_js[0] = 0;
-                int tam_doc = tam;   /* o documento como veio (a serialização tira os scripts) */
                 char *novo = rodar_scripts(corpo, &tam);
                 ler_refresh(novo, tam);
                 ler_pagina(novo, tam);
                 if (motor) {
                     motor_diagramar();
-                    if (motor_altura < 60 && tam > 60) {   /* o site revela o conteúdo por JavaScript */
-                        registrar("cipo: css escondeu a pagina, lendo sem display:none\n");
-                        motor_sem_esconder(motor, true);
-                        motor_diagramar();
-                    }
-                    if (motor_altura < 40 && tam_doc > 20000) {
-                        char tt[96];
-                        copia_texto(tt, titulo, sizeof tt);
-                        registrar("cipo: pagina so com JavaScript (%d bytes, altura %d)\n", tam_doc, motor_altura);
-                        limpar_pagina();
-                        pagina_de_erro("Esta página só existe com JavaScript completo",
-                                       "O site monta a página com recursos de JavaScript que o motor do Cipó ainda não tem.");
-                        copia_texto(titulo, tt, sizeof titulo);
-                    }
                     if (novo != corpo) libera(novo);
                     if (titulo_js[0]) copia_texto(titulo, titulo_js, sizeof titulo);
                 } else {
@@ -2327,18 +2312,6 @@ static void carregar(const char *pedido)
                 }
                 if (novo != corpo) libera(novo);
                 if (titulo_js[0]) copia_texto(titulo, titulo_js, sizeof titulo);
-                /* Casca de aplicativo: muito HTML e script, quase nenhum texto para ler. */
-                int letras = 0;
-                for (int i = 0; i < qtd_segs; i++) if (!(segs[i].estilo & (E_IMAGEM | E_LINHA))) letras += segs[i].n;
-                if (!linhas || (tam > 50000 && letras < 200 && !qtd_imagens)) {
-                    char t[96];
-                    copia_texto(t, titulo, sizeof t);
-                    registrar("cipo: pagina so com JavaScript (%d bytes, %d letras)\n", tam, letras);
-                    limpar_pagina();
-                    pagina_de_erro("Esta página só existe com JavaScript completo",
-                                   "O site monta a página com recursos de JavaScript que o motor do Cipó ainda não tem. Vídeos também não tocam aqui.");
-                    copia_texto(titulo, t, sizeof titulo);
-                }
                 }
             } else {
                 estilo = E_PRE;
