@@ -1503,6 +1503,7 @@ static void d_tirar(dn *c)
 static void d_por(dn *p, dn *c, dn *antes)
 {
     if (c->tipo == 11) { while (c->pri) d_por(p, c->pri, antes); return; }   /* fragmento: muda os filhos */
+    if (antes == c) antes = c->prox;   /* inserir antes de si mesmo: fica onde está (sem ciclo) */
     d_tirar(c);
     c->pai = p; c->prox = antes;
     c->ant = antes ? antes->ant : p->ult;

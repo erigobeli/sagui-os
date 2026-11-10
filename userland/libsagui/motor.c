@@ -2604,7 +2604,8 @@ static void medir_inline(no_m *n, int *mx, int *mn, int *linha)
                 if (e->branco == 1 && ch == '\n') { if (*linha > *mx) *mx = *linha; *linha = 0; i++; continue; }
                 if (eh_esp(ch) && e->branco != 1) { *linha += larg_car(e, ' '); i++; continue; }
                 int k = i;
-                while (k < c->nt && !eh_esp(c->t[k]) && !(e->branco == 1 && c->t[k] == '\n')) k++;
+                /* em pre o espaço é parte do trecho: só o \n quebra (senão k não anda) */
+                while (k < c->nt && (e->branco == 1 ? c->t[k] != '\n' : !eh_esp(c->t[k]))) k++;
                 int w = larg_texto(e, c->t + i, k - i), m = e->branco == 1 ? w : maior_trecho(e, c->t + i, k - i);
                 if (m > *mn) *mn = m;
                 *linha += w;
