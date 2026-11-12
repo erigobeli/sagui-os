@@ -1,0 +1,735 @@
+{
+  "titulo": "SaguiOS 2.0: o sagui sai da mata",
+  "atualizado": "2026-11-12T14:11:01",
+  "situacao": "PRD 2.0 pronto. Aguardando o início da fase 1.",
+  "fase_atual": 1,
+  "historia_atual": null,
+  "bloqueio": "",
+  "mensagem_fase": "",
+  "raiz": "../../",
+  "links": [
+    {
+      "texto": "PRD 2.0",
+      "url": "../../prd2.md"
+    },
+    {
+      "texto": "Painel da versão 1.0",
+      "url": "../index.html"
+    }
+  ],
+  "tabela_titulo": "O que o SaguiOS 2.0 vai saber fazer",
+  "tabela_coluna": "Capacidade",
+  "tamanho_inicial": 575488,
+  "fases": [
+    {
+      "numero": 1,
+      "nome": "Base e Configurações",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 2,
+      "nome": "Som",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 3,
+      "nome": "Rede",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 4,
+      "nome": "TCP e HTTPS",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 5,
+      "nome": "Terminal e SSH",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 6,
+      "nome": "Sagui Navegador",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 7,
+      "nome": "Compilador C",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 8,
+      "nome": "Sagui Code",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 9,
+      "nome": "Visual moderno",
+      "estado": "a fazer",
+      "progresso": 0.0
+    },
+    {
+      "numero": 10,
+      "nome": "Instalação no HD (opcional, a decidir)",
+      "estado": "a fazer",
+      "progresso": 0,
+      "opcional": true
+    }
+  ],
+  "historias": [
+    {
+      "id": "H35",
+      "fase": 1,
+      "titulo": "Comando `pci` e inventário de hardware",
+      "objetivo": "Lista os dispositivos PCI com classe, fabricante e modelo (com nomes conhecidos para os mais comuns) e grava o relatório em `/usb/hardware.txt`.",
+      "aceite": "no QEMU aparecem a placa de rede, o controlador de som e os EHCI; no `docs/teste-v2-fase1.md` o Eli recebe o pedido de fotografar a saída no G470, que define o driver de rede (H46).",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H36",
+      "fase": 1,
+      "titulo": "Desligar e reiniciar",
+      "objetivo": "Leitura das tabelas ACPI (o suficiente para desligar), reinício pelo método ACPI com o controlador de teclado como reserva. Menu na barra de cima com **Desligar** e **Reiniciar**, perguntando antes se há pendrive montado (desmonta antes de desligar). Comandos `desligar` e `reiniciar`.",
+      "aceite": "o QEMU termina sozinho ao desligar; reiniciar volta ao boot; com pendrive montado, os dados ficam gravados.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H37",
+      "fase": 1,
+      "titulo": "Configurações guardadas",
+      "objetivo": "Formato `chave = valor` em `/usb/.saguios/configuracoes.txt` (seção 4, item 4), com leitura no boot e gravação ao mudar.",
+      "aceite": "mudar uma configuração, reiniciar com o mesmo pendrive e ela continua igual; sem pendrive, aviso e valores padrão.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H38",
+      "fase": 1,
+      "titulo": "App Configurações",
+      "objetivo": "Janela com abas: **Relógio** (data, hora, fuso; o automático chega na fase 4), **Aparência** (cor ou desenho do fundo, tamanho dos ícones), **Sobre o computador** (memória, processador, dispositivos). Abas novas entram nas fases seguintes (Som, Rede, IA). Ajustar o espaçamento dos ícones da área de trabalho, que ficou apertado com o Sagui 3D.",
+      "aceite": "mudar o relógio pelo app muda o relógio da barra e do `data`; captura de cada aba.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H39",
+      "fase": 1,
+      "titulo": "Remover programas",
+      "objetivo": "Programas instalados ficam em `/usb/programas/` (persistentes) e aparecem na área de trabalho e no Terminal; a aba **Programas** das Configurações lista os instalados e remove com confirmação. Os programas que vêm com o sistema podem ser ocultados, não apagados.",
+      "aceite": "instalar um programa de teste copiando para `/usb/programas/`, ele aparece; remover pelas Configurações, ele some e o arquivo é apagado.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H40",
+      "fase": 2,
+      "titulo": "Driver Intel HD Audio",
+      "objetivo": "Controlador (comandos ao codec pelas filas da especificação), descoberta do codec e do caminho até a saída (alto-falante e fone), reprodução por DMA com lista de buffers.",
+      "aceite": "o QEMU grava num `.wav` uma senoide de 440 Hz tocada pelo SaguiOS; o teste mede a frequência gravada.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H41",
+      "fase": 2,
+      "titulo": "Som para os programas",
+      "objetivo": "Chamadas de sistema de som, mistura de vários programas tocando ao mesmo tempo, volume. Aba **Som** nas Configurações.",
+      "aceite": "dois programas tocando juntos aparecem misturados no `.wav`; volume em 0 grava silêncio.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H42",
+      "fase": 2,
+      "titulo": "Tocador e sons do sistema",
+      "objetivo": "Comando `tocar arquivo.wav`, sons do sistema (início, notificação, pendrive conectado) com opção de desligar, e o Sagui 3D e o Sagui Pega Banana usando o som novo quando houver placa (o bip continua como reserva).",
+      "aceite": "captura do `.wav` com os sons do jogo; no G470, o Eli ouve o som de início.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H43",
+      "fase": 3,
+      "titulo": "Driver Intel PRO/1000",
+      "objetivo": "Placa de rede usada pelo QEMU e pelo VirtualBox: inicialização, filas de envio e recepção, interrupções, endereço físico (MAC), estado do cabo.",
+      "aceite": "o teste vê pacotes indo e voltando pela rede do QEMU.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H44",
+      "fase": 3,
+      "titulo": "Ethernet, ARP, IPv4, ICMP e UDP",
+      "objetivo": "A pilha básica no kernel e o comando `ping`.",
+      "aceite": "`ping 10.0.2.2` (o QEMU) responde; tempo e perda mostrados.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H45",
+      "fase": 3,
+      "titulo": "DHCP e DNS",
+      "objetivo": "Endereço automático no boot e resolução de nomes; comando `rede` (endereço, máscara, rota, DNS) e `ping google.com`.",
+      "aceite": "no QEMU, o DHCP pega o endereço sozinho e um nome resolve pelo DNS do QEMU; teste \"internet\" com um nome real.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H46",
+      "fase": 3,
+      "titulo": "Rede no G470",
+      "objetivo": "Driver da placa do G470, se o manual for público (decidido com a foto do H35); se não for, driver **USB CDC (ECM/NCM)** para um adaptador USB-Ethernet (seção 3.2). Registrar a decisão em `docs/decisoes.md`.",
+      "aceite": "no G470 (ou com o adaptador), `ping` responde; teste automático do caminho escolhido no QEMU (o QEMU tem adaptador USB de rede padrão).",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H47",
+      "fase": 3,
+      "titulo": "Rede na interface",
+      "objetivo": "Aba **Rede** nas Configurações (estado, endereço, DHCP ou manual) e ícone de rede na barra de cima.",
+      "aceite": "capturas com a rede ligada e com o cabo desligado.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H48",
+      "fase": 4,
+      "titulo": "TCP e sockets",
+      "objetivo": "Abertura e fechamento de conexão, números de sequência, confirmações, retransmissão, janela, e as chamadas de sistema de sockets para os programas.",
+      "aceite": "um programa do SaguiOS baixa 10 MB de um servidor da VPS sem perder nem trocar nenhum byte (conferido por hash), inclusive com perda de pacotes simulada.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H49",
+      "fase": 4,
+      "titulo": "HTTP e relógio pela internet",
+      "objetivo": "Cliente HTTP/1.1 (com respostas em pedaços e redirecionamentos) numa biblioteca de usuário, comando `baixar <url> [arquivo]`, e NTP com a opção **Relógio automático** nas Configurações.",
+      "aceite": "`baixar http://...` de um servidor da VPS grava o arquivo certo no pendrive; o relógio acerta pelo NTP de teste.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H50",
+      "fase": 4,
+      "titulo": "Números aleatórios e resumos",
+      "objetivo": "Gerador do kernel (seção 4, item 2) com teste estatístico simples; SHA-256, SHA-384, SHA-512, HMAC e HKDF.",
+      "aceite": "todos os vetores oficiais passam; documentação de como a aleatoriedade é coletada no G470 sem RDRAND.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H51",
+      "fase": 4,
+      "titulo": "Cifras e troca de chaves",
+      "objetivo": "AES-128 e AES-256 em GCM, ChaCha20-Poly1305, X25519.",
+      "aceite": "vetores oficiais; tempo constante onde a especificação recomenda (registrar como foi feito).",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H52",
+      "fase": 4,
+      "titulo": "Assinaturas e certificados",
+      "objetivo": "Números grandes, RSA (verificação PKCS#1 v1.5 e PSS), ECDSA P-256 e P-384, leitura de certificados X.509 em DER, validação de cadeia, nome e validade.",
+      "aceite": "vetores oficiais; uma cadeia de teste válida passa e cinco cadeias erradas (nome errado, vencida, assinatura falsa, autoridade desconhecida, cadeia quebrada) são recusadas com a mensagem certa.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H53",
+      "fase": 4,
+      "titulo": "TLS 1.3",
+      "objetivo": "Cliente completo (troca de chaves X25519, cifras da H51, verificação do certificado pela H52, alertas), usado pelo `baixar https://...`.",
+      "aceite": "conecta no servidor TLS de teste da VPS; recusa o servidor com certificado errado; teste \"internet\" com sites reais.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H54",
+      "fase": 4,
+      "titulo": "Certificados raiz e créditos",
+      "objetivo": "Os poucos certificados raiz necessários para os sites de aceite e para o OpenRouter, em `/sistema/certificados/`, com `CREDITOS.md`; comando para ver a lista.",
+      "aceite": "`baixar https://pt.wikipedia.org/` funciona (teste \"internet\"); `CREDITOS.md` lista cada certificado com origem e licença.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H55",
+      "fase": 5,
+      "titulo": "Terminal completo",
+      "objetivo": "Emulação das sequências de terminal usadas por programas de servidor (cursor, apagar, cores de 16 e 256, regiões de rolagem, tela alternativa, títulos), UTF-8 e fonte com desenho de caixas. Abas e copiar e colar no Terminal.",
+      "aceite": "um arquivo de teste com as sequências desenha a tela esperada (comparação com captura de referência).",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H56",
+      "fase": 5,
+      "titulo": "Transporte SSH",
+      "objetivo": "Troca de chaves `curve25519-sha256`, chave do servidor `ssh-ed25519` (com SHA-512), cifra `aes128-ctr` com `hmac-sha2-256` ou `aes256-gcm`, e o arquivo de servidores conhecidos (aviso na primeira conexão e alerta forte se a chave mudar).",
+      "aceite": "conecta no `sshd` local da VPS; recusa conexão quando a chave do servidor muda.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H57",
+      "fase": 5,
+      "titulo": "Login e sessão",
+      "objetivo": "Autenticação por senha e por chave Ed25519 (comando `ssh-chave` gera o par no pendrive), terminal remoto com tamanho da janela, `exit` limpo.",
+      "aceite": "login das duas formas; redimensionar a janela muda o tamanho no servidor.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H58",
+      "fase": 5,
+      "titulo": "SSH de verdade",
+      "objetivo": "Comando `ssh usuario@servidor`.",
+      "aceite": "no teste automático, `htop` e `vim` rodam no servidor de teste e as capturas mostram a tela certa; no roteiro, o Eli entra num servidor dele.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H59",
+      "fase": 6,
+      "titulo": "Descompactação e PNG",
+      "objetivo": "DEFLATE, zlib e gzip, e o decodificador de PNG (todas as profundidades de cor e transparência).",
+      "aceite": "conjunto de PNGs de teste gerados na VPS decodificados iguais pixel a pixel.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H60",
+      "fase": 6,
+      "titulo": "JPEG",
+      "objetivo": "Decodificador JPEG (sequencial e progressivo).",
+      "aceite": "JPEGs de teste comparados com a referência dentro da tolerância da especificação.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H61",
+      "fase": 6,
+      "titulo": "Leitor de HTML",
+      "objetivo": "Leitura tolerante a erros, árvore de elementos, entidades, conjunto de caracteres, links e formulários simples (só leitura de busca, como a da Wikipédia).",
+      "aceite": "páginas de teste com HTML mal formado montam a árvore esperada.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H62",
+      "fase": 6,
+      "titulo": "Janela do navegador",
+      "objetivo": "Barra de endereço, voltar e avançar, favoritos, rolagem, layout em blocos (títulos, parágrafos, listas, citações, tabelas simples, imagens), cores básicas do HTML, `display: none` e pouco mais de CSS (registrar o que for suportado).",
+      "aceite": "páginas de teste servidas pela VPS renderizadas como as capturas de referência.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H63",
+      "fase": 6,
+      "titulo": "Sites de aceite",
+      "objetivo": "Abrir, com texto legível, links e imagens: um artigo da **Wikipédia em português**, `example.com`, uma página de documentação simples e o `README.md` do SaguiOS no GitHub (versão em texto).",
+      "aceite": "teste \"internet\" com capturas de cada site; roteiro para o Eli na VM e no G470.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H64",
+      "fase": 7,
+      "titulo": "A linguagem",
+      "objetivo": "Definir em `docs/c-do-sagui.md` o C aceito: tipos inteiros, `char`, ponteiros, vetores, `struct`, `union`, `enum`, `typedef`, funções, laços, `switch`, `#include`, `#define` simples, e a `libsagui`. Sem ponto flutuante na primeira versão (como os programas atuais). Esse documento também é o manual que o Sagui Code manda para a IA.",
+      "aceite": "manual revisado com exemplos; lista do que fica de fora.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H65",
+      "fase": 7,
+      "titulo": "Frente do compilador",
+      "objetivo": "Pré-processador, leitura, verificação de tipos e mensagens de erro **em português, com linha, coluna e uma dica** (pensadas para a IA conseguir se corrigir sozinha).",
+      "aceite": "50 programas de teste com erros dão as mensagens esperadas; 50 programas válidos passam.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H66",
+      "fase": 7,
+      "titulo": "Fundo do compilador",
+      "objetivo": "Representação intermediária própria, geração de código x86 de 32 bits, montador e ligador próprios, ELF do SaguiOS ligado à `libsagui`.",
+      "aceite": "os 50 programas válidos rodam no SaguiOS com a saída esperada.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H67",
+      "fase": 7,
+      "titulo": "Compilar dentro do sistema",
+      "objetivo": "Comando `cc arquivo.c -o programa`, botão **Compilar e rodar** no Editor e instalação do resultado em `/usb/programas/`.",
+      "aceite": "no QEMU, digitar um programa no Editor, compilar e rodar sem sair do SaguiOS.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H68",
+      "fase": 7,
+      "titulo": "Prova de fogo",
+      "objetivo": "Compilar **dentro do SaguiOS** programas da 1.0 (pelo menos `wc`, `cat`, `calculadora` e `banana`) e comparar o comportamento com as versões feitas pelo GCC.",
+      "aceite": "os programas compilados pelo SaguiOS passam nos mesmos testes da 1.0.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H69",
+      "fase": 8,
+      "titulo": "JSON e cliente do OpenRouter",
+      "objetivo": "Leitor e escritor de JSON e cliente da API de conversa do OpenRouter (com chamada de ferramentas), por HTTPS. Aba **IA** nas Configurações: chave (guardada em `/usb/.saguios/chaves.txt`), modelo e limite de gasto por sessão.",
+      "aceite": "com o servidor falso da VPS, uma pergunta e uma resposta; com a API real, uma conversa registrada no diário.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H70",
+      "fase": 8,
+      "titulo": "O laço do agente",
+      "objetivo": "Ferramentas: `ler_arquivo`, `escrever_arquivo`, `editar_arquivo` (trocar um trecho), `listar_pasta`, `executar_comando`, `compilar` e `rodar`. Confirmação do usuário antes de sobrescrever, apagar ou rodar comandos; limite de passos por pedido.",
+      "aceite": "com o servidor falso, o laço completo (escrever, compilar com erro, corrigir, compilar, rodar) funciona e cada pedido de confirmação aparece.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H71",
+      "fase": 8,
+      "titulo": "Instruções e contexto",
+      "objetivo": "Texto de instruções do Sagui Code, manual da `libsagui` e de `docs/c-do-sagui.md` enviados na conversa, uso de cache de prompt quando o modelo escolhido suportar, e corte ou resumo das partes antigas quando a conversa crescer.",
+      "aceite": "conversa longa de teste não passa do limite configurado; o gasto estimado aparece ao fim de cada pedido.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H72",
+      "fase": 8,
+      "titulo": "Interface",
+      "objetivo": "`saguicode` no Terminal: resposta aparecendo enquanto é gerada, histórico, salvar e abrir conversas no pendrive, comandos `/modelo`, `/gasto`, `/limpar`.",
+      "aceite": "capturas de uma sessão completa.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H73",
+      "fase": 8,
+      "titulo": "Aceite com IA de verdade",
+      "objetivo": "Cinco pedidos de referência (por exemplo: relógio analógico, conversor de temperatura, lista de tarefas, jogo da velha, visualizador de imagens do pendrive) feitos com a API real e um modelo escolhido pelo Eli. Registrar quantos deram certo de primeira, quantos precisaram de correção e o gasto.",
+      "aceite": "pelo menos 4 de 5 terminam com o programa rodando; capturas e números no diário.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H74",
+      "fase": 9,
+      "titulo": "Vidro",
+      "objetivo": "Janelas e barras com transparência e desfoque do que está atrás, e sombras. O desfoque é recalculado só onde a tela mudou.",
+      "aceite": "capturas; tempo de quadro medido no QEMU e no G470.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H75",
+      "fase": 9,
+      "titulo": "Forma",
+      "objetivo": "Cantos arredondados, barra de cima nova (menu, relógio, rede, som, energia) e uma barra de aplicativos com os programas abertos e fixados.",
+      "aceite": "capturas; clicar na barra alterna entre os programas.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H76",
+      "fase": 9,
+      "titulo": "Movimento e tema",
+      "objetivo": "Animações de abrir, fechar e minimizar, ícones redesenhados e tema claro ou escuro nas Configurações.",
+      "aceite": "capturas dos dois temas.",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    },
+    {
+      "id": "H77",
+      "fase": 9,
+      "titulo": "Leve no G470",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "a fazer",
+      "bonus": false,
+      "inicio": null,
+      "fim": null,
+      "minutos": null,
+      "resultado": ""
+    }
+  ],
+  "tanenbaum": [
+    {
+      "conceito": "Desligar e reiniciar",
+      "implementa": "ACPI e menu na barra de cima",
+      "historias": "H36",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Configurações",
+      "implementa": "App com relógio, aparência, som, rede, IA e programas, guardadas no pendrive",
+      "historias": "H37 a H39",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Som",
+      "implementa": "Driver Intel HD Audio, mistura e volume",
+      "historias": "H40 a H42",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Rede",
+      "implementa": "Placa de rede, IPv4, DHCP, DNS, ping",
+      "historias": "H43 a H47",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "TCP e HTTP",
+      "implementa": "Conexões confiáveis, downloads, relógio pela internet",
+      "historias": "H48, H49",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Criptografia e HTTPS",
+      "implementa": "SHA-2, AES-GCM, ChaCha20, X25519, RSA, ECDSA, X.509 e TLS 1.3 próprios",
+      "historias": "H50 a H54",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Terminal e SSH",
+      "implementa": "Terminal completo e cliente SSH que roda vim e htop",
+      "historias": "H55 a H58",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Navegador",
+      "implementa": "HTML, PNG, JPEG; Wikipédia e páginas simples",
+      "historias": "H59 a H63",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Compilador C",
+      "implementa": "Compila programas dentro do próprio SaguiOS",
+      "historias": "H64 a H68",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Sagui Code",
+      "implementa": "Agente de programação com IA pelo OpenRouter",
+      "historias": "H69 a H73",
+      "estado": "a fazer"
+    },
+    {
+      "conceito": "Visual moderno",
+      "implementa": "Vidro, desfoque, cantos arredondados, animações",
+      "historias": "H74 a H77",
+      "estado": "a fazer"
+    }
+  ],
+  "acoes": [
+    {
+      "data": "2026-11-12T14:11:01",
+      "texto": "PRD 2.0 escrito com o Eli: 9 fases, histórias H35 a H77."
+    }
+  ],
+  "erros": [],
+  "capturas": [],
+  "linhas": {
+    "boot": 903,
+    "kernel": 9614,
+    "userland": 6317,
+    "ferramentas": 3602
+  },
+  "imagem": {
+    "bytes_util": 575488,
+    "bytes_arquivo": 1048576,
+    "meta_bytes": null
+  },
+  "progresso_geral": 0.0
+}

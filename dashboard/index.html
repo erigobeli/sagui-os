@@ -79,6 +79,7 @@
   <div class="conteudo">
     <h1 id="titulo">SaguiOS: um sistema operacional escrito do zero por IA</h1>
     <p id="atualizado">Carregando status…</p>
+    <p id="links"></p>
     <div class="faixa" id="situacao">…</div>
   </div>
 </header>
@@ -115,9 +116,9 @@
     </section>
 
     <section class="cartao c12">
-      <h2>Critério do Tanenbaum: o que torna isto um sistema operacional</h2>
+      <h2 id="tabela-titulo">Critério do Tanenbaum: o que torna isto um sistema operacional</h2>
       <div class="rolagem"><table>
-        <thead><tr><th>Conceito do livro</th><th>O que o SaguiOS implementa</th><th>Histórias</th><th>Estado</th></tr></thead>
+        <thead><tr><th id="tabela-col1">Conceito do livro</th><th>O que o SaguiOS implementa</th><th>Histórias</th><th>Estado</th></tr></thead>
         <tbody id="tanenbaum"></tbody>
       </table></div>
     </section>
@@ -141,7 +142,7 @@
   </div>
 </main>
 <div id="zoom"><img alt=""></div>
-<footer>Painel sem dependências externas. Dados em <code>dashboard/status.json</code> (cópia em <code>status.js</code> para abrir direto do disco).</footer>
+<footer>Painel sem dependências externas. Dados em <code>status.json</code>, nesta mesma pasta (cópia em <code>status.js</code> para abrir direto do disco).</footer>
 
 <script>
 // O painel lê window.SAGUI_STATUS (status.js). Se não existir, tenta o JSON
@@ -163,6 +164,9 @@ function desenhar(s) {
   $("atualizado").textContent = "Atualizado em " + dataBR(s.atualizado) +
     (s.historia_atual ? " · história atual: " + s.historia_atual : "");
   $("situacao").textContent = s.situacao + (s.bloqueio ? " · Bloqueio: " + s.bloqueio : "");
+  $("links").innerHTML = (s.links || []).map(l => `<a href="${esc(l.url)}">${esc(l.texto)}</a>`).join(" · ");
+  if (s.tabela_titulo) $("tabela-titulo").textContent = s.tabela_titulo;
+  if (s.tabela_coluna) $("tabela-col1").textContent = s.tabela_coluna;
   $("cartao-msg").hidden = !s.mensagem_fase;
   $("mensagem").textContent = s.mensagem_fase || "";
 
@@ -172,18 +176,24 @@ function desenhar(s) {
   $("geral-det").textContent = `${feitas} de ${principais.length} histórias concluídas (bônus não contam)`;
   $("geral-barra").style.width = s.progresso_geral + "%";
 
-  $("fases").innerHTML = s.fases.filter(f => f.numero <= 6).map(f => `
+  $("fases").innerHTML = s.fases.filter(f => !f.opcional).map(f => `
     <div class="fase"><div class="nome" title="${esc(f.nome)}">${f.numero}. ${esc(f.nome)} ${f.estado !== "a fazer" ? selo(f.estado) : ""}</div>
     <div class="barra"><div style="width:${f.progresso}%"></div></div>
     <div class="pct">${String(f.progresso).replace(".", ",")}%</div></div>`).join("");
 
   const img = s.imagem || {};
-  const util = img.bytes_util || 0, meta = img.meta_bytes || 1474560;
+  const util = img.bytes_util || 0, meta = img.meta_bytes;
   $("img-tam").textContent = num(Math.round(util / 1024)) + " KB";
-  $("img-det").textContent = `${num(util)} bytes úteis de ${num(meta)} (meta 1,44 MB) · ` +
-    `${(100 * util / meta).toFixed(1).replace(".", ",")}% da meta`;
-  $("img-barra").style.width = Math.min(100, 100 * util / meta) + "%";
-  $("img-barra-box").classList.toggle("alerta", util > meta);
+  $("img-barra-box").hidden = !meta;
+  if (meta) {
+    $("img-det").textContent = `${num(util)} bytes úteis de ${num(meta)} (meta 1,44 MB) · ` +
+      `${(100 * util / meta).toFixed(1).replace(".", ",")}% da meta`;
+    $("img-barra").style.width = Math.min(100, 100 * util / meta) + "%";
+    $("img-barra-box").classList.toggle("alerta", util > meta);
+  } else {
+    $("img-det").textContent = `${num(util)} bytes úteis · sem teto de tamanho, medido a cada fase` +
+      (s.tamanho_inicial ? ` · começou em ${num(Math.round(s.tamanho_inicial / 1024))} KB` : "");
+  }
 
   const L = s.linhas || {};
   const totalCod = (L.boot || 0) + (L.kernel || 0) + (L.userland || 0);
@@ -198,7 +208,7 @@ function desenhar(s) {
   let html = "";
   for (const f of s.fases) {
     const hs = s.historias.filter(h => h.fase === f.numero);
-    html += `<div class="hist-fase">Fase ${f.numero <= 6 ? f.numero + ": " : ""}${esc(f.nome)}</div>`;
+    html += `<div class="hist-fase">${f.opcional ? "" : "Fase " + f.numero + ": "}${esc(f.nome)}</div>`;
     html += hs.map(h => `<div class="hist"><div class="id">${h.id}</div>
       <div><details><summary>${esc(h.titulo)}</summary>
         <div class="det"><strong>Objetivo:</strong> ${md(h.objetivo)}<br><strong>Aceite:</strong> ${md(h.aceite)}
@@ -215,7 +225,7 @@ function desenhar(s) {
     : `<li class="vazio">Nenhum erro registrado.</li>`;
 
   $("galeria").innerHTML = s.capturas.length ? s.capturas.slice(0, 24).map(c =>
-    `<figure><img loading="lazy" src="../${esc(c.arquivo)}" alt="${esc(c.nome)}"><figcaption>${esc(c.nome)}</figcaption></figure>`).join("")
+    `<figure><img loading="lazy" src="${esc(s.raiz || "../")}${esc(c.arquivo)}" alt="${esc(c.nome)}"><figcaption>${esc(c.nome)}</figcaption></figure>`).join("")
     : `<p class="vazio">Nenhuma captura ainda.</p>`;
 }
 

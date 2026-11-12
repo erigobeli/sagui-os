@@ -30,12 +30,23 @@ import sys
 import datetime
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ARQ_JSON = os.path.join(RAIZ, "dashboard", "status.json")
-ARQ_JS = os.path.join(RAIZ, "dashboard", "status.js")
-ARQ_MD = os.path.join(RAIZ, "status.md")
-PASTA_HIST = os.path.join(RAIZ, "docs", "historias")
-PASTA_CAPT = os.path.join(RAIZ, "docs", "capturas")
-META_BYTES = 1474560  # 1,44 MB, o tamanho de um disquete
+# Qual versão do projeto: v1 (prd.md, painel em dashboard/) ou v2 (prd2.md,
+# painel em dashboard/v2/). Escolhida pela variável SAGUI_PROJETO.
+PROJETO = os.environ.get("SAGUI_PROJETO", "v1")
+if PROJETO == "v2":
+    ARQ_JSON = os.path.join(RAIZ, "dashboard", "v2", "status.json")
+    ARQ_JS = os.path.join(RAIZ, "dashboard", "v2", "status.js")
+    ARQ_MD = os.path.join(RAIZ, "status-v2.md")
+    PASTA_HIST = os.path.join(RAIZ, "docs", "v2", "historias")
+    PASTA_CAPT = os.path.join(RAIZ, "docs", "v2", "capturas")
+    META_BYTES = None  # a 2.0 não tem teto de tamanho: só mede
+else:
+    ARQ_JSON = os.path.join(RAIZ, "dashboard", "status.json")
+    ARQ_JS = os.path.join(RAIZ, "dashboard", "status.js")
+    ARQ_MD = os.path.join(RAIZ, "status.md")
+    PASTA_HIST = os.path.join(RAIZ, "docs", "historias")
+    PASTA_CAPT = os.path.join(RAIZ, "docs", "capturas")
+    META_BYTES = 1474560  # 1,44 MB, o tamanho de um disquete
 
 
 def agora():
@@ -85,7 +96,7 @@ def medir(estado):
         for nome in sorted(os.listdir(PASTA_CAPT)):
             if nome.lower().endswith(".png"):
                 caminho = os.path.join(PASTA_CAPT, nome)
-                capturas.append({"arquivo": "docs/capturas/" + nome,
+                capturas.append({"arquivo": os.path.relpath(caminho, RAIZ).replace(os.sep, "/"),
                                  "nome": nome,
                                  "data": datetime.datetime.fromtimestamp(os.path.getmtime(caminho)).replace(microsecond=0).isoformat()})
     capturas.sort(key=lambda c: c["data"], reverse=True)
@@ -108,7 +119,7 @@ def gerar_md(estado):
     linhas = []
     if estado.get("mensagem_fase"):
         linhas += ["```", estado["mensagem_fase"].rstrip(), "```", ""]
-    linhas += ["# Status do SaguiOS", "",
+    linhas += ["# Status do " + ("SaguiOS 2.0" if PROJETO == "v2" else "SaguiOS"), "",
                f"_Atualizado em {estado['atualizado']}_", "",
                f"- **Situação:** {estado['situacao']}",
                f"- **Fase atual:** {estado['fase_atual']}",
@@ -116,7 +127,7 @@ def gerar_md(estado):
                f"- **Progresso geral:** {estado['progresso_geral']}%",
                f"- **Bloqueio:** {estado.get('bloqueio') or 'nenhum'}",
                f"- **Imagem:** {estado['imagem']['bytes_util']} bytes úteis "
-               f"(meta {META_BYTES} bytes = 1,44 MB)",
+               + (f"(meta {META_BYTES} bytes = 1,44 MB)" if META_BYTES else "(sem teto: só medida)"),
                f"- **Linhas de código:** boot {estado['linhas']['boot']}, kernel {estado['linhas']['kernel']}, "
                f"userland {estado['linhas']['userland']}", "",
                "## Fases", "", "| Fase | Nome | Progresso | Estado |", "| --- | --- | --- | --- |"]
@@ -143,7 +154,7 @@ def gerar_paginas(estado):
         if os.path.exists(arq):
             continue
         with open(arq, "w", encoding="utf-8") as f:
-            f.write(f"# {h['id']}. {h['titulo']}\n\n**Fase:** {h['fase']}\n\n"
+            f.write(f"# {h['id']}. {h['titulo']}\n\n**Fase:** {h['fase']}" + (" (versão 2.0)" if PROJETO == "v2" else "") + "\n\n"
                     f"## Objetivo\n\n{h['objetivo']}\n\n## Critério de aceite\n\n{h['aceite']}\n\n"
                     "## Resultado\n\n_A fazer._\n")
 

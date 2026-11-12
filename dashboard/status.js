@@ -1,7 +1,7 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS: um sistema operacional escrito do zero por IA",
-  "atualizado": "2026-11-04T00:20:45",
+  "atualizado": "2026-11-12T14:10:45",
   "situacao": "Fase 7 confirmada no hardware. Seguindo para a fase 8.",
   "fase_atual": 7,
   "historia_atual": null,
@@ -55,7 +55,8 @@ window.SAGUI_STATUS = {
       "nome": "Bônus (B3 bip, B4 Sagui 3D)",
       "estado": "feito",
       "progresso": 100.0,
-      "confirmado": "2026-11-04T00:19:30"
+      "confirmado": "2026-11-04T00:19:30",
+      "opcional": true
     }
   ],
   "historias": [
@@ -1371,12 +1372,18 @@ window.SAGUI_STATUS = {
     "boot": 903,
     "kernel": 9614,
     "userland": 6317,
-    "ferramentas": 3591
+    "ferramentas": 3602
   },
   "imagem": {
     "bytes_util": 575488,
     "bytes_arquivo": 1048576,
     "meta_bytes": 1474560
   },
-  "progresso_geral": 100.0
+  "progresso_geral": 100.0,
+  "links": [
+    {
+      "texto": "Painel da versão 2.0",
+      "url": "v2/index.html"
+    }
+  ]
 };

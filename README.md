@@ -16,6 +16,12 @@ Feito por Claude (Anthropic) para o projeto do **Eli Rigobeli**.
 
 ---
 
+## Próximo passo: SaguiOS 2.0
+
+A versão 2.0 está planejada em [`prd2.md`](prd2.md): som, rede, HTTPS próprio, terminal com SSH,
+navegador, um compilador de C rodando dentro do sistema e o **Sagui Code**, um agente de programação
+com IA que cria programas para o próprio SaguiOS. Acompanhe pelo painel [`dashboard/v2/`](dashboard/v2/index.html).
+
 ## O que é
 
 O SaguiOS é um sistema operacional completo, do carregador de boot ao jogo em 3D, escrito
