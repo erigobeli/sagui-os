@@ -4,6 +4,7 @@
  * memória que não existe...), não há como continuar com segurança. A tela
  * mostra o nome da exceção em português e o estado dos registradores, que é o
  * que permite achar a causa a partir de uma foto. */
+#include "paginacao.h"
 #include "cpu.h"
 #include "console.h"
 #include "processo.h"
@@ -70,9 +71,21 @@ quadro_t *excecao_usuario(quadro_t *q)
     char motivo[64];
     snformatar(motivo, sizeof motivo, "%s em EIP=0x%08x", nome_excecao(q->vetor), q->eip);
     if (q->vetor == 14)
-        snformatar(motivo, sizeof motivo, "%s: %s 0x%08x", nome_excecao(14),
-                   q->erro & 2 ? "escrita" : "leitura", le_cr2());
+        snformatar(motivo, sizeof motivo, "%s: %s 0x%08x (EIP 0x%08x)", nome_excecao(14),
+                   q->erro & 2 ? "escrita" : "leitura", le_cr2(), q->eip);
     kprintf("\n[SaguiOS] Processo %d (%s) encerrado: %s\n", atual->pid, atual->nome, motivo);
+    /* pilha do programa (para achar quem chamou): palavras que parecem endereço de código */
+    {
+        uint32_t *p = (uint32_t *)q->esp_usuario;
+        kprintf("[SaguiOS] pilha:");
+        for (int i = 0, k = 0; i < 512 && k < 24; i++) {
+            uint32_t a = (uint32_t)(p + i), f = 0;
+            if (!espaco_traduzir(atual->espaco, a & ~0xFFFu, &f)) break;
+            uint32_t v = p[i];
+            if (v >= 0x40000000u && v < 0x40400000u) { kprintf(" %08x", v); k++; }
+        }
+        kprintf("\n");
+    }
     processo_encerrar(atual, SAIDA_ENCERRADO_PELO_KERNEL, motivo);
     return escalonar(q);
 }

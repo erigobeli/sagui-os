@@ -8,8 +8,14 @@ typedef struct {
     int largura, altura;
 } desenho_t;
 
-extern const desenho_t arte_sagui, arte_icone_arquivos, arte_icone_terminal, arte_icone_editor,
-                       arte_icone_calculadora, arte_icone_banana, arte_icone_sagui3d, arte_icone_sobre, arte_icone_pendrive;
+extern const desenho_t arte_sagui, arte_icone_sobre;
+
+/* Ícones 64x64 em ARGB. Ficam em /arte/icones.bin, na ordem de
+ * tools/mkarte.py, e arte_carregar_icones liga estes ponteiros a eles. */
+#define ICONE_LADO 64
+extern const uint32_t *arte_px_arquivos, *arte_px_terminal, *arte_px_editor, *arte_px_calculadora, *arte_px_banana,
+                      *arte_px_sagui3d, *arte_px_sobre, *arte_px_pendrive, *arte_px_cipo, *arte_px_lixeira;
+void arte_carregar_icones(void);
 bool arte_cor(char letra, uint32_t *cor);
 
 #endif

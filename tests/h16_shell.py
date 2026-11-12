@@ -23,13 +23,16 @@ def main():
         m.esperar_serial("[SAGUI] shell iniciado: processo", 120)
         m.esperar_serial("sagui:/$", 30)
         s = m.serial()
-        verificar("executar /bin/sagsh -> processo 1" in s, "o kernel inicia /bin/sagsh como primeiro processo (PID 1)")
+        # Antes dele só vêm as tarefas do kernel (rede, USB), que também são processos.
+        shell = re.search(r"executar /bin/sagsh -> processo (\d+)", s)
+        verificar(shell and int(shell.group(1)) <= 2, "o kernel inicia /bin/sagsh como primeiro programa (depois das tarefas do kernel)")
+        shell = int(shell.group(1))
         verificar("Terminal provis" not in s, "o terminal provisório do kernel foi removido")
 
         out = m.comando("ajuda")
         for c in ("ls/listar", "cd/entrar", "pwd/onde", "cat/ver", "echo/eco", "cp/copiar", "mv/mover", "rm/apagar",
                   "mkdir/criar-pasta", "rmdir/remover-pasta", "wc/conta", "ps/processos", "kill/matar", "clear/limpar",
-                  "ajuda", "mem", "data", "sobre", "ola", "contador", "falha", "reiniciar", "sair"):
+                  "ajuda", "mem", "data", "sobre", "ola", "contador", "falha", "reiniciar", "desligar/poweroff", "sair"):
             verificar(c in out, f"ajuda lista {c}")
         m.captura("H16-ajuda")
         out = m.comando("ajuda conta")
@@ -88,7 +91,7 @@ def main():
         out = m.comando("contador 4 &")
         pid = int(re.search(r"\[(\d+)\] contador em segundo plano", out).group(1))
         out = m.comando("ps")
-        verificar(re.search(rf"^\s*{pid}\s+1\s+\w+.*contador", out, re.M), f"ps mostra o contador (PID {pid}) rodando junto")
+        verificar(re.search(rf"^\s*{pid}\s+{shell}\s+\w+.*contador", out, re.M), f"ps mostra o contador (PID {pid}) rodando junto")
         verificar("sagsh" in out and "ocioso" in out and "ps" in out, "ps mostra sagsh, ocioso e o próprio ps")
         m.captura("H16-contador-e-ps")
         out = m.comando("processos")
@@ -105,7 +108,7 @@ def main():
         verificar(f"Processo {pid} encerrado" in out, "kill encerra o contador")
         m.comando("contador 60 &")
         out = m.comando("ps")
-        pid2 = int(re.findall(r"^\s*(\d+)\s+1\s+\w+.*contador", out, re.M)[0])
+        pid2 = int(re.findall(rf"^\s*(\d+)\s+{shell}\s+\w+.*contador", out, re.M)[0])
         out = m.comando(f"matar {pid2}")
         verificar(f"Processo {pid2} encerrado" in out, "matar (apelido de kill)")
         out = m.comando("ps")

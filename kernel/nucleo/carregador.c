@@ -20,7 +20,7 @@
 #include "vfs.h"
 
 #define MAX_ARGS      16
-#define MAX_ARGS_BYTES 1024
+#define MAX_ARGS_BYTES 8192   /* URLs de vídeo passam de 1 KB */
 
 typedef struct EMPACOTADO {
     uint8_t  ident[16];

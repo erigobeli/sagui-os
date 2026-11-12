@@ -79,6 +79,30 @@ coluna com uma "fresta" que estreita a cada passagem, perspectiva sem olho de pe
 arquivos de texto, com texturas e personagens desenhados no próprio código. Explicação completa
 na seção "Sagui 3D" de [`docs/decisoes.md`](docs/decisoes.md).
 
+## Rede e o Cipó
+
+Por enquanto testados no QEMU (falta o driver da placa de rede do G470):
+
+- **Rede** ([D032](docs/decisoes.md)): driver da placa Intel PRO/1000 (a do QEMU
+  e a do VirtualBox), ARP, IPv4, ping, DHCP, DNS e TCP. Comandos `rede`,
+  `ping` e `baixar` (HTTP).
+- **Cipó** ([D033](docs/decisoes.md)), o navegador (comando `cipo`): o sagui pula
+  de cipó em cipó, o navegador de link em link. Começou como leitor de HTML em texto e
+  hoje tem HTTPS (TLS 1.2 e 1.3 com verificação de certificados), layout CSS de verdade
+  (flex, grid, tabelas, posicionamento, transform), fontes da web, imagens PNG/JPEG/GIF/WebP,
+  SVG, um motor JavaScript próprio com DOM, Canvas 2D, WebGL 1 em software, iframes e um
+  tocador de vídeo H.264/AAC. Ainda não é um navegador para o dia a dia: o Google pede
+  captcha, o YouTube abre quase vazio e tudo é lento no QEMU sem KVM.
+  **Tudo o que ele faz, as capturas, as limitações e os problemas resolvidos estão em
+  [`docs/cipo.md`](docs/cipo.md).**
+
+<div align="center">
+<img src="docs/capturas/C10-wikipedia.png" width="49%" alt="O Cipó mostrando a Wikipédia">
+<img src="docs/capturas/C17-duckduckgo.png" width="49%" alt="O Cipó mostrando uma busca no DuckDuckGo">
+<img src="docs/capturas/C06-fontes-css.png" width="49%" alt="O Cipó com fontes da web e transform">
+<img src="docs/capturas/C15-hacker-news.png" width="49%" alt="O Cipó mostrando o Hacker News">
+</div>
+
 ## Números
 
 | | |

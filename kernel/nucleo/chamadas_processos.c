@@ -129,6 +129,11 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
         int usb_relatorio(char *s, int max);
         return usb_relatorio((char *)ptr, (int)n);
     }
+    if (tipo == INFO_REDE) {
+        if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
+        int rede_relatorio(char *s, int max);
+        return rede_relatorio((char *)ptr, (int)n);
+    }
     if (tipo == INFO_VERSAO) {
         info_versao_t *v = (info_versao_t *)ptr;
         if (!usuario_ok(v, sizeof *v, true)) return ERRO_ENDERECO;
@@ -161,6 +166,12 @@ int32_t sis_reiniciar(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e
 {
     (void)a; (void)b; (void)c; (void)d; (void)e;
     maquina_reiniciar();
+}
+
+int32_t sis_desligar(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)a; (void)b; (void)c; (void)d; (void)e;
+    maquina_desligar();
 }
 
 /* registrar(texto): uma linha no log do sistema (a serial), com o nome e o

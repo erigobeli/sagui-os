@@ -88,6 +88,11 @@ $(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/mkfonte.py
 $(B)/gerado/fonte8x16.o: $(B)/gerado/fonte8x16.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# Os ícones são descritos em tools/mkarte.py e entram no ramdisk.
+$(B)/gerado/icones.bin: tools/mkarte.py
+	@mkdir -p $(dir $@)
+	$(PY) tools/mkarte.py $@
+
 $(B)/kernel.elf: $(KERNEL_OBJ) kernel/ligacao.ld
 	$(LD) $(LDFLAGS) -T kernel/ligacao.ld -o $@ $(KERNEL_OBJ)
 
@@ -106,6 +111,24 @@ $(B)/userland/fonte8x16.o: $(B)/gerado/fonte8x16.c
 $(B)/userland/libsagui/%.asm.o: userland/libsagui/%.asm
 	@mkdir -p $(dir $@)
 	$(AS) -f elf32 -o $@ $<
+
+# Programas que usam ponto flutuante.
+$(B)/userland/libsagui/aac.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/fonte.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/js.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/canvas2d.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/svg.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/glsl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+$(B)/userland/libsagui/webgl.o: UCFLAGS := $(filter-out -mgeneral-regs-only -O2,$(UCFLAGS)) -Os -msse2 -mstackrealign -mfpmath=sse -fno-math-errno
+# código frio (certificados na conexão, gerenciador de arquivos, calculadora, shell, editor, terminal, sobre, baixar, componentes, interface do Cipó): -Os para caber em 1,44 MB
+$(B)/userland/libsagui/certificado.o $(B)/userland/programas/arquivos.o $(B)/userland/programas/calculadora.o $(B)/userland/programas/sagsh.o $(B)/userland/programas/editor.o $(B)/userland/programas/terminal.o $(B)/userland/programas/sobre-o-sistema.o $(B)/userland/programas/baixar.o $(B)/userland/programas/componentes.o $(B)/userland/programas/cipo.o: UCFLAGS := $(filter-out -O2,$(UCFLAGS)) -Os
+$(B)/userland/testes/fpu.o: UCFLAGS := $(filter-out -mgeneral-regs-only,$(UCFLAGS)) -msse2 -mstackrealign -mfpmath=387 -fno-tree-vectorize
+
+$(B)/userland/libsagui/js.o: userland/libsagui/js_base.h userland/libsagui/js_nativo.h
+userland/libsagui/js_base.h: userland/libsagui/js_base.js tools/mkjsbase.py
+	python3 tools/mkjsbase.py
+$(B)/userland/libsagui/glsl.o: userland/libsagui/glsl.h userland/libsagui/glsl_emb.h userland/libsagui/glsl_gen.h
+$(B)/userland/libsagui/webgl.o: userland/libsagui/glsl.h
 
 $(B)/userland/bin/%: $(B)/userland/programas/%.o $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)
@@ -129,9 +152,10 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # ---------- ramdisk (SGFS) ----------
 # O ramdisk é montado a partir de uma cópia do rootfs/ com os programas em
 # /bin e os programas de teste em /testes.
-$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) tools/mksgfs.py
+$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(B)/gerado/icones.bin tools/mksgfs.py tools/lz.py
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
+	cp $(B)/gerado/icones.bin $(B)/rootfs/arte/icones.bin
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
 	$(if $(PROG_TESTE),mkdir -p $(B)/rootfs/testes && cp $(PROG_TESTE) $(B)/rootfs/testes/)
 	$(PY) tools/mksgfs.py $(B)/rootfs $@

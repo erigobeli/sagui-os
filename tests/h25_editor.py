@@ -44,6 +44,7 @@ def main():
         m.esperar_serial("editor: salvo /tmp/nota.txt", 10)
         n = int(re.findall(r"editor: salvo /tmp/nota.txt \((\d+) bytes\)", m.serial())[-1])
         verificar(n == len(TEXTO.encode("latin-1")), f"Ctrl+S sem nome pede o caminho e salva /tmp/nota.txt ({n} bytes)")
+        m.esperar_serial("editor: titulo Editor - nota.txt", 10)   # o título é registrado logo depois do "salvo"
         verificar("editor: titulo Editor - nota.txt\n" in m.serial().replace("\r", ""), "o título mostra o nome do arquivo, sem *")
         fechar_pelo_x(m, janela(m.serial(), "Editor - sem nome"))
         m.esperar_serial("editor: fechado", 10)

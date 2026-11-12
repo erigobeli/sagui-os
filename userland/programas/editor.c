@@ -7,8 +7,8 @@
 #include "sagui.h"
 #include "gui.h"
 
-#define LARG 700
-#define ALT  480
+#define LARG_INICIO 700
+#define ALT_INICIO  480
 #define BARRA 40
 
 static jan_t *j;
@@ -102,18 +102,23 @@ static bool pode_descartar(void)
     return true;
 }
 
+static void desenhar_barra(botao_t *bt)
+{
+    g_retangulo(j, 0, 0, j->larg, BARRA, 0xE6E9EC);
+    g_retangulo(j, 0, BARRA - 1, j->larg, 1, COR_BORDA);
+    rotulo(j, 400, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
+    for (int i = 0; i < 4; i++) botao_desenhar(j, &bt[i]);
+}
+
 int principal(int argc, char **argv)
 {
-    j = jan_abrir("Editor - sem nome", LARG, ALT);
-    if (!j || !area_iniciar(&area, 6, BARRA + 4, LARG - 12, ALT - BARRA - 10)) return 1;
-    botao_t bt[4] = {
+    j = jan_abrir_redimensionavel("Editor - sem nome", LARG_INICIO, ALT_INICIO);
+    if (!j || !area_iniciar(&area, 6, BARRA + 4, LARG_INICIO - 12, ALT_INICIO - BARRA - 10)) return 1;
+    static botao_t bt[4] = {
         { 8, 7, 80, 26, "Novo", false }, { 96, 7, 80, 26, "Abrir", false },
         { 184, 7, 80, 26, "Salvar", false }, { 272, 7, 110, 26, "Salvar como", false },
     };
-    g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
-    g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
-    rotulo(j, 400, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
-    for (int i = 0; i < 4; i++) botao_desenhar(j, &bt[i]);
+    desenhar_barra(bt);
     area.foco = true;
     if (argc > 1) abrir_arquivo(argv[1]);
     else forcar_titulo();
@@ -126,6 +131,16 @@ int principal(int argc, char **argv)
         if (proximo_evento(j->id, &e, true) != 1) continue;
         if (e.tipo == EV_FECHAR) {
             if (pode_descartar()) break;
+            continue;
+        }
+        if (e.tipo == EV_TAMANHO) {
+            jan_tamanho(j, &e);
+            g_retangulo(j, 0, 0, j->larg, j->alt, COR_FUNDO);
+            area.l = j->larg - 12;
+            area.a = j->alt - BARRA - 10;
+            desenhar_barra(bt);
+            area_desenhar(j, &area);
+            jan_mostrar(j);
             continue;
         }
         if (e.tipo == EV_TECLA && e.tecla == 19) {          /* Ctrl+S */

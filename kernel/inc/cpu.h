@@ -63,5 +63,7 @@ static inline uint32_t le_cr2(void) { uint32_t v; __asm__ volatile("mov %%cr2, %
 static inline uint32_t le_cr3(void) { uint32_t v; __asm__ volatile("mov %%cr3, %0" : "=r"(v)); return v; }
 
 SEM_RETORNO void parar_maquina(void);
+SEM_RETORNO void maquina_reiniciar(void);
+SEM_RETORNO void maquina_desligar(void);
 
 #endif

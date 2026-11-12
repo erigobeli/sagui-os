@@ -51,10 +51,10 @@ def main():
         m.esperar_serial("arquivos: pronto", 20)
         time.sleep(0.5)
         a = janela(m.serial(), "Arquivos")
-        verificar("arquivos: pasta / (8 itens)" in m.serial(), "Arquivos abre na raiz: 6 pastas e 2 arquivos")
+        verificar("arquivos: pasta / (10 itens)" in m.serial(), "Arquivos abre na raiz: 8 pastas (com fontes/) e 2 arquivos")
         m.captura("H23-arquivos-raiz")
 
-        m.clique(*item(a, 2), duplo=True)                         # historia/
+        m.clique(*item(a, 4), duplo=True)                         # historia/ (depois de arte, bin, etc e fontes)
         m.esperar_serial("arquivos: pasta /historia (2 itens)", 10)
         verificar(True, "duplo clique na pasta historia entra nela")
         m.clique(*item(a, 0), duplo=True)                         # linux.txt
@@ -67,8 +67,8 @@ def main():
         time.sleep(0.4)
 
         m.clique(a["x"] + 8 + 45, a["y"] + 7 + 13)               # Voltar
-        m.esperar_serial("arquivos: pasta / (8 itens)", 10)
-        m.clique(*item(a, 5), duplo=True)                         # tmp/ (depois de arte, bin, historia, jogos e testes)
+        m.esperar_serial("arquivos: pasta / (10 itens)", 10)
+        m.clique(*item(a, 7), duplo=True)                         # tmp/ (depois de arte, bin, etc, fontes, historia, jogos e testes)
         m.esperar_serial("arquivos: pasta /tmp (1 itens)", 10)
         m.clique(*item(a, 0), duplo=True)                         # nota.txt
         m.esperar_serial("editor: aberto /tmp/nota.txt (29 bytes)", 10)
@@ -84,7 +84,8 @@ def main():
         time.sleep(0.3)
         m.digitar("teste\n", 0.05)
         m.esperar_serial("arquivos: pasta criada /tmp/teste", 10)
-        verificar("arquivos: pasta /tmp (2 itens)" in m.serial(), "pasta /tmp/teste criada e aparece na lista")
+        m.esperar_serial("arquivos: pasta /tmp (2 itens)", 5)
+        verificar(True, "pasta /tmp/teste criada e aparece na lista")
         m.clique(*item(a, 0))                                      # seleciona teste/
         m.clique(a["x"] + 224 + 45, a["y"] + 7 + 13)              # Apagar
         m.esperar_serial('"Apagar"', 10)

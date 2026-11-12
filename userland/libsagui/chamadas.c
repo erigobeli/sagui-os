@@ -36,6 +36,7 @@ int  ler_data(data_t *d)              { return chamar(SIS_DATA, (unsigned)d, 0, 
 int  info_sistema(int t, void *b, unsigned n) { return chamar(SIS_INFO_SISTEMA, (unsigned)t, (unsigned)b, n); }
 void *aumentar_memoria(unsigned n)    { int r = chamar(SIS_AUMENTAR_MEM, n, 0, 0); return (r < 0 && r > -100) ? NULL : (void *)r; }
 void reiniciar(void)                  { chamar(SIS_REINICIAR, 0, 0, 0); }
+void desligar(void)                   { chamar(SIS_DESLIGAR, 0, 0, 0); }
 int  modo_terminal(int m)             { return chamar(SIS_MODO_TERMINAL, (unsigned)m, 0, 0); }
 int  limpar_tela(void)                { return chamar(SIS_LIMPAR_TELA, 0, 0, 0); }
 int  registrar_texto(const char *t)   { return chamar(SIS_REGISTRAR, (unsigned)t, 0, 0); }
@@ -48,7 +49,35 @@ int  bip(int freq, int ms)
     nota_t n = { (uint16_t)freq, (uint16_t)ms };
     return tocar(&n, 1, BIP_SUBSTITUIR);
 }
+int  ping(uint32_t ip, unsigned ms)   { return chamar(SIS_PING, ip, ms, 0); }
+int  conectar(uint32_t ip, int porta) { return chamar(SIS_CONECTAR, ip, (unsigned)porta, 0); }
+int  resolver(const char *nome, uint32_t *ip)
+{
+    if (texto_para_ip(nome, ip)) return 0;
+    return chamar(SIS_RESOLVER, (unsigned)nome, (unsigned)ip, 0);
+}
+
+bool texto_para_ip(const char *s, uint32_t *ip)
+{
+    uint32_t r = 0;
+    for (int parte = 0; parte < 4; parte++) {
+        if (*s < '0' || *s > '9') return false;
+        uint32_t v = 0;
+        for (int d = 0; *s >= '0' && *s <= '9'; d++, s++) {
+            if (d == 3) return false;
+            v = v * 10 + (uint32_t)(*s - '0');
+        }
+        if (v > 255) return false;
+        r = r << 8 | v;
+        if (parte < 3 && *s++ != '.') return false;
+    }
+    if (*s) return false;
+    *ip = r;
+    return true;
+}
+
 int  teclas_seguradas(unsigned char mapa[32]) { return chamar(SIS_TECLAS_SEGURADAS, (unsigned)mapa, 0, 0); }
+int  tocar_pcm(const void *p, int n, int taxa) { return chamar(SIS_PCM, (unsigned)p, (unsigned)n, (unsigned)taxa); }
 void silenciar(void)                  { chamar(SIS_BIP, 0, 0, 0); }
 int  criar_janela(const char *t, int l, int a, uint32_t **px)
                                       { return chamar(SIS_CRIAR_JANELA, (unsigned)t, (unsigned)(l | (a << 16)), (unsigned)px); }
@@ -56,3 +85,4 @@ int  fechar_janela(int id)            { return chamar(SIS_FECHAR_JANELA, (unsign
 int  atualizar_janela(int id, const retangulo_t *r) { return chamar(SIS_ATUALIZAR_JANELA, (unsigned)id, (unsigned)r, 0); }
 int  proximo_evento(int id, evento_t *e, bool esperar) { return chamar(SIS_PROXIMO_EVENTO, (unsigned)id, (unsigned)e, esperar); }
 int  titulo_janela(int id, const char *t) { return chamar(SIS_TITULO_JANELA, (unsigned)id, (unsigned)t, 0); }
+int  menu_janela(int id, int x, int y, const char *itens) { return chamar(SIS_MENU_JANELA, (unsigned)id, (unsigned)(x | (y << 16)), (unsigned)itens); }

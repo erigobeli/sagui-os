@@ -34,6 +34,8 @@ int memcmp(const void *x, const void *y, size_t n)
     return 0;
 }
 
+/* o gcc com -Os pode trocar um laço por strlen: precisa existir */
+size_t strlen(const char *s) { size_t n = 0; while (s[n]) n++; return n; }
 size_t tam_texto(const char *s)
 {
     size_t n = 0;

@@ -13,28 +13,29 @@
 #include "sagui.h"
 #include "gui.h"
 
-#define COLS 94
-#define LINS 28
+#define COLS_INICIO 94
+#define LINS_INICIO 28
+#define COLS_MAX 160   /* a grade cabe na maior tela; cols e lins dizem o que aparece */
+#define LINS_MAX 80
 #define MARGEM 4
-#define LARG (COLS * LETRA_L + 2 * MARGEM)
-#define ALT  (LINS * LETRA_A + 2 * MARGEM)
 #define COR_FUNDO_T 0x12161E
 #define COR_LETRA   0xD8DDE2
 
 static jan_t *j;
-static char grade[LINS][COLS];
+static char grade[LINS_MAX][COLS_MAX];
+static int cols = COLS_INICIO, lins = LINS_INICIO;
 static int col, lin, estado_esc;
 static int ent_escrita;   /* ponta de escrita do pipe de entrada do shell */
-static int suj_l0 = LINS, suj_l1 = -1;   /* linhas a redesenhar */
+static int suj_l0 = LINS_MAX, suj_l1 = -1;   /* linhas a redesenhar */
 
 static void sujar(int l) { if (l < suj_l0) suj_l0 = l; if (l > suj_l1) suj_l1 = l; }
 
 static void desenhar_linha(int l)
 {
     int y = MARGEM + l * LETRA_A;
-    g_retangulo(j, 0, y, LARG, LETRA_A, COR_FUNDO_T);
-    g_texto_n(j, MARGEM, y, grade[l], COLS, COR_LETRA);
-    if (l == lin && col < COLS) {   /* cursor: bloco com a letra em cor invertida */
+    g_retangulo(j, 0, y, j->larg, LETRA_A, COR_FUNDO_T);
+    g_texto_n(j, MARGEM, y, grade[l], cols, COR_LETRA);
+    if (l == lin && col < cols) {   /* cursor: bloco com a letra em cor invertida */
         g_retangulo(j, MARGEM + col * LETRA_L, y, LETRA_L, LETRA_A, COR_LETRA);
         char c = grade[l][col];
         g_texto_n(j, MARGEM + col * LETRA_L, y, &c, 1, COR_FUNDO_T);
@@ -45,23 +46,43 @@ static void mostrar(void)
 {
     if (suj_l1 < 0) return;
     for (int l = suj_l0; l <= suj_l1; l++) desenhar_linha(l);
-    jan_mostrar_area(j, 0, MARGEM + suj_l0 * LETRA_A, LARG, (suj_l1 - suj_l0 + 1) * LETRA_A);
-    suj_l0 = LINS; suj_l1 = -1;
+    jan_mostrar_area(j, 0, MARGEM + suj_l0 * LETRA_A, j->larg, (suj_l1 - suj_l0 + 1) * LETRA_A);
+    suj_l0 = LINS_MAX; suj_l1 = -1;
 }
 
 static void limpar(void)
 {
     memset(grade, ' ', sizeof grade);
     col = lin = 0;
-    for (int l = 0; l < LINS; l++) sujar(l);
+    for (int l = 0; l < lins; l++) sujar(l);
 }
 
 static void rolar(void)
 {
-    memmove(grade[0], grade[1], sizeof grade - COLS);
-    memset(grade[LINS - 1], ' ', COLS);
-    lin = LINS - 1;
-    for (int l = 0; l < LINS; l++) sujar(l);
+    memmove(grade[0], grade[1], sizeof grade - COLS_MAX);
+    memset(grade[lins - 1], ' ', COLS_MAX);
+    lin = lins - 1;
+    for (int l = 0; l < lins; l++) sujar(l);
+}
+
+/* A janela mudou de tamanho: mantém o fim do texto à vista. */
+static void redimensionar(const evento_t *e)
+{
+    jan_tamanho(j, e);
+    int novas_l = (j->alt - 2 * MARGEM) / LETRA_A, novas_c = (j->larg - 2 * MARGEM) / LETRA_L;
+    if (novas_l > LINS_MAX) novas_l = LINS_MAX;
+    if (novas_c > COLS_MAX) novas_c = COLS_MAX;
+    while (lin >= novas_l) {
+        memmove(grade[0], grade[1], sizeof grade - COLS_MAX);
+        memset(grade[LINS_MAX - 1], ' ', COLS_MAX);
+        lin--;
+    }
+    lins = novas_l;
+    cols = novas_c;
+    if (col >= cols) col = cols - 1;
+    g_retangulo(j, 0, 0, j->larg, j->alt, COR_FUNDO_T);
+    jan_mostrar(j);
+    for (int l = 0; l < lins; l++) sujar(l);
 }
 
 static void receber(char c)
@@ -71,8 +92,8 @@ static void receber(char c)
     if (estado_esc == 2) {
         estado_esc = 0;
         if (c == 'D' && col > 0) col--;
-        else if (c == 'C' && col < COLS - 1) col++;
-        else if (c == 'K') memset(&grade[lin][col], ' ', (size_t)(COLS - col));
+        else if (c == 'C' && col < cols - 1) col++;
+        else if (c == 'K') memset(&grade[lin][col], ' ', (size_t)(COLS_MAX - col));
         else if (c == 'J') limpar();
         return;
     }
@@ -82,8 +103,8 @@ static void receber(char c)
     else if (c == '\t') col = (col + 8) & ~7;
     else if (c == '\b') { if (col > 0) grade[lin][--col] = ' '; }
     else { grade[lin][col++] = c; }
-    if (col >= COLS) { col = 0; lin++; }
-    if (lin >= LINS) rolar();
+    if (col >= cols) { col = 0; lin++; }
+    if (lin >= lins) rolar();
     sujar(lin);
 }
 
@@ -116,9 +137,10 @@ static void enviar_tecla(unsigned t)
 int principal(int argc, char **argv)
 {
     (void)argc; (void)argv;
-    j = jan_abrir("Terminal", LARG, ALT);
+    j = jan_abrir_redimensionavel("Terminal", COLS_INICIO * LETRA_L + 2 * MARGEM, LINS_INICIO * LETRA_A + 2 * MARGEM);
     if (!j) return 1;
-    g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO_T);   /* margens também escuras */
+    g_retangulo(j, 0, 0, j->larg, j->alt, COR_FUNDO_T);   /* margens também escuras */
+    jan_mostrar(j);
     limpar();
     mostrar();
 
@@ -154,6 +176,7 @@ int principal(int argc, char **argv)
             fez = true;
             if (e.tipo == EV_FECHAR) { matar(shell); goto fim; }
             if (e.tipo == EV_TECLA) enviar_tecla(e.tecla);
+            if (e.tipo == EV_TAMANHO) redimensionar(&e);
         }
         mostrar();
         /* O shell terminou? (Não dá para depender só do fim do pipe: um

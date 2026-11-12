@@ -15,7 +15,7 @@
 #define COR_BOTAO      0xE2E6EA
 #define COR_BOTAO_APERTADO 0xC4CBD2
 #define COR_DESTAQUE   0x0B7A3E   /* verde do SaguiOS */
-#define COR_SELECAO    0x2A6FD8
+#define COR_SELECAO    0x0B7A3E
 #define COR_BRANCO     0xFFFFFF
 
 typedef struct {
@@ -26,6 +26,10 @@ typedef struct {
 
 /* ---- janela e desenho ---- */
 jan_t *jan_abrir(const char *titulo, int largura, int altura);
+/* Como jan_abrir, com o botão de maximizar: o programa trata EV_TAMANHO. */
+jan_t *jan_abrir_redimensionavel(const char *titulo, int largura, int altura);
+void   jan_tamanho(jan_t *j, const evento_t *e);                /* aplica um EV_TAMANHO */
+void   jan_menu(jan_t *j, int x, int y, const char *itens);     /* "A|B||C"; a escolha chega em EV_MENU */
 void   jan_fechar(jan_t *j);
 void   jan_mostrar(jan_t *j);                                   /* a janela toda */
 void   jan_mostrar_area(jan_t *j, int x, int y, int l, int a);
@@ -74,7 +78,10 @@ typedef struct {
     bool  foco;
     bool  modificado;
     bool  somente_leitura;
+    int   ancora;         /* início da seleção + 1; 0 = sem seleção */
 } area_t;
+void transferir_texto(const char *t, int n);     /* copia para a área de transferência */
+int  colar_texto(char *d, int max);
 bool area_iniciar(area_t *a, int x, int y, int l, int al);
 void area_definir(area_t *a, const char *texto, int n);
 void area_desenhar(jan_t *j, area_t *a);
@@ -91,6 +98,7 @@ typedef struct {
     int    qtd;
     int    sel;
     int    topo;
+    uint8_t *marcas;      /* seleção múltipla: 1 por item; NULL = só "sel" */
     /* Desenha um ícone pequeno (16x16) antes do texto do item, se não for NULL. */
     void (*icone)(jan_t *j, int x, int y, int item);
 } lista_t;

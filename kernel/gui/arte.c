@@ -4,6 +4,24 @@
  * paleta abaixo e '.' é transparente. Desenhar = percorrer as letras e pintar
  * quadradinhos do tamanho da escala. */
 #include "arte.h"
+#include "vfs.h"
+
+const uint32_t *arte_px_arquivos, *arte_px_terminal, *arte_px_editor, *arte_px_calculadora, *arte_px_banana,
+               *arte_px_sagui3d, *arte_px_sobre, *arte_px_pendrive, *arte_px_cipo, *arte_px_lixeira;
+
+void arte_carregar_icones(void)
+{
+    static const uint32_t **const ordem[] = { &arte_px_arquivos, &arte_px_terminal, &arte_px_editor, &arte_px_calculadora,
+        &arte_px_banana, &arte_px_sagui3d, &arte_px_sobre, &arte_px_pendrive, &arte_px_cipo, &arte_px_lixeira };
+    static const uint32_t vazio[ICONE_LADO * ICONE_LADO];
+    uint8_t *d = NULL;
+    uint32_t tam = 0;
+    bool ok = vfs_ler_inteiro("/arte/icones.bin", &d, &tam) >= 0;
+    for (uint32_t i = 0; i < sizeof ordem / sizeof ordem[0]; i++) {
+        uint32_t ini = i * ICONE_LADO * ICONE_LADO * 4;
+        *ordem[i] = ok && ini + ICONE_LADO * ICONE_LADO * 4 <= tam ? (const uint32_t *)(d + ini) : vazio;
+    }
+}
 
 /* O sagui-de-tufos-brancos: cabeça escura com a mancha branca na testa, os
  * tufos brancos nas orelhas, corpo cinza e a cauda listrada. 32x32. */
@@ -42,219 +60,10 @@ static const char *const sagui[] = {
     "................................",
 };
 
-/* Ícones da área de trabalho, 32x32. */
-static const char *const icone_arquivos[] = {   /* pasta */
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "..PPPPPPPPPP....................",
-    ".PAAAAAAAAAAP...................",
-    ".PAAAAAAAAAAAPPPPPPPPPPPPPPPP...",
-    ".PAAAAAAAAAAAAAAAAAAAAAAAAAAAP..",
-    ".PAAAAAAAAAAAAAAAAAAAAAAAAAAAP..",
-    ".PPPPPPPPPPPPPPPPPPPPPPPPPPPPP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PYYYYYYYYYYYYYYYYYYYYYYYYYYYP..",
-    ".PPPPPPPPPPPPPPPPPPPPPPPPPPPPP..",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-};
-
-static const char *const icone_terminal[] = {   /* monitor com >_ */
-    "................................",
-    "................................",
-    "..PPPPPPPPPPPPPPPPPPPPPPPPPPPP..",
-    "..PCCCCCCCCCCCCCCCCCCCCCCCCCCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPGGPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPGGPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPGGPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPPGGPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPGGPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPGGPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPGGPPPPGGGGGGGPPPPPPPPPCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCPPPPPPPPPPPPPPPPPPPPPPPPCP..",
-    "..PCCCCCCCCCCCCCCCCCCCCCCCCCCP..",
-    "..PPPPPPPPPPPPPPPPPPPPPPPPPPPP..",
-    "..............PCCP..............",
-    "..............PCCP..............",
-    "..........PPPPPPPPPPPP..........",
-    "..........PCCCCCCCCCCP..........",
-    "..........PPPPPPPPPPPP..........",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-};
-
-static const char *const icone_editor[] = {   /* folha com linhas e lápis */
-    "................................",
-    "......PPPPPPPPPPPPPPPPP.........",
-    "......PBBBBBBBBBBBBBBBPP........",
-    "......PBBBBBBBBBBBBBBBPBP.......",
-    "......PBBBBBBBBBBBBBBBPBBP......",
-    "......PBBBBBBBBBBBBBBBPPPPP.....",
-    "......PBBCCCCCCCCCCCBBBBBBP.....",
-    "......PBBBBBBBBBBBBBBBBBBBP.....",
-    "......PBBCCCCCCCCCCCCCCBBBP.....",
-    "......PBBBBBBBBBBBBBBBBBBBP.....",
-    "......PBBCCCCCCCCCCCCBBBBBP.....",
-    "......PBBBBBBBBBBBBBBBBBBBP..PP.",
-    "......PBBCCCCCCCCCCCCCCBBBP.PYYP",
-    "......PBBBBBBBBBBBBBBBBBBBPPYYP.",
-    "......PBBCCCCCCCCCCBBBBBBBPYYP..",
-    "......PBBBBBBBBBBBBBBBBBBPYYP...",
-    "......PBBCCCCCCCCCCCCCBBPYYP....",
-    "......PBBBBBBBBBBBBBBBBPYYP.....",
-    "......PBBCCCCCCCCCCCBBPYYP......",
-    "......PBBBBBBBBBBBBBBPRRP.......",
-    "......PBBBBBBBBBBBBBBPPP........",
-    "......PBBBBBBBBBBBBBBBBBP.......",
-    "......PBBBBBBBBBBBBBBBBBP.......",
-    "......PPPPPPPPPPPPPPPPPPP.......",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-};
-
-static const char *const icone_calculadora[] = {
-    "................................",
-    ".......PPPPPPPPPPPPPPPPPP.......",
-    ".......PCCCCCCCCCCCCCCCCP.......",
-    ".......PCGGGGGGGGGGGGGGCP.......",
-    ".......PCGGGGGGGGGPPGPGCP.......",
-    ".......PCGGGGGGGGGGPPGGCP.......",
-    ".......PCGGGGGGGGGGGGGGCP.......",
-    ".......PCCCCCCCCCCCCCCCCP.......",
-    ".......PCPPPCPPPCPPPCVVCP.......",
-    ".......PCPBPCPBPCPBPCVVCP.......",
-    ".......PCPPPCPPPCPPPCVVCP.......",
-    ".......PCCCCCCCCCCCCCCCCP.......",
-    ".......PCPPPCPPPCPPPCVVCP.......",
-    ".......PCPBPCPBPCPBPCVVCP.......",
-    ".......PCPPPCPPPCPPPCVVCP.......",
-    ".......PCCCCCCCCCCCCCCCCP.......",
-    ".......PCPPPCPPPCPPPCVVCP.......",
-    ".......PCPBPCPBPCPBPCVVCP.......",
-    ".......PCPPPCPPPCPPPCVVCP.......",
-    ".......PCCCCCCCCCCCCCCCCP.......",
-    ".......PCPPPPPPPCPPPCAACP.......",
-    ".......PCPBBBBBPCPBPCAACP.......",
-    ".......PCPPPPPPPCPPPCAACP.......",
-    ".......PCCCCCCCCCCCCCCCCP.......",
-    ".......PPPPPPPPPPPPPPPPPP.......",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-};
-
+/* Os ícones da área de trabalho vêm de tools/mkarte.py. Esta cabecinha fica
+ * aqui porque a barra superior a usa em tamanho pequeno. */
 /* Sagui 3D (B4): corredor de pedra em perspectiva, céu em cima, grama
  * embaixo e uma banana no fundo. */
-static const char *const icone_sagui3d[] = {
-    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
-    "PPssssssssssssssssssssssssssssPP",
-    "PCPssssssssssssssssssssssssssPCP",
-    "PCCPssssssssssssssssssssssssPCCP",
-    "PCCkPssssssssssssssssssssssPkCCP",
-    "PLCkCPssssssssssssssssssssPCkCLP",
-    "PLLkCCPssssssssssssssssssPCCkLLP",
-    "PLLLLCkPssssssssssssssssPkCLLLLP",
-    "PLLLLLkCPssssssssssssssPCkLLLLLP",
-    "PCCLLLLCCPssssssssssssPCCLLLLCCP",
-    "PCCkCLLLLkPssssssssssPkLLLLCkCCP",
-    "PCCkCCkLLLCPLkLLLkLLPCLLLkCCkCCP",
-    "PLCkCCkCCLLCkkkkkkkkCLLCCkCCkCLP",
-    "PLLLLLkCCkCLkLLLkLLLLCkCCkLLLLLP",
-    "PLLLLLLLLLCCkLLLkLLLCCLLLLLLLLLP",
-    "PLLLLLLLLLLLkkkkkkkkLLLLLLLLLLLP",
-    "PCCkCCkCCkCCLLLkPLLkCCkCCkCCkCCP",
-    "PCCkCCkCCkLLLLLPYLLkLLkCCkCCkCCP",
-    "PCCkCCLLLLLCkkPYPkkkCLLLLLCCkCCP",
-    "PCLLLLLLLkCLLPYPLLkLLCkLLLLLLLCP",
-    "PLLLLLLCCkLPLPPLLLkLPLkCCLLLLLLP",
-    "PLLLLCkCCLPggGgggggggPLCCkCLLLLP",
-    "PLLkCCkLLPgGggggggggggPLLkCCkLLP",
-    "PCCkCCLLPGggggggggggGggPLLCCkCCP",
-    "PCCkCLLPggggggggggGgggggPLLCkCCP",
-    "PCCLLLPgggggggggGggggggggPLLLCCP",
-    "PCLLLPggggggggGggggggggggGPLLLCP",
-    "PLLLPgggggggGggggggggggGgggPLLLP",
-    "PLLPggggggGggggggggggGggggggPLLP",
-    "PLPgggggGggggggggggGgggggggggPLP",
-    "PPggggGggggggggggGggggggggggGgPP",
-    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
-};
-
-static const char *const icone_banana[] = {
-    "................................",
-    "................................",
-    "......................PP........",
-    ".....................PEEP.......",
-    ".....................PEP........",
-    "....................PYYP........",
-    "...................PYYYYP.......",
-    "..................PYYYYYP.......",
-    ".................PYYYYYYP.......",
-    "................PYYYYYYYP.......",
-    "...............PYYYYYYYAP.......",
-    "..............PYYYYYYYAP........",
-    ".............PYYYYYYYYAP........",
-    "...........PPYYYYYYYYAP.........",
-    ".........PPYYYYYYYYYAP..........",
-    ".......PPYYYYYYYYYYAP...........",
-    ".....PPYYYYYYYYYYYAP............",
-    "...PPYYYYYYYYYYYAAP.............",
-    "..PEYYYYYYYYYYAAPP..............",
-    "..PEEYYYYYYAAAPP................",
-    "...PPAAAAAAPPP..................",
-    ".....PPPPPP.....................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-};
-
 static const char *const icone_sobre[] = {   /* o mascote pequeno: só a cabeça */
     "................................",
     "................................",
@@ -290,50 +99,8 @@ static const char *const icone_sobre[] = {   /* o mascote pequeno: só a cabeça
     "................................",
 };
 
-static const char *const icone_pendrive[] = {
-    "................................",
-    "................................",
-    "................................",
-    "...........PPPPPPPPPP...........",
-    "...........PCCCCCCCCP...........",
-    "...........PCPPCCPPCP...........",
-    "...........PCPPCCPPCP...........",
-    "...........PCCCCCCCCP...........",
-    ".........PPPPPPPPPPPPPP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVBBBBBBVVVP.........",
-    ".........PVVVBVVVVBVVVP.........",
-    ".........PVVVBBBBBBVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    ".........PVVVVVVVVVVVVP.........",
-    "..........PVVVVVVVVVVP..........",
-    "...........PPPPPPPPPP...........",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-};
-
 const desenho_t arte_sagui            = { sagui, 32, 32 };
-const desenho_t arte_icone_arquivos   = { icone_arquivos, 32, 32 };
-const desenho_t arte_icone_terminal   = { icone_terminal, 32, 32 };
-const desenho_t arte_icone_editor     = { icone_editor, 32, 32 };
-const desenho_t arte_icone_calculadora = { icone_calculadora, 32, 32 };
-const desenho_t arte_icone_banana     = { icone_banana, 32, 32 };
-const desenho_t arte_icone_sagui3d    = { icone_sagui3d, 32, 32 };
 const desenho_t arte_icone_sobre      = { icone_sobre, 32, 32 };
-const desenho_t arte_icone_pendrive   = { icone_pendrive, 32, 32 };
 
 /* Paleta: letra -> cor. Devolve false para transparente. */
 bool arte_cor(char letra, uint32_t *cor)

@@ -42,12 +42,14 @@
 #define SIS_MODO_TERMINAL  46   /* (TERM_LINHA ou TERM_BRUTO) */
 #define SIS_LIMPAR_TELA    47   /* () */
 #define SIS_REGISTRAR      48   /* (texto) -> escreve no log do sistema (serial), não na tela */
+#define SIS_DESLIGAR       49   /* () */
 /* Janelas (fase 5) */
 #define SIS_CRIAR_JANELA   50   /* (titulo, largura | altura << 16, &pixels) -> id */
 #define SIS_FECHAR_JANELA  51   /* (id) */
 #define SIS_ATUALIZAR_JANELA 52 /* (id, &retangulo ou 0 = tudo) */
 #define SIS_PROXIMO_EVENTO 53   /* (id ou 0 = qualquer janela minha, &evento, esperar) -> 1 se houve */
 #define SIS_TITULO_JANELA  54   /* (id, titulo) */
+#define SIS_MENU_JANELA    60   /* (id, x | y << 16, "Item|Item|Item") -> abre um menu; a escolha chega em EV_MENU */
 /* Dispositivos (fase 6) */
 #define SIS_LISTAR_DISCOS  55   /* (indice, &info_disco) -> 1 achou, 0 fim */
 #define SIS_MONTAR         56   /* (nome, ex.: "usb0") -> monta em /usb */
@@ -56,7 +58,12 @@
 #define SIS_BIP            58   /* (&notas, quantidade, modo) -> volta na hora; o tique do relógio toca */
 /* Jogos (bônus B4) */
 #define SIS_TECLAS_SEGURADAS 59 /* (&mapa[32]) -> 1 se a janela do processo está em foco */
-#define SIS_MAX            64
+/* Rede (D032) */
+#define SIS_PING           61   /* (ip, prazo_ms) -> milissegundos até a resposta */
+#define SIS_RESOLVER       62   /* (nome, &ip) -> 0; pergunta ao DNS */
+#define SIS_CONECTAR       63   /* (ip, porta) -> descritor de uma conexão TCP (ler/escrever/fechar) */
+#define SIS_PCM            64   /* (amostras, bytes, taxa) -> bytes aceitos; 0 bytes para */
+#define SIS_MAX            65
 
 /* Erros (sempre negativos) */
 #define ERRO_INVALIDO      -1
@@ -74,6 +81,9 @@
 #define ERRO_FORMATO      -13   /* não é um executável ELF válido */
 #define ERRO_ACESSO       -14   /* operação não permitida */
 #define ERRO_OCUPADO      -15
+#define ERRO_TEMPO        -16   /* a rede não respondeu a tempo */
+#define ERRO_SEM_REDE     -17   /* sem placa de rede ou ainda sem endereço IP */
+#define ERRO_RECUSADA     -18   /* o outro computador recusou ou cortou a conexão */
 
 /* Modos de abrir */
 #define ABRIR_LER       1
@@ -125,6 +135,7 @@ typedef struct {
 #define INFO_PROCESSOS 2
 #define INFO_VERSAO    3
 #define INFO_USB       4   /* relatório em texto: controladores, portas e dispositivos */
+#define INFO_REDE      5   /* relatório em texto: placa, endereços e pacotes */
 
 typedef struct {
     unsigned int ram_total_kb;
@@ -201,6 +212,9 @@ typedef struct {
 #define EV_MOVER     3   /* movimento sobre a janela */
 #define EV_TECLA     4   /* "tecla": caractere Latin-1, ou 0x100+ para setas etc. */
 #define EV_FECHAR    5   /* clicaram no X da moldura */
+#define EV_TAMANHO   6   /* a janela mudou de tamanho: x = largura, y = altura; redesenhe tudo */
+#define EV_MENU      7   /* item escolhido no menu aberto por SIS_MENU_JANELA: tecla = índice */
+#define EV_ROLAR     8   /* roda do mouse sobre a janela: x, y = ponto; tecla = degraus (int, positivo = para baixo) */
 
 /* Teclas especiais nos eventos de janela. São os mesmos valores do enum do
  * kernel (teclado.h), que por isso não precisa destas definições. */
@@ -220,6 +234,7 @@ typedef struct {
 
 #define JANELA_LARG_MAX 1000
 #define JANELA_ALT_MAX  700
+#define JANELA_REDIMENSIONAVEL 0x8000   /* somado à altura em SIS_CRIAR_JANELA: o programa trata EV_TAMANHO */
 
 typedef struct {
     unsigned int tipo;

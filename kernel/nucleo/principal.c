@@ -7,6 +7,7 @@
  * G470 o mapa de memória grande empurrava a saudação para fora (erro 1). */
 #include "bootinfo.h"
 #include "console.h"
+#include "ac97.h"
 #include "texto.h"
 #include "cpu.h"
 #include "relogio.h"
@@ -14,6 +15,8 @@
 #include "memoria.h"
 #include "teclado.h"
 #include "sgfs.h"
+#include "lz.h"
+#include "lzma.h"
 #include "paginacao.h"
 #include "processo.h"
 #include "sistema.h"
@@ -22,6 +25,7 @@
 #include "i8042.h"
 #include "gui.h"
 #include "usb.h"
+#include "rede.h"
 
 #define SAGUI_VERSAO "1.0"
 
@@ -87,6 +91,32 @@ static void registrar_mapa(void)
 }
 
 /* Confere o cabeçalho do SGFS (o leitor completo vem na H08). */
+/* O ramdisk vem comprimido na imagem: "SGLZ", tamanho real e os dados. */
+static void expandir_ramdisk(void)
+{
+    const uint8_t *rd = (const uint8_t *)info_boot.ramdisk_inicio;
+    /* "SGXZ": LZMA com filtro x86 (bem menor que o LZ simples) */
+    if (info_boot.ramdisk_bytes >= 13 && memcmp(rd, "SGXZ", 4) == 0) {
+        uint32_t real = *(const uint32_t *)(rd + 4);
+        uint8_t props = rd[8];
+        uint8_t *d = kmalloc(real);
+        if (!d) { kprintf("Ramdisk: sem memoria para %u bytes\n", real); return; }
+        uint32_t saiu = lzma_expandir(rd + 13, info_boot.ramdisk_bytes - 13, d, real, props);
+        if (saiu != real) { kprintf("Ramdisk: LZMA parou em %u de %u bytes\n", saiu, real); return; }
+        bcj_x86_desfazer(d, real);
+        info_boot.ramdisk_inicio = (uint32_t)d;
+        info_boot.ramdisk_bytes = real;
+        return;
+    }
+    if (info_boot.ramdisk_bytes < 8 || memcmp(rd, "SGLZ", 4) != 0) return;
+    uint32_t real = *(const uint32_t *)(rd + 4);
+    uint8_t *d = kmalloc(real);
+    if (!d) { kprintf("Ramdisk: sem memoria para %u bytes\n", real); return; }
+    lz_expandir(rd + 8, info_boot.ramdisk_bytes - 8, d);
+    info_boot.ramdisk_inicio = (uint32_t)d;
+    info_boot.ramdisk_bytes = real;
+}
+
 static void conferir_ramdisk(void)
 {
     const uint8_t *rd = (const uint8_t *)info_boot.ramdisk_inicio;
@@ -228,6 +258,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     }
 
     /* H08: sistema de arquivos do ramdisk. */
+    expandir_ramdisk();
     conferir_ramdisk();
     if (sgfs_iniciar((const void *)info_boot.ramdisk_inicio, info_boot.ramdisk_bytes)) {
         char linha[96];
@@ -252,6 +283,18 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
             console_cor(COR_AMARELO, COR_PRETO);
             kprintf("[aviso] Nenhum controlador USB 2.0 (EHCI) encontrado.\n");
             console_cor(COR_CINZA, COR_PRETO);
+        }
+    }
+    /* D032: placa de rede; o endereço vem por DHCP em segundo plano. */
+    {
+        ac97_iniciar();
+        const char *placa = rede_iniciar();
+        if (placa) {
+            char linha[96];
+            snformatar(linha, sizeof linha, "Rede: %s, endereço por DHCP (comandos rede, ping, baixar)", placa);
+            etapa(linha);
+        } else {
+            klog("[REDE] nenhuma placa suportada\n");
         }
     }
     klog("[SAGUI] boot ok\n");
