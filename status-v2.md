@@ -1,16 +1,16 @@
 ```
-Eli, as fases 7 (compilador) e 9 (visual moderno, com redimensionar e maximizar) estão prontas: entrega/v2-fase7/ e v2-fase9/ (a mesma imagem), roteiros em docs/teste-v2-fase7.md e docs/teste-v2-fase9.md. A fase 8 (Sagui Code) espera a sua chave do OpenRouter para o teste final.
+Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8.md. O teste final (5 pedidos com a IA de verdade, H73) precisa da sua chave do OpenRouter.
 ```
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T19:42:41_
+_Atualizado em 2026-11-13T19:56:57_
 
-- **Situação:** Aguardando teste do Eli: fase 9
+- **Situação:** Aguardando teste do Eli: fase 8
 - **Fase atual:** 8
 - **História atual:** -
-- **Progresso geral:** 88.6%
-- **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
+- **Progresso geral:** 95.5%
+- **Bloqueio:** H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli
 - **Imagem:** 1642496 bytes úteis (sem teto: só medida)
 - **Linhas de código:** boot 903, kernel 13543, userland 28698
 
@@ -25,7 +25,7 @@ _Atualizado em 2026-11-13T19:42:41_
 | 5 | Terminal e SSH | 100.0% | aguardando teste |
 | 6 | Sagui Navegador | 100.0% | aguardando teste |
 | 7 | Compilador C | 100.0% | aguardando teste |
-| 8 | Sagui Code | 20.0% | em andamento |
+| 8 | Sagui Code | 80.0% | aguardando teste |
 | 9 | Visual moderno | 100.0% | aguardando teste |
 | 10 | Instalação no HD (opcional, a decidir) | 0% | a fazer |
 
@@ -67,10 +67,10 @@ _Atualizado em 2026-11-13T19:42:41_
 | H66 | Fundo do compilador | aguardando teste | 1 |
 | H67 | Compilar dentro do sistema | aguardando teste | 1 |
 | H68 | Prova de fogo | aguardando teste | 1 |
-| H69 | JSON e cliente do OpenRouter | em andamento |  |
-| H70 | O laço do agente | feito | 1 |
-| H71 | Instruções e contexto | a fazer |  |
-| H72 | Interface | a fazer |  |
+| H69 | JSON e cliente do OpenRouter | aguardando teste | 1 |
+| H70 | O laço do agente | aguardando teste | 1 |
+| H71 | Instruções e contexto | aguardando teste | 1 |
+| H72 | Interface | aguardando teste | 1 |
 | H73 | Aceite com IA de verdade | a fazer |  |
 | H74 | Vidro | aguardando teste | 1 |
 | H75 | Forma | aguardando teste | 1 |
@@ -80,6 +80,14 @@ _Atualizado em 2026-11-13T19:42:41_
 
 ## Últimas ações
 
+- 2026-11-13T19:56:57: Fase 8 entregue. Aguardando teste do Eli.
+- 2026-11-13T19:56:57: Bloqueio: H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli
+- 2026-11-13T19:56:57: H72 concluída: saguicode no Terminal: stream, histórico, /modelo /gasto /limite /limpar /salvar /abrir
+- 2026-11-13T19:56:57: H71 concluída: instruções + manual + cabeçalhos com cache; conversa longa cortada abaixo do limite; gasto por pedido
+- 2026-11-13T19:56:57: H69 concluída: JSON, POST, cliente do OpenRouter com stream e ferramentas, aba IA; servidor falso ok (conversa real espera a chave do Eli)
+- 2026-11-13T19:56:57: Início da H72: Interface
+- 2026-11-13T19:56:57: Início da H71: Instruções e contexto
+- 2026-11-13T19:56:57: Início da H69: JSON e cliente do OpenRouter
 - 2026-11-13T19:42:41: Fase 9 entregue. Aguardando teste do Eli.
 - 2026-11-13T19:42:41: Fase 7 entregue. Aguardando teste do Eli.
 - 2026-11-13T19:42:41: H70 concluída: laço completo com servidor falso e o cc de verdade: escrever, erro, corrigir, compilar, rodar; licenças e limite de passos
@@ -87,11 +95,3 @@ _Atualizado em 2026-11-13T19:42:41_
 - 2026-11-13T19:42:41: H78 concluída: borda e canto, maximizar, duplo clique; Terminal, Navegador, Editor, Arquivos; ssh repassa o tamanho
 - 2026-11-13T19:42:41: Início da H78: Redimensionar e maximizar janelas (pedido do Eli)
 - 2026-11-13T18:17:52: H68 concluída: wc, cat, calculadora e banana feitos pelo cc passam nos testes da 1.0 (h15, h16, h24, h26, h27)
-- 2026-11-13T18:17:52: H67 concluída: cc no Terminal; Editor com Compilar e rodar (vai à linha do erro) e Instalar em /usb/programas
-- 2026-11-13T18:17:52: Início da H68: Prova de fogo
-- 2026-11-13T18:17:52: Início da H67: Compilar dentro do sistema
-- 2026-11-13T18:17:52: H66 concluída: RI própria, x86, montador e ligador próprios; os 50 válidos rodam no SaguiOS
-- 2026-11-13T18:17:52: H65 concluída: 70 programas com erro dão a mensagem esperada (linha, coluna, ^ e dica); 50 válidos compilam
-- 2026-11-13T18:17:51: H64 concluída: manual docs/c-do-sagui.md com exemplos e o que fica de fora
-- 2026-11-13T18:17:51: Início da H66: Fundo do compilador
-- 2026-11-13T18:17:51: Início da H65: Frente do compilador

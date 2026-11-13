@@ -35,6 +35,7 @@ from qemu import Maquina, FalhaTeste, verificar, criar_pendrive, pendrive_qemu, 
 REDE = ["-netdev", "user,id=n0", "-device", "e1000,netdev=n0,mac=52:54:00:12:34:56"]
 CHAVE = "teste-chave-sagui-123"
 pedidos = []
+erros_servidor = []   # pedidos que não eram JSON em UTF-8 válido
 
 
 def evento(obj):
@@ -102,6 +103,10 @@ def roteiro(corpo):
         if len(resultados) == 4:
             return chamada("rodar", {"programa": "ola"}, idc="c5")
         return texto_em_pedacos("Pronto: o programa ola roda.")
+    if "leia o manual" in usuario:              # H71: resultados grandes, para a conversa crescer
+        if len(resultados) == 0:
+            return chamada("ler_arquivo", {"caminho": "/sistema/ajuda/c-do-sagui.md"}, idc=f"m{len(msgs)}")
+        return texto_em_pedacos("Li o manual.")
     if "laço infinito" in usuario:
         return chamada("listar_pasta", {"caminho": "."}, idc=f"call_{len(resultados)}")
     return texto_em_pedacos("Não entendi.")
@@ -112,7 +117,15 @@ class Atendente(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         tam = int(self.headers.get("Content-Length", 0))
-        corpo = json.loads(self.rfile.read(tam).decode())
+        bruto = self.rfile.read(tam)
+        try:
+            corpo = json.loads(bruto.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as e:
+            erros_servidor.append(f"pedido inválido: {e}")
+            self.send_response(400)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         pedidos.append({"auth": self.headers.get("Authorization"), "corpo": corpo, "caminho": self.path})
         if self.headers.get("Authorization") != f"Bearer {CHAVE}":
             erro = json.dumps({"error": {"message": "No auth credentials found", "code": 401}}).encode()

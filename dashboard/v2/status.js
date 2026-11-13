@@ -1,12 +1,12 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T19:42:41",
-  "situacao": "Aguardando teste do Eli: fase 9",
+  "atualizado": "2026-11-13T19:56:57",
+  "situacao": "Aguardando teste do Eli: fase 8",
   "fase_atual": 8,
   "historia_atual": null,
-  "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
-  "mensagem_fase": "Eli, as fases 7 (compilador) e 9 (visual moderno, com redimensionar e maximizar) estão prontas: entrega/v2-fase7/ e v2-fase9/ (a mesma imagem), roteiros em docs/teste-v2-fase7.md e docs/teste-v2-fase9.md. A fase 8 (Sagui Code) espera a sua chave do OpenRouter para o teste final.",
+  "bloqueio": "H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli",
+  "mensagem_fase": "Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8.md. O teste final (5 pedidos com a IA de verdade, H73) precisa da sua chave do OpenRouter.",
   "raiz": "../../",
   "links": [
     {
@@ -67,8 +67,8 @@ window.SAGUI_STATUS = {
     {
       "numero": 8,
       "nome": "Sagui Code",
-      "estado": "em andamento",
-      "progresso": 20.0
+      "estado": "aguardando teste",
+      "progresso": 80.0
     },
     {
       "numero": 9,
@@ -533,12 +533,12 @@ window.SAGUI_STATUS = {
       "titulo": "JSON e cliente do OpenRouter",
       "objetivo": "Leitor e escritor de JSON e cliente da API de conversa do OpenRouter (com chamada de ferramentas), por HTTPS. Aba **IA** nas Configurações: chave (guardada em `/usb/.saguios/chaves.txt`), modelo e limite de gasto por sessão.",
       "aceite": "com o servidor falso da VPS, uma pergunta e uma resposta; com a API real, uma conversa registrada no diário.",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "bonus": false,
-      "inicio": "2026-11-13T12:31:12",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T19:56:57",
+      "fim": "2026-11-13T19:56:57",
+      "minutos": 1,
+      "resultado": "JSON, POST, cliente do OpenRouter com stream e ferramentas, aba IA; servidor falso ok (conversa real espera a chave do Eli)"
     },
     {
       "id": "H70",
@@ -546,7 +546,7 @@ window.SAGUI_STATUS = {
       "titulo": "O laço do agente",
       "objetivo": "Ferramentas: `ler_arquivo`, `escrever_arquivo`, `editar_arquivo` (trocar um trecho), `listar_pasta`, `executar_comando`, `compilar` e `rodar`. Confirmação do usuário antes de sobrescrever, apagar ou rodar comandos; limite de passos por pedido.",
       "aceite": "com o servidor falso, o laço completo (escrever, compilar com erro, corrigir, compilar, rodar) funciona e cada pedido de confirmação aparece.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T19:42:41",
       "fim": "2026-11-13T19:42:41",
@@ -559,12 +559,12 @@ window.SAGUI_STATUS = {
       "titulo": "Instruções e contexto",
       "objetivo": "Texto de instruções do Sagui Code, manual da `libsagui` e de `docs/c-do-sagui.md` enviados na conversa, uso de cache de prompt quando o modelo escolhido suportar, e corte ou resumo das partes antigas quando a conversa crescer.",
       "aceite": "conversa longa de teste não passa do limite configurado; o gasto estimado aparece ao fim de cada pedido.",
-      "estado": "a fazer",
+      "estado": "aguardando teste",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T19:56:57",
+      "fim": "2026-11-13T19:56:57",
+      "minutos": 1,
+      "resultado": "instruções + manual + cabeçalhos com cache; conversa longa cortada abaixo do limite; gasto por pedido"
     },
     {
       "id": "H72",
@@ -572,12 +572,12 @@ window.SAGUI_STATUS = {
       "titulo": "Interface",
       "objetivo": "`saguicode` no Terminal: resposta aparecendo enquanto é gerada, histórico, salvar e abrir conversas no pendrive, comandos `/modelo`, `/gasto`, `/limpar`.",
       "aceite": "capturas de uma sessão completa.",
-      "estado": "a fazer",
+      "estado": "aguardando teste",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T19:56:57",
+      "fim": "2026-11-13T19:56:57",
+      "minutos": 1,
+      "resultado": "saguicode no Terminal: stream, histórico, /modelo /gasto /limite /limpar /salvar /abrir"
     },
     {
       "id": "H73",
@@ -727,6 +727,38 @@ window.SAGUI_STATUS = {
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "Fase 8 entregue. Aguardando teste do Eli."
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "Bloqueio: H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli"
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "H72 concluída: saguicode no Terminal: stream, histórico, /modelo /gasto /limite /limpar /salvar /abrir"
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "H71 concluída: instruções + manual + cabeçalhos com cache; conversa longa cortada abaixo do limite; gasto por pedido"
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "H69 concluída: JSON, POST, cliente do OpenRouter com stream e ferramentas, aba IA; servidor falso ok (conversa real espera a chave do Eli)"
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "Início da H72: Interface"
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "Início da H71: Instruções e contexto"
+    },
+    {
+      "data": "2026-11-13T19:56:57",
+      "texto": "Início da H69: JSON e cliente do OpenRouter"
+    },
     {
       "data": "2026-11-13T19:42:41",
       "texto": "Fase 9 entregue. Aguardando teste do Eli."
@@ -934,42 +966,40 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T07:26:21",
       "texto": "H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md"
-    },
-    {
-      "data": "2026-11-13T07:26:21",
-      "texto": "Início da H54: Certificados raiz e créditos"
-    },
-    {
-      "data": "2026-11-13T07:26:21",
-      "texto": "H53 concluída: TLS 1.3 dentro do SaguiOS (ponte com TCP, gerador do kernel e relógio UTC): baixar https:// funciona com example.com e a Wikipédia (ChaCha20-Poly1305); âncora de confiança por nome + chave"
-    },
-    {
-      "data": "2026-11-13T02:57:46",
-      "texto": "H52 concluída: Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)"
-    },
-    {
-      "data": "2026-11-13T02:57:46",
-      "texto": "Início da H52: Assinaturas e certificados"
-    },
-    {
-      "data": "2026-11-13T02:50:51",
-      "texto": "H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito"
-    },
-    {
-      "data": "2026-11-13T02:50:51",
-      "texto": "Início da H55: Terminal completo"
-    },
-    {
-      "data": "2026-11-13T02:50:51",
-      "texto": "H49 concluída: Cliente HTTP/1.1 (tamanho, pedaços, redirecionamento), comando baixar, relogio internet por NTP com fuso, relógio automático depois do DHCP"
-    },
-    {
-      "data": "2026-11-13T02:27:43",
-      "texto": "H50 concluída: Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto"
     }
   ],
   "erros": [],
   "capturas": [
+    {
+      "arquivo": "docs/v2/capturas/H70-3-compilar.png",
+      "nome": "H70-3-compilar.png",
+      "data": "2026-11-13T19:56:21"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H70-2-licenca.png",
+      "nome": "H70-2-licenca.png",
+      "data": "2026-11-13T19:54:06"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H70-1-laco.png",
+      "nome": "H70-1-laco.png",
+      "data": "2026-11-13T19:54:03"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H69-1-pergunta.png",
+      "nome": "H69-1-pergunta.png",
+      "data": "2026-11-13T19:53:30"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H72-1-sessao.png",
+      "nome": "H72-1-sessao.png",
+      "data": "2026-11-13T19:53:10"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H71-1-conversa-longa.png",
+      "nome": "H71-1-conversa-longa.png",
+      "data": "2026-11-13T19:53:00"
+    },
     {
       "arquivo": "docs/v2/capturas/H78-3-navegador-maximizado.png",
       "nome": "H78-3-navegador-maximizado.png",
@@ -1024,26 +1054,6 @@ window.SAGUI_STATUS = {
       "arquivo": "docs/v2/capturas/H74-1-vidro.png",
       "nome": "H74-1-vidro.png",
       "data": "2026-11-13T18:46:57"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H70-3-compilar.png",
-      "nome": "H70-3-compilar.png",
-      "data": "2026-11-13T18:46:18"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H70-2-licenca.png",
-      "nome": "H70-2-licenca.png",
-      "data": "2026-11-13T18:44:03"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H70-1-laco.png",
-      "nome": "H70-1-laco.png",
-      "data": "2026-11-13T18:44:00"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H69-1-pergunta.png",
-      "nome": "H69-1-pergunta.png",
-      "data": "2026-11-13T18:43:27"
     },
     {
       "arquivo": "docs/v2/capturas/H67-3-instalado.png",
@@ -1245,12 +1255,12 @@ window.SAGUI_STATUS = {
     "boot": 903,
     "kernel": 13543,
     "userland": 28698,
-    "ferramentas": 10111
+    "ferramentas": 10223
   },
   "imagem": {
     "bytes_util": 1642496,
     "bytes_arquivo": 1671168,
     "meta_bytes": null
   },
-  "progresso_geral": 88.6
+  "progresso_geral": 95.5
 };

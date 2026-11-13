@@ -461,9 +461,9 @@ static void cortar_contexto(void)
         ia_mensagem_t *m = &ia.msgs[i];
         if (compara_texto(m->papel, "tool") == 0 && m->conteudo && tam_texto(m->conteudo) > 200) {
             libera(m->conteudo);
-            char *r = aloca(64);
-            if (r) copia_texto(r, "[resultado antigo removido para economizar espaço]", 64);
-            m->conteudo = r;
+            /* O texto do programa é Latin-1; a conversa é UTF-8. */
+            static const char aviso[] = "[resultado antigo removido para economizar espaço]";
+            m->conteudo = para_utf8(aviso, sizeof aviso - 1);
         }
     }
     while (estimar_tokens() > max_contexto) {
