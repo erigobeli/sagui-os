@@ -1,0 +1,4 @@
+e19_bloco_aberto.c:4:1: erro: este bloco aberto com '{' não foi fechado
+    4 | {
+      | ^
+dica: cada { precisa do seu }

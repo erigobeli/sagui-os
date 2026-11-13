@@ -1,0 +1,4 @@
+e08_ponto_flutuante.c:6:23: erro: número com vírgula (ponto flutuante) não é aceito
+    6 |     int metade = 10 * 0.5;
+      |                       ^
+dica: o C do Sagui não tem ponto flutuante (float, double); use inteiros: guarde 1,5 como 15 décimos ou 1500 milésimos

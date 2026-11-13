@@ -1,0 +1,4 @@
+e17_falta_ponto_virgula.c:6:14: erro: faltou ';' antes de 'imprimir'
+    6 |     int x = 5
+      |              ^
+dica: todo comando e toda declaração terminam com ponto e vírgula

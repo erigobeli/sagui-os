@@ -1,0 +1,4 @@
+e24_comando_fora.c:4:1: erro: este comando está fora de qualquer função
+    4 | contador = 5;
+      | ^
+dica: fora das funções só cabem declarações; ponha este comando dentro de uma função, como a principal

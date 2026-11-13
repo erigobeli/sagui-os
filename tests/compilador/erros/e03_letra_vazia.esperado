@@ -1,0 +1,4 @@
+e03_letra_vazia.c:6:14: erro: aspas simples sem nada dentro
+    6 |     char c = '';
+      |              ^
+dica: entre aspas simples vai exatamente uma letra, como 'a' ou '\n'

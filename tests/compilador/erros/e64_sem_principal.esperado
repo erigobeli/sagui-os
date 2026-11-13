@@ -1,0 +1,2 @@
+cc: erro: o programa não tem a função 'principal'
+dica: todo programa do SaguiOS começa por: int principal(int argc, char **argv) { ... } (é o 'main' dos outros sistemas)

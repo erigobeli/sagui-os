@@ -1,0 +1,4 @@
+e50_esquerda_nao_variavel.c:7:11: erro: o lado esquerdo do '=' não é uma variável
+    7 |     a + b = 3;
+      |           ^
+dica: à esquerda do = tem de haver algo que guarda valor: uma variável, v[i], *p ou s.campo

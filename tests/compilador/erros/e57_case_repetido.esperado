@@ -1,0 +1,4 @@
+e57_case_repetido.c:9:5: erro: o case 1 aparece duas vezes
+    9 |     case 1: break;
+      |     ^
+dica: cada valor só pode aparecer num case do mesmo switch

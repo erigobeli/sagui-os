@@ -1,0 +1,4 @@
+e13_endif_sobrando.c:4:1: erro: #endif sem #if antes
+    4 | #endif
+      | ^
+dica: apague este #endif ou ponha o #if que falta

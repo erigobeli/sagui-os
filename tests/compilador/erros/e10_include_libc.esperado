@@ -1,0 +1,4 @@
+e10_include_libc.c:1:2: erro: não achei o arquivo 'stdio.h' do #include
+    1 | #include <stdio.h>
+      |  ^
+dica: o SaguiOS não tem a biblioteca padrão do C. Use #include "sagui.h": ele já traz uint8_t, bool, NULL, va_list e as funções do sistema (imprimir no lugar de printf, aloca no lugar de malloc, tam_texto no lugar de strlen)

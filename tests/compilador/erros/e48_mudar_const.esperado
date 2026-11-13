@@ -1,0 +1,4 @@
+e48_mudar_const.c:7:12: erro: não dá para mudar o que foi declarado const
+    7 |     limite = 20;
+      |            ^
+dica: tire o const da declaração se o valor precisa mudar

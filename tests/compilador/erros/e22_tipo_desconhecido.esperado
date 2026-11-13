@@ -1,0 +1,4 @@
+e22_tipo_desconhecido.c:1:1: erro: esperava um tipo no começo da declaração, mas 'uint32_t' não é um tipo conhecido
+    1 | uint32_t total;
+      | ^
+dica: toda declaração começa pelo tipo: int, char, void, um struct, um typedef... Os tipos uint8_t, uint32_t, bool e size_t vêm de #include "sagui.h"

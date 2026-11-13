@@ -1,0 +1,4 @@
+e69_void_em_conta.c:8:13: erro: o operador '+' recebeu uma expressão void (sem valor)
+    8 |     int r = avisa() + 1;
+      |             ^
+dica: uma função void não devolve nada; não dá para usar o resultado dela numa conta

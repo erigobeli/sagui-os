@@ -1,0 +1,4 @@
+e55_vetor_tamanho_variavel.c:7:11: erro: o tamanho de um vetor precisa ser uma constante inteira
+    7 |     int v[n];
+      |           ^
+dica: o C do Sagui não tem vetores de tamanho variável: use um tamanho fixo (um número ou #define) ou peça a memória com aloca(n * sizeof(tipo)) e devolva com libera

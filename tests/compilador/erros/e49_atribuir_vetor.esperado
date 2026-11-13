@@ -1,0 +1,4 @@
+e49_atribuir_vetor.c:7:10: erro: não dá para atribuir a um vetor inteiro
+    7 |     nome = "sagui";
+      |          ^
+dica: copie os elementos um a um (ou com memcpy); para texto use copia_texto(destino, origem, tamanho)

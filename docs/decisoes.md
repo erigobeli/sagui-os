@@ -1116,3 +1116,68 @@ programa rodando fora do SaguiOS: se o layout mudar, os dois mudam juntos, e
 o que o teste confere é que o SaguiOS desenha o que o layout manda (imagens
 que chegaram pela rede, rolagem, recorte). As imagens e o HTML também têm
 testes próprios (H59 a H61), contra o Pillow e árvores conferidas à mão.
+
+## D039. O compilador C do SaguiOS: frente, representação intermediária e fundo (H64 a H66)
+
+O `cc` (`userland/compilador`, umas 6000 linhas) foi escrito de cabeça, a
+partir do rascunho público do padrão C11, do manual da Intel (codificação
+das instruções), da especificação ELF e da System V ABI do i386. Nenhum
+código de compilador, montador, ligador ou tutorial foi consultado. O
+raciocínio de cada parte está em `userland/compilador/LEIA-ME.md`; a
+linguagem, em `docs/c-do-sagui.md`. Aqui ficam as decisões que mexem com o
+resto do sistema.
+
+**Duas metades, uma fronteira.** A frente (C) entrega uma representação
+intermediária própria (`ri.h`): funções como listas de instruções de três
+operandos sobre temporários de 32 ou 64 bits, mais os dados globais. O
+fundo (x86, montador, ligador) só conhece isso. Uma linguagem em português
+precisa só de uma frente nova. `cc --ri` mostra a lista.
+
+**Simples antes de rápido.** Sem alocação de registradores: cada temporário
+tem uma casa na pilha, com dois atalhos (resultado usado logo em seguida
+fica em EAX; comparação + salto vira `cmp`/`jcc`). O código sai de 3 a 5
+vezes mais lento que o do GCC e com tamanho parecido. Bastou: o shell, o
+Terminal, o Editor, a Calculadora e a Banana recompilados pelo `cc`
+passaram nos testes da versão 1.0.
+
+**Erros para quem vai se corrigir sozinho.** Um erro por compilação, com
+`arquivo:linha:coluna`, a linha, um `^` e uma dica; nomes da biblioteca
+padrão do C ganham a dica do equivalente na libsagui (`printf` ->
+`imprimir`). Não há avisos; por isso o que o GCC só avisa e costuma ser
+erro de verdade (ponteiro recebendo inteiro, função não declarada) aqui é
+recusado.
+
+**Como o programa encontra a libsagui.** O build passou a gerar
+`build/userland/libsagui.o`: todos os objetos da libsagui juntos num objeto
+ELF relocável (`ld -r`), que vai para a imagem em `/sistema/lib/libsagui.o`
+(200 KB). O ligador do `cc` lê esse arquivo, segue as relocações a partir
+de `_inicio` e leva para o programa só as seções alcançadas. Os cabeçalhos
+em `/sistema/inc` são cópias exatas de `userland/inc/*.h` e de
+`kernel/inc/abi.h`: o compilador entende o que eles usam do GCC
+(`__attribute__`, ignorado; `__builtin_va_list`). Assim não existe uma
+segunda descrição da biblioteca para ficar desatualizada.
+
+**Inteiros de 64 bits com ajuda.** `long long` é aceito (a Calculadora
+usa). Soma, subtração e comparação são geradas direto; multiplicação,
+divisão e deslocamento chamam `userland/libsagui/longo64.c`, novo, com a
+divisão longa bit a bit (o SaguiOS não usa a libgcc).
+
+**Pilha.** O carregador dá 64 KB de pilha a cada programa, pouco para um
+analisador recursivo. O `cc` pede 1 MB com `aloca` e troca o ESP enquanto
+compila (dez linhas de assembly em `cc.c`); o kernel não mudou.
+
+**O mesmo núcleo dentro e fora.** O compilador fala com o mundo por uma
+tabela de funções (`CcAmbiente`), como o TLS e o SSH. Os testes compilam o
+núcleo para o Linux e conferem que o `cc` rodando dentro do SaguiOS produz
+executáveis byte a byte iguais. Para rodar os 50 programas de teste em
+milissegundos antes do QEMU, há uma libsagui de teste em que só as chamadas
+de sistema são trocadas pelas do Linux (o ELF de 32 bits em 0x40000000
+também carrega lá).
+
+**Tamanho.** O `cc` tem 98 KB (compilado com `-Os`) e a biblioteca 200 KB;
+a imagem foi de 78% para 99,3% da meta de 1,44 MB (`prd.md`, seção 1). A
+meta não é obrigatória, mas a próxima fase vai passar dela; fica registrado.
+
+**Fora da primeira versão:** ponto flutuante, vetores de tamanho variável,
+campos de bits, assembly dentro do C, avisos, mais de um erro por vez. A
+lista completa está no manual.

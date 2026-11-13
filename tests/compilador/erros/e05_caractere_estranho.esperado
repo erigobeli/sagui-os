@@ -1,0 +1,4 @@
+e05_caractere_estranho.c:6:20: erro: caractere '@' não faz parte do C
+    6 |     int preco = 10 @ 2;
+      |                    ^
+dica: este símbolo não existe em C

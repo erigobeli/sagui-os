@@ -1,0 +1,4 @@
+e62_declaracoes_diferentes.c:5:5: erro: 'media' já foi declarado de outro jeito
+    5 | int media(int a, int b, int c)
+      |     ^
+dica: a outra declaração está na linha 3 e diz 'int (int, int)'; as duas precisam ser iguais

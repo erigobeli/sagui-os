@@ -1,0 +1,4 @@
+e66_campo_de_bits.c:4:21: erro: campos de bits (nome : largura) não são aceitos no C do Sagui
+    4 |     unsigned ligado : 1;
+      |                     ^
+dica: use um campo inteiro comum e mexa nos bits com & | << >>

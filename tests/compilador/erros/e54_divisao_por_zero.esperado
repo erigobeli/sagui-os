@@ -1,0 +1,4 @@
+e54_divisao_por_zero.c:8:26: erro: divisão por zero
+    8 |     imprimir("%d\n", 100 / PARTES);
+      |                          ^
+dica: confira o divisor; se ele vem de uma macro, veja quanto ela vale

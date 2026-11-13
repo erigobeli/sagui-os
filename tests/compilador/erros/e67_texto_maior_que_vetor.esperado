@@ -1,0 +1,4 @@
+e67_texto_maior_que_vetor.c:6:20: erro: o texto tem 5 letras e não cabe num vetor de 4
+    6 |     char nome[4] = "sagui";
+      |                    ^
+dica: aumente o vetor (lembre do zero que termina o texto) ou encurte o texto

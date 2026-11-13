@@ -1,0 +1,4 @@
+e16_error.c:4:1: erro: #error: falta definir PLATAFORMA
+    4 | #error falta definir PLATAFORMA
+      | ^
+dica: esta linha #error foi escrita no programa para parar a compilação de propósito

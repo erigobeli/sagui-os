@@ -1,0 +1,4 @@
+e12_if_sem_endif.c:3:1: erro: este #if não foi fechado com #endif
+    3 | #ifdef DEPURAR
+      | ^
+dica: todo #if, #ifdef e #ifndef precisa de um #endif

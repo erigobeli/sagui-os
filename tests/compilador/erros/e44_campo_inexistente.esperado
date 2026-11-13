@@ -1,0 +1,4 @@
+e44_campo_inexistente.c:9:24: erro: 'ponto_t' não tem um campo chamado 'z'
+    9 |     imprimir("%d\n", p.z);
+      |                        ^
+dica: os campos de 'ponto_t' são: x y

@@ -1,0 +1,12 @@
+0 0 0 | 1 1 1
+1 0 0 | 1 1 1
+0 0 20 0 0 0 0 70 80 0 
+sagui 1,2,3 vida 100 cor 255,200,0
+mico 0,0,0 vida 50 cor 0,0,0
+bugio 0,9,0 vida 0 cor 0,0,7
+dom sab 1
+1 0 0 4 5 0
+oi 0 10 abc
+3 6 9
+2 0
+[codigo 0]

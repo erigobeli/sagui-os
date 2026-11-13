@@ -1,0 +1,4 @@
+e15_diretiva_desconhecida.c:3:2: erro: diretiva #defin desconhecida
+    3 | #defin TAMANHO 10
+      |  ^
+dica: as diretivas são #include, #define, #undef, #if, #ifdef, #ifndef, #elif, #else, #endif e #error

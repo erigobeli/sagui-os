@@ -1,0 +1,4 @@
+e04_varias_letras.c:6:14: erro: mais de uma letra entre aspas simples
+    6 |     char c = 'ab';
+      |              ^
+dica: aspas simples guardam UMA letra ('a'); para um texto use aspas duplas ("texto")

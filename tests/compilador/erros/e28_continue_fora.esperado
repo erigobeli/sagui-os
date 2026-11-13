@@ -1,0 +1,4 @@
+e28_continue_fora.c:6:19: erro: 'continue' fora de laço
+    6 |     if (argc > 1) continue;
+      |                   ^
+dica: o continue volta ao começo de um while, do ou for

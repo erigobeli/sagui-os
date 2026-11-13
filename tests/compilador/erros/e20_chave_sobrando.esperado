@@ -1,0 +1,4 @@
+e20_chave_sobrando.c:8:1: erro: este '}' não fecha nada
+    8 | }
+      | ^
+dica: há um } a mais; confira se cada { tem um só }

@@ -1,0 +1,4 @@
+e21_else_sem_if.c:8:5: erro: este 'else' não tem um 'if' antes
+    8 |     else imprimir("um\n");
+      |     ^
+dica: o else vem logo depois do comando (ou do bloco { }) do if; confira se há um ; ou } sobrando antes

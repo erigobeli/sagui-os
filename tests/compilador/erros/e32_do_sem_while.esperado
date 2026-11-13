@@ -1,0 +1,4 @@
+e32_do_sem_while.c:7:17: erro: faltou o 'while' no fim do 'do'
+    7 |     do { i++; } (i < 3);
+      |                 ^
+dica: o formato é: do { ... } while (condicao);

@@ -1,0 +1,4 @@
+e56_valores_demais.c:6:27: erro: valores demais: o vetor tem só 3 elemento(s)
+    6 |     int v[3] = { 1, 2, 3, 4 };
+      |                           ^
+dica: aumente o tamanho do vetor ou tire valores da lista

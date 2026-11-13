@@ -1,0 +1,4 @@
+e25_if_fora.c:4:1: erro: o comando 'if' está fora de qualquer função
+    4 | if (limite > 5) limite = 5;
+      | ^
+dica: comandos (if, while, return...) só podem ficar dentro de uma função, como a principal

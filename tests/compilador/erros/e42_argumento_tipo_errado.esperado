@@ -1,0 +1,4 @@
+e42_argumento_tipo_errado.c:6:23: erro: em argumento 1 de 'tam_texto': esperava o ponteiro 'const char *', mas veio o inteiro 'int'
+    6 |     int n = tam_texto(42);
+      |                       ^
+dica: para o endereço de uma variável use &variavel; para um endereço fixo escreva (tipo *)numero; 'nenhum lugar' é NULL

@@ -1,0 +1,4 @@
+e43_chamar_variavel.c:7:5: erro: isto é 'int', não uma função: não dá para chamar
+    7 |     total(5);
+      |     ^
+dica: só se chama com ( ) uma função ou um ponteiro para função

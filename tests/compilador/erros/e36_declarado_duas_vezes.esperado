@@ -1,0 +1,4 @@
+e36_declarado_duas_vezes.c:7:10: erro: 'total' já foi declarado neste mesmo bloco
+    7 |     char total = 1;
+      |          ^
+dica: a outra declaração está na linha 6; use outro nome ou apague uma das duas

@@ -15,7 +15,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qemu import Maquina, verificar, RAIZ, imagem_console  # noqa: E402
 
-PROGRAMAS = sorted([f[:-2] for f in os.listdir(os.path.join(RAIZ, "userland", "programas")) if f.endswith(".c")] + ["sagui3d"])   # o Sagui 3D (B4) fica em userland/sagui3d
+PROGRAMAS = sorted([f[:-2] for f in os.listdir(os.path.join(RAIZ, "userland", "programas")) if f.endswith(".c")] + ["sagui3d", "navegador", "cc"])   # programas de várias partes: userland/sagui3d, navegador e compilador
 
 
 def main():

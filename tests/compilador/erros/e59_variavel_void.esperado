@@ -1,0 +1,4 @@
+e59_variavel_void.c:6:10: erro: a variável 'nada' não pode ser void
+    6 |     void nada;
+      |          ^
+dica: void quer dizer 'nada'; para um ponteiro sem tipo use void *

@@ -1,0 +1,4 @@
+e61_global_nao_constante.c:5:15: erro: o inicializador de uma variável global precisa ser constante
+    5 | int inicial = dobro(21);
+      |               ^
+dica: o valor inicial de uma variável global (ou static) é calculado pelo compilador: só números, textos e endereços de outras globais. Para um valor que depende de contas do programa, atribua dentro de uma função

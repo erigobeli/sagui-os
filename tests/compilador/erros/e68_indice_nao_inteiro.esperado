@@ -1,0 +1,4 @@
+e68_indice_nao_inteiro.c:8:24: erro: o índice de um vetor precisa ser um número inteiro, não 'const char *'
+    8 |     imprimir("%d\n", v[i]);
+      |                        ^
+dica: entre [ ] vai a posição do elemento: um int. Se o índice está num texto, converta com texto_para_int

@@ -1,0 +1,4 @@
+e37_ponteiro_recebe_inteiro.c:6:14: erro: em inicialização: esperava o ponteiro 'int *', mas veio o inteiro 'int'
+    6 |     int *p = 1000;
+      |              ^
+dica: para o endereço de uma variável use &variavel; para um endereço fixo escreva (tipo *)numero; 'nenhum lugar' é NULL
