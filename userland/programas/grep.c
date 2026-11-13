@@ -1,15 +1,18 @@
 /* grep - busca um padrão em arquivos ou na entrada padrão (SaguiOS).
  *
  * Uso:
- *   grep <padrao>           lê da entrada padrão (stdin)
- *   grep <padrao> <arquivo> lê do arquivo
+ *   grep [-n] <padrao>           lê da entrada padrão (stdin)
+ *   grep [-n] <padrao> <arquivo> lê do arquivo
  *
- * Imprime todas as linhas que contêm o padrão.
+ * -n : mostra o número de cada linha encontrada
+ *
+ * Imprime todas as linhas que contêm o padrão (case-sensitive).
  * Usa apenas syscalls int 0x80 + libsagui. Sem libc.
  *
- * Exemplo:
+ * Exemplos:
  *   sagui:/$ grep Sagui leia-me.txt
  *   sagui:/$ cat leia-me.txt | grep versao
+ *   sagui:/$ grep -n erro docs/erros.md
  */
 
 #include "sagui.h"
@@ -28,16 +31,45 @@ static int contem(const char *palha, const char *agulha)
     return 0;
 }
 
+/* Converte inteiro para string decimal (sem sprintf). */
+static void texto_int_dec(int v, char *buf, unsigned max)
+{
+    if (v == 0) { copia_texto(buf, "0", max); return; }
+    char tmp[16];
+    int n = 0, neg = v < 0;
+    unsigned u = neg ? (unsigned)(-v) : (unsigned)v;
+    while (u && n < 15) { tmp[n++] = (char)('0' + u % 10); u /= 10; }
+    if (neg) tmp[n++] = '-';
+    size_t k = 0;
+    while (n) { if (k < max - 1) buf[k++] = tmp[--n]; }
+    buf[k] = 0;
+}
+
+/* Escreve uma string completa no fd (garante que todos os bytes saem). */
+static void escrever_tudo_fd(int fd, const char *s)
+{
+    unsigned n = tam_texto(s);
+    escrever_tudo(fd, s, n);
+}
+
 /* Processa um descritor de arquivo, linha por linha. */
-static void processar(int fd, const char *padrao)
+static void processar(int fd, const char *padrao, bool numerar)
 {
     char linha[LINHA_MAX];
+    int num = 0;
     while (1) {
         int n = ler_linha(fd, linha, sizeof linha);
         if (n < 0) break;   /* fim do arquivo */
+        num++;
         if (contem(linha, padrao)) {
-            escrever_texto(SAIDA, linha);
-            escrever_texto(SAIDA, "\n");
+            if (numerar) {
+                char buf[16];
+                texto_int_dec(num, buf, sizeof buf);
+                escrever_tudo_fd(SAIDA, buf);
+                escrever_tudo_fd(SAIDA, ": ");
+            }
+            escrever_tudo_fd(SAIDA, linha);
+            escrever_tudo_fd(SAIDA, "\n");
         }
     }
 }
@@ -45,25 +77,38 @@ static void processar(int fd, const char *padrao)
 int principal(int argc, char **argv)
 {
     if (argc < 2) {
-        escrever_texto(ERROS, "uso: grep <padrao> [arquivo]\n");
+        escrever_tudo_fd(ERROS, "uso: grep [-n] <padrao> [arquivo]\n");
         return 1;
     }
 
-    const char *padrao = argv[1];
+    bool numerar = false;
+    int arg_padrao = 1;
 
-    if (argc >= 3) {
-        const char *caminho = argv[2];
-        int fd = abrir(caminho, ABRIR_LER);
-        if (fd < 0) {
-            escrever_texto(ERROS, "grep: nao consigo abrir ");
-            escrever_texto(ERROS, caminho);
-            escrever_texto(ERROS, "\n");
+    if (compara_texto(argv[1], "-n") == 0) {
+        numerar = true;
+        arg_padrao = 2;
+        if (argc < 3) {
+            escrever_tudo_fd(ERROS, "uso: grep [-n] <padrao> [arquivo]\n");
             return 1;
         }
-        processar(fd, padrao);
+    }
+
+    const char *padrao = argv[arg_padrao];
+
+    if (argc > arg_padrao + 1) {
+        const char *caminho = argv[arg_padrao + 1];
+        int fd = abrir(caminho, ABRIR_LER);
+        if (fd < 0) {
+            escrever_tudo_fd(ERROS, "grep: nao consigo abrir ");
+            escrever_tudo_fd(ERROS, caminho);
+            escrever_tudo_fd(ERROS, "\n");
+            return 1;
+        }
+        processar(fd, padrao, numerar);
         fechar(fd);
     } else {
-        processar(ENTRADA, padrao);
+        /* Sem arquivo: lê da entrada padrão. */
+        processar(ENTRADA, padrao, numerar);
     }
 
     return 0;
