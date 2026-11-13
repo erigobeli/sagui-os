@@ -18,8 +18,10 @@
  * /tmp/favoritos.txt sem pendrive), uma linha "endereço<TAB>título" cada. */
 #include "navegador.h"
 
-#define LARG       960
-#define ALT        660
+/* O tamanho da janela muda (H78): começa em 960 x 660. */
+static int larg_jan = 960, alt_jan = 660;
+#define LARG       larg_jan
+#define ALT        alt_jan
 #define BARRA      34
 #define STATUS     20
 #define ROLAGEM_L  14
@@ -713,13 +715,37 @@ static void tratar_movimento(const evento_t *e)
     }
 }
 
+static void posicionar_botoes(void)
+{
+    botoes[BT_IR].x = ENDE_X + ENDE_L + 6;
+    botoes[BT_FAV].x = botoes[BT_IR].x + botoes[BT_IR].l + 6;
+    botoes[BT_FAVORITOS].x = botoes[BT_FAV].x + botoes[BT_FAV].l + 6;
+}
+
+/* A janela mudou de tamanho (H78): o texto corre de novo na largura nova. */
+static void mudar_tamanho(const evento_t *e)
+{
+    jan_novo_tamanho(j, e);
+    larg_jan = j->larg;
+    alt_jan = j->alt;
+    posicionar_botoes();
+    if (pag) {
+        /* Mantém o começo da parte visível mais ou menos no mesmo lugar. */
+        int alt_antes = pag->altura;
+        pagina_layout(pag, VISTA_L);
+        if (alt_antes > 0) rolagem = (int)((long)rolagem * pag->altura / alt_antes);
+        limitar_rolagem();
+    }
+    desenhar_tudo();
+    registrar("navegador: tamanho %dx%d, pagina com altura %d", LARG, ALT, pag ? pag->altura : 0);
+}
+
 int principal(int argc, char **argv)
 {
     j = jan_abrir("Sagui Navegador", LARG, ALT);
     if (!j) { imprimir_em(ERROS, "navegador: não consegui abrir a janela\n"); return 1; }
-    botoes[BT_IR].x = ENDE_X + ENDE_L + 6;
-    botoes[BT_FAV].x = botoes[BT_IR].x + botoes[BT_IR].l + 6;
-    botoes[BT_FAVORITOS].x = botoes[BT_FAV].x + botoes[BT_FAV].l + 6;
+    jan_redimensionavel(j, 520, 300);
+    posicionar_botoes();
     registrar("navegador: janela %d", j->id);
     carregar(argc > 1 ? argv[1] : "sagui:inicio", true, 0);
     for (;;) {
@@ -730,6 +756,9 @@ int principal(int argc, char **argv)
         case EV_FECHAR:
             jan_fechar(j);
             return 0;
+        case EV_REDIMENSIONAR:
+            mudar_tamanho(&e);
+            break;
         case EV_CLIQUE:
             if (e.botoes & 1) tratar_clique(&e);
             break;

@@ -55,6 +55,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_REDE_RECEBER] = sis_rede_receber,   [SIS_REDE_FECHAR] = sis_rede_fechar,
     [SIS_REDE_ESTADO] = sis_rede_estado,
     [SIS_ALEATORIO] = sis_aleatorio,
+    [SIS_JANELA_OPCOES] = sis_janela_opcoes,
 };
 
 bool usuario_ok(const void *p, uint32_t n, bool escrita)

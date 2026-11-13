@@ -52,6 +52,11 @@ typedef struct {
     uint32_t   ini, fim;
     bool       minimizada;    /* H75: escondida, só o ícone na doca */
     bool       escondida;     /* durante a animação de abrir ou restaurar (H76) */
+    bool       redimensionavel;   /* H78: o programa aceita mudar de tamanho */
+    int        lmin, amin;        /* menor tamanho aceito */
+    uint32_t   cap_px;            /* quantos pixels cabem na memória da janela */
+    bool       maximizada;
+    int        antes[4];          /* x, y, largura, altura antes de maximizar */
 } janela_t;
 
 static janela_t janelas[MAX_JANELAS];
@@ -60,6 +65,10 @@ static int proximo_id = 1;
 static bool ativa;
 static superficie_t tela;
 static int suj_x0, suj_y0, suj_x1, suj_y1;   /* retângulo a recompor */
+
+/* Redimensionar (H78): qual janela, por onde (1 direita, 2 embaixo, 3 canto)
+ * e o contorno que segue o mouse até soltar. */
+static int redimensionando = -1, redim_modo, redim_l, redim_a;
 
 /* Estado do mouse no gerenciador. */
 static int arrastando = -1, arr_dx, arr_dy;   /* janela sendo arrastada e onde foi pega */
@@ -431,7 +440,92 @@ static void desenhar_moldura(janela_t *j, bool foco)
         sup_retangulo(&tela, bx + 15 - k, by + k, 1, 1, 0xFFFFFF);
     }
     int mx = bx - 24;
-    sup_retangulo(&tela, mx + 3, by + 11, 10, 2, foco ? tema->texto_foco : tema->texto);
+    uint32_t tc = foco ? tema->texto_foco : tema->texto;
+    sup_retangulo(&tela, mx + 3, by + 11, 10, 2, tc);
+    if (j->redimensionavel) {                    /* maximizar (H78): um quadrado; maximizada: dois */
+        int qx = bx - 48;
+        if (j->maximizada) { sup_moldura(&tela, qx + 5, by + 2, 9, 9, tc); sup_retangulo(&tela, qx + 2, by + 5, 9, 9, foco ? tema->titulo_foco : tema->titulo); sup_moldura(&tela, qx + 2, by + 5, 9, 9, tc); }
+        else { sup_moldura(&tela, qx + 2, by + 2, 12, 12, tc); sup_retangulo(&tela, qx + 2, by + 3, 12, 1, tc); }
+    }
+}
+
+/* ------------------------------------------------------------ tamanho (H78) */
+
+static void entregar(janela_t *j, evento_t *e);
+
+static void tamanho_maximo(janela_t *j, int *l, int *a)
+{
+    *l = (int)video_largura() - 2 * BORDA;
+    *a = (doca_ligada ? doca_y - 4 : (int)video_altura()) - BARRA_SUPERIOR - BARRA_TITULO - BORDA;
+    if (j->cap_px && (uint32_t)(*l * *a) > j->cap_px) *a = (int)(j->cap_px / (uint32_t)*l);
+}
+
+/* Muda posição e tamanho e avisa o programa, que redesenha o conteúdo. */
+static void aplicar_tamanho(janela_t *j, int x, int y, int l, int a)
+{
+    int lmax, amax;
+    tamanho_maximo(j, &lmax, &amax);
+    if (l < j->lmin) l = j->lmin;
+    if (a < j->amin) a = j->amin;
+    if (l > lmax) l = lmax;
+    if ((uint32_t)(l * a) > j->cap_px) a = (int)(j->cap_px / (uint32_t)l);
+    redesenhar_janela(j);
+    if (l != j->larg || a != j->alt) {
+        /* Até o programa redesenhar, a área nova fica na cor de fundo das janelas. */
+        for (uint32_t k = 0; k < (uint32_t)(l * a); k++) j->px[k] = 0xF4F4F0;
+    }
+    j->x = x; j->y = y; j->larg = l; j->alt = a;
+    redesenhar_janela(j);
+    evento_t e = { .tipo = EV_REDIMENSIONAR, .x = l, .y = a };
+    entregar(j, &e);
+    klog("[GUI] janela %d redimensionada para %dx%d em (%d,%d)\n", j->id, l, a, x, y);
+}
+
+static void alternar_maximizar(janela_t *j)
+{
+    if (!j->redimensionavel) return;
+    if (j->maximizada) {
+        j->maximizada = false;
+        aplicar_tamanho(j, j->antes[0], j->antes[1], j->antes[2], j->antes[3]);
+    } else {
+        j->antes[0] = j->x; j->antes[1] = j->y; j->antes[2] = j->larg; j->antes[3] = j->alt;
+        int l, a;
+        tamanho_maximo(j, &l, &a);
+        j->maximizada = true;
+        aplicar_tamanho(j, 0, BARRA_SUPERIOR, l, a);
+    }
+    klog("[GUI] janela %d %s\n", j->id, j->maximizada ? "maximizada" : "voltou ao tamanho de antes");
+}
+
+/* A borda de redimensionar sob o ponto: devolve o índice em ordem[] e o modo. */
+static int borda_em(int x, int y, int *modo)
+{
+    for (int k = qtd - 1; k >= 0; k--) {
+        janela_t *j = &janelas[ordem[k]];
+        if (j->minimizada || j->escondida) continue;
+        int l = moldura_l(j), a = moldura_a(j);
+        bool dentro = x >= j->x && x < j->x + l && y >= j->y && y < j->y + a;
+        if (j->redimensionavel && !j->maximizada) {
+            bool dir = x >= j->x + l - 4 && x < j->x + l + 6 && y >= j->y + BARRA_TITULO && y < j->y + a + 6;
+            bool baixo = y >= j->y + a - 4 && y < j->y + a + 6 && x >= j->x && x < j->x + l + 6;
+            if (dir || baixo) { *modo = (dir ? 1 : 0) | (baixo ? 2 : 0); return k; }
+        }
+        if (dentro) return -1;                   /* uma janela por cima tapa as bordas das de baixo */
+    }
+    return -1;
+}
+
+static void desenhar_redimensionar(void)
+{
+    if (redimensionando < 0) return;
+    janela_t *j = &janelas[redimensionando];
+    int l = redim_l + 2 * BORDA, a = redim_a + BARRA_TITULO + BORDA;
+    sup_moldura(&tela, j->x, j->y, l, a, 0xFFFFFF);
+    sup_moldura(&tela, j->x + 1, j->y + 1, l - 2, a - 2, 0x0B7A3E);
+    char t[24];
+    snformatar(t, sizeof t, "%d x %d", redim_l, redim_a);
+    sup_retangulo(&tela, j->x + l / 2 - 44, j->y + a / 2 - 10, 88, 20, 0x101820);
+    sup_texto(&tela, j->x + l / 2 - texto_largura(t) / 2, j->y + a / 2 - 8, t, 0xFFFFFF);
 }
 
 /* O vidro precisa do que está atrás dele: se o pedaço a redesenhar encosta
@@ -478,6 +572,7 @@ void gui_mostrar(void)
         sup_copiar(&tela, j->x + BORDA, j->y + BARRA_TITULO, j->px, j->larg, j->alt, j->larg);
     }
     desenhar_anims();
+    desenhar_redimensionar();
     desenhar_doca();
     if (tela.cy0 < BARRA_SUPERIOR) {
         if (vidro_efeitos) vidro_pintar(&tela, 0, 0, (int)video_largura(), BARRA_SUPERIOR, tema->topo, tema->k_topo, 0);
@@ -569,6 +664,29 @@ static void tratar_mouse(evento_mouse_t *m)
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
 
+    if (redimensionando >= 0) {
+        janela_t *j = &janelas[redimensionando];
+        int sujo_l = redim_l + 2 * BORDA + 2, sujo_a = redim_a + BARRA_TITULO + BORDA + 2;
+        if (!j->usada) { redimensionando = -1; return; }
+        if (!(m->botoes & BOTAO_ESQUERDO)) {
+            gui_redesenhar(j->x - 1, j->y - 1, sujo_l, sujo_a);
+            redimensionando = -1;
+            aplicar_tamanho(j, j->x, j->y, redim_l, redim_a);
+            return;
+        }
+        gui_redesenhar(j->x - 1, j->y - 1, sujo_l, sujo_a);
+        int lmax, amax;
+        tamanho_maximo(j, &lmax, &amax);
+        if (redim_modo & 1) redim_l = m->x - j->x - 2 * BORDA;
+        if (redim_modo & 2) redim_a = m->y - j->y - BARRA_TITULO - BORDA;
+        if (redim_l < j->lmin) redim_l = j->lmin;
+        if (redim_a < j->amin) redim_a = j->amin;
+        if (redim_l > lmax) redim_l = lmax;
+        if ((uint32_t)(redim_l * redim_a) > j->cap_px) redim_a = (int)(j->cap_px / (uint32_t)redim_l);
+        gui_redesenhar(j->x - 1, j->y - 1, redim_l + 2 * BORDA + 2, redim_a + BARRA_TITULO + BORDA + 2);
+        return;
+    }
+
     if (arrastando >= 0) {
         janela_t *j = &janelas[arrastando];
         if (!j->usada || !(m->botoes & BOTAO_ESQUERDO)) {
@@ -603,6 +721,17 @@ static void tratar_mouse(evento_mouse_t *m)
         int di = doca_item_em(m->x, m->y);
         if (di >= 0) {
             if (m->mudaram & BOTAO_ESQUERDO) doca_clique(di);
+            captura = -1;
+            return;
+        }
+        int modo;
+        int kb = (m->mudaram & BOTAO_ESQUERDO) ? borda_em(m->x, m->y, &modo) : -1;
+        if (kb >= 0) {
+            trazer_para_cima(kb);
+            redimensionando = ordem[qtd - 1];
+            redim_modo = modo;
+            redim_l = janelas[redimensionando].larg;
+            redim_a = janelas[redimensionando].alt;
             captura = -1;
             return;
         }
@@ -641,9 +770,24 @@ static void tratar_mouse(evento_mouse_t *m)
                 klog("[GUI] fechar janela %d (%s)\n", j->id, j->titulo);
             } else if ((m->mudaram & BOTAO_ESQUERDO) && rx >= bx - 24 && rx < bx - 8 && ry >= 4 && ry < 20) {
                 minimizar(j);
+            } else if ((m->mudaram & BOTAO_ESQUERDO) && j->redimensionavel && rx >= bx - 48 && rx < bx - 32 && ry >= 4 && ry < 20) {
+                alternar_maximizar(j);
+            } else if ((m->mudaram & BOTAO_ESQUERDO) && j->redimensionavel && ult_clique_alvo == 2000 + j->id &&
+                       relogio_tiques() - ult_clique_tique < DUPLO_CLIQUE) {
+                ult_clique_alvo = -999;
+                alternar_maximizar(j);              /* duplo clique na barra de título */
             } else if (m->mudaram & BOTAO_ESQUERDO) {
                 arrastando = idx;
                 arr_dx = rx; arr_dy = ry;
+                ult_clique_alvo = 2000 + j->id;
+                ult_clique_tique = relogio_tiques();
+                if (j->maximizada) {
+                    /* Arrastar uma janela maximizada: ela volta ao tamanho de antes, sob o mouse. */
+                    j->maximizada = false;
+                    int nl = j->antes[2];
+                    arr_dx = rx * (nl + 2 * BORDA) / moldura_l(j);
+                    aplicar_tamanho(j, m->x - arr_dx, j->y, nl, j->antes[3]);
+                }
             }
             captura = -1;
             return;
@@ -930,5 +1074,38 @@ int32_t sis_titulo_janela(uint32_t id, uint32_t ptitulo, uint32_t c, uint32_t d,
     if (r < 0) return r;
     gui_redesenhar(j->x, j->y, moldura_l(j), BARRA_TITULO);
     gui_mostrar();
+    return 0;
+}
+
+/* Opções da janela (H78). Redimensionável: a memória da janela passa a ter
+ * lugar para o maior tamanho possível (a tela entre a barra de cima e a
+ * doca, limitada aos 4 MB que cada janela tem no espaço do programa). O
+ * conteúdo atual é copiado; o endereço que o programa vê não muda. */
+int32_t sis_janela_opcoes(uint32_t id, uint32_t opcoes, uint32_t minimos, uint32_t d, uint32_t e)
+{
+    (void)d; (void)e;
+    janela_t *j = janela_do_processo((int)id);
+    if (!j) return ERRO_INVALIDO;
+    if (!(opcoes & JAN_REDIMENSIONAVEL) || j->redimensionavel) return 0;
+    uint32_t max_px = (uint32_t)(video_largura() * video_altura());
+    if (max_px > ESPACO_JANELA / 4) max_px = ESPACO_JANELA / 4;
+    uint32_t paginas = (max_px * 4 + PAGINA - 1) / PAGINA;
+    uint32_t fis = memfisica_alocar_seguidas(paginas);
+    if (!fis) return ERRO_SEM_MEMORIA;
+    uint32_t *novo = (uint32_t *)fis;
+    for (uint32_t k = 0; k < (uint32_t)(j->larg * j->alt); k++) novo[k] = j->px[k];
+    for (uint32_t k = 0; k < j->paginas; k++) espaco_desmapear(atual->espaco, j->virt + k * PAGINA);
+    memfisica_liberar_seguidas((uint32_t)j->px, j->paginas);
+    j->px = novo;
+    j->paginas = paginas;
+    for (uint32_t k = 0; k < paginas; k++)
+        espaco_mapear(atual->espaco, j->virt + k * PAGINA, fis + k * PAGINA, PG_USUARIO | PG_ESCRITA | PG_EMPRESTADA);
+    j->cap_px = max_px;
+    j->redimensionavel = true;
+    j->lmin = (int)(minimos & 0xFFFF) ? (int)(minimos & 0xFFFF) : 120;
+    j->amin = (int)(minimos >> 16) ? (int)(minimos >> 16) : 80;
+    redesenhar_janela(j);
+    gui_mostrar();
+    klog("[GUI] janela %d redimensionavel (ate %u pixels)\n", j->id, max_px);
     return 0;
 }

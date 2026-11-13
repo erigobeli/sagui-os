@@ -9,6 +9,7 @@
 - **Doca** embaixo: Arquivos, Terminal, Navegador, Editor e Configurações sempre ali, e depois os programas abertos (o ponto amarelo marca os abertos). Clicar traz a janela ou abre o programa; parar o mouse em cima mostra o nome.
 - **Menu do sagui:** clique na cabecinha do sagui, no canto de cima, para ver todos os programas e "Desligar...".
 - **Ícone de som** na barra de cima (abre o volume).
+- **Redimensionar e maximizar** (o seu pedido): arraste a borda da direita, a de baixo ou o canto para mudar o tamanho; o botão quadrado (ou duplo clique na barra de título) maximiza, e clicar de novo volta. Funciona no Terminal (ganha linhas e colunas, e o `ssh` avisa o servidor), no Navegador, no Editor e no Arquivos. Calculadora e jogos continuam com tamanho fixo.
 - **Animações** curtas ao abrir, fechar, minimizar e restaurar.
 - **Tema claro ou escuro** e **Efeitos** (automático, completos ou leves) em Configurações > Aparência.
 - Efeitos **automáticos**: se o computador for lento para o vidro, o SaguiOS usa os efeitos leves sozinho.
@@ -21,6 +22,9 @@
 | Arrastar o Terminal sobre os ícones | A barra de título mostra os ícones desfocados atrás; sem rastros |
 | Botão `_` do Terminal | Ele encolhe para a doca; clicando no Terminal da doca, ele volta |
 | Clicar na cabecinha do sagui > Calculadora | A calculadora abre com uma animação |
+| Arrastar o canto de baixo à direita do Terminal | Aparece um contorno com o tamanho; ao soltar, o Terminal fica do tamanho novo |
+| Botão quadrado do Navegador | Ocupa a tela toda até a doca; a página se ajeita na largura nova |
+| Dentro de um `ssh`, maximizar o Terminal e rodar `stty size` | Mostra o número novo de linhas e colunas |
 | Configurações > Aparência > Tema | A barra de cima, a doca e as molduras ficam claras |
 | Configurações > Aparência > Efeitos: Leves | Barras sólidas, sem sombra |
 

@@ -6,9 +6,10 @@
 #include "sagui.h"
 #include "gui.h"
 
-#define LARG 720
+static int larg_jan = 720, alt_jan = 440;   /* a janela pode mudar de tamanho (H78) */
+#define LARG larg_jan
 #define LATERAL 140   /* lateral com "SaguiOS" e "Pendrive" (H34) */
-#define ALT  440
+#define ALT  alt_jan
 #define MAX_ITENS 128
 
 static jan_t *j;
@@ -222,6 +223,7 @@ int principal(int argc, char **argv)
     botao_t bt[3] = {
         { 8, 7, 90, 26, "Voltar", false }, { 106, 7, 110, 26, "Nova pasta", false }, { 224, 7, 90, 26, "Apagar", false },
     };
+    jan_redimensionavel(j, 480, 300);
     g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
     g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
     for (int i = 0; i < 3; i++) botao_desenhar(j, &bt[i]);
@@ -251,6 +253,22 @@ int principal(int argc, char **argv)
         int c;
         while (recolher(&c) > 0) ;   /* programas abertos daqui que já terminaram */
         if (e.tipo == EV_FECHAR) break;
+        if (e.tipo == EV_REDIMENSIONAR) {                   /* H78: a lista acompanha a janela */
+            jan_novo_tamanho(j, &e);
+            larg_jan = j->larg;
+            alt_jan = j->alt;
+            g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
+            g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
+            g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
+            for (int i = 0; i < 3; i++) botao_desenhar(j, &bt[i]);
+            lista.l = LARG - LATERAL - 14;
+            lista.a = ALT - 70 - 30;
+            desenhar_lateral();
+            carregar();
+            jan_mostrar(j);
+            registrar("arquivos: tamanho %dx%d", LARG, ALT);
+            continue;
+        }
         if (botao_tratar(j, &bt_lado_raiz, &e)) { copia_texto(pasta, "/", sizeof pasta); carregar(); }
         if (tem_pendrive && botao_tratar(j, &bt_lado_pen, &e)) {
             int r = pendrive.montado ? 0 : montar(pendrive.nome);

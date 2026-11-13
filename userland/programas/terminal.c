@@ -29,8 +29,13 @@
 
 extern const unsigned char fonte_sagui[256][16];
 
-#define COLS 94
-#define LINS 28
+/* O tamanho da grade muda quando a janela muda (H78): os vetores têm lugar
+ * para o maior tamanho, e cols/lins dizem quanto está em uso. */
+#define MAX_COLS 170
+#define MAX_LINS 48
+static int cols = 94, lins = 28;
+#define COLS cols
+#define LINS lins
 #define MARGEM 4
 #define ABAS_A 24
 #define LARG (COLS * LETRA_L + 2 * MARGEM)
@@ -53,8 +58,8 @@ typedef struct {
     bool     usada;
     char     nome[24];
     int      shell, entrada, saida;            /* pid e pipes */
-    celula_t tela[LINS][COLS], alternativa[LINS][COLS];
-    celula_t historico[HISTORICO][COLS];
+    celula_t tela[MAX_LINS][MAX_COLS], alternativa[MAX_LINS][MAX_COLS];
+    celula_t historico[HISTORICO][MAX_COLS];
     int      hist_qtd, hist_ini, olhando;      /* rolagem para trás: quantas linhas acima */
     bool     na_alternativa;
     int      col, lin, col_salva, lin_salva;
@@ -73,14 +78,15 @@ typedef struct {
     uint8_t  primeiro;                         /* o byte que abriu a sequência */
     bool     dois_bytes;                       /* já veio pelo menos uma continuação */
     uint8_t  ultima;                           /* última letra escrita (para ESC [ n b) */
+    bool     avisar_tamanho;                   /* ESC [ ? 7727 h: o programa quer saber quando o tamanho muda (H78) */
 } aba_t;
 
 static jan_t *j;
 static aba_t abas[MAX_ABAS];
 static int atual_aba;
-static int suj_l0 = LINS, suj_l1 = -1;
+static int suj_l0 = MAX_LINS, suj_l1 = -1;
 static bool abas_sujas = true;
-static char area_copia[COLS * LINS + LINS];
+static char area_copia[MAX_COLS * MAX_LINS + MAX_LINS];
 static int sel_ini_l = -1, sel_ini_c, sel_fim_l, sel_fim_c;
 
 /* ------------------------------------------------------------ cores */
@@ -112,7 +118,7 @@ static uint8_t cor_proxima(int r, int g, int b)
 
 /* ------------------------------------------------------------ desenho */
 
-static celula_t (*grade(aba_t *a))[COLS] { return a->na_alternativa ? a->alternativa : a->tela; }
+static celula_t (*grade(aba_t *a))[MAX_COLS] { return a->na_alternativa ? a->alternativa : a->tela; }
 
 static void sujar(int l) { if (l < suj_l0) suj_l0 = l; if (l > suj_l1) suj_l1 = l; }
 static void sujar_tudo(void) { suj_l0 = 0; suj_l1 = LINS - 1; }
@@ -142,7 +148,7 @@ static void desenhar_celula(int l, int c, celula_t ce, bool cursor)
 
 static void desenhar_linha(aba_t *a, int l)
 {
-    celula_t (*g)[COLS] = grade(a);
+    celula_t (*g)[MAX_COLS] = grade(a);
     for (int c = 0; c < COLS; c++) {
         celula_t ce;
         if (a->olhando > 0) {   /* olhando o histórico: as linhas de cima vêm de lá */
@@ -188,7 +194,7 @@ static celula_t vazia(aba_t *a) { return (celula_t){ ' ', 0, COR_PADRAO_FRENTE, 
 
 static void limpar_faixa(aba_t *a, int l, int c0, int c1)
 {
-    celula_t (*g)[COLS] = grade(a);
+    celula_t (*g)[MAX_COLS] = grade(a);
     for (int c = c0; c <= c1 && c < COLS; c++) g[l][c] = vazia(a);
     if (a == &abas[atual_aba]) sujar(l);
 }
@@ -205,7 +211,7 @@ static void guardar_no_historico(aba_t *a, int l)
 /* Rola a região [topo, base] n linhas para cima (n < 0: para baixo). */
 static void rolar(aba_t *a, int n)
 {
-    celula_t (*g)[COLS] = grade(a);
+    celula_t (*g)[MAX_COLS] = grade(a);
     int t = a->topo_rol, b = a->base_rol;
     if (n > 0) {
         for (int k = 0; k < n; k++) {
@@ -331,6 +337,15 @@ static void cores_sgr(aba_t *a)
     }
 }
 
+/* Manda o tamanho para o programa, no formato da resposta do xterm a
+ * "ESC [ 18 t": ESC [ 8 ; linhas ; colunas t. */
+static void avisar_tamanho(aba_t *a)
+{
+    char t[32];
+    formatar_texto(t, sizeof t, "\x1b[8;%d;%dt", LINS, COLS);
+    escrever_tudo(a->entrada, t, (unsigned)tam_texto(t));
+}
+
 static void modo(aba_t *a, bool ligar)
 {
     for (int i = 0; i < a->qtd_params; i++) {
@@ -339,6 +354,10 @@ static void modo(aba_t *a, bool ligar)
             if (p == 25) a->cursor_visivel = ligar;
             else if (p == 7) a->quebra = ligar;
             else if (p == 1) a->teclas_app = ligar;
+            else if (p == 7727) {                /* modo próprio do SaguiOS: avisar o tamanho (o ssh usa) */
+                a->avisar_tamanho = ligar;
+                if (ligar) avisar_tamanho(a);
+            }
             else if (p == 1049 || p == 47 || p == 1047) {
                 if (ligar && !a->na_alternativa) {
                     a->col_salva = a->col; a->lin_salva = a->lin;
@@ -356,7 +375,7 @@ static void modo(aba_t *a, bool ligar)
 
 static void csi(aba_t *a, char f)
 {
-    celula_t (*g)[COLS] = grade(a);
+    celula_t (*g)[MAX_COLS] = grade(a);
     int n = param(a, 0, 1);
     if (a == &abas[atual_aba]) sujar(a->lin);
     a->apos_fim = false;
@@ -622,7 +641,7 @@ static void copiar_selecao(aba_t *a)
     int ini = sel_ini_l * COLS + sel_ini_c, fim = sel_fim_l * COLS + sel_fim_c;
     if (ini > fim) { int t = ini; ini = fim; fim = t; }
     int k = 0;
-    celula_t (*g)[COLS] = grade(a);
+    celula_t (*g)[MAX_COLS] = grade(a);
     for (int l = ini / COLS; l <= fim / COLS; l++) {
         int c0 = l == ini / COLS ? ini % COLS : 0, c1 = l == fim / COLS ? fim % COLS : COLS - 1;
         int ultimo = c1;
@@ -637,6 +656,47 @@ static void copiar_selecao(aba_t *a)
     registrar("terminal: copiado (%d letras)", k);
 }
 
+/* ------------------------------------------------------------ tamanho (H78) */
+
+/* A janela mudou: recalcula linhas e colunas. Se a tela encolheu e o cursor
+ * ficaria de fora, as linhas de cima sobem para o histórico. */
+static void mudar_tamanho(int l, int a_px)
+{
+    j->larg = l;
+    j->alt = a_px;
+    int nc = (l - 2 * MARGEM) / LETRA_L, nl = (a_px - 2 * MARGEM - ABAS_A) / LETRA_A;
+    if (nc > MAX_COLS) nc = MAX_COLS;
+    if (nl > MAX_LINS) nl = MAX_LINS;
+    if (nc < 20) nc = 20;
+    if (nl < 5) nl = 5;
+    for (int i = 0; i < MAX_ABAS; i++) {
+        aba_t *a = &abas[i];
+        if (!a->usada) continue;
+        int sobe = a->lin - (nl - 1);
+        if (sobe > 0 && !a->na_alternativa) {
+            for (int k = 0; k < sobe; k++) guardar_no_historico(a, k);
+            for (int r = 0; r + sobe < LINS; r++) for (int c = 0; c < MAX_COLS; c++) a->tela[r][c] = a->tela[r + sobe][c];
+            a->lin -= sobe;
+        }
+        /* Linhas e colunas novas começam vazias. */
+        int validas = LINS - (sobe > 0 && !a->na_alternativa ? sobe : 0);
+        for (int r = 0; r < nl; r++)
+            for (int c = 0; c < nc; c++)
+                if (r >= validas || c >= COLS) { a->tela[r][c] = vazia(a); a->alternativa[r][c] = vazia(a); }
+        if (a->lin >= nl) a->lin = nl - 1;
+        if (a->col >= nc) a->col = nc - 1;
+        a->topo_rol = 0;
+        a->base_rol = nl - 1;
+    }
+    cols = nc;
+    lins = nl;
+    g_retangulo(j, 0, 0, l, a_px, COR_FUNDO_T_GLOBAL);
+    abas_sujas = true;
+    sujar_tudo();
+    for (int i = 0; i < MAX_ABAS; i++) if (abas[i].usada && abas[i].avisar_tamanho) avisar_tamanho(&abas[i]);
+    registrar("terminal: tamanho %dx%d (%d colunas, %d linhas)", l, a_px, cols, lins);
+}
+
 /* ------------------------------------------------------------ laço */
 
 int principal(int argc, char **argv)
@@ -644,6 +704,7 @@ int principal(int argc, char **argv)
     (void)argc; (void)argv;
     j = jan_abrir("Terminal", LARG, ALT);
     if (!j) return 1;
+    jan_redimensionavel(j, 40 * LETRA_L + 2 * MARGEM, 6 * LETRA_A + 2 * MARGEM + ABAS_A);
     g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO_T_GLOBAL);
     if (abrir_aba() < 0) { imprimir("terminal: não consegui abrir o sagsh\n"); return 1; }
     atual_aba = 0;
@@ -672,6 +733,7 @@ int principal(int argc, char **argv)
         while (proximo_evento(j->id, &e, false) == 1) {
             fez = true;
             if (e.tipo == EV_FECHAR) goto fim;
+            if (e.tipo == EV_REDIMENSIONAR) { mudar_tamanho(e.x, e.y); continue; }
             if (e.tipo == EV_TECLA) {
                 if ((e.modificadores & 1) && (e.tecla == TECLA_PGUP || e.tecla == TECLA_PGDN)) {   /* Shift: histórico */
                     int passo = e.tecla == TECLA_PGUP ? LINS / 2 : -LINS / 2;

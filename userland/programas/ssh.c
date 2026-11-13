@@ -31,6 +31,8 @@ static char pasta[64];
 static char servidor[128];
 static int porta = 22;
 static bool modo_aplicacao;      /* ESC [ ? 1 h visto na saída */
+static int linhas = LINHAS, colunas = COLUNAS;
+static bool mudou_tamanho;
 
 /* ------------------------------------------------------------ ambiente */
 
@@ -173,6 +175,24 @@ static int traduzir(const char *e, int n, char *s, int *consumidos)
         unsigned char c = (unsigned char)e[i];
         if (c == 27) {
             if (i + 1 >= n) break;                     /* espera a letra */
+            if (e[i + 1] == '[') {
+                /* Uma sequência CSI vinda do Terminal: ESC [ parâmetros final. A
+                 * de tamanho (ESC [ 8 ; l ; c t, H78) fica aqui; as outras vão. */
+                int f = i + 2;
+                while (f < n && !((unsigned char)e[f] >= 0x40 && (unsigned char)e[f] <= 0x7E)) f++;
+                if (f >= n) break;                     /* incompleta: espera o resto */
+                if (e[f] == 't' && e[i + 2] == '8' && e[i + 3] == ';') {
+                    int nl = 0, nc = 0, p = i + 4;
+                    while (p < f && e[p] >= '0' && e[p] <= '9') nl = nl * 10 + (e[p++] - '0');
+                    if (p < f && e[p] == ';') p++;
+                    while (p < f && e[p] >= '0' && e[p] <= '9') nc = nc * 10 + (e[p++] - '0');
+                    if (nl > 0 && nc > 0) { linhas = nl; colunas = nc; mudou_tamanho = true; }
+                } else {
+                    for (int q = i; q <= f && k < 4000; q++) s[k++] = e[q];
+                }
+                i = f;
+                continue;
+            }
             char l = e[++i];
             const char *seq = NULL;
             char cursor[4] = { 27, modo_aplicacao ? 'O' : '[', 0, 0 };
@@ -318,18 +338,40 @@ int principal(int argc, char **argv)
         return 1;
     }
     if (ssh_aviso(&ssh)[0]) imprimir("%s\n", ssh_aviso(&ssh));
-    if (ssh_abrir_sessao(&ssh, comando[0] ? NULL : "xterm-256color", COLUNAS, LINHAS, comando[0] ? comando : NULL) != SSH_OK) {
+    /* Pede ao Terminal para avisar o tamanho (e as mudanças, H78); ele
+     * responde na hora com ESC [ 8 ; linhas ; colunas t. */
+    static char teclas_iniciais[256];
+    int n_iniciais = 0;
+    if (!comando[0]) {
+        escrever_texto(SAIDA, "\x1b[?7727h");
+        unsigned limite = tempo_ms() + 400;
+        while ((int)(tempo_ms() - limite) < 0 && !mudou_tamanho) {
+            if (disponivel(ENTRADA) > 0 && n_iniciais < (int)sizeof teclas_iniciais) {
+                int k = ler(ENTRADA, teclas_iniciais + n_iniciais, (unsigned)((int)sizeof teclas_iniciais - n_iniciais));
+                if (k > 0) n_iniciais += k;
+                static char lixo[4200];
+                int consumidos;
+                int sobra = traduzir(teclas_iniciais, n_iniciais, lixo, &consumidos);
+                (void)sobra;
+                if (mudou_tamanho) { memmove(teclas_iniciais, teclas_iniciais + consumidos, (size_t)(n_iniciais - consumidos)); n_iniciais -= consumidos; }
+            } else dormir(10);
+        }
+        mudou_tamanho = false;
+    }
+    if (ssh_abrir_sessao(&ssh, comando[0] ? NULL : "xterm-256color", (u32)colunas, (u32)linhas, comando[0] ? comando : NULL) != SSH_OK) {
         imprimir_em(ERROS, "ssh: %s\n", ssh_erro(&ssh));
         ssh_fechar(&ssh);
         rede_fechar(sock);
         return 1;
     }
-    registrar("ssh: sessão aberta em %s como %s", servidor, usuario);
+    registrar("ssh: sessão aberta em %s como %s (%d x %d)", servidor, usuario, colunas, linhas);
 
     /* O laço: servidor -> tela, teclado -> servidor. */
     static u8 buf[8192];
     static char teclas[1024], envio[4200];
     int nteclas = 0, nenvio = 0, feito = 0;
+    memcpy(teclas, teclas_iniciais, (size_t)n_iniciais);
+    nteclas = n_iniciais;
     for (;;) {
         int n = ssh_ler(&ssh, buf, sizeof buf);
         if (n > 0) { observar_saida(buf, n); escrever_tudo(SAIDA, buf, (unsigned)n); }
@@ -352,12 +394,18 @@ int principal(int argc, char **argv)
             feito += e;
             if (feito >= nenvio) nenvio = feito = 0;
         }
+        if (mudou_tamanho) {
+            mudou_tamanho = false;
+            ssh_mudar_tamanho(&ssh, (u32)colunas, (u32)linhas);
+            registrar("ssh: tamanho %d x %d", colunas, linhas);
+        }
         if (n == 0 && d <= 0) dormir(5);
     }
     u32 status = 0;
     const char *sinal = NULL;
     int s = ssh_saida(&ssh, &status, &sinal);
     const char *erro = ssh_erro(&ssh);
+    if (!comando[0]) escrever_texto(SAIDA, "\x1b[?7727l");
     imprimir("\x1b[0m\nConexão com %s encerrada", servidor);
     if (s == 1) imprimir(" (código %u)", status);
     else if (s == 2) imprimir(" (sinal %s)", sinal);

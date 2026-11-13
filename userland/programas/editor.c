@@ -7,8 +7,10 @@
 #include "sagui.h"
 #include "gui.h"
 
-#define LARG 700
-#define ALT  480
+/* Tamanho inicial; a janela pode mudar (H78). */
+static int larg_jan = 700, alt_jan = 480;
+#define LARG larg_jan
+#define ALT  alt_jan
 #define BARRA 40
 
 static jan_t *j;
@@ -110,6 +112,7 @@ int principal(int argc, char **argv)
         { 8, 7, 80, 26, "Novo", false }, { 96, 7, 80, 26, "Abrir", false },
         { 184, 7, 80, 26, "Salvar", false }, { 272, 7, 110, 26, "Salvar como", false },
     };
+    jan_redimensionavel(j, 420, 200);
     g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
     g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
     rotulo(j, 400, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
@@ -126,6 +129,22 @@ int principal(int argc, char **argv)
         if (proximo_evento(j->id, &e, true) != 1) continue;
         if (e.tipo == EV_FECHAR) {
             if (pode_descartar()) break;
+            continue;
+        }
+        if (e.tipo == EV_REDIMENSIONAR) {                   /* H78: a área de texto acompanha a janela */
+            jan_novo_tamanho(j, &e);
+            larg_jan = j->larg;
+            alt_jan = j->alt;
+            g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
+            g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
+            g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
+            rotulo(j, 400, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
+            for (int i = 0; i < 4; i++) botao_desenhar(j, &bt[i]);
+            area.l = LARG - 12;
+            area.a = ALT - BARRA - 10;
+            area_desenhar(j, &area);
+            jan_mostrar(j);
+            registrar("editor: tamanho %dx%d", LARG, ALT);
             continue;
         }
         if (e.tipo == EV_TECLA && e.tecla == 19) {          /* Ctrl+S */

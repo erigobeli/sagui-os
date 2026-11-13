@@ -1158,3 +1158,19 @@ testes próprios (H59 a H61), contra o Pillow e árvores conferidas à mão.
   sem animação, com as barras na cor sólida. Em Configurações > Aparência
   dá para escolher automático, completos ou leves. No QEMU (sem aceleração),
   o quadro inteiro custou 17 ms.
+
+**Redimensionar e maximizar (H78, pedido do Eli).** O conteúdo das janelas é
+desenhado pelo programa num tamanho fixo. Por isso o programa precisa
+**pedir** para ser redimensionável (`jan_redimensionavel`). O kernel troca a
+memória da janela por uma do tamanho da tela (até os 4 MB que cada janela tem
+no espaço do programa), no mesmo endereço, e passa a mandar `EV_REDIMENSIONAR`
+com o tamanho novo. Enquanto a borda é arrastada, só um contorno com as
+medidas acompanha o mouse: o programa recebe o tamanho uma vez, ao soltar.
+Assim um programa lento não deixa o arrasto travado. Maximizar ocupa a tela
+entre a barra de cima e a doca e guarda o tamanho de antes; arrastar uma
+janela maximizada a devolve ao tamanho anterior. Os programas que não pedem
+(Calculadora, jogos) continuam fixos e sem o botão. O Terminal avisa o
+programa de dentro com a resposta do xterm `ESC [ 8 ; linhas ; colunas t`, só
+se ele pediu, pelo modo próprio `ESC [ ? 7727 h` (o `ssh` pede e repassa ao
+servidor com `window-change`). Um modo próprio evita que o sagsh receba essa
+sequência no meio da linha de comando.

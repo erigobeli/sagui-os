@@ -524,3 +524,17 @@ bool pedir_texto(const char *titulo, const char *pergunta, char *resposta, int m
     copia_texto(resposta, c.texto, (size_t)max);
     return true;
 }
+
+/* ------------------------------------------------------------ tamanho (H78) */
+
+bool jan_redimensionavel(jan_t *j, int larg_min, int alt_min)
+{
+    return janela_opcoes(j->id, JAN_REDIMENSIONAVEL, larg_min, alt_min) >= 0;
+}
+
+void jan_novo_tamanho(jan_t *j, const evento_t *e)
+{
+    if (e->tipo != EV_REDIMENSIONAR) return;
+    j->larg = e->x;
+    j->alt = e->y;
+}

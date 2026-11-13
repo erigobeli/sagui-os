@@ -74,6 +74,7 @@
 #define SIS_REDE_FECHAR    73   /* (socket) */
 #define SIS_ALEATORIO      75   /* (&destino, n) -> n bytes aleatórios (H50) */
 #define SIS_REDE_ESTADO    74   /* (socket TCP) -> 0 conectando, 1 aberta, 2 o outro lado terminou; <0 falhou (H48) */
+#define SIS_JANELA_OPCOES  76   /* (id, opções, larg_min | alt_min << 16) -> 0 (H78) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -235,6 +236,10 @@ typedef struct {
 #define EV_MOVER     3   /* movimento sobre a janela */
 #define EV_TECLA     4   /* "tecla": caractere Latin-1, ou 0x100+ para setas etc. */
 #define EV_FECHAR    5   /* clicaram no X da moldura */
+#define EV_REDIMENSIONAR 6  /* a janela mudou de tamanho: x = largura, y = altura novas (H78) */
+
+/* Opções de janela (SIS_JANELA_OPCOES). */
+#define JAN_REDIMENSIONAVEL 1
 
 /* Teclas especiais nos eventos de janela. São os mesmos valores do enum do
  * kernel (teclado.h), que por isso não precisa destas definições. */

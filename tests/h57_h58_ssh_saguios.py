@@ -26,7 +26,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, FalhaTeste, verificar, SAIDA  # noqa: E402
+from qemu import Maquina, FalhaTeste, verificar, SAIDA, janela  # noqa: E402
 
 REDE = ["-netdev", "user,id=n0", "-device", "e1000,netdev=n0,mac=52:54:00:12:34:56"]
 PASTA = os.path.join(SAIDA, "h58-ssh")
@@ -132,6 +132,18 @@ def main():
             esperar(m, "28 94", 30, antes)
             esperar(m, "42", 30, antes)
             verificar(True, "shell remoto responde; terminal combinado de 28 linhas x 94 colunas")
+            # H78: maximizar o Terminal muda o tamanho no servidor (window-change).
+            t = janela(m.serial(), "Terminal")
+            bmax = (t["fx"] + t["l"] + 4 - 2 - 20 - 48 + 8, t["fy"] + 12)
+            antes = len(m.serial())
+            m.clique(*bmax)
+            esperar(m, "ssh: tamanho 126 x 38", 30, antes)
+            time.sleep(1)
+            m.digitar("stty size\n", 0.04)
+            esperar(m, "38 126", 30, antes)
+            m.clique(t["fx"] + t["l"] + 4 - 2 - 20 - 48 + 8, 24 + 12)       # botão no lugar da janela maximizada (x igual, y no topo)
+            esperar(m, "ssh: tamanho 94 x 28", 30, antes)
+            verificar(True, "maximizar o Terminal muda o tamanho no servidor (38 x 126) e voltar também")
 
             # vim: insere, usa as setas e grava.
             m.digitar(f"vim -u NONE -N {arquivo_vim}\n", 0.04)

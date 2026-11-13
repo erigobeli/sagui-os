@@ -28,6 +28,11 @@ typedef struct {
 jan_t *jan_abrir(const char *titulo, int largura, int altura);
 void   jan_fechar(jan_t *j);
 void   jan_mostrar(jan_t *j);                                   /* a janela toda */
+/* H78: a janela pode mudar de tamanho (arrastando a borda, ou maximizando).
+ * Depois, cada EV_REDIMENSIONAR traz o tamanho novo em e.x e e.y: o programa
+ * atualiza j->larg e j->alt (jan_novo_tamanho) e redesenha tudo. */
+bool   jan_redimensionavel(jan_t *j, int larg_min, int alt_min);
+void   jan_novo_tamanho(jan_t *j, const evento_t *e);
 void   jan_mostrar_area(jan_t *j, int x, int y, int l, int a);
 void   g_retangulo(jan_t *j, int x, int y, int l, int a, uint32_t cor);
 void   g_moldura(jan_t *j, int x, int y, int l, int a, uint32_t cor);
