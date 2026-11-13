@@ -1,26 +1,26 @@
 ```
-Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar quando puder: entrega/v2-fase1/ e roteiro em docs/teste-v2-fase1.md. Pedido especial: a foto do comando pci no G470. Sigo para a fase 2 (som).
+Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).
 ```
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T01:19:08_
+_Atualizado em 2026-11-13T01:35:10_
 
-- **Situação:** Trabalhando na H42: Tocador e sons do sistema
-- **Fase atual:** 2
-- **História atual:** H42
+- **Situação:** Trabalhando na H43: Driver Intel PRO/1000
+- **Fase atual:** 3
+- **História atual:** H43
 - **Progresso geral:** 18.6%
 - **Bloqueio:** nenhum
 - **Imagem:** 694784 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 11156, userland 7078
+- **Linhas de código:** boot 903, kernel 12485, userland 8225
 
 ## Fases
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
 | 1 | Base e Configurações | 100.0% | aguardando teste |
-| 2 | Som | 100.0% | em andamento |
-| 3 | Rede | 0.0% | a fazer |
+| 2 | Som | 100.0% | aguardando teste |
+| 3 | Rede | 0.0% | em andamento |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
 | 5 | Terminal e SSH | 0.0% | a fazer |
 | 6 | Sagui Navegador | 0.0% | a fazer |
@@ -38,10 +38,10 @@ _Atualizado em 2026-11-13T01:19:08_
 | H37 | Configurações guardadas | aguardando teste | 3 |
 | H38 | App Configurações | aguardando teste | 6 |
 | H39 | Remover programas | aguardando teste | 5 |
-| H40 | Driver Intel HD Audio | feito | 7 |
-| H41 | Som para os programas | feito | 2 |
-| H42 | Tocador e sons do sistema | feito | 2 |
-| H43 | Driver Intel PRO/1000 | a fazer |  |
+| H40 | Driver Intel HD Audio | aguardando teste | 7 |
+| H41 | Som para os programas | aguardando teste | 2 |
+| H42 | Tocador e sons do sistema | aguardando teste | 2 |
+| H43 | Driver Intel PRO/1000 | em andamento |  |
 | H44 | Ethernet, ARP, IPv4, ICMP e UDP | a fazer |  |
 | H45 | DHCP e DNS | a fazer |  |
 | H46 | Rede no G470 | a fazer |  |
@@ -79,6 +79,8 @@ _Atualizado em 2026-11-13T01:19:08_
 
 ## Últimas ações
 
+- 2026-11-13T01:35:10: Início da H43: Driver Intel PRO/1000
+- 2026-11-13T01:35:10: Fase 2 entregue. Aguardando teste do Eli.
 - 2026-11-13T01:19:08: H42 concluída: Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)
 - 2026-11-13T01:17:13: Início da H42: Tocador e sons do sistema
 - 2026-11-13T01:17:13: H41 concluída: Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav
@@ -92,5 +94,3 @@ _Atualizado em 2026-11-13T01:19:08_
 - 2026-11-13T00:43:52: Início da H38: App Configurações
 - 2026-11-13T00:43:52: H37 concluída: Tabela de configurações no kernel, arquivo /usb/.saguios/configuracoes.txt, montagem automática do pendrive do SaguiOS (D031), comando config
 - 2026-11-13T00:41:00: Início da H37: Configurações guardadas
-- 2026-11-13T00:40:59: H36 concluída: Desligar pelo ACPI (_S5_ da DSDT), reiniciar pelo reset do ACPI/0xCF9/teclado, pendrives gravados antes, botão de energia na barra e janela Energia
-- 2026-11-13T00:35:06: Início da H36: Desligar e reiniciar

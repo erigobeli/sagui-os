@@ -1,11 +1,11 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:19:08",
-  "situacao": "Trabalhando na H42: Tocador e sons do sistema",
-  "fase_atual": 2,
-  "historia_atual": "H42",
+  "atualizado": "2026-11-13T01:35:10",
+  "situacao": "Trabalhando na H43: Driver Intel PRO/1000",
+  "fase_atual": 3,
+  "historia_atual": "H43",
   "bloqueio": "",
-  "mensagem_fase": "Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar quando puder: entrega/v2-fase1/ e roteiro em docs/teste-v2-fase1.md. Pedido especial: a foto do comando pci no G470. Sigo para a fase 2 (som).",
+  "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
   "raiz": "../../",
   "links": [
     {
@@ -30,13 +30,13 @@
     {
       "numero": 2,
       "nome": "Som",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 100.0
     },
     {
       "numero": 3,
       "nome": "Rede",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "progresso": 0.0
     },
     {
@@ -155,7 +155,7 @@
       "titulo": "Driver Intel HD Audio",
       "objetivo": "Controlador (comandos ao codec pelas filas da especificação), descoberta do codec e do caminho até a saída (alto-falante e fone), reprodução por DMA com lista de buffers.",
       "aceite": "o QEMU grava num `.wav` uma senoide de 440 Hz tocada pelo SaguiOS; o teste mede a frequência gravada.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T01:08:35",
       "fim": "2026-11-13T01:15:43",
@@ -168,7 +168,7 @@
       "titulo": "Som para os programas",
       "objetivo": "Chamadas de sistema de som, mistura de vários programas tocando ao mesmo tempo, volume. Aba **Som** nas Configurações.",
       "aceite": "dois programas tocando juntos aparecem misturados no `.wav`; volume em 0 grava silêncio.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T01:15:43",
       "fim": "2026-11-13T01:17:13",
@@ -181,7 +181,7 @@
       "titulo": "Tocador e sons do sistema",
       "objetivo": "Comando `tocar arquivo.wav`, sons do sistema (início, notificação, pendrive conectado) com opção de desligar, e o Sagui 3D e o Sagui Pega Banana usando o som novo quando houver placa (o bip continua como reserva).",
       "aceite": "captura do `.wav` com os sons do jogo; no G470, o Eli ouve o som de início.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T01:17:13",
       "fim": "2026-11-13T01:19:08",
@@ -194,9 +194,9 @@
       "titulo": "Driver Intel PRO/1000",
       "objetivo": "Placa de rede usada pelo QEMU e pelo VirtualBox: inicialização, filas de envio e recepção, interrupções, endereço físico (MAC), estado do cabo.",
       "aceite": "o teste vê pacotes indo e voltando pela rede do QEMU.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T01:35:10",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:35:10",
+      "texto": "Início da H43: Driver Intel PRO/1000"
+    },
+    {
+      "data": "2026-11-13T01:35:10",
+      "texto": "Fase 2 entregue. Aguardando teste do Eli."
+    },
+    {
       "data": "2026-11-13T01:19:08",
       "texto": "H42 concluída: Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)"
     },
@@ -793,71 +801,71 @@
   "erros": [],
   "capturas": [
     {
-      "arquivo": "docs/v2/capturas/H42-tocar.png",
-      "nome": "H42-tocar.png",
-      "data": "2026-11-13T01:18:48"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H41-aba-som.png",
-      "nome": "H41-aba-som.png",
-      "data": "2026-11-13T01:17:03"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H40-som-teste.png",
-      "nome": "H40-som-teste.png",
-      "data": "2026-11-13T01:15:29"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
-      "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T01:07:04"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
-      "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T01:06:58"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
-      "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T01:06:56"
-    },
-    {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T01:06:38"
+      "data": "2026-11-13T01:34:50"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T01:06:36"
+      "data": "2026-11-13T01:34:48"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T01:06:19"
+      "data": "2026-11-13T01:34:31"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H42-tocar.png",
+      "nome": "H42-tocar.png",
+      "data": "2026-11-13T01:31:57"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H41-aba-som.png",
+      "nome": "H41-aba-som.png",
+      "data": "2026-11-13T01:31:39"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H40-som-teste.png",
+      "nome": "H40-som-teste.png",
+      "data": "2026-11-13T01:31:19"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
+      "nome": "H39-3-banana-escondida.png",
+      "data": "2026-11-13T01:31:08"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
+      "nome": "H39-2-aba-programas.png",
+      "data": "2026-11-13T01:31:00"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
+      "nome": "H39-1-instalado.png",
+      "data": "2026-11-13T01:30:58"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T01:06:03"
+      "data": "2026-11-13T01:29:58"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T01:05:46"
+      "data": "2026-11-13T01:29:42"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T01:05:33"
+      "data": "2026-11-13T01:29:28"
     }
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 11156,
-    "userland": 7078,
-    "ferramentas": 4155
+    "kernel": 12485,
+    "userland": 8225,
+    "ferramentas": 4379
   },
   "imagem": {
     "bytes_util": 694784,

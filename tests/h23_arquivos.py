@@ -51,7 +51,7 @@ def main():
         m.esperar_serial("arquivos: pronto", 20)
         time.sleep(0.5)
         a = janela(m.serial(), "Arquivos")
-        verificar("arquivos: pasta / (8 itens)" in m.serial(), "Arquivos abre na raiz: 6 pastas e 2 arquivos")
+        verificar("arquivos: pasta / (9 itens)" in m.serial(), "Arquivos abre na raiz: 7 pastas e 2 arquivos")
         m.captura("H23-arquivos-raiz")
 
         m.clique(*item(a, 2), duplo=True)                         # historia/
@@ -67,8 +67,8 @@ def main():
         time.sleep(0.4)
 
         m.clique(a["x"] + 8 + 45, a["y"] + 7 + 13)               # Voltar
-        m.esperar_serial("arquivos: pasta / (8 itens)", 10)
-        m.clique(*item(a, 5), duplo=True)                         # tmp/ (depois de arte, bin, historia, jogos e testes)
+        m.esperar_serial("arquivos: pasta / (9 itens)", 10)
+        m.clique(*item(a, 6), duplo=True)                         # tmp/ (depois de arte, bin, historia, jogos, sons e testes)
         m.esperar_serial("arquivos: pasta /tmp (1 itens)", 10)
         m.clique(*item(a, 0), duplo=True)                         # nota.txt
         m.esperar_serial("editor: aberto /tmp/nota.txt (29 bytes)", 10)
