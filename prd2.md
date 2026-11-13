@@ -66,6 +66,7 @@ As seções 2 e 2.1 do `prd.md` continuam valendo. Acréscimos:
 
 - Todo código dentro da imagem continua sendo escrito neste projeto.
 - Todo dado de terceiros que entrar na imagem (por enquanto, só os certificados raiz) é listado em **`CREDITOS.md`** com origem, licença e motivo.
+- **O SaguiOS é GPL 3** (arquivo `LICENSE`, escolhido pelo Eli). Todo dado de terceiros que entrar precisa ter licença compatível com a GPL 3 (a MPL 2.0 dos certificados é).
 - **Criptografia própria não é auditada.** O sistema diz isso no "Sobre" e na documentação: serve para o projeto (abrir páginas, SSH, conversar com a IA), não para banco. Mesmo assim, ela é feita com cuidado: conferida com os vetores oficiais, com contas em tempo constante onde a especificação pede e com validação de certificado de verdade (nunca "aceitar qualquer um").
 - Registrar em `docs/decisoes.md` como cada parte central foi pensada (seção 2.1 do `prd.md`), com atenção especial a: gerador de números aleatórios, TLS, SSH, compilador e o laço do Sagui Code.
 

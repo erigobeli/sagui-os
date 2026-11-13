@@ -144,3 +144,14 @@ Do [`prd.md`](prd.md): nada de código de outros sistemas operacionais, nada de 
 carregador pronto, nada de libc ou bibliotecas prontas dentro do sistema, fontes e imagens
 criadas no projeto, nomes e comentários em português explicando o porquê, um teste automático
 por história e cada fase validada pelo Eli no hardware real antes da próxima.
+
+## Licença
+
+O SaguiOS é software livre, distribuído sob a **GNU General Public License, versão 3**
+([`LICENSE`](LICENSE)), a mesma família de licença do Linux.
+
+Copyright (C) 2026 Eli Rigobeli. Código escrito por Claude (Anthropic) para o projeto do Eli Rigobeli.
+
+Na prática: qualquer pessoa pode usar, estudar, modificar, distribuir e até vender o SaguiOS, desde
+que entregue o código-fonte completo, com as modificações, sob a mesma licença, e mantenha os créditos.
+Ninguém pode fechar o código.
