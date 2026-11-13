@@ -6,6 +6,7 @@
  * escreve-se o endereço (barramento, dispositivo, função, registrador) na
  * porta 0xCF8 e lê-se o valor na 0xCFC. */
 #include "pci.h"
+#include "hda.h"
 #include "portas.h"
 #include "console.h"
 
@@ -154,6 +155,8 @@ static const char *suporte(const pci_disp_t *d)
 {
     if (d->classe == 0x0C && d->subclasse == 0x03 && d->interface == 0x20) return "driver EHCI do SaguiOS";
     if (d->classe == 0x03) return "vídeo pela BIOS (VESA)";
+    if (d->classe == 0x04 && d->subclasse == 0x03) return hda_pronto() ? "driver HD Audio do SaguiOS" : "HD Audio sem codec com saída";
+    if (d->classe == 0x02 && d->subclasse == 0x00 && d->fabricante == 0x8086) return "driver Intel PRO/1000 do SaguiOS (se for 8254x)";
     if (d->classe == 0x02 || d->classe == 0x04 || d->classe == 0x0D) return "ainda sem driver";
     return "-";
 }

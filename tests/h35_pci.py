@@ -26,7 +26,8 @@ def main():
         verificar("Rede com cabo (Ethernet)" in out and "PRO/1000" in out, "placa de rede Intel PRO/1000 reconhecida")
         verificar("Som (HD Audio)" in out, "controlador de som HD Audio reconhecido")
         verificar("USB 2.0 (EHCI)" in out and "driver EHCI do SaguiOS" in out, "EHCI listado como já suportado")
-        verificar("ainda sem driver" in out, "o relatório diz o que ainda não tem driver")
+        verificar("ainda sem driver" in out or "driver Intel PRO/1000 do SaguiOS" in out,
+                  "o relatório diz quem cuida de cada placa (ou que ainda não tem driver)")
         verificar("gravado em /usb/hardware.txt" in out, "relatório gravado no pendrive")
         m.captura("H35-pci")
         m.comando("desmontar")

@@ -55,7 +55,7 @@ def main():
         m.digitar(";", 0.1)
         antes = len(m.serial())
         m.clique(e["x"] + 340 + 70, e["y"] + 7 + 13)
-        s = esperar(m, "editor: compilou e abriu /tmp/ola", 60, antes)
+        s = esperar(m, "editor: compilou e abriu no Terminal /tmp/ola", 60, antes)
         s = esperar(m, "ola do editor", 30, antes)
         verificar(True, "corrigido, compilou e o programa rodou (escreveu \"ola do editor\")")
         m.captura("H67-2-rodou")

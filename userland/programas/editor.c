@@ -181,9 +181,21 @@ static void compilar(bool instalar)
         mensagem("Instalar", m);
         return;
     }
-    char *argv[] = { base, NULL };
-    int pid = executar(saida, argv);
-    registrar("editor: compilou e abriu %s (processo %d)", saida, pid);
+    /* Programa de texto (o cc marca no e_flags): roda dentro de um Terminal,
+     * para a pessoa ver o que ele escreve. Programa com janela: direto. */
+    unsigned char cab[40] = { 0 };
+    int fd = abrir(saida, ABRIR_LER);
+    if (fd >= 0) { ler(fd, cab, sizeof cab); fechar(fd); }
+    unsigned flags = (unsigned)cab[36] | ((unsigned)cab[37] << 8) | ((unsigned)cab[38] << 16) | ((unsigned)cab[39] << 24);
+    int pid;
+    if (flags == ELF_SAGUI_TEXTO) {
+        char *argv[] = { "terminal", "-e", saida, NULL };
+        pid = executar("/bin/terminal", argv);
+    } else {
+        char *argv[] = { base, NULL };
+        pid = executar(saida, argv);
+    }
+    registrar("editor: compilou e abriu %s%s (processo %d)", flags == ELF_SAGUI_TEXTO ? "no Terminal " : "", saida, pid);
 }
 
 static bool salvar_como(void)

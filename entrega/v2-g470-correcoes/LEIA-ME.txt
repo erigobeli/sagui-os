@@ -1,0 +1,10 @@
+SaguiOS 2.0 - correções depois do teste do Eli no G470 (13/11/2026)
+Esta é a imagem mais nova: tem tudo das fases 1 a 9 e mais:
+- menu do sagui quase opaco; barras e doca um pouco menos transparentes;
+- memória de vídeo com escrita combinada (tela mais fluida no hardware de verdade);
+- comando "registro" (diário do sistema): para o som, rode
+      registro HDA > /usb/som.txt
+  e mande o som.txt;
+- programas de texto abertos pelo Editor ou pelo ícone rodam numa janela do Terminal;
+- botão direito nos ícones: Abrir, Renomear..., Remover/Esconder;
+- ./programa funciona no Terminal (pasta atual).

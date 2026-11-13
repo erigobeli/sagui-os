@@ -257,8 +257,12 @@ static int configurar_codec(void)
         if (tipo_no(n) != W_PINO) continue;
         uint32_t cfg = nos[n].config;
         uint32_t aparelho = (cfg >> 20) & 0xF, ligado = (cfg >> 30) & 0x3;
-        if (aparelho > 2 || ligado == 1) continue;
         uint32_t pcaps = parametro(n, P_PINO);
+        /* Diagnóstico (G470): todo pino vai para o diário, com a configuração
+         * que o fabricante gravou e o que ele sabe fazer. */
+        klog("[HDA] pino %d: config %x (aparelho %d, ligacao %d), caps %x, %d conexoes\n", n, cfg, aparelho, ligado, pcaps,
+             nos[n].qtd_conexoes);
+        if (aparelho > 2 || ligado == 1) continue;
         if (!(pcaps & (1u << 4))) continue;                   /* não sabe ser saída */
         if (!buscar_dac(n, 0)) continue;
         for (int k = 0; k < tam_caminho; k++) {
@@ -269,6 +273,12 @@ static int configurar_codec(void)
             nos[no].usado = true;
         }
         int dac = caminho[tam_caminho - 1];
+        char rota[48] = "";
+        for (int k = 0; k < tam_caminho; k++) {
+            size_t l = txt_tamanho(rota);
+            snformatar(rota + l, sizeof rota - l, "%s%d", k ? ">" : "", caminho[k]);
+        }
+        klog("[HDA] saida %s no pino %d: caminho %s%s\n", nomes[aparelho], n, rota, (pcaps & (1u << 16)) ? ", com EAPD" : "");
         comando16(dac, V4_FORMATO, FORMATO_48K_16_ESTEREO);
         comando(dac, V_FLUXO, (FLUXO_NUMERO << 4) | 0);
         comando(n, V_PINO, 0x40 | (aparelho == 2 ? 0x80 : 0));   /* saída ligada (+ fone) */
@@ -391,6 +401,13 @@ bool hda_iniciar(void)
     uint32_t bar = pci_le32(&d, 0x10) & ~0xFu;
     if (!bar) return false;
     pci_escreve32(&d, 0x04, pci_le32(&d, 0x04) | 0x6);       /* memória + mestre (DMA) */
+    if (d.fabricante == 0x8086) {
+        /* Controladores Intel: TCSEL (PCI 0x44, bits 0-2) em TC0, como o
+         * datasheet do chipset recomenda para o áudio (G470: série 6). */
+        uint32_t v = pci_le32(&d, 0x44);
+        pci_escreve32(&d, 0x44, v & ~7u);
+        klog("[HDA] TCSEL %x -> %x\n", v & 7, 0);
+    }
     regs = (volatile uint8_t *)janela_mapear(bar, 0x4000);
     if (!regs) return false;
     bool i0 = int_salva_desliga();
@@ -418,3 +435,24 @@ bool hda_pronto(void) { return pronto; }
 const char *hda_descricao(void) { return pronto ? descricao : "sem placa de som"; }
 uint8_t *hda_anel(void) { return anel; }
 uint32_t hda_posicao(void) { return pronto ? r32(sd + SD_LPIB) % HDA_ANEL : 0; }
+
+/* Diagnóstico (G470): o fluxo está andando? Chamado pelo misturador alguns
+ * segundos depois da partida; o resultado vai para o diário (registro). */
+void hda_diagnostico(int fase)
+{
+    static uint32_t p1;
+    if (!pronto) return;
+    if (fase == 0) { p1 = r32(sd + SD_LPIB); return; }      /* primeira leitura; a segunda vem meio segundo depois */
+    uint32_t p2 = r32(sd + SD_LPIB);
+    klog("[HDA] fluxo: CTL %x STS %x, posicao %u -> %u em 0,5 s (%s), GCTL %x\n", r32(sd + SD_CTL) & 0xFFFFFF, r8(sd + SD_STS),
+         p1, p2, p1 != p2 ? "andando" : "PARADO", r32(GCTL));
+    for (int n = no_ini; n < no_fim; n++)
+        if (nos[n].usado || tipo_no(n) == W_PINO) {
+            uint32_t ctl = tipo_no(n) == W_PINO ? comando(n, 0xF07, 0) : 0;
+            uint32_t eapd = tipo_no(n) == W_PINO ? comando(n, 0xF0C, 0) : 0;
+            uint32_t amp = comando16(n, 0xB, (1u << 15) | (1u << 13));   /* ganho de saída, esquerda */
+            uint32_t sentido = tipo_no(n) == W_PINO ? comando(n, 0xF09, 0) : 0;   /* algo plugado? */
+            klog("[HDA] no %d tipo %d%s: pinctl %x eapd %x amp %x presenca %x energia %x\n", n, tipo_no(n),
+                 nos[n].usado ? " (usado)" : "", ctl, eapd, amp, sentido, comando(n, 0xF05, 0));
+        }
+}

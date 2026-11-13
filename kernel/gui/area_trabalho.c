@@ -6,6 +6,8 @@
  * por cima, porque o relógio muda. */
 #include "gui.h"
 #include "hda.h"
+#include "vfs.h"
+#include "abi.h"
 #include "arte.h"
 #include "console.h"
 #include "memoria.h"
@@ -90,7 +92,39 @@ static void ler_ocultos(void)
 static const char *nome_icone(int i)
 {
     if (i >= QTD_ICONES) return instalados[i - QTD_ICONES];
-    return i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
+    if (i == ICONE_PENDRIVE) return nome_pendrive;
+    /* Nome trocado pelo usuário (botão direito > Renomear): icone.<programa>. */
+    char chave[48];
+    snformatar(chave, sizeof chave, "icone.%s", icones[i].programa + 5);
+    const char *apelido = config_obter(chave);
+    return apelido && apelido[0] ? apelido : icones[i].nome;
+}
+
+/* Que tipo de ícone é (para o menu do botão direito): 0 do sistema,
+ * 1 programa instalado no pendrive, 2 o pendrive. */
+int area_icone_tipo(int i)
+{
+    if (i >= QTD_ICONES) return 1;
+    return i == ICONE_PENDRIVE ? 2 : 0;
+}
+
+/* Ações do menu do botão direito. Renomear e remover perguntam (texto ou
+ * confirmação) num programa comum, /bin/icone, porque o kernel não tem
+ * caixas de texto. */
+void area_icone_acao(int i, int acao)
+{
+    char caminho[NOME_MAX + 24], nome[48];
+    if (i < 0 || i >= QTD_ICONES + qtd_instalados) return;
+    txt_copia_n(nome, nome_icone(i), sizeof nome);
+    if (i >= QTD_ICONES) snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
+    else txt_copia_n(caminho, icones[i].programa, sizeof caminho);
+    if (acao == ACAO_ABRIR) { area_icone_abrir(i); return; }
+    if (acao == ACAO_DESMONTAR) { area_icone_direito(i); return; }
+    const char *verbo = acao == ACAO_RENOMEAR ? (i >= QTD_ICONES ? "renomear-programa" : "renomear-icone")
+                      : acao == ACAO_REMOVER ? "remover" : "esconder";
+    char *argv[] = { "icone", (char *)verbo, caminho, nome, NULL };
+    int pid = processo_executar("/bin/icone", 4, argv, NULL);
+    klog("[GUI] icone %s: %s %s (pid %d)\n", nome, verbo, caminho, pid);
 }
 
 static const desenho_t *desenho_icone(int i)
@@ -382,9 +416,25 @@ void area_icone_abrir(int i)
     if (i >= QTD_ICONES) {
         char caminho[NOME_MAX + 24];
         snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
-        char *argv[] = { instalados[i - QTD_ICONES], NULL };
-        int pid = processo_executar(caminho, 1, argv, NULL);
-        klog("[GUI] icone instalado %s -> %s (pid %d)\n", instalados[i - QTD_ICONES], caminho, pid);
+        /* Programa de texto (sem a marca de janela que o cc põe no e_flags):
+         * abre dentro de um Terminal, senão o que ele escreve se perde. */
+        uint8_t *img = NULL;
+        uint32_t tam = 0;
+        bool janela = true;
+        if (vfs_ler_inteiro(caminho, &img, &tam) == 0 && tam >= 52) {
+            uint32_t flags = (uint32_t)img[36] | ((uint32_t)img[37] << 8) | ((uint32_t)img[38] << 16) | ((uint32_t)img[39] << 24);
+            janela = flags != ELF_SAGUI_TEXTO;            /* sem marca (GCC): abre direto, como antes */
+        }
+        if (img) kfree(img);
+        int pid;
+        if (janela) {
+            char *argv[] = { instalados[i - QTD_ICONES], NULL };
+            pid = processo_executar(caminho, 1, argv, NULL);
+        } else {
+            char *argv[] = { "terminal", "-e", caminho, NULL };
+            pid = processo_executar("/bin/terminal", 3, argv, NULL);
+        }
+        klog("[GUI] icone instalado %s -> %s%s (pid %d)\n", instalados[i - QTD_ICONES], janela ? "" : "terminal -e ", caminho, pid);
         return;
     }
     if (i == ICONE_PENDRIVE) {

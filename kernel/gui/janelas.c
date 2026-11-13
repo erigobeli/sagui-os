@@ -165,9 +165,9 @@ typedef struct {
 } tema_t;
 
 static const tema_t tema_escuro = {
-    0x0B7A3E, 0x3A4450, 0xFFFFFF, 0xD0D4D8, 175,
-    0x101820, 0xFFDF4A, 0xA8B4C2, 0xFFFFFF, 150,
-    0x101820, 0xFFFFFF, 0xFFDF4A, 0xFFFFFF, 130, false,
+    0x0B7A3E, 0x3A4450, 0xFFFFFF, 0xD0D4D8, 190,
+    0x101820, 0xFFDF4A, 0xA8B4C2, 0xFFFFFF, 175,
+    0x101820, 0xFFFFFF, 0xFFDF4A, 0xFFFFFF, 160, false,
 };
 static const tema_t tema_claro = {
     0x2E9E5B, 0xC4CCD4, 0xFFFFFF, 0x2A323A, 205,
@@ -327,8 +327,9 @@ static void desenhar_menu(void)
     if (!menu_aberto) return;
     int a = QTD_MENU * MENU_ITEM + 8;
     vidro_sombra(&tela, MENU_X, MENU_Y, MENU_L, a);
-    vidro_pintar(&tela, MENU_X, MENU_Y, MENU_L, a, tema->topo, tema->k_topo + 30 > 255 ? 255 : tema->k_topo + 30,
-                 CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    /* O menu tem texto pequeno em cima do vidro: quase opaco (o Eli achou
+     * transparente demais no G470), só um toque do fundo. */
+    vidro_pintar(&tela, MENU_X, MENU_Y, MENU_L, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
     for (int i = 0; i < QTD_MENU; i++) {
         int y = MENU_Y + 4 + i * MENU_ITEM;
         if (i == menu_sob) sup_retangulo(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, 0x0B7A3E);
@@ -341,6 +342,58 @@ static int menu_item_em(int x, int y)
     if (!menu_aberto || x < MENU_X || x >= MENU_X + MENU_L || y < MENU_Y + 4) return -1;
     int i = (y - MENU_Y - 4) / MENU_ITEM;
     return i < QTD_MENU ? i : -1;
+}
+
+/* Menu do botão direito num ícone (pedido do Eli: renomear). */
+static struct { const char *nome; int acao; } ctx[4];
+static int ctx_qtd, ctx_x, ctx_y, ctx_icone, ctx_sob = -1;
+static bool ctx_aberto;
+#define CTX_L 190
+
+static void redesenhar_ctx(void)
+{
+    int m = VIDRO_SOMBRA + VIDRO_RAIO;
+    gui_redesenhar(ctx_x - m, ctx_y - m, CTX_L + 2 * m, ctx_qtd * MENU_ITEM + 8 + 2 * m + 4);
+}
+
+static void abrir_ctx(int icone, int x, int y)
+{
+    ctx_qtd = 0;
+    int tipo = area_icone_tipo(icone);
+    ctx[ctx_qtd].nome = "Abrir"; ctx[ctx_qtd++].acao = ACAO_ABRIR;
+    if (tipo == 2) { ctx[ctx_qtd].nome = "Remover com segurança"; ctx[ctx_qtd++].acao = ACAO_DESMONTAR; }
+    else {
+        ctx[ctx_qtd].nome = "Renomear..."; ctx[ctx_qtd++].acao = ACAO_RENOMEAR;
+        if (tipo == 1) { ctx[ctx_qtd].nome = "Remover do pendrive..."; ctx[ctx_qtd++].acao = ACAO_REMOVER; }
+        else { ctx[ctx_qtd].nome = "Esconder o ícone"; ctx[ctx_qtd++].acao = ACAO_ESCONDER; }
+    }
+    ctx_icone = icone;
+    ctx_x = x; ctx_y = y;
+    if (ctx_x + CTX_L > (int)video_largura()) ctx_x = (int)video_largura() - CTX_L;
+    ctx_aberto = true;
+    ctx_sob = -1;
+    redesenhar_ctx();
+    klog("[GUI] menu do icone %d aberto\n", icone);
+}
+
+static int ctx_item_em(int x, int y)
+{
+    if (!ctx_aberto || x < ctx_x || x >= ctx_x + CTX_L || y < ctx_y + 4) return -1;
+    int i = (y - ctx_y - 4) / MENU_ITEM;
+    return i < ctx_qtd ? i : -1;
+}
+
+static void desenhar_ctx(void)
+{
+    if (!ctx_aberto) return;
+    int a = ctx_qtd * MENU_ITEM + 8;
+    vidro_sombra(&tela, ctx_x, ctx_y, CTX_L, a);
+    vidro_pintar(&tela, ctx_x, ctx_y, CTX_L, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    for (int i = 0; i < ctx_qtd; i++) {
+        int y = ctx_y + 4 + i * MENU_ITEM;
+        if (i == ctx_sob) sup_retangulo(&tela, ctx_x + 4, y, CTX_L - 8, MENU_ITEM, 0x0B7A3E);
+        sup_texto(&tela, ctx_x + 14, y + 5, ctx[i].nome, i == ctx_sob ? 0xFFFFFF : tema->topo_relogio);
+    }
 }
 
 static void abrir_programa(const char *caminho)
@@ -543,6 +596,7 @@ static void expandir_vidro(void)
         if (doca_ligada && cruza(doca_x - R, doca_y - 30 - R, doca_l + 2 * R, DOCA_A + 30 + 2 * R))
             gui_redesenhar(doca_x - R - DOCA_CELULA, doca_y - 30 - R, doca_l + 2 * R + 2 * DOCA_CELULA, DOCA_A + 30 + 2 * R);
         if (menu_aberto && cruza(0, 0, MENU_X + MENU_L + R, MENU_Y + QTD_MENU * MENU_ITEM + 8 + R)) redesenhar_menu();
+        if (ctx_aberto && cruza(ctx_x - R, ctx_y - R, CTX_L + 2 * R, ctx_qtd * MENU_ITEM + 8 + 2 * R)) redesenhar_ctx();
         for (int k = 0; k < qtd; k++) {
             janela_t *j = &janelas[ordem[k]];
             if (j->minimizada || j->escondida) continue;
@@ -579,6 +633,7 @@ void gui_mostrar(void)
         area_barra(&tela, vidro_efeitos, tema->claro);
     }
     desenhar_menu();
+    desenhar_ctx();
     desenhar_aviso(&tela);
     video_marcar(tela.cx0, tela.cy0, tela.cx1 - tela.cx0, tela.cy1 - tela.cy0);
     video_mostrar();
@@ -708,6 +763,13 @@ static void tratar_mouse(evento_mouse_t *m)
     }
 
     if (apertou) {
+        if (ctx_aberto) {
+            int ci = ctx_item_em(m->x, m->y);
+            ctx_aberto = false;
+            redesenhar_ctx();
+            if (ci >= 0) area_icone_acao(ctx_icone, ctx[ci].acao);
+            return;
+        }
         /* O menu aberto pega o clique: num item, abre; fora, só fecha. */
         if (menu_aberto) {
             int mi = menu_item_em(m->x, m->y);
@@ -754,7 +816,7 @@ static void tratar_mouse(evento_mouse_t *m)
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
-            if (ic >= 0 && (m->mudaram & BOTAO_DIREITO)) area_icone_direito(ic);
+            if (ic >= 0 && (m->mudaram & BOTAO_DIREITO)) abrir_ctx(ic, m->x, m->y);
             captura = -1;
             return;
         }
@@ -821,6 +883,8 @@ static void tratar_mouse(evento_mouse_t *m)
     if (sob != doca_sob) { doca_sob = sob; redesenhar_doca(); }
     int ms = menu_item_em(m->x, m->y);
     if (ms != menu_sob) { menu_sob = ms; redesenhar_menu(); }
+    int cs = ctx_item_em(m->x, m->y);
+    if (cs != ctx_sob) { ctx_sob = cs; redesenhar_ctx(); }
     if (sob >= 0) return;
     janela_t *j = focada();
     if (j) {

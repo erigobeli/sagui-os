@@ -4,15 +4,15 @@ Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T19:56:57_
+_Atualizado em 2026-11-13T21:34:04_
 
 - **Situação:** Aguardando teste do Eli: fase 8
 - **Fase atual:** 8
 - **História atual:** -
 - **Progresso geral:** 95.5%
 - **Bloqueio:** H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli
-- **Imagem:** 1642496 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 13543, userland 28698
+- **Imagem:** 1678336 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 13801, userland 28861
 
 ## Fases
 
@@ -80,6 +80,7 @@ _Atualizado em 2026-11-13T19:56:57_
 
 ## Últimas ações
 
+- 2026-11-13T21:34:04: Correções do teste do Eli no G470: vidro do menu, escrita combinada no vídeo, registro, diagnóstico do som, programas de texto no Terminal, menu do botão direito nos ícones
 - 2026-11-13T19:56:57: Fase 8 entregue. Aguardando teste do Eli.
 - 2026-11-13T19:56:57: Bloqueio: H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli
 - 2026-11-13T19:56:57: H72 concluída: saguicode no Terminal: stream, histórico, /modelo /gasto /limite /limpar /salvar /abrir
@@ -94,4 +95,3 @@ _Atualizado em 2026-11-13T19:56:57_
 - 2026-11-13T19:42:41: Início da H70: O laço do agente
 - 2026-11-13T19:42:41: H78 concluída: borda e canto, maximizar, duplo clique; Terminal, Navegador, Editor, Arquivos; ssh repassa o tamanho
 - 2026-11-13T19:42:41: Início da H78: Redimensionar e maximizar janelas (pedido do Eli)
-- 2026-11-13T18:17:52: H68 concluída: wc, cat, calculadora e banana feitos pelo cc passam nos testes da 1.0 (h15, h16, h24, h26, h27)

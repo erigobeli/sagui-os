@@ -23,6 +23,13 @@ void area_icone_abrir(int i);
 int  area_qtd_icones(void);
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a);
 void area_icone_direito(int i);
+#define ACAO_ABRIR      1
+#define ACAO_RENOMEAR   2
+#define ACAO_REMOVER    3
+#define ACAO_ESCONDER   4
+#define ACAO_DESMONTAR  5
+int  area_icone_tipo(int i);              /* 0 sistema, 1 instalado, 2 pendrive */
+void area_icone_acao(int i, int acao);
 bool area_pendrive(bool presente, const char *rotulo);
 
 /* Gerenciador de janelas (janelas.c) */

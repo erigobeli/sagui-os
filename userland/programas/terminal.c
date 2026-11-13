@@ -78,7 +78,9 @@ typedef struct {
     uint8_t  primeiro;                         /* o byte que abriu a sequência */
     bool     dois_bytes;                       /* já veio pelo menos uma continuação */
     uint8_t  ultima;                           /* última letra escrita (para ESC [ n b) */
-    bool     avisar_tamanho;                   /* ESC [ ? 7727 h: o programa quer saber quando o tamanho muda (H78) */
+    bool     avisar_tamanho;
+    bool     programa;                         /* a aba roda um programa (terminal -e), não o sagsh */
+    bool     terminou;                         /* o programa acabou: a próxima tecla fecha a aba */                   /* ESC [ ? 7727 h: o programa quer saber quando o tamanho muda (H78) */
 } aba_t;
 
 static jan_t *j;
@@ -547,6 +549,8 @@ static void receber_byte(aba_t *a, uint8_t b)
 
 /* ------------------------------------------------------------ abas */
 
+static char **programa_argv;   /* terminal -e programa args: a primeira aba roda ele */
+
 static int abrir_aba(void)
 {
     int i = 0;
@@ -562,7 +566,8 @@ static int abrir_aba(void)
     duplicar(saida[1], SAIDA);
     duplicar(saida[1], ERROS);
     char *args[] = { "sagsh", NULL };
-    int shell = executar("/bin/sagsh", args);
+    char **quem = programa_argv ? programa_argv : args;
+    int shell = executar(programa_argv ? programa_argv[0] : "/bin/sagsh", quem);
     duplicar(g0, ENTRADA); duplicar(g1, SAIDA); duplicar(g2, ERROS);
     fechar(g0); fechar(g1); fechar(g2);
     fechar(entrada[0]);
@@ -572,7 +577,12 @@ static int abrir_aba(void)
     a->shell = shell;
     a->entrada = entrada[1];
     a->saida = saida[0];
-    formatar_texto(a->nome, sizeof a->nome, "Terminal %d", i + 1);
+    if (programa_argv) {
+        const char *nome = acha_ultimo_char(programa_argv[0], '/');
+        copia_texto(a->nome, nome ? nome + 1 : programa_argv[0], sizeof a->nome);
+        a->programa = true;
+        programa_argv = NULL;                    /* as abas novas (+) são shells */
+    } else formatar_texto(a->nome, sizeof a->nome, "Terminal %d", i + 1);
     reiniciar_aba(a);
     registrar("terminal: aba %d aberta (sagsh %d)", i + 1, shell);
     return i;
@@ -656,6 +666,22 @@ static void copiar_selecao(aba_t *a)
     registrar("terminal: copiado (%d letras)", k);
 }
 
+/* O programa de "terminal -e" acabou: a aba fica aberta para a pessoa ler. */
+static void terminar_programa(aba_t *a, int codigo)
+{
+    /* Escreve o que ainda estiver no pipe antes do aviso. */
+    char buf[512];
+    int n;
+    while (disponivel(a->saida) > 0 && (n = ler(a->saida, buf, sizeof buf)) > 0)
+        for (int k = 0; k < n; k++) receber_byte(a, (uint8_t)buf[k]);
+    char t[96];
+    if (codigo == -1) formatar_texto(t, sizeof t, "\r\n\x1b[90m[o programa terminou. Aperte uma tecla para fechar.]\x1b[0m");
+    else formatar_texto(t, sizeof t, "\r\n\x1b[90m[o programa terminou (código %d). Aperte uma tecla para fechar.]\x1b[0m", codigo);
+    for (const char *p = t; *p; p++) receber_byte(a, (uint8_t)*p);
+    a->terminou = true;
+    registrar("terminal: programa da aba %s terminou (codigo %d)", a->nome, codigo);
+}
+
 /* ------------------------------------------------------------ tamanho (H78) */
 
 /* A janela mudou: recalcula linhas e colunas. Se a tela encolheu e o cursor
@@ -701,7 +727,9 @@ static void mudar_tamanho(int l, int a_px)
 
 int principal(int argc, char **argv)
 {
-    (void)argc; (void)argv;
+    /* terminal -e programa [argumentos]: abre já rodando o programa (o Editor
+     * e a área de trabalho usam para programas de texto). */
+    if (argc >= 3 && compara_texto(argv[1], "-e") == 0) programa_argv = argv + 2;
     j = jan_abrir("Terminal", LARG, ALT);
     if (!j) return 1;
     jan_redimensionavel(j, 40 * LETRA_L + 2 * MARGEM, 6 * LETRA_A + 2 * MARGEM + ABAS_A);
@@ -719,6 +747,10 @@ int principal(int argc, char **argv)
             aba_t *a = &abas[i];
             if (!a->usada) continue;
             int d = disponivel(a->saida);
+            if (d == ERRO_PIPE_QUEBRADO && a->programa) {
+                if (!a->terminou) terminar_programa(a, -1);
+                continue;
+            }
             if (d == ERRO_PIPE_QUEBRADO) { fechar_aba(i); fez = true; continue; }   /* o shell terminou (sair) */
             if (d > 0) {
                 int n = ler(a->saida, buf, sizeof buf);
@@ -744,6 +776,7 @@ int principal(int argc, char **argv)
                     continue;
                 }
                 if (a->olhando) { a->olhando = 0; sujar_tudo(); }
+                if (a->terminou) { fechar_aba(atual_aba); continue; }   /* qualquer tecla fecha */
                 enviar_tecla(a, e.tecla);
             } else if (e.tipo == EV_CLIQUE && e.y < ABAS_A) {
                 int i = e.x / 154, x_mais = 4 + abas_abertas() * 154;
@@ -773,7 +806,11 @@ int principal(int argc, char **argv)
         /* Shells que terminaram (o pipe pode continuar aberto por um programa gráfico filho). */
         int c, pid;
         while ((pid = recolher(&c)) > 0)
-            for (int i = 0; i < MAX_ABAS; i++) if (abas[i].usada && abas[i].shell == pid) { abas[i].shell = -1; fechar_aba(i); }
+            for (int i = 0; i < MAX_ABAS; i++) if (abas[i].usada && abas[i].shell == pid) {
+                abas[i].shell = -1;
+                if (abas[i].programa) { if (!abas[i].terminou) terminar_programa(&abas[i], c); }
+                else fechar_aba(i);
+            }
         if (abas_abertas() == 0) break;
         if (!fez) dormir(10);
     }

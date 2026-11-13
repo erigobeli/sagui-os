@@ -34,6 +34,11 @@ typedef struct {
     void  (*listagem)(void *ctx, const char *texto);
 } CcAmbiente;
 
+/* Marca no e_flags do executável: o programa abre janela (igual a
+ * ELF_SAGUI_JANELA de kernel/inc/abi.h; repetido aqui porque o núcleo do
+ * compilador não depende dos cabeçalhos do sistema). */
+#define ELF_SAGUI_JANELA 0x4A475301u
+#define ELF_SAGUI_TEXTO  0x54475301u
 #define CC_MAX_FONTES 16
 #define CC_MAX_PASTAS 8
 

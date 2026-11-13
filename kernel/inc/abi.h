@@ -160,6 +160,12 @@ typedef struct {
 #define INFO_VERSAO    3
 #define INFO_USB       4   /* relatório em texto: controladores, portas e dispositivos */
 #define INFO_PCI       5   /* relatório em texto: dispositivos PCI (H35) */
+/* e_flags dos executáveis feitos pelo cc do SaguiOS: abre janela. Os sem a
+ * marca são programas de texto, abertos dentro de um Terminal pela área de
+ * trabalho e pelo Editor. */
+#define ELF_SAGUI_JANELA 0x4A475301u
+#define ELF_SAGUI_TEXTO  0x54475301u   /* feito pelo cc e sem janela: programa de texto */
+#define INFO_REGISTRO  6   /* o diário do kernel (as últimas linhas do klog), para diagnóstico no hardware */
 
 typedef struct {
     unsigned int ram_total_kb;

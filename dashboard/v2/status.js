@@ -1,7 +1,7 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T19:56:57",
+  "atualizado": "2026-11-13T21:34:04",
   "situacao": "Aguardando teste do Eli: fase 8",
   "fase_atual": 8,
   "historia_atual": null,
@@ -728,6 +728,10 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T21:34:04",
+      "texto": "Correções do teste do Eli no G470: vidro do menu, escrita combinada no vídeo, registro, diagnóstico do som, programas de texto no Terminal, menu do botão direito nos ícones"
+    },
+    {
       "data": "2026-11-13T19:56:57",
       "texto": "Fase 8 entregue. Aguardando teste do Eli."
     },
@@ -962,14 +966,105 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T07:48:05",
       "texto": "Fase 3 entregue. Aguardando teste do Eli."
-    },
-    {
-      "data": "2026-11-13T07:26:21",
-      "texto": "H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md"
     }
   ],
   "erros": [],
   "capturas": [
+    {
+      "arquivo": "docs/v2/capturas/H35-pci.png",
+      "nome": "H35-pci.png",
+      "data": "2026-11-13T21:33:46"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H77-1-efeitos-leves.png",
+      "nome": "H77-1-efeitos-leves.png",
+      "data": "2026-11-13T21:32:49"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H76-2-tema-claro.png",
+      "nome": "H76-2-tema-claro.png",
+      "data": "2026-11-13T21:32:44"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H76-1-tema-escuro.png",
+      "nome": "H76-1-tema-escuro.png",
+      "data": "2026-11-13T21:32:38"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H75-3-menu.png",
+      "nome": "H75-3-menu.png",
+      "data": "2026-11-13T21:32:35"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H75-2-doca.png",
+      "nome": "H75-2-doca.png",
+      "data": "2026-11-13T21:32:33"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H75-1-minimizada.png",
+      "nome": "H75-1-minimizada.png",
+      "data": "2026-11-13T21:32:30"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H74-2-arrastada.png",
+      "nome": "H74-2-arrastada.png",
+      "data": "2026-11-13T21:32:27"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H74-1-vidro.png",
+      "nome": "H74-1-vidro.png",
+      "data": "2026-11-13T21:32:24"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H42-tocar.png",
+      "nome": "H42-tocar.png",
+      "data": "2026-11-13T21:32:12"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H41-aba-som.png",
+      "nome": "H41-aba-som.png",
+      "data": "2026-11-13T21:31:53"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H40-som-teste.png",
+      "nome": "H40-som-teste.png",
+      "data": "2026-11-13T21:31:31"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
+      "nome": "H67-3-instalado.png",
+      "data": "2026-11-13T21:30:13"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
+      "nome": "H67-2-rodou.png",
+      "data": "2026-11-13T21:30:07"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-1-erro.png",
+      "nome": "H67-1-erro.png",
+      "data": "2026-11-13T21:30:05"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H79-4-renomeado.png",
+      "nome": "H79-4-renomeado.png",
+      "data": "2026-11-13T21:29:32"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H79-3-menu-do-icone.png",
+      "nome": "H79-3-menu-do-icone.png",
+      "data": "2026-11-13T21:29:26"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H79-2-programa-no-terminal.png",
+      "nome": "H79-2-programa-no-terminal.png",
+      "data": "2026-11-13T21:29:23"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H79-1-icone-instalado.png",
+      "nome": "H79-1-icone-instalado.png",
+      "data": "2026-11-13T21:29:20"
+    },
     {
       "arquivo": "docs/v2/capturas/H70-3-compilar.png",
       "nome": "H70-3-compilar.png",
@@ -1014,61 +1109,6 @@ window.SAGUI_STATUS = {
       "arquivo": "docs/v2/capturas/H78-1-terminal-menor.png",
       "nome": "H78-1-terminal-menor.png",
       "data": "2026-11-13T18:47:36"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H77-1-efeitos-leves.png",
-      "nome": "H77-1-efeitos-leves.png",
-      "data": "2026-11-13T18:47:22"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H76-2-tema-claro.png",
-      "nome": "H76-2-tema-claro.png",
-      "data": "2026-11-13T18:47:17"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H76-1-tema-escuro.png",
-      "nome": "H76-1-tema-escuro.png",
-      "data": "2026-11-13T18:47:11"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H75-3-menu.png",
-      "nome": "H75-3-menu.png",
-      "data": "2026-11-13T18:47:08"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H75-2-doca.png",
-      "nome": "H75-2-doca.png",
-      "data": "2026-11-13T18:47:06"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H75-1-minimizada.png",
-      "nome": "H75-1-minimizada.png",
-      "data": "2026-11-13T18:47:03"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H74-2-arrastada.png",
-      "nome": "H74-2-arrastada.png",
-      "data": "2026-11-13T18:47:00"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H74-1-vidro.png",
-      "nome": "H74-1-vidro.png",
-      "data": "2026-11-13T18:46:57"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
-      "nome": "H67-3-instalado.png",
-      "data": "2026-11-13T18:41:19"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
-      "nome": "H67-2-rodou.png",
-      "data": "2026-11-13T18:41:14"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-1-erro.png",
-      "nome": "H67-1-erro.png",
-      "data": "2026-11-13T18:41:11"
     },
     {
       "arquivo": "docs/v2/capturas/H63-6-readme.png",
@@ -1191,21 +1231,6 @@ window.SAGUI_STATUS = {
       "data": "2026-11-13T18:31:43"
     },
     {
-      "arquivo": "docs/v2/capturas/H42-tocar.png",
-      "nome": "H42-tocar.png",
-      "data": "2026-11-13T18:31:22"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H41-aba-som.png",
-      "nome": "H41-aba-som.png",
-      "data": "2026-11-13T18:31:08"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H40-som-teste.png",
-      "nome": "H40-som-teste.png",
-      "data": "2026-11-13T18:30:44"
-    },
-    {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
       "data": "2026-11-13T18:30:32"
@@ -1244,22 +1269,17 @@ window.SAGUI_STATUS = {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
       "data": "2026-11-13T18:29:06"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H35-pci.png",
-      "nome": "H35-pci.png",
-      "data": "2026-11-13T18:28:52"
     }
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 13543,
-    "userland": 28698,
-    "ferramentas": 10223
+    "kernel": 13801,
+    "userland": 28861,
+    "ferramentas": 10323
   },
   "imagem": {
-    "bytes_util": 1642496,
-    "bytes_arquivo": 1671168,
+    "bytes_util": 1678336,
+    "bytes_arquivo": 1703936,
     "meta_bytes": null
   },
   "progresso_geral": 95.5

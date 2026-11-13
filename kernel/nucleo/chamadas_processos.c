@@ -146,6 +146,11 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
         int usb_relatorio(char *s, int max);
         return usb_relatorio((char *)ptr, (int)n);
     }
+    if (tipo == INFO_REGISTRO) {
+        if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
+        extern int diario_copiar(char *destino, int max);
+        return diario_copiar((char *)ptr, (int)n);
+    }
     if (tipo == INFO_PCI) {
         if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
         return pci_relatorio((char *)ptr, (int)n);

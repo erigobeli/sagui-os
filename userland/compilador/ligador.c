@@ -247,6 +247,13 @@ void ligar(Objeto *lista, const char *saida)
     poe16(arq + 42, 32);
     poe16(arq + 44, tem_dados ? 2 : 1);
     poe16(arq + 46, 40);
+    /* e_flags (no i386 é sempre 0): o SaguiOS usa para marcar programas que
+     * abrem janela. A área de trabalho e o Editor abrem os outros (programas
+     * de texto) dentro de um Terminal, senão o que eles escrevem se perde. */
+    {
+        Nome *jan = nome_c("criar_janela");
+        poe32(arq + 36, jan->lig && jan->lig->secao && jan->lig->secao->viva ? ELF_SAGUI_JANELA : ELF_SAGUI_TEXTO);
+    }
     /* segmento 1: código e dados de leitura (ler e executar) */
     poe32(arq + 52, 1);                         /* PT_LOAD */
     poe32(arq + 56, PAGINA);                    /* onde está no arquivo */

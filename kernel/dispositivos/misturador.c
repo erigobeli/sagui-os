@@ -11,6 +11,7 @@
  * 16 bits (em vez de deixar dar a volta, que faz um estalo). Como nada
  * espera por nada, nenhum programa trava enquanto o som toca. */
 #include "hda.h"
+#include "relogio.h"
 #include "abi.h"
 #include "console.h"
 #include "cpu.h"
@@ -122,6 +123,10 @@ static bool processo_vivo(int pid)
 void misturador_tique(void)
 {
     if (!ligado) return;
+    static uint32_t tiques;
+    ++tiques;                                                     /* uma vez, para o diário (G470) */
+    if (tiques == 3 * TIQUES_POR_SEGUNDO) hda_diagnostico(0);
+    if (tiques == 3 * TIQUES_POR_SEGUNDO + TIQUES_POR_SEGUNDO / 2) hda_diagnostico(1);
     ler_configuracoes();
     uint32_t pos = hda_posicao() & ~3u;
     uint32_t frente = (escrito - pos + HDA_ANEL) % HDA_ANEL;

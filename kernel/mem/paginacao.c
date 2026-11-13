@@ -167,3 +167,53 @@ uint32_t janela_mapear(uint32_t fis, uint32_t bytes)
     janela_proxima += paginas * PAGINA;
     return virt + desloc;
 }
+
+/* ------------------------------------------------------------ escrita combinada
+
+ * A memória de vídeo, na configuração da BIOS, costuma ser "sem cache": cada
+ * escrita do processador vira uma transação separada no barramento, e copiar
+ * uma tela inteira fica lento em hardware de verdade (no QEMU não se nota).
+ * Com escrita combinada (WC), o processador junta escritas vizinhas num
+ * buffer e manda em rajadas: a cópia fica muitas vezes mais rápida.
+ *
+ * O tipo de memória de cada página vem do PAT (Page Attribute Table): 8
+ * tipos numa MSR (0x277), escolhidos pelos bits PWT, PCD e PAT da entrada da
+ * página. O padrão deixa o tipo 1 (só PWT ligado) como "write-through"; o
+ * SaguiOS troca esse tipo 1 por WC e usa PWT só na memória de vídeo. Pela
+ * tabela do manual da Intel, WC no PAT vale mesmo quando o MTRR da BIOS diz
+ * "sem cache" para a faixa. */
+#define MSR_PAT 0x277
+static bool pat_pronto, pat_existe;
+
+static bool ligar_pat(void)
+{
+    if (pat_pronto) return pat_existe;
+    pat_pronto = true;
+    uint32_t a, b, c, d;
+    __asm__ volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(1));
+    if (!(d & (1u << 16))) return false;                      /* processador sem PAT */
+    /* PA0 WB(6), PA1 WC(1), PA2 UC-(7), PA3 UC(0), PA4 WB, PA5 WT(4), PA6 UC-, PA7 UC */
+    uint32_t baixo = 0x00070106u, alto = 0x00070406u;
+    __asm__ volatile("wbinvd" ::: "memory");
+    __asm__ volatile("wrmsr" :: "c"(MSR_PAT), "a"(baixo), "d"(alto));
+    __asm__ volatile("wbinvd" ::: "memory");
+    uint32_t cr3;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+    __asm__ volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");  /* esquece as traduções antigas */
+    pat_existe = true;
+    return true;
+}
+
+uint32_t janela_mapear_wc(uint32_t fis, uint32_t bytes, bool *wc)
+{
+    bool pat = ligar_pat();
+    if (wc) *wc = pat;
+    uint32_t desloc = fis & 0xFFF;
+    uint32_t paginas = (desloc + bytes + PAGINA - 1) / PAGINA;
+    if (janela_proxima + paginas * PAGINA > USUARIO_INICIO) return 0;
+    uint32_t virt = janela_proxima;
+    for (uint32_t i = 0; i < paginas; i++)
+        espaco_mapear(dir_kernel, virt + i * PAGINA, (fis & MASCARA_END) + i * PAGINA, PG_ESCRITA | (pat ? PG_PWT : 0));
+    janela_proxima += paginas * PAGINA;
+    return virt + desloc;
+}
