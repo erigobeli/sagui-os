@@ -217,6 +217,27 @@ rodar: $(B)/saguios.img
 
 run: rodar
 
+# ---------- imagem ISO bootavel (BIOS tradicional, sem GRUB) ----------
+iso: $(B)/saguios.img $(B)/boot/mbr.bin
+	@mkdir -p $(B)/iso_tree/boot
+	@cp $(B)/boot/mbr.bin $(B)/iso_tree/boot/mbr.bin
+	@if command -v xorriso >/dev/null 2>&1; then \
+		xorriso -as mkisofs -o $(B)/saguios.iso \
+			-V "SAGUIOS" -volset "SaguiOS" \
+			-b boot/mbr.bin -no-emul-boot -boot-load-size 4 \
+			$(B)/iso_tree $(B)/saguios.img; \
+	elif command -v mkisofs >/dev/null 2>&1; then \
+		mkisofs -o $(B)/saguios.iso \
+			-V "SAGUIOS" -volset "SaguiOS" \
+			-b boot/mbr.bin -no-emul-boot -boot-load-size 4 \
+			$(B)/iso_tree $(B)/saguios.img; \
+	else \
+		echo "Erro: nem xorriso nem mkisofs estao instalados"; \
+		exit 1; \
+	fi
+	rm -rf $(B)/iso_tree
+	cd $(B) && sha256sum saguios.iso > saguios.iso.sha256
+
 entrega: $(B)/saguios.img $(B)/saguios.vdi
 	@test -n "$(FASE)" || (echo "use: make entrega FASE=N" && false)
 	mkdir -p entrega/fase$(FASE)
