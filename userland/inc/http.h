@@ -39,5 +39,7 @@ int  url_separar(const char *url, url_t *u);
 int  canal_abrir(canal_t *c, const url_t *u, char *erro, int max_erro);
 void canal_fechar(canal_t *c);
 int  http_obter(const char *url, http_receptor_t receptor, void *ctx, http_resposta_t *resp);
+int  http_pedir(const char *metodo, const char *url, const char *extra_cabecalhos, const void *corpo, unsigned n_corpo,
+                http_receptor_t receptor, void *ctx, http_resposta_t *resp);
 
 #endif

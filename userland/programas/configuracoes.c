@@ -18,8 +18,8 @@ static jan_t *j;
 static int aba;
 static char recado[96];
 
-enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOM, ABA_REDE, ABA_PROGRAMAS, ABA_SOBRE, QTD_ABAS };
-static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Som", "Rede", "Programas", "Sobre o computador" };
+enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOM, ABA_REDE, ABA_PROGRAMAS, ABA_SOBRE, ABA_IA, QTD_ABAS };
+static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Som", "Rede", "Programas", "Sobre o computador", "IA" };
 static botao_t botoes_abas[QTD_ABAS];
 
 static void mostrar_mensagem(const char *fmt, int r)
@@ -508,6 +508,114 @@ static void sobre_desenhar(void)
     }
 }
 
+/* ------------------------------------------------------------ IA (H69) */
+
+/* O Sagui Code conversa com modelos pelo OpenRouter. Aqui ficam o modelo, o
+ * limite de gasto por sessão e a chave. A chave vai para
+ * /usb/.saguios/chaves.txt (nunca para configuracoes.txt) e nunca aparece na
+ * tela: a caixa mostra só asteriscos. */
+static caixa_t c_modelo, c_limite, c_chave;
+static char chave_digitada[200];
+static botao_t b_salvar_ia;
+
+static bool chave_guardada(void)
+{
+    int fd = abrir("/usb/.saguios/chaves.txt", ABRIR_LER);
+    if (fd < 0) return false;
+    char buf[512];
+    int n = ler(fd, buf, sizeof buf - 1);
+    fechar(fd);
+    if (n <= 0) return false;
+    buf[n] = 0;
+    bool tem = false;
+    for (char *p = buf; *p; p++) if (comeca_com(p, "openrouter") && (p == buf || p[-1] == '\n')) tem = true;
+    memset(buf, 0, sizeof buf);
+    return tem;
+}
+
+static void ia_desenhar(void)
+{
+    titulo("IA (Sagui Code)");
+    char v[128];
+    g_texto(j, X0, 56, "Modelo (do OpenRouter):", COR_TEXTO);
+    c_modelo = (caixa_t){ .x = X0, .y = 76, .l = 360 };
+    caixa_definir(&c_modelo, config_ler("ia.modelo", v, sizeof v) > 0 ? v : "anthropic/claude-sonnet-4.5");
+    caixa_desenhar(j, &c_modelo);
+    g_texto(j, X0, 116, "Limite de gasto por sessão (centavos de dólar):", COR_TEXTO);
+    c_limite = (caixa_t){ .x = X0, .y = 136, .l = 100 };
+    caixa_definir(&c_limite, config_ler("ia.limite_centavos", v, sizeof v) > 0 ? v : "100");
+    caixa_desenhar(j, &c_limite);
+    g_texto(j, X0, 176, chave_guardada() ? "Chave: guardada no pendrive. Para trocar, cole outra:" : "Chave: ainda não há. Cole a chave do OpenRouter:", COR_TEXTO);
+    c_chave = (caixa_t){ .x = X0, .y = 196, .l = 360 };
+    chave_digitada[0] = 0;
+    caixa_definir(&c_chave, "");
+    caixa_desenhar(j, &c_chave);
+    g_texto(j, X0, 226, "(a chave nunca aparece na tela nem no log)", COR_TEXTO_FRACO);
+    b_salvar_ia = (botao_t){ X0, 256, 120, 28, "Guardar", false };
+    botao_desenhar(j, &b_salvar_ia);
+}
+
+/* Troca (ou acrescenta) a linha "openrouter = ..." de chaves.txt. */
+static int gravar_chave(const char *chave)
+{
+    info_arquivo_t i;
+    if (info_arquivo("/usb/.saguios", &i) < 0) return -1;
+    static char antigo[2048], novo[2600];
+    int n = 0, fd = abrir("/usb/.saguios/chaves.txt", ABRIR_LER);
+    if (fd >= 0) { n = ler(fd, antigo, sizeof antigo - 1); fechar(fd); if (n < 0) n = 0; }
+    antigo[n] = 0;
+    int k = 0;
+    for (char *p = antigo; *p;) {
+        char *fim = acha_char(p, '\n');
+        if (fim) *fim = 0;
+        if (*p && !comeca_com(p, "openrouter")) k += formatar_texto(novo + k, sizeof novo - (size_t)k, "%s\n", p);
+        if (!fim) break;
+        p = fim + 1;
+    }
+    k += formatar_texto(novo + k, sizeof novo - (size_t)k, "openrouter = %s\n", chave);
+    fd = abrir("/usb/.saguios/chaves.txt", ABRIR_ESCREVER | ABRIR_CRIAR | ABRIR_TRUNCAR);
+    int r = fd >= 0 ? escrever_tudo(fd, novo, (unsigned)k) : fd;
+    if (fd >= 0) fechar(fd);
+    memset(antigo, 0, sizeof antigo);
+    memset(novo, 0, sizeof novo);
+    return r < 0 ? r : 0;
+}
+
+static void ia_tratar(const evento_t *e)
+{
+    caixa_tratar(j, &c_modelo, e);
+    caixa_tratar(j, &c_limite, e);
+    /* A caixa da chave: guardamos o texto de verdade aqui e a caixa só mostra '*'. */
+    if (e->tipo == EV_CLIQUE) { c_chave.foco = false; caixa_tratar(j, &c_chave, e); }
+    else if (e->tipo == EV_TECLA && c_chave.foco) {
+        int n = (int)tam_texto(chave_digitada);
+        if (e->tecla == 8 && n > 0) chave_digitada[--n] = 0;
+        else if (e->tecla >= 33 && e->tecla < 127 && n < (int)sizeof chave_digitada - 1) { chave_digitada[n++] = (char)e->tecla; chave_digitada[n] = 0; }
+        char estrelas[48];
+        int m = n < 40 ? n : 40;
+        memset(estrelas, '*', (size_t)m);
+        estrelas[m] = 0;
+        caixa_definir(&c_chave, estrelas);
+        c_chave.foco = true;
+        caixa_desenhar(j, &c_chave);
+        jan_mostrar_area(j, c_chave.x, c_chave.y, c_chave.l, 24);
+    }
+    if (botao_tratar(j, &b_salvar_ia, e)) {
+        int r = config_gravar("ia.modelo", c_modelo.texto);
+        if (texto_para_int(c_limite.texto) > 0) config_gravar("ia.limite_centavos", c_limite.texto);
+        if (chave_digitada[0]) {
+            if (gravar_chave(chave_digitada) < 0) { mostrar_mensagem("Sem pendrive com .saguios: a chave não foi guardada.", -1); memset(chave_digitada, 0, sizeof chave_digitada); return; }
+            memset(chave_digitada, 0, sizeof chave_digitada);
+            registrar("configuracoes: chave do OpenRouter guardada");
+        }
+        registrar("configuracoes: ia modelo %s, limite %s", c_modelo.texto, c_limite.texto);
+        g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+        ia_desenhar();
+        jan_mostrar(j);
+        mostrar_mensagem("IA configurada.", r);
+    }
+}
+
 /* ------------------------------------------------------------ janela */
 
 static void desenhar_tudo(void)
@@ -524,6 +632,7 @@ static void desenhar_tudo(void)
     else if (aba == ABA_PROGRAMAS) programas_desenhar();
     else if (aba == ABA_SOM) som_desenhar();
     else if (aba == ABA_REDE) rede_desenhar();
+    else if (aba == ABA_IA) ia_desenhar();
     else sobre_desenhar();
     char p[8];
     config_ler("sistema.persistente", p, sizeof p);
@@ -544,6 +653,7 @@ int principal(int argc, char **argv)
         if (compara_texto(argv[1], "programas") == 0) aba = ABA_PROGRAMAS;
         if (compara_texto(argv[1], "som") == 0) aba = ABA_SOM;
         if (compara_texto(argv[1], "rede") == 0) aba = ABA_REDE;
+        if (compara_texto(argv[1], "ia") == 0) aba = ABA_IA;
     }
     desenhar_tudo();
     registrar("configuracoes: aberto na aba %s", nomes_abas[aba]);
@@ -566,6 +676,7 @@ int principal(int argc, char **argv)
             else if (aba == ABA_PROGRAMAS) programas_tratar(&e);
             else if (aba == ABA_SOM) som_tratar(&e);
             else if (aba == ABA_REDE) rede_tratar(&e);
+            else if (aba == ABA_IA) ia_tratar(&e);
             continue;
         }
         if (aba == ABA_RELOGIO && tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); relogio_agora(); }

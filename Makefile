@@ -59,6 +59,9 @@ PROGRAMAS += $(B)/userland/bin/sagui3d
 # O Sagui Navegador (fase 6 da versão 2.0) também.
 NAVEGADOR_OBJ := $(patsubst userland/navegador/%.c,$(B)/userland/navegador/%.o,$(wildcard userland/navegador/*.c))
 PROGRAMAS += $(B)/userland/bin/navegador
+# O Sagui Code (fase 8).
+SAGUICODE_OBJ := $(patsubst userland/saguicode/%.c,$(B)/userland/saguicode/%.o,$(wildcard userland/saguicode/*.c))
+PROGRAMAS += $(B)/userland/bin/saguicode
 PROG_TESTE := $(patsubst userland/testes/%.c,$(B)/userland/testes/%,$(wildcard userland/testes/*.c))
 
 .PHONY: all vazio vdi test rodar entrega limpar dashboard
@@ -134,6 +137,15 @@ $(B)/userland/navegador/%.o: userland/navegador/%.c userland/navegador/navegador
 $(B)/userland/bin/navegador: $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)
 	$(LD) $(ULDFLAGS) -o $@.elf $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
+$(B)/userland/saguicode/%.o: userland/saguicode/%.c userland/saguicode/ia.h $(USER_HDR)
+	@mkdir -p $(dir $@)
+	$(CC) $(UCFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/saguicode: $(SAGUICODE_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $(SAGUICODE_OBJ) $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
 $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/programa.ld

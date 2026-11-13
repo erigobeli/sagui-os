@@ -4,15 +4,15 @@ Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T12:23:13_
+_Atualizado em 2026-11-13T12:31:12_
 
-- **Situação:** Aguardando teste do Eli: fase 6
-- **Fase atual:** 6
-- **História atual:** -
+- **Situação:** Trabalhando na H69: JSON e cliente do OpenRouter
+- **Fase atual:** 8
+- **História atual:** H69
 - **Progresso geral:** 65.1%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 1142272 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12704, userland 22082
+- **Imagem:** 1260544 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 12704, userland 22186
 
 ## Fases
 
@@ -25,7 +25,7 @@ _Atualizado em 2026-11-13T12:23:13_
 | 5 | Terminal e SSH | 100.0% | aguardando teste |
 | 6 | Sagui Navegador | 100.0% | aguardando teste |
 | 7 | Compilador C | 0.0% | a fazer |
-| 8 | Sagui Code | 0.0% | a fazer |
+| 8 | Sagui Code | 0.0% | em andamento |
 | 9 | Visual moderno | 0.0% | a fazer |
 | 10 | Instalação no HD (opcional, a decidir) | 0% | a fazer |
 
@@ -67,7 +67,7 @@ _Atualizado em 2026-11-13T12:23:13_
 | H66 | Fundo do compilador | a fazer |  |
 | H67 | Compilar dentro do sistema | a fazer |  |
 | H68 | Prova de fogo | a fazer |  |
-| H69 | JSON e cliente do OpenRouter | a fazer |  |
+| H69 | JSON e cliente do OpenRouter | em andamento |  |
 | H70 | O laço do agente | a fazer |  |
 | H71 | Instruções e contexto | a fazer |  |
 | H72 | Interface | a fazer |  |
@@ -79,6 +79,8 @@ _Atualizado em 2026-11-13T12:23:13_
 
 ## Últimas ações
 
+- 2026-11-13T12:31:12: H69/H70: Sagui Code testado contra servidor falso (falta o laço com o cc e a conversa com a API real)
+- 2026-11-13T12:31:12: Início da H69: JSON e cliente do OpenRouter
 - 2026-11-13T12:23:13: Fase 6 entregue. Aguardando teste do Eli.
 - 2026-11-13T08:15:37: H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas
 - 2026-11-13T08:09:36: Início da H63: Sites de aceite
@@ -92,5 +94,3 @@ _Atualizado em 2026-11-13T12:23:13_
 - 2026-11-13T07:58:47: H56 concluída: transporte contra o sshd local: 77 conferências; chave mudada recusada
 - 2026-11-13T07:58:47: Início da H58: SSH de verdade
 - 2026-11-13T07:58:47: Início da H57: Login e sessão
-- 2026-11-13T07:58:47: Início da H56: Transporte SSH
-- 2026-11-13T07:49:09: H61 concluída: árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória

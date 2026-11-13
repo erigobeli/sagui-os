@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T12:23:13",
-  "situacao": "Aguardando teste do Eli: fase 6",
-  "fase_atual": 6,
-  "historia_atual": null,
+  "atualizado": "2026-11-13T12:31:12",
+  "situacao": "Trabalhando na H69: JSON e cliente do OpenRouter",
+  "fase_atual": 8,
+  "historia_atual": "H69",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-fase6.md. Sigo para a fase 7 (compilador) e 8 (Sagui Code).",
   "raiz": "../../",
@@ -67,7 +67,7 @@ window.SAGUI_STATUS = {
     {
       "numero": 8,
       "nome": "Sagui Code",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "progresso": 0.0
     },
     {
@@ -533,9 +533,9 @@ window.SAGUI_STATUS = {
       "titulo": "JSON e cliente do OpenRouter",
       "objetivo": "Leitor e escritor de JSON e cliente da API de conversa do OpenRouter (com chamada de ferramentas), por HTTPS. Aba **IA** nas Configurações: chave (guardada em `/usb/.saguios/chaves.txt`), modelo e limite de gasto por sessão.",
       "aceite": "com o servidor falso da VPS, uma pergunta e uma resposta; com a API real, uma conversa registrada no diário.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T12:31:12",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@ window.SAGUI_STATUS = {
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T12:31:12",
+      "texto": "H69/H70: Sagui Code testado contra servidor falso (falta o laço com o cc e a conversa com a API real)"
+    },
+    {
+      "data": "2026-11-13T12:31:12",
+      "texto": "Início da H69: JSON e cliente do OpenRouter"
+    },
     {
       "data": "2026-11-13T12:23:13",
       "texto": "Fase 6 entregue. Aguardando teste do Eli."
@@ -945,18 +953,40 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T00:35:06",
       "texto": "Início da H36: Desligar e reiniciar"
-    },
-    {
-      "data": "2026-11-13T00:35:06",
-      "texto": "H35 concluída: Comando pci com classe, fabricante, modelo e o que o SaguiOS já usa; relatório em /usb/hardware.txt"
-    },
-    {
-      "data": "2026-11-13T00:30:04",
-      "texto": "Início da H35: Comando `pci` e inventário de hardware"
     }
   ],
   "erros": [],
   "capturas": [
+    {
+      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
+      "nome": "H38-3-sobre.png",
+      "data": "2026-11-13T12:29:59"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
+      "nome": "H38-2-aparencia-noite.png",
+      "data": "2026-11-13T12:29:57"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
+      "nome": "H38-1-relogio.png",
+      "data": "2026-11-13T12:29:40"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H70-2-licenca.png",
+      "nome": "H70-2-licenca.png",
+      "data": "2026-11-13T12:29:07"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H70-1-laco.png",
+      "nome": "H70-1-laco.png",
+      "data": "2026-11-13T12:29:05"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H69-1-pergunta.png",
+      "nome": "H69-1-pergunta.png",
+      "data": "2026-11-13T12:28:32"
+    },
     {
       "arquivo": "docs/v2/capturas/H63-6-readme.png",
       "nome": "H63-6-readme.png",
@@ -1108,21 +1138,6 @@ window.SAGUI_STATUS = {
       "data": "2026-11-13T08:27:36"
     },
     {
-      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
-      "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T08:27:19"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
-      "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T08:27:16"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
-      "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T08:26:59"
-    },
-    {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
       "data": "2026-11-13T08:26:43"
@@ -1141,12 +1156,12 @@ window.SAGUI_STATUS = {
   "linhas": {
     "boot": 903,
     "kernel": 12704,
-    "userland": 22082,
-    "ferramentas": 9095
+    "userland": 22186,
+    "ferramentas": 9322
   },
   "imagem": {
-    "bytes_util": 1142272,
-    "bytes_arquivo": 1146880,
+    "bytes_util": 1260544,
+    "bytes_arquivo": 1277952,
     "meta_bytes": null
   },
   "progresso_geral": 65.1

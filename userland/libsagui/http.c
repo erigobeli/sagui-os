@@ -130,6 +130,15 @@ static bool cabecalho(const char *linha, const char *nome, const char **valor)
 
 int http_obter(const char *url_inicial, http_receptor_t receptor, void *ctx, http_resposta_t *resp)
 {
+    return http_pedir("GET", url_inicial, NULL, NULL, 0, receptor, ctx, resp);
+}
+
+/* Um pedido qualquer (GET ou POST, H69). "extra" são cabeçalhos a mais, já
+ * no formato "Nome: valor\r\n" (pode ser NULL); "corpo" vai depois deles,
+ * com Content-Length. Pedidos com corpo não seguem redirecionamentos. */
+int http_pedir(const char *metodo, const char *url_inicial, const char *extra, const void *corpo, unsigned n_corpo,
+               http_receptor_t receptor, void *ctx, http_resposta_t *resp)
+{
     char url[512];
     copia_texto(url, url_inicial, sizeof url);
     memset(resp, 0, sizeof *resp);
@@ -138,15 +147,19 @@ int http_obter(const char *url_inicial, http_receptor_t receptor, void *ctx, htt
         if (url_separar(url, &u) < 0) { copia_texto(resp->erro, "endereço inválido (use http:// ou https://)", sizeof resp->erro); return ERRO_INVALIDO; }
         canal_t c;
         if (canal_abrir(&c, &u, resp->erro, sizeof resp->erro) < 0) return ERRO_REDE;
-        char pedido[1024];
+        char pedido[1536];
         bool porta_padrao = u.porta == (u.seguro ? 443 : 80);
         char host[80];
         if (porta_padrao) copia_texto(host, u.servidor, sizeof host);
         else formatar_texto(host, sizeof host, "%s:%d", u.servidor, u.porta);
+        char tamanho_corpo[48] = "";
+        if (corpo) formatar_texto(tamanho_corpo, sizeof tamanho_corpo, "Content-Length: %u\r\n", n_corpo);
         int n = formatar_texto(pedido, sizeof pedido,
-                               "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: SaguiOS/2.0\r\nAccept: */*\r\n"
-                               "Accept-Encoding: identity\r\nConnection: close\r\n\r\n", u.caminho, host);
-        if (canal_escrever(&c, pedido, (unsigned)n) < 0) { canal_fechar(&c); copia_texto(resp->erro, "a conexão caiu ao mandar o pedido", sizeof resp->erro); return ERRO_REDE; }
+                               "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: SaguiOS/2.0\r\nAccept: */*\r\n"
+                               "Accept-Encoding: identity\r\nConnection: close\r\n%s%s\r\n", metodo, u.caminho, host,
+                               extra ? extra : "", tamanho_corpo);
+        if (n >= (int)sizeof pedido - 1) { canal_fechar(&c); copia_texto(resp->erro, "cabeçalhos grandes demais", sizeof resp->erro); return ERRO_INVALIDO; }
+        if (canal_escrever(&c, pedido, (unsigned)n) < 0 || (corpo && n_corpo && canal_escrever(&c, corpo, n_corpo) < 0)) { canal_fechar(&c); copia_texto(resp->erro, "a conexão caiu ao mandar o pedido", sizeof resp->erro); return ERRO_REDE; }
         char linha[512];
         if (linha_http(&c, linha, sizeof linha) < 0 || compara_texto_n(linha, "HTTP/1.", 7) != 0) {
             canal_fechar(&c);
@@ -165,7 +178,7 @@ int http_obter(const char *url_inicial, http_receptor_t receptor, void *ctx, htt
             else if (cabecalho(linha, "Location", &v)) copia_texto(destino, v, sizeof destino);
             else if (cabecalho(linha, "Content-Type", &v)) copia_texto(resp->tipo, v, sizeof resp->tipo);
         }
-        if (resp->situacao >= 300 && resp->situacao < 400 && destino[0]) {
+        if (resp->situacao >= 300 && resp->situacao < 400 && destino[0] && !corpo) {
             canal_fechar(&c);
             if (destino[0] == '/')
                 formatar_texto(url, sizeof url, "%s://%s%s", u.seguro ? "https" : "http", host, destino);
