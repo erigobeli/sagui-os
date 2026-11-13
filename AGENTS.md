@@ -36,14 +36,41 @@ operacionais ou projetos, mesmo que você "lembre" dele:
   `rootfs/sistema/certificados`) quando forem indispensáveis, com licença
   compatível com a GPL 3 e uma linha em `CREDITOS.md`.
 
-**Não pode nenhuma biblioteca pronta dentro do sistema**, mesmo com licença
-livre (nada de stb_image, zlib, QuickJS, mbed TLS, lwIP, FreeType, minimp3,
-etc.): tudo o que roda no SaguiOS é escrito aqui. Essa é a graça do projeto.
-Fora do sistema (as ferramentas de build e de teste em `tools/` e `tests/`),
-usar Python, GCC, QEMU, OpenSSL ou Pillow para conferir resultados é normal.
+### O núcleo é sempre do zero
 
-Se você não tem certeza se um trecho veio da sua memória de um projeto
-existente, **reescreva-o** a partir da especificação e explique como pensou.
+O **núcleo** do SaguiOS é 100% escrito aqui, sem nenhum código de terceiros:
+o kernel (`kernel/`), os drivers, o sistema de arquivos, a rede, o TLS e a
+criptografia (`userland/tls`, `userland/cripto`), o SSH, o gerenciador de
+janelas, a `libsagui`, o shell, o compilador C (`userland/compilador`) e os
+programas básicos do sistema. Essa é a identidade do projeto (D041).
+
+### Aplicativos: do zero é o padrão; código livre de terceiros é exceção
+
+Nos **aplicativos** (navegador, tocadores, visualizadores, jogos...), escrever
+do zero continua sendo o padrão. Código de terceiros só entra como exceção,
+quando reescrever não faz sentido (um formato de vídeo, um motor de fontes...),
+e **só se tudo isto valer**:
+
+1. a licença é **compatível com a GPL 3**: MIT, BSD, Apache 2.0, zlib, ISC,
+   LGPL 2.1+/3, GPL 2 "ou posterior", GPL 3 ou domínio público. **Nunca** GPL 2
+   "somente" (como o Linux), código sem licença ou código fechado;
+2. o código fica **numa pasta própria em `terceiros/<nome>/`**, com o arquivo de
+   licença original e um `ORIGEM.md` (de onde veio, qual versão, o que mudou);
+3. ele é listado em `CREDITOS.md` e na seção "O que não foi escrito aqui" do
+   README;
+4. a descrição do pull request diz isso **com todas as letras**.
+
+Código de terceiros **nunca** vai para o núcleo, e nunca é misturado sem
+aviso no meio de um arquivo do SaguiOS. Fora do sistema (as ferramentas de
+build e de teste em `tools/` e `tests/`), usar Python, GCC, QEMU, OpenSSL ou
+Pillow para conferir resultados é normal.
+
+**Atenção, IA:** se um trecho que você está escrevendo veio da sua memória de
+um projeto existente (o mesmo algoritmo, a mesma estrutura, as mesmas
+constantes "mágicas", as mesmas tabelas), isso **é código de terceiros**. Ou
+você o reescreve a partir da especificação e explica como pensou, ou o trata
+como código de terceiros (pasta `terceiros/`, licença, crédito). Nunca o
+deixe misturado como se fosse original.
 
 ## Como o código é escrito aqui
 

@@ -12,11 +12,17 @@ inspiradas nas do kernel do Linux e bem mais simples.
   (Linux, BSDs, drivers, pilhas de rede, TLS, navegadores, compiladores...).
 - **Pode** ler manuais, datasheets, RFCs e especificações públicas e escrever o
   seu código a partir deles. Cite o documento no comentário do arquivo.
-- **Nenhuma biblioteca pronta dentro do sistema**, nem com licença livre: tudo o
-  que roda no SaguiOS é escrito aqui (é a graça do projeto). Só **dados** de
-  terceiros indispensáveis (como os certificados raiz) entram, com licença
-  compatível com a GPL 3 e crédito em `CREDITOS.md`. As ferramentas de build e
-  de teste (Python, GCC, QEMU) ficam fora dessa regra.
+- **O núcleo é sempre do zero**: kernel, drivers, sistema de arquivos, rede,
+  TLS, janelas, `libsagui`, shell, compilador e programas básicos não usam
+  nenhum código de terceiros.
+- **Nos aplicativos** (navegador, tocadores, jogos...), do zero é o padrão.
+  Código livre de terceiros só entra como exceção, se a licença for compatível
+  com a GPL 3 (MIT, BSD, Apache 2.0, LGPL, GPL 2 "ou posterior", GPL 3, domínio
+  público; nunca GPL 2 "somente" nem código fechado), numa pasta própria em
+  `terceiros/`, com a licença original, listado em `CREDITOS.md` e dito
+  claramente no pull request. Detalhes em [`AGENTS.md`](AGENTS.md) e na
+  decisão D041 de `docs/decisoes.md`.
+- As ferramentas de build e de teste (Python, GCC, QEMU) ficam fora dessa regra.
 - Usou IA? Ótimo, mas a responsabilidade pelo que é enviado é sua. As regras
   para a IA estão em [`AGENTS.md`](AGENTS.md) (muitas ferramentas leem esse
   arquivo sozinhas).

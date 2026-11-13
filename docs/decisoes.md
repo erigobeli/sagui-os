@@ -1239,3 +1239,38 @@ programa de dentro com a resposta do xterm `ESC [ 8 ; linhas ; colunas t`, só
 se ele pediu, pelo modo próprio `ESC [ ? 7727 h` (o `ssh` pede e repassa ao
 servidor com `window-change`). Um modo próprio evita que o sagsh receba essa
 sequência no meio da linha de comando.
+
+## D041. O núcleo é do zero; aplicativos podem usar código livre de terceiros, às claras
+
+**Contexto (14/11/2026).** O SaguiOS ficou público e recebeu pull requests da
+comunidade (#1, #3, #4, #6, #7), feitos com ajuda de IA. A revisão do maior
+deles (o navegador Cipó, #6) achou alguns trechos adaptados de projetos
+conhecidos, que a IA reproduziu "de memória" (libwebp, font-rs, V8, xz e
+tabelas do FFmpeg e do FAAD2). Todos têm licenças livres compatíveis com a
+GPL 3: o problema não era legal, e sim a regra do projeto ("nada de terceiros")
+e a falta dos créditos. O Eli não vai ter tempo de evoluir o sistema sozinho e
+quer a comunidade participando; ele deixou esta decisão com o Claude.
+
+**Decisão.**
+- **O núcleo continua 100% do zero:** kernel, drivers, sistema de arquivos,
+  rede, TLS e criptografia, SSH, janelas, `libsagui`, shell, compilador e os
+  programas básicos. É a identidade do projeto, e a história do "sistema
+  escrito do zero" continua verdadeira.
+- **Nos aplicativos, do zero é o padrão**, mas código livre de terceiros pode
+  entrar como exceção: licença compatível com a GPL 3, pasta própria em
+  `terceiros/` com a licença original e um `ORIGEM.md`, crédito em
+  `CREDITOS.md` e no README ("O que não foi escrito aqui").
+- Código reproduzido de memória por uma IA conta como código de terceiros.
+
+**Por quê.** É o que todos os sistemas usados de verdade fazem (as
+distribuições Linux juntam milhares de projetos, cada um com a sua licença;
+Windows e macOS têm listas de "avisos de terceiros"). Proteger o núcleo mantém
+o que torna o SaguiOS único; abrir os aplicativos, às claras, deixa a
+comunidade trazer coisas boas sem medo de uma regra rígida demais. Com IA,
+escrever do zero ficou barato, então o padrão continua sendo escrever aqui:
+código de fora fica para o que não faz sentido reescrever.
+
+**Consequências.** `AGENTS.md`, `CONTRIBUTING.md` e o modelo de pull request
+foram atualizados. Do Cipó (#6), os trechos de terceiros podem entrar, desde
+que separados em `terceiros/` e creditados, depois de conferida a licença
+exata de cada um.
