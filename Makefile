@@ -183,7 +183,8 @@ $(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
-	$(if $(PROG_TESTE),mkdir -p $(B)/rootfs/testes && cp $(PROG_TESTE) $(B)/rootfs/testes/)
+	mkdir -p $(B)/rootfs/testes
+	$(if $(PROG_TESTE),cp $(PROG_TESTE) $(B)/rootfs/testes/)
 	mkdir -p $(B)/rootfs/sistema/lib $(B)/rootfs/sistema/inc $(B)/rootfs/sistema/ajuda
 	cp $(CC_LIB) $(B)/rootfs/sistema/lib/libsagui.o
 	cp $(CC_INC) $(B)/rootfs/sistema/inc/
@@ -213,6 +214,8 @@ test: $(B)/saguios.img
 
 rodar: $(B)/saguios.img
 	qemu-system-i386 -m 512M -drive format=raw,file=$< -serial stdio
+
+run: rodar
 
 entrega: $(B)/saguios.img $(B)/saguios.vdi
 	@test -n "$(FASE)" || (echo "use: make entrega FASE=N" && false)

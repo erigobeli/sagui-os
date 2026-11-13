@@ -165,14 +165,17 @@ typedef struct {
 } tema_t;
 
 static const tema_t tema_escuro = {
-    0x0B7A3E, 0x3A4450, 0xFFFFFF, 0xD0D4D8, 175,
-    0x101820, 0xFFDF4A, 0xA8B4C2, 0xFFFFFF, 150,
-    0x101820, 0xFFFFFF, 0xFFDF4A, 0xFFFFFF, 130, false,
+    /* barras de título: foco, normal, texto foco, texto normal, intensidade vidro */
+    0x1E3A8A, 0x1E293B, 0xFFFFFF, 0xCBD5E1, 160,
+    /* barra superior: topo, nome, frase, relógio, intensidade vidro */
+    0x0F172A, 0x60A5FA, 0x94A3B8, 0xFFFFFF, 140,
+    /* doca: fundo, destaque, ponto, texto, intensidade vidro */
+    0x0F172A, 0x3B82F6, 0x60A5FA, 0xFFFFFF, 120, false,
 };
 static const tema_t tema_claro = {
-    0x2E9E5B, 0xC4CCD4, 0xFFFFFF, 0x2A323A, 205,
-    0xF2F4F6, 0x0B6A36, 0x4A5560, 0x1E2328, 200,
-    0xF2F4F6, 0x1E2328, 0x0B7A3E, 0x1E2328, 185, true,
+    0x2563EB, 0xF1F5F9, 0x1E293B, 0x475569, 200,
+    0xF8FAFC, 0x15803D, 0x64748B, 0x0F172A, 190,
+    0xF8FAFC, 0x1E293B, 0x15803D, 0x0F172A, 180, true,
 };
 static const tema_t *tema = &tema_escuro;
 static bool efeitos_automaticos = true, efeitos_lento;
