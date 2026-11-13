@@ -4,22 +4,22 @@ Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar q
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T01:17:13_
+_Atualizado em 2026-11-13T01:19:08_
 
 - **Situação:** Trabalhando na H42: Tocador e sons do sistema
 - **Fase atual:** 2
 - **História atual:** H42
-- **Progresso geral:** 16.3%
+- **Progresso geral:** 18.6%
 - **Bloqueio:** nenhum
-- **Imagem:** 666624 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 11156, userland 6994
+- **Imagem:** 694784 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 11156, userland 7078
 
 ## Fases
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
 | 1 | Base e Configurações | 100.0% | aguardando teste |
-| 2 | Som | 66.7% | em andamento |
+| 2 | Som | 100.0% | em andamento |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
 | 5 | Terminal e SSH | 0.0% | a fazer |
@@ -40,7 +40,7 @@ _Atualizado em 2026-11-13T01:17:13_
 | H39 | Remover programas | aguardando teste | 5 |
 | H40 | Driver Intel HD Audio | feito | 7 |
 | H41 | Som para os programas | feito | 2 |
-| H42 | Tocador e sons do sistema | em andamento |  |
+| H42 | Tocador e sons do sistema | feito | 2 |
 | H43 | Driver Intel PRO/1000 | a fazer |  |
 | H44 | Ethernet, ARP, IPv4, ICMP e UDP | a fazer |  |
 | H45 | DHCP e DNS | a fazer |  |
@@ -79,6 +79,7 @@ _Atualizado em 2026-11-13T01:17:13_
 
 ## Últimas ações
 
+- 2026-11-13T01:19:08: H42 concluída: Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)
 - 2026-11-13T01:17:13: Início da H42: Tocador e sons do sistema
 - 2026-11-13T01:17:13: H41 concluída: Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav
 - 2026-11-13T01:15:43: Início da H41: Som para os programas
@@ -93,4 +94,3 @@ _Atualizado em 2026-11-13T01:17:13_
 - 2026-11-13T00:41:00: Início da H37: Configurações guardadas
 - 2026-11-13T00:40:59: H36 concluída: Desligar pelo ACPI (_S5_ da DSDT), reiniciar pelo reset do ACPI/0xCF9/teclado, pendrives gravados antes, botão de energia na barra e janela Energia
 - 2026-11-13T00:35:06: Início da H36: Desligar e reiniciar
-- 2026-11-13T00:35:06: H35 concluída: Comando pci com classe, fabricante, modelo e o que o SaguiOS já usa; relatório em /usb/hardware.txt

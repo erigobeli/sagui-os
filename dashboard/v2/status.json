@@ -1,6 +1,6 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:17:13",
+  "atualizado": "2026-11-13T01:19:08",
   "situacao": "Trabalhando na H42: Tocador e sons do sistema",
   "fase_atual": 2,
   "historia_atual": "H42",
@@ -31,7 +31,7 @@
       "numero": 2,
       "nome": "Som",
       "estado": "em andamento",
-      "progresso": 66.7
+      "progresso": 100.0
     },
     {
       "numero": 3,
@@ -181,12 +181,12 @@
       "titulo": "Tocador e sons do sistema",
       "objetivo": "Comando `tocar arquivo.wav`, sons do sistema (início, notificação, pendrive conectado) com opção de desligar, e o Sagui 3D e o Sagui Pega Banana usando o som novo quando houver placa (o bip continua como reserva).",
       "aceite": "captura do `.wav` com os sons do jogo; no G470, o Eli ouve o som de início.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T01:17:13",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T01:19:08",
+      "minutos": 2,
+      "resultado": "Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)"
     },
     {
       "id": "H43",
@@ -714,6 +714,10 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:19:08",
+      "texto": "H42 concluída: Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)"
+    },
+    {
       "data": "2026-11-13T01:17:13",
       "texto": "Início da H42: Tocador e sons do sistema"
     },
@@ -789,6 +793,11 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H42-tocar.png",
+      "nome": "H42-tocar.png",
+      "data": "2026-11-13T01:18:48"
+    },
+    {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
       "data": "2026-11-13T01:17:03"
@@ -847,13 +856,13 @@
   "linhas": {
     "boot": 903,
     "kernel": 11156,
-    "userland": 6994,
-    "ferramentas": 4051
+    "userland": 7078,
+    "ferramentas": 4155
   },
   "imagem": {
-    "bytes_util": 666624,
+    "bytes_util": 694784,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 16.3
+  "progresso_geral": 18.6
 }

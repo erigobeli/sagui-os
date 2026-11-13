@@ -937,3 +937,37 @@ Acertar o relógio grava direto no relógio da placa-mãe (CMOS), com o bit SET
 ligado durante a escrita para o chip não avançar no meio, no mesmo formato
 (BCD ou binário, 12 ou 24 horas) que ele já usa. O fuso horário é guardado
 nas configurações para o relógio automático pela internet (fase 4).
+
+## D033. Som: HD Audio por consulta, misturador no tique (H40 a H42)
+
+**Driver.** O controlador HD Audio conversa com o codec por duas filas na
+memória (CORB para os comandos, RIRB para as respostas). O driver não usa
+interrupções: manda o comando e espera o ponteiro do RIRB andar. Um detalhe
+achado no QEMU: com o aviso de resposta (bit 0 do RIRBCTL) desligado, o
+controlador do QEMU para de ler a fila depois de cada resposta; com ele ligado
+e as interrupções globais desligadas, o aviso só marca um registrador, que o
+driver limpa a cada resposta. Funciona igual nos dois casos no hardware real.
+
+O caminho do som é descoberto pelo grafo do codec, sem tabela de modelos: para
+cada pino que a configuração do fabricante diz ser linha, alto-falante ou fone
+e estar ligado a algo, uma busca em profundidade pelas listas de conexão acha
+um DAC. No caminho, os seletores recebem a conexão certa, os amplificadores
+ficam sem mudo no passo de 0 dB (alto sem distorcer), o pino liga a saída (e o
+reforço de fone) e, se tiver, o amplificador externo (EAPD), que muitos
+notebooks precisam para o alto-falante tocar.
+
+**Misturador.** Um anel de 64 KB que o DMA lê sem parar, em 48 kHz, 16 bits,
+estéreo. A cada tique (10 ms), o kernel escreve o pedaço que falta para ficar
+60 ms à frente da posição de leitura: soma as fontes dos programas e a fonte de
+notas, aplica o volume e corta em 16 bits. Cada programa tem um anel próprio de
+~340 ms e manda quadros sem esperar (a chamada devolve quantos cabem), então
+nenhum programa trava por causa do som.
+
+**O bip pela placa.** As listas de notas do B3 (comando `bip`, Sagui Pega
+Banana, Sagui 3D) viram ondas quadradas suaves na placa quando ela existe; sem
+placa, continuam no alto-falante do PC. Os jogos ganharam a placa de som sem
+mudar uma linha.
+
+**Testes.** O QEMU grava a saída da placa num `.wav`; o teste mede a frequência
+(cruzamentos do zero) e a mistura (algoritmo de Goertzel para cada frequência).
+O canto do sagui (`/sons/sagui.wav`) é sintetizado por `tools/mksom.py`.
