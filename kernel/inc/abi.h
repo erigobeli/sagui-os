@@ -65,6 +65,14 @@
 #define SIS_SOM_ENVIAR     65   /* (fonte, &quadros, bytes) -> bytes aceitos; 16 bits estéreo 48 kHz */
 #define SIS_SOM_FECHAR     66   /* (fonte) */
 #define SIS_SOM_VOLUME     67   /* (novo 0-100 ou -1) -> volume atual */
+/* Rede (fase 3 da 2.0) */
+#define SIS_REDE_INFO      68   /* (&info_rede_t) -> 0, ou ERRO_NAO_EXISTE sem placa */
+#define SIS_REDE_SOCKET    69   /* (REDE_UDP, REDE_ICMP ou REDE_TCP) -> socket */
+#define SIS_REDE_CONECTAR  70   /* (socket, ip, porta) */
+#define SIS_REDE_ENVIAR    71   /* (socket, &dados, tamanho) -> bytes enviados */
+#define SIS_REDE_RECEBER   72   /* (socket, &dados, max, &ip_origem) -> bytes; 0 = nada ainda */
+#define SIS_REDE_FECHAR    73   /* (socket) */
+#define SIS_REDE_ESTADO    74   /* (socket TCP) -> 0 conectando, 1 aberta, 2 o outro lado terminou; <0 falhou (H48) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -83,6 +91,8 @@
 #define ERRO_FORMATO      -13   /* não é um executável ELF válido */
 #define ERRO_ACESSO       -14   /* operação não permitida */
 #define ERRO_OCUPADO      -15
+#define ERRO_REDE         -16   /* sem rede configurada, ou o destino não responde */
+#define ERRO_FIM          -17   /* a conexão terminou: o outro lado não manda mais nada */
 
 /* Modos de abrir */
 #define ABRIR_LER       1
@@ -128,6 +138,19 @@ typedef struct {
 } nota_t;
 #define BIP_SUBSTITUIR 0   /* para o que estiver tocando e começa esta lista */
 #define BIP_ENFILEIRAR 1   /* toca depois do que já está na fila */
+
+/* Rede (fase 3 da 2.0). Endereços IPv4 na ordem da rede: 10.0.2.15 é
+ * 10 | 0 << 8 | 2 << 16 | 15 << 24. */
+#define REDE_UDP  1
+#define REDE_ICMP 2
+#define REDE_TCP  3
+typedef struct {
+    char          placa[32];
+    unsigned char mac[6];
+    unsigned char cabo, configurado, dhcp, reservado;
+    unsigned int  ip, mascara, roteador, dns;
+    unsigned int  pacotes_rx, pacotes_tx;
+} info_rede_t;
 
 /* SIS_INFO_SISTEMA */
 #define INFO_MEMORIA   1

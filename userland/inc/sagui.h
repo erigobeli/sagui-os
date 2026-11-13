@@ -75,6 +75,19 @@ int      som_abrir(void);                                       /* fonte, ou ERR
 int      som_enviar(int fonte, const void *quadros, unsigned bytes);   /* bytes aceitos (não espera) */
 int      som_fechar(int fonte);
 int      som_volume(int novo);                                  /* -1 só consulta; devolve 0-100 */
+/* Rede (fase 3 da 2.0). IPs na ordem da rede (o primeiro número no byte baixo). */
+int      rede_info(info_rede_t *r);
+int      rede_socket(int tipo);                                 /* REDE_UDP, REDE_ICMP, REDE_TCP */
+int      rede_conectar(int s, unsigned ip, int porta);
+int      rede_enviar(int s, const void *dados, unsigned n);
+int      rede_receber(int s, void *dados, unsigned max, unsigned *origem);   /* 0 = nada ainda */
+int      rede_fechar(int s);
+void     ip_para_texto(unsigned ip, char *texto);               /* texto com 16 bytes */
+unsigned texto_para_ip(const char *texto);                      /* 0 se não for IP */
+int      dns_resolver(const char *nome, unsigned *ip);          /* 0, ERRO_NAO_EXISTE ou ERRO_REDE */
+int      rede_estado(int s);                                    /* TCP: 0 conectando, 1 aberta, 2 o outro lado terminou, <0 falhou */
+int      tcp_conectar(unsigned ip, int porta, unsigned ms);     /* socket pronto, ou erro */
+int      tcp_enviar_tudo(int s, const void *dados, unsigned n);
 int      modo_terminal(int modo);
 int      limpar_tela(void);
 

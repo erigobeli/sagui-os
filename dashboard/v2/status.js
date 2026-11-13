@@ -1,7 +1,7 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:35:10",
+  "atualizado": "2026-11-13T01:36:19",
   "situacao": "Trabalhando na H43: Driver Intel PRO/1000",
   "fase_atual": 3,
   "historia_atual": "H43",
@@ -38,7 +38,7 @@ window.SAGUI_STATUS = {
       "numero": 3,
       "nome": "Rede",
       "estado": "em andamento",
-      "progresso": 0.0
+      "progresso": 60.0
     },
     {
       "numero": 4,
@@ -195,12 +195,12 @@ window.SAGUI_STATUS = {
       "titulo": "Driver Intel PRO/1000",
       "objetivo": "Placa de rede usada pelo QEMU e pelo VirtualBox: inicialização, filas de envio e recepção, interrupções, endereço físico (MAC), estado do cabo.",
       "aceite": "o teste vê pacotes indo e voltando pela rede do QEMU.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T01:35:10",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T01:36:19",
+      "minutos": 1,
+      "resultado": "Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo"
     },
     {
       "id": "H44",
@@ -208,12 +208,12 @@ window.SAGUI_STATUS = {
       "titulo": "Ethernet, ARP, IPv4, ICMP e UDP",
       "objetivo": "A pilha básica no kernel e o comando `ping`.",
       "aceite": "`ping 10.0.2.2` (o QEMU) responde; tempo e perda mostrados.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
       "inicio": null,
-      "fim": null,
+      "fim": "2026-11-13T01:36:19",
       "minutos": null,
-      "resultado": ""
+      "resultado": "Ethernet, ARP com fila de espera, IPv4, ICMP (eco), UDP com soma; comando ping"
     },
     {
       "id": "H45",
@@ -221,12 +221,12 @@ window.SAGUI_STATUS = {
       "titulo": "DHCP e DNS",
       "objetivo": "Endereço automático no boot e resolução de nomes; comando `rede` (endereço, máscara, rota, DNS) e `ping google.com`.",
       "aceite": "no QEMU, o DHCP pega o endereço sozinho e um nome resolve pelo DNS do QEMU; teste \"internet\" com um nome real.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
       "inicio": null,
-      "fim": null,
+      "fim": "2026-11-13T01:36:19",
       "minutos": null,
-      "resultado": ""
+      "resultado": "Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome"
     },
     {
       "id": "H46",
@@ -715,6 +715,18 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:36:19",
+      "texto": "H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome"
+    },
+    {
+      "data": "2026-11-13T01:36:19",
+      "texto": "H44 concluída: Ethernet, ARP com fila de espera, IPv4, ICMP (eco), UDP com soma; comando ping"
+    },
+    {
+      "data": "2026-11-13T01:36:19",
+      "texto": "H43 concluída: Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo"
+    },
+    {
       "data": "2026-11-13T01:35:10",
       "texto": "Início da H43: Driver Intel PRO/1000"
     },
@@ -802,6 +814,16 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H45-rede.png",
+      "nome": "H45-rede.png",
+      "data": "2026-11-13T01:35:59"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H44-ping.png",
+      "nome": "H44-ping.png",
+      "data": "2026-11-13T01:35:48"
+    },
+    {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
       "data": "2026-11-13T01:34:50"
@@ -869,9 +891,9 @@ window.SAGUI_STATUS = {
     "ferramentas": 4379
   },
   "imagem": {
-    "bytes_util": 694784,
+    "bytes_util": 750080,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 18.6
+  "progresso_geral": 25.6
 };

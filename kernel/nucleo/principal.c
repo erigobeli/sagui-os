@@ -6,6 +6,7 @@
  * arquivos e, por fim, o terminal. Tudo cabe em poucas linhas na tela: no
  * G470 o mapa de memória grande empurrava a saudação para fora (erro 1). */
 #include "hda.h"
+#include "rede.h"
 #include "bootinfo.h"
 #include "console.h"
 #include "texto.h"
@@ -265,6 +266,14 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
         etapa(linha);
     } else {
         klog("[SOM] sem placa HD Audio: so o bip\n");
+    }
+    /* Fase 3 da 2.0: rede com cabo (DHCP na tarefa da rede). */
+    rede_iniciar();
+    if (rede_tem_placa()) {
+        char linha[128], r[80];
+        rede_relatorio(r, sizeof r);
+        snformatar(linha, sizeof linha, "Rede: %s (comandos rede e ping)", r);
+        etapa(linha);
     }
     klog("[SAGUI] boot ok\n");
 

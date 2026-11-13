@@ -17,6 +17,7 @@
 #include "texto.h"
 #include "som.h"
 #include "hda.h"
+#include "rede.h"
 #include "configuracoes.h"
 
 static const chamada_t tabela[SIS_MAX] = {
@@ -49,6 +50,10 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_AJUSTAR_DATA] = sis_ajustar_data,
     [SIS_SOM_ABRIR] = sis_som_abrir,     [SIS_SOM_ENVIAR] = sis_som_enviar,
     [SIS_SOM_FECHAR] = sis_som_fechar,   [SIS_SOM_VOLUME] = sis_som_volume,
+    [SIS_REDE_INFO] = sis_rede_info,     [SIS_REDE_SOCKET] = sis_rede_socket,
+    [SIS_REDE_CONECTAR] = sis_rede_conectar, [SIS_REDE_ENVIAR] = sis_rede_enviar,
+    [SIS_REDE_RECEBER] = sis_rede_receber,   [SIS_REDE_FECHAR] = sis_rede_fechar,
+    [SIS_REDE_ESTADO] = sis_rede_estado,
 };
 
 bool usuario_ok(const void *p, uint32_t n, bool escrita)
