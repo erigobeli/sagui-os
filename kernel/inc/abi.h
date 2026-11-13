@@ -125,6 +125,7 @@ typedef struct {
 #define INFO_PROCESSOS 2
 #define INFO_VERSAO    3
 #define INFO_USB       4   /* relatório em texto: controladores, portas e dispositivos */
+#define INFO_PCI       5   /* relatório em texto: dispositivos PCI (H35) */
 
 typedef struct {
     unsigned int ram_total_kb;

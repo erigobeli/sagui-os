@@ -1,20 +1,20 @@
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T00:30:04_
+_Atualizado em 2026-11-13T00:35:06_
 
-- **Situação:** Trabalhando na H35: Comando `pci` e inventário de hardware
+- **Situação:** Trabalhando na H36: Desligar e reiniciar
 - **Fase atual:** 1
-- **História atual:** H35
-- **Progresso geral:** 0.0%
+- **História atual:** H36
+- **Progresso geral:** 2.3%
 - **Bloqueio:** nenhum
-- **Imagem:** 575488 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 9614, userland 6317
+- **Imagem:** 588288 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 9746, userland 6339
 
 ## Fases
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Base e Configurações | 0.0% | em andamento |
+| 1 | Base e Configurações | 20.0% | em andamento |
 | 2 | Som | 0.0% | a fazer |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
@@ -29,8 +29,8 @@ _Atualizado em 2026-11-13T00:30:04_
 
 | ID | Título | Estado | Minutos |
 | --- | --- | --- | --- |
-| H35 | Comando `pci` e inventário de hardware | em andamento |  |
-| H36 | Desligar e reiniciar | a fazer |  |
+| H35 | Comando `pci` e inventário de hardware | feito | 5 |
+| H36 | Desligar e reiniciar | em andamento |  |
 | H37 | Configurações guardadas | a fazer |  |
 | H38 | App Configurações | a fazer |  |
 | H39 | Remover programas | a fazer |  |
@@ -75,6 +75,8 @@ _Atualizado em 2026-11-13T00:30:04_
 
 ## Últimas ações
 
+- 2026-11-13T00:35:06: Início da H36: Desligar e reiniciar
+- 2026-11-13T00:35:06: H35 concluída: Comando pci com classe, fabricante, modelo e o que o SaguiOS já usa; relatório em /usb/hardware.txt
 - 2026-11-13T00:30:04: Início da H35: Comando `pci` e inventário de hardware
 - 2026-11-13T00:30:03: Modo contínuo: o Eli pediu para seguir fase após fase sem esperar os testes; cada fase vira uma imagem em entrega/v2-faseX/.
 - 2026-11-12T14:11:01: PRD 2.0 escrito com o Eli: 9 fases, histórias H35 a H77.

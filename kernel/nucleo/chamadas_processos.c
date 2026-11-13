@@ -1,4 +1,5 @@
 /* chamadas_processos.c - chamadas dos grupos "processos" e "diversas". */
+#include "pci.h"
 #include "sistema.h"
 #include "console.h"
 #include "memoria.h"
@@ -128,6 +129,10 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
         if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
         int usb_relatorio(char *s, int max);
         return usb_relatorio((char *)ptr, (int)n);
+    }
+    if (tipo == INFO_PCI) {
+        if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
+        return pci_relatorio((char *)ptr, (int)n);
     }
     if (tipo == INFO_VERSAO) {
         info_versao_t *v = (info_versao_t *)ptr;

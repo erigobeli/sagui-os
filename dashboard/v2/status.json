@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T00:30:04",
-  "situacao": "Trabalhando na H35: Comando `pci` e inventário de hardware",
+  "atualizado": "2026-11-13T00:35:06",
+  "situacao": "Trabalhando na H36: Desligar e reiniciar",
   "fase_atual": 1,
-  "historia_atual": "H35",
+  "historia_atual": "H36",
   "bloqueio": "",
   "mensagem_fase": "",
   "raiz": "../../",
@@ -25,7 +25,7 @@
       "numero": 1,
       "nome": "Base e Configurações",
       "estado": "em andamento",
-      "progresso": 0.0
+      "progresso": 20.0
     },
     {
       "numero": 2,
@@ -90,12 +90,12 @@
       "titulo": "Comando `pci` e inventário de hardware",
       "objetivo": "Lista os dispositivos PCI com classe, fabricante e modelo (com nomes conhecidos para os mais comuns) e grava o relatório em `/usb/hardware.txt`.",
       "aceite": "no QEMU aparecem a placa de rede, o controlador de som e os EHCI; no `docs/teste-v2-fase1.md` o Eli recebe o pedido de fotografar a saída no G470, que define o driver de rede (H46).",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T00:30:04",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T00:35:06",
+      "minutos": 5,
+      "resultado": "Comando pci com classe, fabricante, modelo e o que o SaguiOS já usa; relatório em /usb/hardware.txt"
     },
     {
       "id": "H36",
@@ -103,9 +103,9 @@
       "titulo": "Desligar e reiniciar",
       "objetivo": "Leitura das tabelas ACPI (o suficiente para desligar), reinício pelo método ACPI com o controlador de teclado como reserva. Menu na barra de cima com **Desligar** e **Reiniciar**, perguntando antes se há pendrive montado (desmonta antes de desligar). Comandos `desligar` e `reiniciar`.",
       "aceite": "o QEMU termina sozinho ao desligar; reiniciar volta ao boot; com pendrive montado, os dados ficam gravados.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T00:35:06",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T00:35:06",
+      "texto": "Início da H36: Desligar e reiniciar"
+    },
+    {
+      "data": "2026-11-13T00:35:06",
+      "texto": "H35 concluída: Comando pci com classe, fabricante, modelo e o que o SaguiOS já usa; relatório em /usb/hardware.txt"
+    },
+    {
       "data": "2026-11-13T00:30:04",
       "texto": "Início da H35: Comando `pci` e inventário de hardware"
     },
@@ -727,17 +735,23 @@
     }
   ],
   "erros": [],
-  "capturas": [],
+  "capturas": [
+    {
+      "arquivo": "docs/v2/capturas/H35-pci.png",
+      "nome": "H35-pci.png",
+      "data": "2026-11-13T00:34:52"
+    }
+  ],
   "linhas": {
     "boot": 903,
-    "kernel": 9614,
-    "userland": 6317,
-    "ferramentas": 3602
+    "kernel": 9746,
+    "userland": 6339,
+    "ferramentas": 3651
   },
   "imagem": {
-    "bytes_util": 575488,
+    "bytes_util": 588288,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 0.0
+  "progresso_geral": 2.3
 }

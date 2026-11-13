@@ -318,7 +318,12 @@ class Maquina:
     def captura(self, nome, guardar=True):
         """Tira uma captura de tela. guardar=True salva em docs/capturas/."""
         ppm = os.path.join(SAIDA, self.nome + "-" + nome + ".ppm")
-        destino = os.path.join(CAPTURAS if guardar else SAIDA, nome + ".png")
+        pasta = CAPTURAS
+        m = re.match(r"H(\d+)", nome)
+        if m and int(m.group(1)) >= 35:      # versão 2.0: capturas em docs/v2/capturas
+            pasta = os.path.join(RAIZ, "docs", "v2", "capturas")
+            os.makedirs(pasta, exist_ok=True)
+        destino = os.path.join(pasta if guardar else SAIDA, nome + ".png")
         self.monitor(f"screendump {ppm}")
         for _ in range(50):
             if os.path.exists(ppm) and os.path.getsize(ppm) > 0:
@@ -408,3 +413,8 @@ def verificar(condicao, mensagem):
     if not condicao:
         raise FalhaTeste(mensagem)
     print("  ok:", mensagem)
+
+
+def mtype(img, caminho):
+    """Conteúdo de um arquivo do pendrive (partição em 1 MB), lido com mtools."""
+    return subprocess.run(["mtype", "-i", img + "@@1M", f"::{caminho}"], capture_output=True).stdout
