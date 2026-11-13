@@ -265,7 +265,8 @@ Um texto é um vetor de `char` terminado por um byte zero. `"abc"` ocupa 4
 bytes. Textos vizinhos se juntam (`"um " "dois"`). Sequências: `\n` `\t`
 `\r` `\0` `\\` `\"` `\'` `\xHH` e octais (`\101`).
 
-Os arquivos `.c` são UTF-8, mas o SaguiOS mostra as letras em **Latin-1**:
+Os arquivos `.c` podem estar em UTF-8 (como chegam de fora) ou em Latin-1
+(como o Editor do SaguiOS grava). O SaguiOS mostra as letras em **Latin-1**:
 o compilador converte os textos entre aspas (`"ação"` ocupa 4 letras + o
 zero). Letras que não existem no Latin-1 (emojis, `→`, `—`) viram `?`.
 Textos lidos de fora (arquivos do pendrive, rede) podem chegar em UTF-8;
