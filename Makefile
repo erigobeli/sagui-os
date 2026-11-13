@@ -214,6 +214,8 @@ test: $(B)/saguios.img
 rodar: $(B)/saguios.img
 	qemu-system-i386 -m 512M -drive format=raw,file=$< -serial stdio
 
+run: rodar
+
 entrega: $(B)/saguios.img $(B)/saguios.vdi
 	@test -n "$(FASE)" || (echo "use: make entrega FASE=N" && false)
 	mkdir -p entrega/fase$(FASE)
