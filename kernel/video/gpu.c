@@ -5,8 +5,7 @@
  * for escrito, basta preencher a estrutura driver_video_t e chamar
  * video_registrar_driver(). Até lá, tudo roda por software na CPU.
  *
- * Sem libc, sem código de outros sistemas operacionais.
- */
+ * Sem libc, sem código de outros sistemas operacionais. */
 
 #include "gpu.h"
 #include "video.h"
@@ -60,13 +59,37 @@ static void gpu_sw_vsync(void)
     /* VESA não tem controle de retraço vertical exposto; ignora. */
 }
 
-static driver_video_t gpu_driver_sw = {
+static void gpu_sw_blit(int dx, int dy, int sx, int sy, int l, int a)
+{
+    /* Sem aceleração de hardware: cópia pixel a pixel via framebuffer. */
+    uint32_t *fb = video_buffer();
+    unsigned larg = video_largura();
+    for (int yy = 0; yy < (int)a; yy++) {
+        for (int xx = 0; xx < (int)l; xx++) {
+            int sxp = sx + xx, syp = sy + yy;
+            int dxp = dx + xx, dyp = dy + yy;
+            if (sxp < 0 || syp < 0 || dxp < 0 || dyp < 0) continue;
+            if (sxp >= (int)larg || syp >= (int)video_altura()) continue;
+            if (dxp >= (int)larg || dyp >= (int)video_altura()) continue;
+            fb[dyp * larg + dxp] = fb[syp * larg + sxp];
+        }
+    }
+}
+
+static void gpu_sw_preencher(int x, int y, int l, int a, uint32_t cor)
+{
+    gpu_sw_retangulo(x, y, l, a, cor);
+}
+
+driver_video_t gpu_driver_sw = {
     .iniciar   = gpu_sw_iniciar,
     .obter_modo = gpu_sw_obter_modo,
     .limpar     = gpu_sw_limpar,
     .retangulo  = gpu_sw_retangulo,
     .linha      = gpu_sw_linha,
     .vsync      = gpu_sw_vsync,
+    .blit       = gpu_sw_blit,
+    .preencher  = gpu_sw_preencher,
 };
 
 /* ------------------------------------------------------------ registro e despacho */
@@ -93,13 +116,35 @@ void video_obter_modo(modo_video_t *m)
         *m = modo_ativo;
 }
 
-/* As funções de desenho (video_limpar, video_retangulo, video_linha, video_vsync)
- * já existem em dispositivos/video.c e são usadas diretamente pelos programas.
- * Esta camada so registra/despacha drivers. */
+bool video_driver_eh_hardware(void)
+{
+    extern bool video_driver_eh_hardware_hw(void);
+    return video_driver_eh_hardware_hw();
+}
 
-/* Inicialização da camada de vídeo: registra o driver software como padrão. */
+/* Inicialização da camada de vídeo: tenta driver Intel/AMD primeiro; se
+ * falhar, usa o driver software VESA como fallback. */
 bool video_gpu_iniciar(void)
 {
-    video_registrar_driver(&gpu_driver_sw);
-    return driver_atual != NULL;
+    /* Tenta driver Intel/AMD (definido em intel_amd.c). */
+    extern driver_video_t gpu_driver_intel_amd;
+    if (video_registrar_driver_tentativo(&gpu_driver_intel_amd) == 0)
+        return true;
+
+    /* Fallback: driver software VESA. */
+    if (video_registrar_driver_tentativo(&gpu_driver_sw) == 0)
+        return true;
+
+    return false;
+}
+
+/* Tenta registrar um driver sem mudar o driver_atual se falhar. Devolve 0 se
+ * o driver iniciou com sucesso, -1 caso contrário. */
+int video_registrar_driver_tentativo(driver_video_t *drv)
+{
+    if (drv->iniciar() != 0)
+        return -1;
+    driver_atual = drv;
+    drv->obter_modo(&modo_ativo);
+    return 0;
 }
