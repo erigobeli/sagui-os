@@ -322,7 +322,7 @@ static void tarefa_gerenciador(void *arg)
             evento_t e = { .tipo = EV_TECLA, .tecla = (unsigned)t, .modificadores = teclado_modificadores() & 3 };
             entregar(j, &e);
         }
-        if (area_config_mudou())
+        if (area_config_mudou() | area_instalados_mudaram())
             gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
         if (area_relogio_mudou())
             gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR);

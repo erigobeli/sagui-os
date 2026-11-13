@@ -1,20 +1,20 @@
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T00:50:05_
+_Atualizado em 2026-11-13T00:54:44_
 
 - **Situação:** Trabalhando na H39: Remover programas
 - **Fase atual:** 1
 - **História atual:** H39
-- **Progresso geral:** 9.3%
+- **Progresso geral:** 11.6%
 - **Bloqueio:** nenhum
-- **Imagem:** 643072 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 10313, userland 6722
+- **Imagem:** 647680 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 10435, userland 6826
 
 ## Fases
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Base e Configurações | 80.0% | em andamento |
+| 1 | Base e Configurações | 100.0% | em andamento |
 | 2 | Som | 0.0% | a fazer |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
@@ -33,7 +33,7 @@ _Atualizado em 2026-11-13T00:50:05_
 | H36 | Desligar e reiniciar | feito | 6 |
 | H37 | Configurações guardadas | feito | 3 |
 | H38 | App Configurações | feito | 6 |
-| H39 | Remover programas | em andamento |  |
+| H39 | Remover programas | feito | 5 |
 | H40 | Driver Intel HD Audio | a fazer |  |
 | H41 | Som para os programas | a fazer |  |
 | H42 | Tocador e sons do sistema | a fazer |  |
@@ -75,6 +75,7 @@ _Atualizado em 2026-11-13T00:50:05_
 
 ## Últimas ações
 
+- 2026-11-13T00:54:44: H39 concluída: Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema
 - 2026-11-13T00:50:05: Início da H39: Remover programas
 - 2026-11-13T00:50:05: H38 concluída: App Configurações com Relógio (acerta o CMOS, fuso), Aparência (5 fundos, sagui do canto) e Sobre o computador; ícones em duas colunas (D032)
 - 2026-11-13T00:43:52: Início da H38: App Configurações

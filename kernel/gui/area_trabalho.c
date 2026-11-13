@@ -11,6 +11,7 @@
 #include "processo.h"
 #include "relogio.h"
 #include "configuracoes.h"
+#include "fat32.h"
 #include "texto.h"
 #include "texto.h"
 #include "video.h"
@@ -43,7 +44,55 @@ static const icone_t icones[] = {
 static bool pendrive_visivel;
 static char nome_pendrive[24] = "Pendrive";
 
-static bool icone_visivel(int i) { return i != ICONE_PENDRIVE || pendrive_visivel; }
+/* Programas instalados no pendrive (H39): /usb/programas, um ícone cada,
+ * depois dos ícones do sistema. A pasta é conferida a cada 2 segundos. */
+#define MAX_INSTALADOS 8
+static char instalados[MAX_INSTALADOS][NOME_MAX];
+static int qtd_instalados;
+static uint32_t conferido_em;
+
+/* Programas do sistema escondidos pelo usuário (configuração
+ * "programas.ocultos", uma lista separada por vírgulas). Eles continuam em
+ * /bin e no Terminal; só o ícone some. */
+static bool oculto[16];
+
+static bool icone_visivel(int i)
+{
+    if (i >= QTD_ICONES) return i - QTD_ICONES < qtd_instalados;
+    if (i == ICONE_PENDRIVE) return pendrive_visivel;
+    return !oculto[i];
+}
+
+static void ler_ocultos(void)
+{
+    const char *lista = config_obter("programas.ocultos");
+    for (int i = 0; i < QTD_ICONES && i < 16; i++) {
+        oculto[i] = false;
+        if (!lista || i == ICONE_PENDRIVE) continue;
+        const char *nome = icones[i].programa + 5;   /* depois de "/bin/" */
+        size_t n = txt_tamanho(nome);
+        for (const char *p = lista; *p;) {
+            while (*p == ',' || *p == ' ') p++;
+            const char *fim = p;
+            while (*fim && *fim != ',') fim++;
+            size_t m = (size_t)(fim - p);
+            while (m > 0 && p[m - 1] == ' ') m--;
+            if (m == n && txt_compara_n(p, nome, n) == 0) oculto[i] = true;
+            p = fim;
+        }
+    }
+}
+
+static const char *nome_icone(int i)
+{
+    if (i >= QTD_ICONES) return instalados[i - QTD_ICONES];
+    return i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
+}
+
+static const desenho_t *desenho_icone(int i)
+{
+    return i >= QTD_ICONES ? &arte_icone_instalado : icones[i].desenho;
+}
 #define ICONE_X 20
 #define ICONE_Y0 (BARRA_SUPERIOR + 16)
 #define ICONE_PASSO 92
@@ -51,7 +100,7 @@ static bool icone_visivel(int i) { return i != ICONE_PENDRIVE || pendrive_visive
 #define ICONE_L 96
 #define ICONE_A 88
 
-int area_qtd_icones(void) { return QTD_ICONES; }
+int area_qtd_icones(void) { return QTD_ICONES + qtd_instalados; }
 
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
 {
@@ -59,8 +108,12 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
      * (8 ou mais numa tela de 768 linhas), continuam numa segunda coluna. */
     int por_coluna = (alt - ICONE_Y0) / ICONE_PASSO;
     if (por_coluna < 1) por_coluna = 1;
-    *x = ICONE_X + (i / por_coluna) * ICONE_COLUNA;
-    *y = ICONE_Y0 + (i % por_coluna) * ICONE_PASSO;
+    /* A posição na tela conta só os ícones visíveis antes deste (um
+     * programa oculto não deixa buraco). */
+    int vaga = 0;
+    for (int k = 0; k < i; k++) if (icone_visivel(k)) vaga++;
+    *x = ICONE_X + (vaga / por_coluna) * ICONE_COLUNA;
+    *y = ICONE_Y0 + (vaga % por_coluna) * ICONE_PASSO;
     *l = ICONE_L; *a = ICONE_A;
 }
 
@@ -110,12 +163,13 @@ static void desenhar_fundo(void)
         texto_com_sombra(&s, mx + 16 * esc - texto_largura("SaguiOS") / 2, my + 32 * esc + 6, "SaguiOS", 0xFFFFFF);
     }
     /* Ícones na coluna da esquerda, com o nome embaixo. */
-    for (int i = 0; i < QTD_ICONES; i++) {
+    ler_ocultos();
+    for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) {
         if (!icone_visivel(i)) continue;
         int x, y, l, a;
         area_icone_retangulo(i, &x, &y, &l, &a);
-        sup_desenho(&s, x + (l - 64) / 2, y, icones[i].desenho, 2);
-        const char *nome = i == ICONE_PENDRIVE ? nome_pendrive : icones[i].nome;
+        sup_desenho(&s, x + (l - 64) / 2, y, desenho_icone(i), 2);
+        const char *nome = nome_icone(i);
         texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 68, nome, 0xFFFFFF);
     }
 }
@@ -126,6 +180,28 @@ bool area_iniciar(void)
     alt = (int)video_altura();
     fundo = kmalloc((uint32_t)(larg * alt) * 4);
     if (!fundo) return false;
+    desenhar_fundo();
+    return true;
+}
+
+/* A lista de programas em /usb/programas mudou (H39)? Confere a cada 2 s. */
+bool area_instalados_mudaram(void)
+{
+    if (relogio_tiques() - conferido_em < 2 * TIQUES_POR_SEGUNDO) return false;
+    conferido_em = relogio_tiques();
+    char novos[MAX_INSTALADOS][NOME_MAX];
+    int n = 0;
+    if (disco_montado()) {
+        entrada_pasta_t e;
+        for (int k = 0; n < MAX_INSTALADOS && fat_listar("programas", k, &e) == 1; k++)
+            if (e.tipo != TIPO_PASTA && e.nome[0] != '.') txt_copia_n(novos[n++], e.nome, NOME_MAX);
+    }
+    bool igual = n == qtd_instalados;
+    for (int k = 0; igual && k < n; k++) igual = txt_compara(novos[k], instalados[k]) == 0;
+    if (igual) return false;
+    for (int k = 0; k < n; k++) txt_copia_n(instalados[k], novos[k], NOME_MAX);
+    qtd_instalados = n;
+    klog("[GUI] programas instalados no pendrive: %d\n", n);
     desenhar_fundo();
     return true;
 }
@@ -200,7 +276,7 @@ void area_energia_abrir(void)
 
 int area_icone_em(int x, int y)
 {
-    for (int i = 0; i < QTD_ICONES; i++) {
+    for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) {
         if (!icone_visivel(i)) continue;
         int ix, iy, l, a;
         area_icone_retangulo(i, &ix, &iy, &l, &a);
@@ -242,7 +318,15 @@ void area_icone_direito(int i)
 /* Abre o programa do ícone (H28). Ele não tem pai: ninguém espera por ele. */
 void area_icone_abrir(int i)
 {
-    if (i < 0 || i >= QTD_ICONES) return;
+    if (i < 0 || i >= QTD_ICONES + qtd_instalados) return;
+    if (i >= QTD_ICONES) {
+        char caminho[NOME_MAX + 24];
+        snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
+        char *argv[] = { instalados[i - QTD_ICONES], NULL };
+        int pid = processo_executar(caminho, 1, argv, NULL);
+        klog("[GUI] icone instalado %s -> %s (pid %d)\n", instalados[i - QTD_ICONES], caminho, pid);
+        return;
+    }
     if (i == ICONE_PENDRIVE) {
         disco_t *d = primeiro_disco();
         if (!d) return;

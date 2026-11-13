@@ -1,6 +1,6 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T00:50:05",
+  "atualizado": "2026-11-13T00:54:44",
   "situacao": "Trabalhando na H39: Remover programas",
   "fase_atual": 1,
   "historia_atual": "H39",
@@ -25,7 +25,7 @@
       "numero": 1,
       "nome": "Base e Configurações",
       "estado": "em andamento",
-      "progresso": 80.0
+      "progresso": 100.0
     },
     {
       "numero": 2,
@@ -142,12 +142,12 @@
       "titulo": "Remover programas",
       "objetivo": "Programas instalados ficam em `/usb/programas/` (persistentes) e aparecem na área de trabalho e no Terminal; a aba **Programas** das Configurações lista os instalados e remove com confirmação. Os programas que vêm com o sistema podem ser ocultados, não apagados.",
       "aceite": "instalar um programa de teste copiando para `/usb/programas/`, ele aparece; remover pelas Configurações, ele some e o arquivo é apagado.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T00:50:05",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T00:54:44",
+      "minutos": 5,
+      "resultado": "Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema"
     },
     {
       "id": "H40",
@@ -714,6 +714,10 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T00:54:44",
+      "texto": "H39 concluída: Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema"
+    },
+    {
       "data": "2026-11-13T00:50:05",
       "texto": "Início da H39: Remover programas"
     },
@@ -761,6 +765,21 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
+      "nome": "H39-3-banana-escondida.png",
+      "data": "2026-11-13T00:54:21"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
+      "nome": "H39-2-aba-programas.png",
+      "data": "2026-11-13T00:54:15"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
+      "nome": "H39-1-instalado.png",
+      "data": "2026-11-13T00:54:13"
+    },
+    {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
       "data": "2026-11-13T00:48:25"
@@ -793,14 +812,14 @@
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 10313,
-    "userland": 6722,
-    "ferramentas": 3857
+    "kernel": 10435,
+    "userland": 6826,
+    "ferramentas": 3915
   },
   "imagem": {
-    "bytes_util": 643072,
+    "bytes_util": 647680,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 9.3
+  "progresso_geral": 11.6
 }

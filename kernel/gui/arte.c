@@ -372,6 +372,43 @@ static const char *const icone_configuracoes[] = {
 };
 const desenho_t arte_icone_configuracoes = { icone_configuracoes, 32, 32 };
 
+/* Programa instalado no pendrive (H39): uma caixa com fita verde. */
+static const char *const icone_instalado[] = {
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "....PPPPPPPPPPggggPPPPPPPPPP....",
+    "....PCCCCCCCCPggggPCCCCCCCCP....",
+    "....PCCCCCCCCPggggPCCCCCCCCP....",
+    "....PCCCCCCCCPggggPCCCCCCCCP....",
+    "....PPPPPPPPPPggggPPPPPPPPPP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMPPPPPMPggggPMMMMMMMMP....",
+    "....PMMPcccPMPggggPMMMMMMMMP....",
+    "....PMMPcccPMPggggPMMMMMMMMP....",
+    "....PMMPcccPMPggggPMMMMMMMMP....",
+    "....PMMPPPPPMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PMMMMMMMMPggggPMMMMMMMMP....",
+    "....PPPPPPPPPPggggPPPPPPPPPP....",
+    "................................",
+    "................................",
+    "................................",
+};
+const desenho_t arte_icone_instalado = { icone_instalado, 32, 32 };
+
 /* Botão de energia da barra de cima (H36): o símbolo de liga/desliga. */
 const char *const arte_botao_energia[16] = {
     "................",

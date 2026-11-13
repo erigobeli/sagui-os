@@ -411,6 +411,13 @@ static void caminho_do_programa(const char *nome, char *saida, size_t max)
     if (acha_char(nome, '/')) { copia_texto(saida, nome, max); return; }
     const comando_t *c = achar_comando(nome);
     formatar_texto(saida, max, "/bin/%s", c ? c->nome : nome);
+    /* Programas instalados no pendrive (H39): /usb/programas, depois de /bin. */
+    info_arquivo_t inf;
+    if (!c && info_arquivo(saida, &inf) < 0) {
+        char instalado[128];
+        formatar_texto(instalado, sizeof instalado, "/usb/programas/%s", nome);
+        if (info_arquivo(instalado, &inf) >= 0) copia_texto(saida, instalado, max);
+    }
 }
 
 static void rodar(etapa_t *et, int qtd, bool fundo)

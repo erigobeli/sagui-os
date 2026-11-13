@@ -11,7 +11,7 @@ typedef struct {
 extern const desenho_t arte_sagui, arte_icone_arquivos, arte_icone_terminal, arte_icone_editor,
                        arte_icone_calculadora, arte_icone_banana, arte_icone_sagui3d, arte_icone_sobre, arte_icone_pendrive;
 extern const char *const arte_botao_energia[16];
-extern const desenho_t arte_icone_configuracoes;
+extern const desenho_t arte_icone_configuracoes, arte_icone_instalado;
 bool arte_cor(char letra, uint32_t *cor);
 
 #endif

@@ -18,8 +18,8 @@ static jan_t *j;
 static int aba;
 static char recado[96];
 
-enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOBRE, QTD_ABAS };
-static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Sobre o computador" };
+enum { ABA_RELOGIO, ABA_APARENCIA, ABA_PROGRAMAS, ABA_SOBRE, QTD_ABAS };
+static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Programas", "Sobre o computador" };
 static botao_t botoes_abas[QTD_ABAS];
 
 static void mostrar_mensagem(const char *fmt, int r)
@@ -175,6 +175,100 @@ static void aparencia_tratar(const evento_t *e)
     }
 }
 
+/* ------------------------------------------------------------ Programas (H39) */
+
+#define MAX_INST 8
+static char inst[MAX_INST][NOME_MAX];
+static int qtd_inst;
+static botao_t b_remover[MAX_INST];
+
+/* Programas do sistema que podem ter o ícone escondido (os de /bin com ícone). */
+#define QTD_SIST 7
+static const char *const sist[QTD_SIST] = { "arquivos", "terminal", "editor", "calculadora", "banana", "sagui3d", "sobre-o-sistema" };
+static const char *const nomes_sist[QTD_SIST] = { "Arquivos", "Terminal", "Editor", "Calculadora", "Banana", "Sagui 3D", "Sobre" };
+static botao_t b_ocultar[QTD_SIST];
+
+static bool esta_oculto(const char *nome)
+{
+    char lista[96];
+    if (config_ler("programas.ocultos", lista, sizeof lista) < 0) return false;
+    size_t n = tam_texto(nome);
+    for (const char *p = lista; *p;) {
+        while (*p == ',' || *p == ' ') p++;
+        const char *fim = p;
+        while (*fim && *fim != ',') fim++;
+        if ((size_t)(fim - p) == n && compara_texto_n(p, nome, n) == 0) return true;
+        p = fim;
+    }
+    return false;
+}
+
+static void programas_desenhar(void)
+{
+    titulo("Programas");
+    g_texto(j, X0, 52, "Instalados no pendrive (/usb/programas):", COR_TEXTO);
+    qtd_inst = 0;
+    entrada_pasta_t e;
+    for (int i = 0; qtd_inst < MAX_INST && listar("/usb/programas", i, &e) == 1; i++)
+        if (e.tipo != TIPO_PASTA) copia_texto(inst[qtd_inst++], e.nome, NOME_MAX);
+    int y = 76;
+    if (qtd_inst == 0) { g_texto(j, X0 + 10, y, "Nenhum. Copie um programa para lá.", COR_TEXTO_FRACO); y += 24; }
+    for (int i = 0; i < qtd_inst; i++, y += 30) {
+        g_texto(j, X0 + 10, y + 5, inst[i], COR_TEXTO);
+        b_remover[i] = (botao_t){ X0 + 220, y, 90, 26, "Remover", false };
+        botao_desenhar(j, &b_remover[i]);
+    }
+    y += 10;
+    g_texto(j, X0, y, "Do sistema (o ícone pode ser escondido):", COR_TEXTO);
+    y += 22;
+    for (int i = 0; i < QTD_SIST; i++) {
+        int x = X0 + (i % 2) * 200, yy = y + (i / 2) * 30;
+        g_texto(j, x + 4, yy + 5, nomes_sist[i], COR_TEXTO);
+        b_ocultar[i] = (botao_t){ x + 104, yy, 84, 26, esta_oculto(sist[i]) ? "Mostrar" : "Esconder", false };
+        botao_desenhar(j, &b_ocultar[i]);
+    }
+}
+
+static void programas_redesenhar(void)
+{
+    g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+    programas_desenhar();
+    jan_mostrar(j);
+}
+
+static void programas_tratar(const evento_t *e)
+{
+    for (int i = 0; i < qtd_inst; i++)
+        if (botao_tratar(j, &b_remover[i], e)) {
+            char pergunta[96], caminho[NOME_MAX + 20];
+            formatar_texto(pergunta, sizeof pergunta, "Remover o programa %s do pendrive?", inst[i]);
+            if (!confirmar("Remover programa", pergunta)) { registrar("configuracoes: remover %s cancelado", inst[i]); return; }
+            formatar_texto(caminho, sizeof caminho, "/usb/programas/%s", inst[i]);
+            int r = apagar(caminho);
+            registrar("configuracoes: removido %s -> %d", inst[i], r);
+            programas_redesenhar();
+            mostrar_mensagem(r < 0 ? "Não consegui remover." : "Programa removido.", r < 0 ? -1 : -100);
+            return;
+        }
+    for (int i = 0; i < QTD_SIST; i++)
+        if (botao_tratar(j, &b_ocultar[i], e)) {
+            /* Monta a lista nova: todos os ocultos, trocando o estado deste. */
+            char lista[96] = "";
+            for (int k = 0; k < QTD_SIST; k++) {
+                bool o = esta_oculto(sist[k]);
+                if (k == i) o = !o;
+                if (!o) continue;
+                size_t n = tam_texto(lista);
+                formatar_texto(lista + n, sizeof lista - n, n ? ",%s" : "%s", sist[k]);
+            }
+            int r = config_gravar("programas.ocultos", lista);
+            registrar("configuracoes: ocultos = %s -> %d", lista, r);
+            programas_redesenhar();
+            mostrar_mensagem(esta_oculto(sist[i]) ? "Ícone escondido." : "Ícone de volta.", r);
+            return;
+        }
+}
+
 /* ------------------------------------------------------------ Sobre o computador */
 
 /* Nome do processador pela instrução CPUID (que os programas podem usar). */
@@ -247,6 +341,7 @@ static void desenhar_tudo(void)
     }
     if (aba == ABA_RELOGIO) relogio_desenhar();
     else if (aba == ABA_APARENCIA) aparencia_desenhar();
+    else if (aba == ABA_PROGRAMAS) programas_desenhar();
     else sobre_desenhar();
     char p[8];
     config_ler("sistema.persistente", p, sizeof p);
@@ -264,6 +359,7 @@ int principal(int argc, char **argv)
             if (compara_texto_n(argv[1], nomes_abas[i], 3) == 0) aba = i;
         if (compara_texto(argv[1], "aparencia") == 0) aba = ABA_APARENCIA;
         if (compara_texto(argv[1], "sobre") == 0) aba = ABA_SOBRE;
+        if (compara_texto(argv[1], "programas") == 0) aba = ABA_PROGRAMAS;
     }
     desenhar_tudo();
     registrar("configuracoes: aberto na aba %s", nomes_abas[aba]);
@@ -283,6 +379,7 @@ int principal(int argc, char **argv)
             if (trocou) { desenhar_tudo(); continue; }
             if (aba == ABA_RELOGIO) relogio_tratar(&e);
             else if (aba == ABA_APARENCIA) aparencia_tratar(&e);
+            else if (aba == ABA_PROGRAMAS) programas_tratar(&e);
             continue;
         }
         if (aba == ABA_RELOGIO && tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); relogio_agora(); }
