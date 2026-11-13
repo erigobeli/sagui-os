@@ -9,6 +9,7 @@
  * tudo o que estiver pendente. Cada conexão, remoção e montagem vira um
  * aviso, que a área de trabalho mostra num canto da tela. */
 #include "disco.h"
+#include "configuracoes.h"
 #include "abi.h"
 #include "console.h"
 #include "fat32.h"
@@ -150,6 +151,23 @@ static void reconhecer(disco_t *d)
     kfree(s);
 }
 
+/* Um pendrive que já guarda configurações do SaguiOS (.saguios/) é montado
+ * sozinho ao conectar: ele já foi montado pelo usuário antes, e é assim que
+ * as configurações valem desde o boot (D031). Os outros continuam esperando
+ * o usuário montar. A espiada é só leitura: se não for do SaguiOS, desmonta
+ * sem gravar nada. */
+static bool montar_se_for_do_saguios(disco_t *d)
+{
+    if (disco_montado()) return false;
+    if (fat_montar(d) < 0) return false;
+    if (!config_tem_arquivo()) { fat_desmontar(false); return false; }
+    d->montado = true;
+    vfs_ponto_montagem(true);
+    config_ao_montar();
+    klog("[DISCO] %s tem configuracoes do SaguiOS: montado sozinho\n", d->nome);
+    return true;
+}
+
 disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
@@ -172,6 +190,8 @@ disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t s
         tamanho_legivel(setores, tam, sizeof tam);
         klog("[DISCO] %s: %s %s, %s, %s, rotulo \"%s\"\n", d->nome, fabricante, produto, tam, d->formato, d->rotulo);
         if (d->de_boot) ;   /* o pendrive de onde o sistema acabou de ligar: nada a avisar */
+        else if (d->fat32 && montar_se_for_do_saguios(d))
+            avisar(AVISO_MONTADO, "Pendrive com as suas configurações montado em /usb (%s)", d->rotulo[0] ? d->rotulo : d->produto);
         else if (d->fat32) avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s)", d->rotulo[0] ? d->rotulo : d->produto, tam);
         else avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s), %s", d->produto, tam, d->formato);
         return d;
@@ -186,6 +206,7 @@ void disco_removido(disco_t *d)
         fat_desmontar(false);   /* não dá para gravar: o pendrive já saiu */
         d->montado = false;
         vfs_ponto_montagem(false);
+        config_ao_desmontar();
         avisar(AVISO_REMOVIDO, "O pendrive foi removido sem desmontar: dados podem ter se perdido.");
     } else if (!d->de_boot) {
         avisar(AVISO_REMOVIDO, "Pendrive removido.");
@@ -204,6 +225,7 @@ int disco_montar(disco_t *d)
     if (r < 0) return r;
     d->montado = true;
     vfs_ponto_montagem(true);
+    config_ao_montar();   /* as configurações guardadas nesse pendrive passam a valer (H37) */
     avisar(AVISO_MONTADO, "Pendrive montado em /usb");
     return 0;
 }
@@ -221,6 +243,7 @@ int disco_desmontar(disco_t *d)
     int r = fat_desmontar(true);
     d->montado = false;
     vfs_ponto_montagem(false);
+    config_ao_desmontar();
     avisar(AVISO_DESMONTADO, "Pode remover o pendrive.");
     return r;
 }

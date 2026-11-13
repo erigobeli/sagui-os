@@ -16,6 +16,7 @@
 #include "processo.h"
 #include "texto.h"
 #include "som.h"
+#include "configuracoes.h"
 
 static const chamada_t tabela[SIS_MAX] = {
     [SIS_EXECUTAR] = sis_executar,       [SIS_ESPERAR] = sis_esperar,
@@ -43,6 +44,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_BIP] = sis_bip,
     [SIS_TECLAS_SEGURADAS] = sis_teclas_seguradas,
     [SIS_DESLIGAR] = sis_desligar,
+    [SIS_CONFIG_LER] = sis_config_ler,   [SIS_CONFIG_GRAVAR] = sis_config_gravar,
 };
 
 bool usuario_ok(const void *p, uint32_t n, bool escrita)

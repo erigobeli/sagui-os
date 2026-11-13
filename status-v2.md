@@ -1,20 +1,20 @@
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T00:41:00_
+_Atualizado em 2026-11-13T00:43:52_
 
-- **Situação:** Trabalhando na H37: Configurações guardadas
+- **Situação:** Trabalhando na H38: App Configurações
 - **Fase atual:** 1
-- **História atual:** H37
-- **Progresso geral:** 4.7%
+- **História atual:** H38
+- **Progresso geral:** 7.0%
 - **Bloqueio:** nenhum
-- **Imagem:** 605696 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 9983, userland 6388
+- **Imagem:** 615424 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 10188, userland 6426
 
 ## Fases
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Base e Configurações | 40.0% | em andamento |
+| 1 | Base e Configurações | 60.0% | em andamento |
 | 2 | Som | 0.0% | a fazer |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
@@ -31,8 +31,8 @@ _Atualizado em 2026-11-13T00:41:00_
 | --- | --- | --- | --- |
 | H35 | Comando `pci` e inventário de hardware | feito | 5 |
 | H36 | Desligar e reiniciar | feito | 6 |
-| H37 | Configurações guardadas | em andamento |  |
-| H38 | App Configurações | a fazer |  |
+| H37 | Configurações guardadas | feito | 3 |
+| H38 | App Configurações | em andamento |  |
 | H39 | Remover programas | a fazer |  |
 | H40 | Driver Intel HD Audio | a fazer |  |
 | H41 | Som para os programas | a fazer |  |
@@ -75,6 +75,8 @@ _Atualizado em 2026-11-13T00:41:00_
 
 ## Últimas ações
 
+- 2026-11-13T00:43:52: Início da H38: App Configurações
+- 2026-11-13T00:43:52: H37 concluída: Tabela de configurações no kernel, arquivo /usb/.saguios/configuracoes.txt, montagem automática do pendrive do SaguiOS (D031), comando config
 - 2026-11-13T00:41:00: Início da H37: Configurações guardadas
 - 2026-11-13T00:40:59: H36 concluída: Desligar pelo ACPI (_S5_ da DSDT), reiniciar pelo reset do ACPI/0xCF9/teclado, pendrives gravados antes, botão de energia na barra e janela Energia
 - 2026-11-13T00:35:06: Início da H36: Desligar e reiniciar

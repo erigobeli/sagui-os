@@ -904,3 +904,21 @@ e depois ele volta a caçar. Ninguém se machuca.
   paredes; o escurecimento vai para o verde da mata, não para o preto.
 - Nenhum código, tutorial ou repositório de jogo foi consultado: as contas
   partiram da geometria descrita acima.
+
+## D031. Configurações no pendrive, montado sozinho quando é do SaguiOS (H37)
+
+O SaguiOS roda da RAM e nunca grava no disco interno, então as configurações
+moram no pendrive de dados, em `/usb/.saguios/configuracoes.txt`: texto
+simples, `chave = valor`, reescrito inteiro a cada mudança (são poucas linhas,
+e um desligamento no meio não deixa linha pela metade). O kernel guarda a
+tabela na memória e os programas leem e gravam por duas chamadas de sistema;
+assim o próprio kernel (a área de trabalho, o relógio) também usa os valores.
+
+Para as configurações valerem desde o boot, um pendrive que **já tem** a pasta
+`.saguios` é montado sozinho ao ser conectado: ela só existe se o usuário já
+montou esse pendrive e mudou alguma configuração, então montar não surpreende
+ninguém. Os outros pendrives continuam esperando o usuário montar, como na
+1.0. A espiada para saber se a pasta existe é só leitura (desmonta sem gravar).
+
+Mudanças feitas sem pendrive valem até desligar; se um pendrive for montado
+depois, elas são gravadas junto na próxima mudança.

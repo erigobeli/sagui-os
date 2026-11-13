@@ -36,6 +36,8 @@ int  ler_data(data_t *d)              { return chamar(SIS_DATA, (unsigned)d, 0, 
 int  info_sistema(int t, void *b, unsigned n) { return chamar(SIS_INFO_SISTEMA, (unsigned)t, (unsigned)b, n); }
 void *aumentar_memoria(unsigned n)    { int r = chamar(SIS_AUMENTAR_MEM, n, 0, 0); return (r < 0 && r > -100) ? NULL : (void *)r; }
 void reiniciar(void)                  { chamar(SIS_REINICIAR, 0, 0, 0); }
+int  config_ler(const char *chave, char *valor, int max) { return chamar(SIS_CONFIG_LER, (unsigned)chave, (unsigned)valor, (unsigned)max); }
+int  config_gravar(const char *chave, const char *valor) { return chamar(SIS_CONFIG_GRAVAR, (unsigned)chave, (unsigned)valor, 0); }
 void desligar(void)                   { chamar(SIS_DESLIGAR, 0, 0, 0); }
 int  modo_terminal(int m)             { return chamar(SIS_MODO_TERMINAL, (unsigned)m, 0, 0); }
 int  limpar_tela(void)                { return chamar(SIS_LIMPAR_TELA, 0, 0, 0); }

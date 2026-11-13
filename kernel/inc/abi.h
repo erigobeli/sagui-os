@@ -58,6 +58,8 @@
 #define SIS_TECLAS_SEGURADAS 59 /* (&mapa[32]) -> 1 se a janela do processo está em foco */
 /* Versão 2.0 */
 #define SIS_DESLIGAR       60   /* () -> grava os pendrives e desliga pelo ACPI (H36) */
+#define SIS_CONFIG_LER     61   /* (chave, &valor, max) -> tamanho ou ERRO_NAO_EXISTE (H37) */
+#define SIS_CONFIG_GRAVAR  62   /* (chave, valor) -> 1 guardada no pendrive, 0 só até desligar */
 #define SIS_MAX            64
 
 /* Erros (sempre negativos) */

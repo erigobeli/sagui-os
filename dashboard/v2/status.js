@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T00:41:00",
-  "situacao": "Trabalhando na H37: Configurações guardadas",
+  "atualizado": "2026-11-13T00:43:52",
+  "situacao": "Trabalhando na H38: App Configurações",
   "fase_atual": 1,
-  "historia_atual": "H37",
+  "historia_atual": "H38",
   "bloqueio": "",
   "mensagem_fase": "",
   "raiz": "../../",
@@ -26,7 +26,7 @@ window.SAGUI_STATUS = {
       "numero": 1,
       "nome": "Base e Configurações",
       "estado": "em andamento",
-      "progresso": 40.0
+      "progresso": 60.0
     },
     {
       "numero": 2,
@@ -117,12 +117,12 @@ window.SAGUI_STATUS = {
       "titulo": "Configurações guardadas",
       "objetivo": "Formato `chave = valor` em `/usb/.saguios/configuracoes.txt` (seção 4, item 4), com leitura no boot e gravação ao mudar.",
       "aceite": "mudar uma configuração, reiniciar com o mesmo pendrive e ela continua igual; sem pendrive, aviso e valores padrão.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T00:41:00",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T00:43:52",
+      "minutos": 3,
+      "resultado": "Tabela de configurações no kernel, arquivo /usb/.saguios/configuracoes.txt, montagem automática do pendrive do SaguiOS (D031), comando config"
     },
     {
       "id": "H38",
@@ -130,9 +130,9 @@ window.SAGUI_STATUS = {
       "titulo": "App Configurações",
       "objetivo": "Janela com abas: **Relógio** (data, hora, fuso; o automático chega na fase 4), **Aparência** (cor ou desenho do fundo, tamanho dos ícones), **Sobre o computador** (memória, processador, dispositivos). Abas novas entram nas fases seguintes (Som, Rede, IA). Ajustar o espaçamento dos ícones da área de trabalho, que ficou apertado com o Sagui 3D.",
       "aceite": "mudar o relógio pelo app muda o relógio da barra e do `data`; captura de cada aba.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T00:43:52",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -715,6 +715,14 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T00:43:52",
+      "texto": "Início da H38: App Configurações"
+    },
+    {
+      "data": "2026-11-13T00:43:52",
+      "texto": "H37 concluída: Tabela de configurações no kernel, arquivo /usb/.saguios/configuracoes.txt, montagem automática do pendrive do SaguiOS (D031), comando config"
+    },
+    {
       "data": "2026-11-13T00:41:00",
       "texto": "Início da H37: Configurações guardadas"
     },
@@ -746,6 +754,11 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H37-config.png",
+      "nome": "H37-config.png",
+      "data": "2026-11-13T00:43:31"
+    },
+    {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
       "data": "2026-11-13T00:40:39"
@@ -758,14 +771,14 @@ window.SAGUI_STATUS = {
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 9983,
-    "userland": 6388,
-    "ferramentas": 3724
+    "kernel": 10188,
+    "userland": 6426,
+    "ferramentas": 3775
   },
   "imagem": {
-    "bytes_util": 605696,
+    "bytes_util": 615424,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 4.7
+  "progresso_geral": 7.0
 };
