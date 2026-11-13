@@ -60,7 +60,7 @@ static int32_t seno(int32_t ang)
 static int32_t cosseno(int32_t ang) { return seno(ang + FIXO_ONE / 4); }
 
 /* ------------------------------------------------------------ projeção */
-static int focale = I2F(600);
+static int focale = I2F(400);
 static int cx = LARG_JAN / 2;
 static int cy = ALT_JAN / 2;
 
@@ -118,7 +118,7 @@ static void obj_iniciar(obj_t *o, v3_t pos,
 
 static void desenha_quadrado(jan_t *j, obj_t *o)
 {
-    int32_t l = I2F(40); /* metade do lado do quadrado */
+    int32_t l = I2F(45);   /* metade do lado do quadrado */
     v3_t local[4] = {
         { -l, -l, 0 },
         {  l, -l, 0 },
@@ -181,7 +181,7 @@ int principal(int argc, char **argv)
     if (!j) return 1;
 
     /* Um quadrado girando no centro da tela. Velocidades em graus por frame. */
-    obj_iniciar(&obj, (v3_t){ 0, 0, I2F(300) },
+    obj_iniciar(&obj, (v3_t){ 0, 0, I2F(200) },
                 0, 0, 0, GRAUS(2), GRAUS(3), GRAUS(1),
                 0x60A5FA);
 
@@ -203,17 +203,17 @@ int principal(int argc, char **argv)
         g_retangulo(j, 0, 0, LARG_JAN, ALT_JAN, 0x0F172A); /* fundo escuro */
 
         /* Grade de referência ao redor. */
-        for (int g = -150; g <= 150; g += 50) {
+        for (int g = -100; g <= 100; g += 50) {
             int px1, py1, px2, py2;
-            v3_t p1 = { I2F(g), 0, I2F(150) };
-            v3_t p2 = { I2F(g), 0, I2F(450) };
+            v3_t p1 = { I2F(g), 0, I2F(100) };
+            v3_t p2 = { I2F(g), 0, I2F(300) };
             if (projeta(p1, &px1, &py1) && projeta(p2, &px2, &py2))
                 g_linha(j, px1, py1, px2, py2, 0x1E293B);
         }
-        for (int gz = 150; gz <= 450; gz += 50) {
+        for (int gz = 100; gz <= 300; gz += 50) {
             int px1, py1, px2, py2;
-            v3_t p1 = { I2F(-150), 0, I2F(gz) };
-            v3_t p2 = { I2F(150), 0, I2F(gz) };
+            v3_t p1 = { I2F(-100), 0, I2F(gz) };
+            v3_t p2 = { I2F(100), 0, I2F(gz) };
             if (projeta(p1, &px1, &py1) && projeta(p2, &px2, &py2))
                 g_linha(j, px1, py1, px2, py2, 0x1E293B);
         }

@@ -150,12 +150,14 @@ static void desenhar_fundo(void)
     /* Degradê vertical em três cores, escolhido em Configurações > Aparência
      * (H38). Padrão 2026: tons suaves e sóbrios, para o texto e ícones
      * continuarem legíveis. */
-    uint32_t c0 = 0x0F172A, c1 = 0x1E293B, c2 = 0x334155;
+    uint32_t c0 = 0x0B7A3E, c1 = 0xE0B92A, c2 = 0x14337E;   /* Brasil: verde, amarelo, azul */
     const char *tema = config_obter("aparencia.fundo");
-    if (tema && txt_compara(tema, "mata") == 0)       { c0 = 0x064E3B; c1 = 0x0F766E; c2 = 0x115E59; }
-    else if (tema && txt_compara(tema, "ceu") == 0)   { c0 = 0x0EA5E9; c1 = 0x38BDF8; c2 = 0xBAE6FD; }
-    else if (tema && txt_compara(tema, "noite") == 0) { c0 = 0x020617; c1 = 0x0F172A; c2 = 0x1E293B; }
-    else if (tema && txt_compara(tema, "terra") == 0) { c0 = 0x78350F; c1 = 0xC2410C; c2 = 0xEA580C; }
+    if (tema && txt_compara(tema, "brasil") == 0)           { c0 = 0x0B7A3E; c1 = 0xE0B92A; c2 = 0x14337E; }
+    else if (tema && txt_compara(tema, "mata") == 0)        { c0 = 0x064E3B; c1 = 0x0F766E; c2 = 0x115E59; }
+    else if (tema && txt_compara(tema, "ceu") == 0)         { c0 = 0x0EA5E9; c1 = 0x38BDF8; c2 = 0xBAE6FD; }
+    else if (tema && txt_compara(tema, "noite") == 0)       { c0 = 0x020617; c1 = 0x0F172A; c2 = 0x1E293B; }
+    else if (tema && txt_compara(tema, "terra") == 0)       { c0 = 0x78350F; c1 = 0xC2410C; c2 = 0xEA580C; }
+    else if (tema && txt_compara(tema, "matrix") == 0)      { c0 = 0x001100; c1 = 0x003300; c2 = 0x000A00; }   /* Sagui Matrix: verde escuro */
     for (int y = 0; y < alt; y++) {
         uint32_t c = y < alt / 2 ? mistura(c0, c1, y, alt / 2)
                                  : mistura(c1, c2, y - alt / 2, alt - alt / 2);
