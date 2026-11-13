@@ -23,7 +23,10 @@ def main():
         m.esperar_serial("[SAGUI] shell iniciado: processo", 120)
         m.esperar_serial("sagui:/$", 30)
         s = m.serial()
-        verificar("executar /bin/sagsh -> processo 1" in s, "o kernel inicia /bin/sagsh como primeiro processo (PID 1)")
+        # As tarefas do kernel (USB, rede) também têm número de processo e nascem
+        # antes; o sagsh tem que ser o primeiro programa do usuário a rodar.
+        execs = re.findall(r"\[SAGUI\] executar (\S+) -> processo", s)
+        verificar(execs and execs[0] == "/bin/sagsh", "o kernel inicia /bin/sagsh como primeiro programa (ring 3)")
         verificar("Terminal provis" not in s, "o terminal provisório do kernel foi removido")
 
         out = m.comando("ajuda")
@@ -88,7 +91,7 @@ def main():
         out = m.comando("contador 4 &")
         pid = int(re.search(r"\[(\d+)\] contador em segundo plano", out).group(1))
         out = m.comando("ps")
-        verificar(re.search(rf"^\s*{pid}\s+1\s+\w+.*contador", out, re.M), f"ps mostra o contador (PID {pid}) rodando junto")
+        verificar(re.search(rf"^\s*{pid}\s+\d+\s+\w+.*contador", out, re.M), f"ps mostra o contador (PID {pid}) rodando junto")
         verificar("sagsh" in out and "ocioso" in out and "ps" in out, "ps mostra sagsh, ocioso e o próprio ps")
         m.captura("H16-contador-e-ps")
         out = m.comando("processos")
@@ -105,7 +108,7 @@ def main():
         verificar(f"Processo {pid} encerrado" in out, "kill encerra o contador")
         m.comando("contador 60 &")
         out = m.comando("ps")
-        pid2 = int(re.findall(r"^\s*(\d+)\s+1\s+\w+.*contador", out, re.M)[0])
+        pid2 = int(re.findall(r"^\s*(\d+)\s+\d+\s+\w+.*contador", out, re.M)[0])
         out = m.comando(f"matar {pid2}")
         verificar(f"Processo {pid2} encerrado" in out, "matar (apelido de kill)")
         out = m.comando("ps")

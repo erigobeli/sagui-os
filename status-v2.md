@@ -4,15 +4,15 @@ Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T02:27:43_
+_Atualizado em 2026-11-13T02:50:51_
 
-- **Situação:** Trabalhando na H50: Números aleatórios e resumos
-- **Fase atual:** 4
-- **História atual:** H50
-- **Progresso geral:** 34.9%
+- **Situação:** Trabalhando na H55: Terminal completo
+- **Fase atual:** 5
+- **História atual:** H55
+- **Progresso geral:** 39.5%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 759296 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12683, userland 10407
+- **Imagem:** 805888 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 12697, userland 13767
 
 ## Fases
 
@@ -21,8 +21,8 @@ _Atualizado em 2026-11-13T02:27:43_
 | 1 | Base e Configurações | 100.0% | aguardando teste |
 | 2 | Som | 100.0% | aguardando teste |
 | 3 | Rede | 80.0% | em andamento |
-| 4 | TCP e HTTPS | 42.9% | em andamento |
-| 5 | Terminal e SSH | 0.0% | a fazer |
+| 4 | TCP e HTTPS | 57.1% | em andamento |
+| 5 | Terminal e SSH | 25.0% | em andamento |
 | 6 | Sagui Navegador | 0.0% | a fazer |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | a fazer |
@@ -47,13 +47,13 @@ _Atualizado em 2026-11-13T02:27:43_
 | H46 | Rede no G470 | a fazer |  |
 | H47 | Rede na interface | feito |  |
 | H48 | TCP e sockets | feito |  |
-| H49 | HTTP e relógio pela internet | a fazer |  |
+| H49 | HTTP e relógio pela internet | feito |  |
 | H50 | Números aleatórios e resumos | feito | 2 |
 | H51 | Cifras e troca de chaves | feito | 1 |
 | H52 | Assinaturas e certificados | a fazer |  |
 | H53 | TLS 1.3 | a fazer |  |
 | H54 | Certificados raiz e créditos | a fazer |  |
-| H55 | Terminal completo | a fazer |  |
+| H55 | Terminal completo | feito | 1 |
 | H56 | Transporte SSH | a fazer |  |
 | H57 | Login e sessão | a fazer |  |
 | H58 | SSH de verdade | a fazer |  |
@@ -79,6 +79,9 @@ _Atualizado em 2026-11-13T02:27:43_
 
 ## Últimas ações
 
+- 2026-11-13T02:50:51: H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito
+- 2026-11-13T02:50:51: Início da H55: Terminal completo
+- 2026-11-13T02:50:51: H49 concluída: Cliente HTTP/1.1 (tamanho, pedaços, redirecionamento), comando baixar, relogio internet por NTP com fuso, relógio automático depois do DHCP
 - 2026-11-13T02:27:43: H50 concluída: Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto
 - 2026-11-13T02:25:47: Início da H50: Números aleatórios e resumos
 - 2026-11-13T02:25:47: H51 concluída: AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)
@@ -91,6 +94,3 @@ _Atualizado em 2026-11-13T02:27:43_
 - 2026-11-13T01:36:19: H43 concluída: Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo
 - 2026-11-13T01:35:10: Início da H43: Driver Intel PRO/1000
 - 2026-11-13T01:35:10: Fase 2 entregue. Aguardando teste do Eli.
-- 2026-11-13T01:19:08: H42 concluída: Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)
-- 2026-11-13T01:17:13: Início da H42: Tocador e sons do sistema
-- 2026-11-13T01:17:13: H41 concluída: Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav

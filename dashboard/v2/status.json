@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T02:27:43",
-  "situacao": "Trabalhando na H50: Números aleatórios e resumos",
-  "fase_atual": 4,
-  "historia_atual": "H50",
+  "atualizado": "2026-11-13T02:50:51",
+  "situacao": "Trabalhando na H55: Terminal completo",
+  "fase_atual": 5,
+  "historia_atual": "H55",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
   "raiz": "../../",
@@ -43,13 +43,13 @@
       "numero": 4,
       "nome": "TCP e HTTPS",
       "estado": "em andamento",
-      "progresso": 42.9
+      "progresso": 57.1
     },
     {
       "numero": 5,
       "nome": "Terminal e SSH",
-      "estado": "a fazer",
-      "progresso": 0.0
+      "estado": "em andamento",
+      "progresso": 25.0
     },
     {
       "numero": 6,
@@ -272,12 +272,12 @@
       "titulo": "HTTP e relógio pela internet",
       "objetivo": "Cliente HTTP/1.1 (com respostas em pedaços e redirecionamentos) numa biblioteca de usuário, comando `baixar <url> [arquivo]`, e NTP com a opção **Relógio automático** nas Configurações.",
       "aceite": "`baixar http://...` de um servidor da VPS grava o arquivo certo no pendrive; o relógio acerta pelo NTP de teste.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
       "inicio": null,
-      "fim": null,
+      "fim": "2026-11-13T02:50:51",
       "minutos": null,
-      "resultado": ""
+      "resultado": "Cliente HTTP/1.1 (tamanho, pedaços, redirecionamento), comando baixar, relogio internet por NTP com fuso, relógio automático depois do DHCP"
     },
     {
       "id": "H50",
@@ -350,12 +350,12 @@
       "titulo": "Terminal completo",
       "objetivo": "Emulação das sequências de terminal usadas por programas de servidor (cursor, apagar, cores de 16 e 256, regiões de rolagem, tela alternativa, títulos), UTF-8 e fonte com desenho de caixas. Abas e copiar e colar no Terminal.",
       "aceite": "um arquivo de teste com as sequências desenha a tela esperada (comparação com captura de referência).",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T02:50:51",
+      "fim": "2026-11-13T02:50:51",
+      "minutos": 1,
+      "resultado": "Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito"
     },
     {
       "id": "H56",
@@ -714,6 +714,18 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T02:50:51",
+      "texto": "H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito"
+    },
+    {
+      "data": "2026-11-13T02:50:51",
+      "texto": "Início da H55: Terminal completo"
+    },
+    {
+      "data": "2026-11-13T02:50:51",
+      "texto": "H49 concluída: Cliente HTTP/1.1 (tamanho, pedaços, redirecionamento), comando baixar, relogio internet por NTP com fuso, relógio automático depois do DHCP"
+    },
+    {
       "data": "2026-11-13T02:27:43",
       "texto": "H50 concluída: Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto"
     },
@@ -841,101 +853,111 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
+      "nome": "H55-terminal-vt.png",
+      "data": "2026-11-13T02:47:58"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H49-baixar.png",
+      "nome": "H49-baixar.png",
+      "data": "2026-11-13T02:45:49"
+    },
+    {
       "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
       "nome": "H47-3-aba-rede.png",
-      "data": "2026-11-13T01:36:29"
+      "data": "2026-11-13T02:41:10"
     },
     {
       "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
       "nome": "H47-2-barra-sem-cabo.png",
-      "data": "2026-11-13T01:36:27"
+      "data": "2026-11-13T02:41:08"
     },
     {
       "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
       "nome": "H47-1-barra-conectado.png",
-      "data": "2026-11-13T01:36:25"
+      "data": "2026-11-13T02:41:05"
     },
     {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
-      "data": "2026-11-13T01:35:59"
+      "data": "2026-11-13T02:40:51"
     },
     {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
-      "data": "2026-11-13T01:35:48"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
-      "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T01:34:50"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
-      "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T01:34:48"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
-      "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T01:34:31"
+      "data": "2026-11-13T02:40:39"
     },
     {
       "arquivo": "docs/v2/capturas/H42-tocar.png",
       "nome": "H42-tocar.png",
-      "data": "2026-11-13T01:31:57"
+      "data": "2026-11-13T02:40:19"
     },
     {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
-      "data": "2026-11-13T01:31:39"
+      "data": "2026-11-13T02:40:01"
     },
     {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
-      "data": "2026-11-13T01:31:19"
+      "data": "2026-11-13T02:39:40"
     },
     {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T01:31:08"
+      "data": "2026-11-13T02:39:29"
     },
     {
       "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
       "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T01:31:00"
+      "data": "2026-11-13T02:39:21"
     },
     {
       "arquivo": "docs/v2/capturas/H39-1-instalado.png",
       "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T01:30:58"
+      "data": "2026-11-13T02:39:19"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
+      "nome": "H38-3-sobre.png",
+      "data": "2026-11-13T02:39:02"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
+      "nome": "H38-2-aparencia-noite.png",
+      "data": "2026-11-13T02:38:59"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
+      "nome": "H38-1-relogio.png",
+      "data": "2026-11-13T02:38:42"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T01:29:58"
+      "data": "2026-11-13T02:38:26"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T01:29:42"
+      "data": "2026-11-13T02:38:07"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T01:29:28"
+      "data": "2026-11-13T02:37:53"
     }
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 12683,
-    "userland": 10407,
-    "ferramentas": 5894
+    "kernel": 12697,
+    "userland": 13767,
+    "ferramentas": 7060
   },
   "imagem": {
-    "bytes_util": 759296,
+    "bytes_util": 805888,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 34.9
+  "progresso_geral": 39.5
 }

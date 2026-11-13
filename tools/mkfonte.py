@@ -92,6 +92,87 @@ def compor(blocos, base, acento):
     return c
 
 
+# Molduras e blocos (H55): os programas de terminal remotos (htop, vim, mc)
+# desenham caixas com caracteres Unicode. Eles ocupam a célula inteira, de
+# cima a baixo, para as linhas de uma caixa se encontrarem, então não seguem o
+# formato de 13 linhas das letras: são desenhados aqui, por regra. Ficam nas
+# posições 0x80 a 0x9F, que o Latin-1 reserva para códigos de controle e que
+# por isso nunca aparecem como texto; o Terminal traduz o Unicode para elas.
+MOLDURAS = {
+    # posição: (cima, baixo, esquerda, direita) para linhas simples; "d" = dupla
+    0x80: "-", 0x81: "|", 0x82: "dr", 0x83: "dl", 0x84: "ur", 0x85: "ul", 0x86: "udr", 0x87: "udl",
+    0x88: "dlr", 0x89: "ulr", 0x8A: "udlr", 0x8B: "=", 0x8C: "H", 0x8D: "DR", 0x8E: "DL", 0x8F: "UR", 0x90: "UL",
+}
+
+
+def moldura(forma):
+    c = [0] * 16
+    simples = {"-": "lr", "|": "ud"}.get(forma, forma)
+    if forma in ("=", "H") or forma.isupper():
+        # Linhas duplas: duas linhas (ou colunas) separadas por um pixel.
+        dupla = {"=": "LR", "H": "UD"}.get(forma, forma)
+        for y in range(16):
+            for x in range(8):
+                aceso = False
+                if "L" in dupla and x <= 4 and y in (6, 9): aceso = True
+                if "R" in dupla and x >= 2 and y in (6, 9): aceso = True
+                if "U" in dupla and y <= 8 and x in (2, 5): aceso = True
+                if "D" in dupla and y >= 6 and x in (2, 5): aceso = True
+                # Cantos duplos: só a parte de fora de cada linha.
+                if dupla in ("DR", "DL", "UR", "UL"):
+                    vertical_x = 2 if ("R" in dupla) else 5
+                    horizontal_y = 6 if ("D" in dupla) else 9
+                    externo_x = 5 if ("R" in dupla) else 2
+                    externo_y = 9 if ("D" in dupla) else 6
+                    aceso = False
+                    if ("R" in dupla and x >= vertical_x or "L" in dupla and x <= vertical_x) and y == horizontal_y: aceso = True
+                    if ("D" in dupla and y >= horizontal_y or "U" in dupla and y <= horizontal_y) and x == vertical_x: aceso = True
+                    if ("R" in dupla and x >= externo_x or "L" in dupla and x <= externo_x) and y == externo_y: aceso = True
+                    if ("D" in dupla and y >= externo_y or "U" in dupla and y <= externo_y) and x == externo_x: aceso = True
+                if aceso: c[y] |= 0x80 >> x
+        return c
+    for y in range(16):
+        for x in range(8):
+            aceso = False
+            if "l" in simples and x <= 3 and y == 7: aceso = True
+            if "r" in simples and x >= 3 and y == 7: aceso = True
+            if "u" in simples and y <= 7 and x == 3: aceso = True
+            if "d" in simples and y >= 7 and x == 3: aceso = True
+            if aceso: c[y] |= 0x80 >> x
+    return c
+
+
+def blocos_e_setas():
+    """Blocos cheios, meios blocos, sombreados, setas e marcadores (0x91 a 0x9F)."""
+    def cel(f):
+        return [sum(0x80 >> x for x in range(8) if f(x, y)) for y in range(16)]
+    seta = {
+        0x99: ["........", "........", "........", "........", "..#.....", ".##.....", "########", ".##.....", "..#.....", "........"],
+        0x9A: ["...#....", "..###...", ".#####..", "...#....", "...#....", "...#....", "...#....", "...#....", "........", "........"],
+        0x9B: ["........", "........", "........", "........", ".....#..", ".....##.", "########", ".....##.", ".....#..", "........"],
+        0x9C: ["...#....", "...#....", "...#....", "...#....", "...#....", ".#####..", "..###...", "...#....", "........", "........"],
+    }
+    r = {
+        0x91: cel(lambda x, y: True),                              # bloco cheio
+        0x92: cel(lambda x, y: y < 8),                             # metade de cima
+        0x93: cel(lambda x, y: y >= 8),                            # metade de baixo
+        0x94: cel(lambda x, y: (x + 2 * y) % 4 == 0),             # sombra clara
+        0x95: cel(lambda x, y: (x + y) % 2 == 0),                 # sombra média
+        0x96: cel(lambda x, y: (x + 2 * y) % 4 != 0),             # sombra escura
+        0x97: cel(lambda x, y: x < 4),                             # metade esquerda
+        0x98: cel(lambda x, y: x >= 4),                            # metade direita
+        0x9D: cel(lambda x, y: 2 <= x <= 5 and 6 <= y <= 9 and not ((x in (2, 5)) and (y in (6, 9)))),   # ponto
+        0x9E: cel(lambda x, y: y == 12 and x in (0, 3, 6)),        # reticências
+        0x9F: cel(lambda x, y: abs(x - 3.5) + abs(y - 7.5) <= 4),  # losango
+    }
+    for k, linhas in seta.items():
+        c = [0] * 16
+        for i, l in enumerate(linhas):
+            c[3 + i] = sum(0x80 >> x for x in range(8) if l[x] == "#")
+        r[k] = c
+    return r
+
+
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
@@ -108,6 +189,10 @@ def main():
         fonte[codigo] = celula(bloco)
     for codigo, (base, acento) in COMPOSTAS.items():
         fonte[codigo] = compor(blocos, base, acento)
+    for codigo, forma in MOLDURAS.items():
+        fonte[codigo] = moldura(forma)
+    for codigo, cel in blocos_e_setas().items():
+        fonte[codigo] = cel
     for c in range(0x21, 0x7F):
         if fonte[c] == caixa:
             faltando.append(chr(c))

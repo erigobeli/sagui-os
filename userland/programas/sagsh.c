@@ -66,6 +66,8 @@ static const comando_t comandos[] = {
     { "rede", NULL, false, false, "mostra a rede", "rede", "Mostra a placa de rede, o endereço IP, o roteador e o DNS." },
     { "ping", NULL, false, false, "testa a rede", "ping <nome ou IP> [vezes]", "Pergunta a outro computador se ele responde e mede o tempo." },
     { "dns", NULL, false, false, "IP de um nome", "dns <nome>", "Descobre o endereço IP de um nome (ex.: dns google.com)." },
+    { "baixar", NULL, false, false, "baixa da web", "baixar <url> [arquivo]", "Baixa um arquivo da web (http:// ou https://) para a pasta atual." },
+    { "relogio", NULL, false, false, "hora, pela internet", "relogio [internet [servidor]]", "Mostra a hora, ou acerta o relógio pela internet (NTP)." },
     { "bip", NULL, false, false, "toca um bip", "bip [Hz [ms]] | bip escala", "Toca uma nota no alto-falante do PC (padrão: 880 Hz por 200 ms)." },
     { "arquivos", NULL, false, true, "abre o Arquivos", "arquivos [pasta]", "Abre o Arquivos numa janela." },
     { "editor", NULL, false, true, "editor de texto", "editor [arquivo]", "Abre o Editor de texto numa janela." },

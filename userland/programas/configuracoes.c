@@ -42,7 +42,7 @@ static void titulo(const char *t)
 /* ------------------------------------------------------------ Relógio */
 
 static caixa_t c_dia, c_mes, c_ano, c_hora, c_min, c_fuso;
-static botao_t b_aplicar, b_fuso;
+static botao_t b_aplicar, b_fuso, b_automatico, b_internet_agora;
 
 static void numero_em(caixa_t *c, int v, int digitos)
 {
@@ -81,7 +81,7 @@ static void relogio_desenhar(void)
 
     g_texto(j, X0, 210, "Fuso horário (horas a partir de UTC):", COR_TEXTO);
     g_texto(j, X0, 230, "Brasília = -3. Usado pelo relógio automático", COR_TEXTO_FRACO);
-    g_texto(j, X0, 248, "pela internet (chega com a rede).", COR_TEXTO_FRACO);
+    g_texto(j, X0, 248, "pela internet.", COR_TEXTO_FRACO);
     char fuso[16];
     if (config_ler("relogio.fuso", fuso, sizeof fuso) < 0) copia_texto(fuso, "-3", sizeof fuso);
     c_fuso = (caixa_t){ .x = X0, .y = 274, .l = 60 };
@@ -89,6 +89,12 @@ static void relogio_desenhar(void)
     caixa_desenhar(j, &c_fuso);
     b_fuso = (botao_t){ X0 + 76, 272, 110, 28, "Salvar fuso", false };
     botao_desenhar(j, &b_fuso);
+    char aut[8];
+    bool automatico = config_ler("relogio.automatico", aut, sizeof aut) >= 0 && compara_texto(aut, "sim") == 0;
+    b_automatico = (botao_t){ X0, 320, 220, 28, automatico ? "Automático: desligar" : "Acertar sozinho pela rede", false };
+    b_internet_agora = (botao_t){ X0 + 230, 320, 150, 28, "Acertar agora", false };
+    botao_desenhar(j, &b_automatico);
+    botao_desenhar(j, &b_internet_agora);
 }
 
 static void relogio_tratar(const evento_t *e)
@@ -106,6 +112,27 @@ static void relogio_tratar(const evento_t *e)
         registrar("configuracoes: acertar relogio -> %d", r);
         mostrar_mensagem(r < 0 ? "Data ou hora inválida." : "Relógio acertado.", r < 0 ? -1 : -100);
         relogio_agora();
+    }
+    if (botao_tratar(j, &b_automatico, e)) {
+        char aut[8];
+        bool automatico = config_ler("relogio.automatico", aut, sizeof aut) >= 0 && compara_texto(aut, "sim") == 0;
+        int r = config_gravar("relogio.automatico", automatico ? "nao" : "sim");
+        registrar("configuracoes: relogio automatico %s", automatico ? "desligado" : "ligado");
+        g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+        relogio_desenhar();
+        jan_mostrar(j);
+        mostrar_mensagem(automatico ? "Relógio automático desligado." : "Vai acertar sozinho quando a rede ligar.", r);
+        return;
+    }
+    if (botao_tratar(j, &b_internet_agora, e)) {
+        char *argv[] = { "relogio", "internet", NULL };
+        int pid = executar("/bin/relogio", argv);
+        int codigo = 1;
+        if (pid > 0) esperar(pid, &codigo);
+        registrar("configuracoes: acertar pela internet -> %d", codigo);
+        mostrar_mensagem(codigo == 0 ? "Relógio acertado pela internet." : "Não consegui falar com o servidor de hora.", codigo == 0 ? -100 : -1);
+        relogio_agora();
+        return;
     }
     if (botao_tratar(j, &b_fuso, e)) {
         int f = texto_para_int(c_fuso.texto);

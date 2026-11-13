@@ -31,6 +31,7 @@
 #define IP_TCP  6
 #define IP_UDP  17
 
+static void relogio_pela_internet(void);
 static placa_t *placa;
 static ip4_t meu_ip, mascara, roteador, dns;
 static bool configurado, modo_dhcp = true;
@@ -321,6 +322,7 @@ static void dhcp_receber(const uint8_t *m, uint32_t tam)
         char a[16], b[16], c[16], d[16];
         ip_texto(meu_ip, a, 16); ip_texto(mascara, b, 16); ip_texto(roteador, c, 16); ip_texto(dns, d, 16);
         klog("[REDE] DHCP: endereco %s, mascara %s, roteador %s, DNS %s\n", a, b, c, d);
+        relogio_pela_internet();
     }
 }
 
@@ -348,6 +350,18 @@ static void udp_receber(ip4_t origem, const uint8_t *s, uint32_t tam)
             (!k->ip_remoto || (k->ip_remoto == origem && k->porta_remota == de)))
             entregar(k, origem, de, s + 8, t - 8u);
     }
+}
+
+/* Com "relógio automático" ligado (H49), assim que a rede fica pronta o
+ * kernel roda o programa que acerta o relógio pelo NTP. */
+static void relogio_pela_internet(void)
+{
+    const char *auto_ = config_obter("relogio.automatico");
+    if (!auto_ || txt_compara(auto_, "sim") != 0) return;
+    const char *servidor = config_obter("relogio.servidor");
+    char *argv[] = { "relogio", "internet", (char *)(servidor ? servidor : "pool.ntp.org"), NULL };
+    int pid = processo_executar("/bin/relogio", 3, argv, NULL);
+    klog("[REDE] relogio automatico: processo %d\n", pid);
 }
 
 /* ------------------------------------------------------------ recepção */
