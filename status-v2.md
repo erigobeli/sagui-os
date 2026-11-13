@@ -4,15 +4,15 @@ Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T17:25:33_
+_Atualizado em 2026-11-13T18:17:52_
 
-- **Situação:** Trabalhando na H78: Redimensionar e maximizar janelas (pedido do Eli)
-- **Fase atual:** 9
-- **História atual:** H78
-- **Progresso geral:** 72.7%
+- **Situação:** Trabalhando na H68: Prova de fogo
+- **Fase atual:** 7
+- **História atual:** H68
+- **Progresso geral:** 84.1%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 1273344 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 13359, userland 22220
+- **Imagem:** 1642496 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 13543, userland 28698
 
 ## Fases
 
@@ -24,7 +24,7 @@ _Atualizado em 2026-11-13T17:25:33_
 | 4 | TCP e HTTPS | 100.0% | aguardando teste |
 | 5 | Terminal e SSH | 100.0% | aguardando teste |
 | 6 | Sagui Navegador | 100.0% | aguardando teste |
-| 7 | Compilador C | 0.0% | a fazer |
+| 7 | Compilador C | 100.0% | em andamento |
 | 8 | Sagui Code | 0.0% | em andamento |
 | 9 | Visual moderno | 80.0% | em andamento |
 | 10 | Instalação no HD (opcional, a decidir) | 0% | a fazer |
@@ -62,11 +62,11 @@ _Atualizado em 2026-11-13T17:25:33_
 | H61 | Leitor de HTML | aguardando teste | 1 |
 | H62 | Janela do navegador | aguardando teste | 10 |
 | H63 | Sites de aceite | aguardando teste | 6 |
-| H64 | A linguagem | a fazer |  |
-| H65 | Frente do compilador | a fazer |  |
-| H66 | Fundo do compilador | a fazer |  |
-| H67 | Compilar dentro do sistema | a fazer |  |
-| H68 | Prova de fogo | a fazer |  |
+| H64 | A linguagem | feito | 1 |
+| H65 | Frente do compilador | feito | 1 |
+| H66 | Fundo do compilador | feito | 1 |
+| H67 | Compilar dentro do sistema | feito | 1 |
+| H68 | Prova de fogo | feito | 1 |
 | H69 | JSON e cliente do OpenRouter | em andamento |  |
 | H70 | O laço do agente | a fazer |  |
 | H71 | Instruções e contexto | a fazer |  |
@@ -80,18 +80,18 @@ _Atualizado em 2026-11-13T17:25:33_
 
 ## Últimas ações
 
+- 2026-11-13T18:17:52: H68 concluída: wc, cat, calculadora e banana feitos pelo cc passam nos testes da 1.0 (h15, h16, h24, h26, h27)
+- 2026-11-13T18:17:52: H67 concluída: cc no Terminal; Editor com Compilar e rodar (vai à linha do erro) e Instalar em /usb/programas
+- 2026-11-13T18:17:52: Início da H68: Prova de fogo
+- 2026-11-13T18:17:52: Início da H67: Compilar dentro do sistema
+- 2026-11-13T18:17:52: H66 concluída: RI própria, x86, montador e ligador próprios; os 50 válidos rodam no SaguiOS
+- 2026-11-13T18:17:52: H65 concluída: 70 programas com erro dão a mensagem esperada (linha, coluna, ^ e dica); 50 válidos compilam
+- 2026-11-13T18:17:51: H64 concluída: manual docs/c-do-sagui.md com exemplos e o que fica de fora
+- 2026-11-13T18:17:51: Início da H66: Fundo do compilador
+- 2026-11-13T18:17:51: Início da H65: Frente do compilador
+- 2026-11-13T18:17:51: Início da H64: A linguagem
 - 2026-11-13T17:25:33: Início da H78: Redimensionar e maximizar janelas (pedido do Eli)
 - 2026-11-13T17:25:33: H77 concluída: efeitos automáticos pela medida do quadro, ou completos/leves nas Configurações
 - 2026-11-13T17:25:33: H76 concluída: animações de contorno, ícone do navegador, tema claro e escuro
 - 2026-11-13T17:25:33: H75 concluída: cantos, doca com fixos e abertos, minimizar, menu do sagui, ícone de som
 - 2026-11-13T17:25:33: H74 concluída: vidro nas barras com desfoque por recorte; sombras; quadro inteiro em 12-17 ms no QEMU
-- 2026-11-13T17:25:33: Início da H77: Leve no G470
-- 2026-11-13T17:25:33: Início da H76: Movimento e tema
-- 2026-11-13T17:25:33: Início da H75: Forma
-- 2026-11-13T17:25:32: Início da H74: Vidro
-- 2026-11-13T12:53:08: Eli pediu redimensionar, minimizar e maximizar janelas: virou a H78 (fase 9)
-- 2026-11-13T12:31:12: H69/H70: Sagui Code testado contra servidor falso (falta o laço com o cc e a conversa com a API real)
-- 2026-11-13T12:31:12: Início da H69: JSON e cliente do OpenRouter
-- 2026-11-13T12:23:13: Fase 6 entregue. Aguardando teste do Eli.
-- 2026-11-13T08:15:37: H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas
-- 2026-11-13T08:09:36: Início da H63: Sites de aceite

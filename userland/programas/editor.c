@@ -3,7 +3,12 @@
  * Uma barra de botões (Novo, Abrir, Salvar, Salvar como) e a área de texto
  * do kit gráfico. Ctrl+S salva. O título mostra o nome do arquivo e um "*"
  * quando há alteração não salva; fechar com alterações pergunta se quer
- * salvar. O texto é Latin-1, como em todo o sistema. */
+ * salvar. O texto é Latin-1, como em todo o sistema.
+ *
+ * H67: "Compilar e rodar" salva, chama o cc e, se deu certo, abre o
+ * programa; se deu erro, mostra a mensagem do compilador e leva o cursor
+ * para a linha do erro. "Instalar" compila direto para /usb/programas, e o
+ * programa ganha um ícone na área de trabalho. */
 #include "sagui.h"
 #include "gui.h"
 
@@ -84,6 +89,103 @@ static bool salvar(void)
     return true;
 }
 
+/* ------------------------------------------------------------ compilar (H67) */
+
+/* Roda o cc com a saída num pipe; devolve o código de saída. */
+static int rodar_cc(const char *fonte, const char *saida, char *msg, int max)
+{
+    int p[2];
+    if (criar_pipe(p) < 0) { copia_texto(msg, "não consegui criar o pipe", (size_t)max); return -1; }
+    int g1 = duplicar(SAIDA, 15), g2 = duplicar(ERROS, 16);   /* g < 0: a saída não estava aberta */
+    duplicar(p[1], SAIDA);
+    duplicar(p[1], ERROS);
+    char *argv[] = { "cc", (char *)fonte, "-o", (char *)saida, NULL };
+    int pid = executar("/bin/cc", argv);
+    if (g1 >= 0) { duplicar(g1, SAIDA); fechar(g1); } else fechar(SAIDA);
+    if (g2 >= 0) { duplicar(g2, ERROS); fechar(g2); } else fechar(ERROS);
+    fechar(p[1]);
+    int n = 0;
+    msg[0] = 0;
+    if (pid < 0) { fechar(p[0]); formatar_texto(msg, (size_t)max, "não consegui rodar o cc (%s)", nome_erro(pid)); return -1; }
+    /* Lê até o pipe acabar, ou até o cc terminar (se o Editor não tinha a
+     * saída de erros aberta, uma ponta do pipe fica com ele e o pipe nunca
+     * "acaba": por isso também olha se o cc já terminou). */
+    int codigo = 0;
+    bool terminou = false;
+    for (;;) {
+        int d = disponivel(p[0]);
+        if (d > 0) {
+            char buf[256];
+            int k = ler(p[0], buf, sizeof buf);
+            for (int i = 0; i < k && n < max - 1; i++) msg[n++] = buf[i];
+            msg[n] = 0;
+            continue;
+        }
+        if (d < 0 || terminou) break;
+        int c, r = recolher(&c);
+        if (r == pid) { terminou = true; codigo = c; continue; }   /* uma última leitura do que sobrou */
+        dormir(10);
+    }
+    fechar(p[0]);
+    if (!terminou) esperar(pid, &codigo);
+    return codigo;
+}
+
+/* Leva o cursor para a linha "arquivo:LINHA:coluna" da mensagem. */
+static void ir_para_erro(const char *msg)
+{
+    const char *p = msg;
+    while (*p && *p != ':') p++;                        /* depois do nome do arquivo */
+    if (*p != ':') return;
+    int linha = texto_para_int(p + 1);
+    if (linha <= 0) return;
+    int pos = 0;
+    for (int l = 1; l < linha && pos < area.tam; pos++) if (area.buf[pos] == '\n') l++;
+    area.cursor = pos;
+    int vis = area_linhas_visiveis(&area);
+    area.topo = linha - 1 - vis / 2 > 0 ? linha - 1 - vis / 2 : 0;
+    area_desenhar(j, &area);
+}
+
+static void compilar(bool instalar)
+{
+    if (!caminho[0] || area.modificado) { if (!salvar()) return; }
+    char saida[160], msg[2048];
+    const char *nome = nome_curto();
+    char base[64];
+    copia_texto(base, nome, sizeof base);
+    size_t t = tam_texto(base);
+    if (t > 2 && base[t - 2] == '.' && base[t - 1] == 'c') base[t - 2] = 0;
+    if (instalar) {
+        info_arquivo_t i;
+        /* Pendrive conectado mas não montado: monta o primeiro (como o Arquivos). */
+        info_disco_t d;
+        for (int k = 0; listar_discos(k, &d) == 1; k++)
+            if (d.suportado && !d.montado) { montar(d.nome); break; }
+        criar_pasta("/usb/programas");                  /* se já existe, tudo bem */
+        if (info_arquivo("/usb/programas", &i) < 0) { mensagem("Instalar", "Conecte o pendrive para instalar o programa."); return; }
+        formatar_texto(saida, sizeof saida, "/usb/programas/%s", base);
+    } else formatar_texto(saida, sizeof saida, "/tmp/%s", base);
+    registrar("editor: compilando %s -> %s", caminho, saida);
+    int r = rodar_cc(caminho, saida, msg, sizeof msg);
+    if (r != 0) {
+        registrar("editor: erro de compilacao (%d)", r);
+        ir_para_erro(msg);
+        mensagem("Erro ao compilar", msg[0] ? msg : "o compilador falhou sem dizer por quê");
+        return;
+    }
+    if (instalar) {
+        char m[220];
+        formatar_texto(m, sizeof m, "Instalado em %s.\nO ícone aparece na área de trabalho.", saida);
+        registrar("editor: instalado %s", saida);
+        mensagem("Instalar", m);
+        return;
+    }
+    char *argv[] = { base, NULL };
+    int pid = executar(saida, argv);
+    registrar("editor: compilou e abriu %s (processo %d)", saida, pid);
+}
+
 static bool salvar_como(void)
 {
     char c[160];
@@ -108,15 +210,16 @@ int principal(int argc, char **argv)
 {
     j = jan_abrir("Editor - sem nome", LARG, ALT);
     if (!j || !area_iniciar(&area, 6, BARRA + 4, LARG - 12, ALT - BARRA - 10)) return 1;
-    botao_t bt[4] = {
-        { 8, 7, 80, 26, "Novo", false }, { 96, 7, 80, 26, "Abrir", false },
-        { 184, 7, 80, 26, "Salvar", false }, { 272, 7, 110, 26, "Salvar como", false },
+    botao_t bt[6] = {
+        { 8, 7, 64, 26, "Novo", false }, { 78, 7, 64, 26, "Abrir", false },
+        { 148, 7, 70, 26, "Salvar", false }, { 224, 7, 104, 26, "Salvar como", false },
+        { 340, 7, 142, 26, "Compilar e rodar", false }, { 488, 7, 80, 26, "Instalar", false },
     };
-    jan_redimensionavel(j, 420, 200);
+    jan_redimensionavel(j, 580, 200);
     g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
     g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
-    rotulo(j, 400, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
-    for (int i = 0; i < 4; i++) botao_desenhar(j, &bt[i]);
+    if (LARG >= 690) rotulo(j, 580, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
+    for (int i = 0; i < 6; i++) botao_desenhar(j, &bt[i]);
     area.foco = true;
     if (argc > 1) abrir_arquivo(argv[1]);
     else forcar_titulo();
@@ -138,8 +241,8 @@ int principal(int argc, char **argv)
             g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
             g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
             g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
-            rotulo(j, 400, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
-            for (int i = 0; i < 4; i++) botao_desenhar(j, &bt[i]);
+            if (LARG >= 690) rotulo(j, 580, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
+            for (int i = 0; i < 6; i++) botao_desenhar(j, &bt[i]);
             area.l = LARG - 12;
             area.a = ALT - BARRA - 10;
             area_desenhar(j, &area);
@@ -163,6 +266,9 @@ int principal(int argc, char **argv)
         }
         if (botao_tratar(j, &bt[2], &e)) salvar();
         if (botao_tratar(j, &bt[3], &e)) salvar_como();
+        if (botao_tratar(j, &bt[4], &e)) { compilar(false); area.foco = true; area_desenhar(j, &area); continue; }
+        if (botao_tratar(j, &bt[5], &e)) { compilar(true); area.foco = true; area_desenhar(j, &area); continue; }
+        if (e.tipo == EV_TECLA && e.tecla == 18 && (e.modificadores & 2)) { compilar(false); continue; }   /* Ctrl+R */
         area_tratar(j, &area, &e);
         atualizar_titulo();
     }

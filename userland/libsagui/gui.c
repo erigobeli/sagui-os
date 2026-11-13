@@ -479,13 +479,22 @@ static int linhas_de(const char *t)
 static int dialogo(const char *titulo, const char *texto, const char *b1, const char *b2, caixa_t *caixa)
 {
     int alt = 70 + linhas_de(texto) * (LETRA_A + 2) + (caixa ? 34 : 0);
-    jan_t *j = jan_abrir(titulo, 380, alt);
+    /* Largura: 380, ou a da linha mais comprida (até 900), para mensagens
+     * como as do compilador caberem inteiras. */
+    int larg = 380, n = 0;
+    for (const char *p = texto; ; p++) {
+        if (*p == '\n' || !*p) { if (n * LETRA_L + 32 > larg) larg = n * LETRA_L + 32; n = 0; if (!*p) break; }
+        else n++;
+    }
+    if (larg > 900) larg = 900;
+    if (alt > 680) alt = 680;
+    jan_t *j = jan_abrir(titulo, larg, alt);
     if (!j) return 0;
     texto_multilinha(j, 16, 16, texto);
-    botao_t bs[2] = { { 380 - 16 - 90, alt - 40, 90, 26, b1, false }, { 380 - 16 - 190, alt - 40, 90, 26, b2, false } };
+    botao_t bs[2] = { { larg - 16 - 90, alt - 40, 90, 26, b1, false }, { larg - 16 - 190, alt - 40, 90, 26, b2, false } };
     int qtd = b2 ? 2 : 1;
     if (caixa) {
-        caixa->x = 16; caixa->y = alt - 40 - 36; caixa->l = 348; caixa->foco = true;
+        caixa->x = 16; caixa->y = alt - 40 - 36; caixa->l = larg - 32; caixa->foco = true;
         caixa_desenhar(j, caixa);
     }
     for (int i = 0; i < qtd; i++) botao_desenhar(j, &bs[i]);

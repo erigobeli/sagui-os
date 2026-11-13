@@ -179,14 +179,15 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # ---------- ramdisk (SGFS) ----------
 # O ramdisk é montado a partir de uma cópia do rootfs/ com os programas em
 # /bin e os programas de teste em /testes.
-$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) tools/mksgfs.py
+$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs/c-do-sagui.md tools/mksgfs.py
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
 	$(if $(PROG_TESTE),mkdir -p $(B)/rootfs/testes && cp $(PROG_TESTE) $(B)/rootfs/testes/)
-	mkdir -p $(B)/rootfs/sistema/lib $(B)/rootfs/sistema/inc
+	mkdir -p $(B)/rootfs/sistema/lib $(B)/rootfs/sistema/inc $(B)/rootfs/sistema/ajuda
 	cp $(CC_LIB) $(B)/rootfs/sistema/lib/libsagui.o
 	cp $(CC_INC) $(B)/rootfs/sistema/inc/
+	cp docs/c-do-sagui.md $(B)/rootfs/sistema/ajuda/   # o manual que o Sagui Code manda para a IA (H71)
 	$(PY) tools/mksgfs.py $(B)/rootfs $@
 
 # ---------- imagem final ----------

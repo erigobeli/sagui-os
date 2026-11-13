@@ -58,7 +58,8 @@ def coletar(raiz):
             else:
                 tipo = TIPO_ARQUIVO
                 if os.path.splitext(nome)[1].lower() in EXT_TEXTO:
-                    dados = dados.decode("utf-8").encode("latin-1")
+                    # Letras fora do Latin-1 (a fonte do SaguiOS) viram "?", como no navegador.
+                    dados = dados.decode("utf-8").encode("latin-1", errors="replace")
             itens.append((rel, tipo, dados))
     itens.sort(key=lambda i: i[0])
     return itens

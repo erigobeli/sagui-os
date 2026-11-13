@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T17:25:33",
-  "situacao": "Trabalhando na H78: Redimensionar e maximizar janelas (pedido do Eli)",
-  "fase_atual": 9,
-  "historia_atual": "H78",
+  "atualizado": "2026-11-13T18:17:52",
+  "situacao": "Trabalhando na H68: Prova de fogo",
+  "fase_atual": 7,
+  "historia_atual": "H68",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-fase6.md. Sigo para a fase 7 (compilador) e 8 (Sagui Code).",
   "raiz": "../../",
@@ -60,8 +60,8 @@
     {
       "numero": 7,
       "nome": "Compilador C",
-      "estado": "a fazer",
-      "progresso": 0.0
+      "estado": "em andamento",
+      "progresso": 100.0
     },
     {
       "numero": 8,
@@ -467,12 +467,12 @@
       "titulo": "A linguagem",
       "objetivo": "Definir em `docs/c-do-sagui.md` o C aceito: tipos inteiros, `char`, ponteiros, vetores, `struct`, `union`, `enum`, `typedef`, funções, laços, `switch`, `#include`, `#define` simples, e a `libsagui`. Sem ponto flutuante na primeira versão (como os programas atuais). Esse documento também é o manual que o Sagui Code manda para a IA.",
       "aceite": "manual revisado com exemplos; lista do que fica de fora.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T18:17:51",
+      "fim": "2026-11-13T18:17:51",
+      "minutos": 1,
+      "resultado": "manual docs/c-do-sagui.md com exemplos e o que fica de fora"
     },
     {
       "id": "H65",
@@ -480,12 +480,12 @@
       "titulo": "Frente do compilador",
       "objetivo": "Pré-processador, leitura, verificação de tipos e mensagens de erro **em português, com linha, coluna e uma dica** (pensadas para a IA conseguir se corrigir sozinha).",
       "aceite": "50 programas de teste com erros dão as mensagens esperadas; 50 programas válidos passam.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T18:17:51",
+      "fim": "2026-11-13T18:17:52",
+      "minutos": 1,
+      "resultado": "70 programas com erro dão a mensagem esperada (linha, coluna, ^ e dica); 50 válidos compilam"
     },
     {
       "id": "H66",
@@ -493,12 +493,12 @@
       "titulo": "Fundo do compilador",
       "objetivo": "Representação intermediária própria, geração de código x86 de 32 bits, montador e ligador próprios, ELF do SaguiOS ligado à `libsagui`.",
       "aceite": "os 50 programas válidos rodam no SaguiOS com a saída esperada.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T18:17:51",
+      "fim": "2026-11-13T18:17:52",
+      "minutos": 1,
+      "resultado": "RI própria, x86, montador e ligador próprios; os 50 válidos rodam no SaguiOS"
     },
     {
       "id": "H67",
@@ -506,12 +506,12 @@
       "titulo": "Compilar dentro do sistema",
       "objetivo": "Comando `cc arquivo.c -o programa`, botão **Compilar e rodar** no Editor e instalação do resultado em `/usb/programas/`.",
       "aceite": "no QEMU, digitar um programa no Editor, compilar e rodar sem sair do SaguiOS.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T18:17:52",
+      "fim": "2026-11-13T18:17:52",
+      "minutos": 1,
+      "resultado": "cc no Terminal; Editor com Compilar e rodar (vai à linha do erro) e Instalar em /usb/programas"
     },
     {
       "id": "H68",
@@ -519,12 +519,12 @@
       "titulo": "Prova de fogo",
       "objetivo": "Compilar **dentro do SaguiOS** programas da 1.0 (pelo menos `wc`, `cat`, `calculadora` e `banana`) e comparar o comportamento com as versões feitas pelo GCC.",
       "aceite": "os programas compilados pelo SaguiOS passam nos mesmos testes da 1.0.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T18:17:52",
+      "fim": "2026-11-13T18:17:52",
+      "minutos": 1,
+      "resultado": "wc, cat, calculadora e banana feitos pelo cc passam nos testes da 1.0 (h15, h16, h24, h26, h27)"
     },
     {
       "id": "H69",
@@ -724,6 +724,46 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T18:17:52",
+      "texto": "H68 concluída: wc, cat, calculadora e banana feitos pelo cc passam nos testes da 1.0 (h15, h16, h24, h26, h27)"
+    },
+    {
+      "data": "2026-11-13T18:17:52",
+      "texto": "H67 concluída: cc no Terminal; Editor com Compilar e rodar (vai à linha do erro) e Instalar em /usb/programas"
+    },
+    {
+      "data": "2026-11-13T18:17:52",
+      "texto": "Início da H68: Prova de fogo"
+    },
+    {
+      "data": "2026-11-13T18:17:52",
+      "texto": "Início da H67: Compilar dentro do sistema"
+    },
+    {
+      "data": "2026-11-13T18:17:52",
+      "texto": "H66 concluída: RI própria, x86, montador e ligador próprios; os 50 válidos rodam no SaguiOS"
+    },
+    {
+      "data": "2026-11-13T18:17:52",
+      "texto": "H65 concluída: 70 programas com erro dão a mensagem esperada (linha, coluna, ^ e dica); 50 válidos compilam"
+    },
+    {
+      "data": "2026-11-13T18:17:51",
+      "texto": "H64 concluída: manual docs/c-do-sagui.md com exemplos e o que fica de fora"
+    },
+    {
+      "data": "2026-11-13T18:17:51",
+      "texto": "Início da H66: Fundo do compilador"
+    },
+    {
+      "data": "2026-11-13T18:17:51",
+      "texto": "Início da H65: Frente do compilador"
+    },
+    {
+      "data": "2026-11-13T18:17:51",
+      "texto": "Início da H64: A linguagem"
+    },
+    {
       "data": "2026-11-13T17:25:33",
       "texto": "Início da H78: Redimensionar e maximizar janelas (pedido do Eli)"
     },
@@ -922,296 +962,286 @@
     {
       "data": "2026-11-13T01:36:58",
       "texto": "H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)"
-    },
-    {
-      "data": "2026-11-13T01:36:19",
-      "texto": "H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome"
-    },
-    {
-      "data": "2026-11-13T01:36:19",
-      "texto": "H44 concluída: Ethernet, ARP com fila de espera, IPv4, ICMP (eco), UDP com soma; comando ping"
-    },
-    {
-      "data": "2026-11-13T01:36:19",
-      "texto": "H43 concluída: Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo"
-    },
-    {
-      "data": "2026-11-13T01:35:10",
-      "texto": "Início da H43: Driver Intel PRO/1000"
-    },
-    {
-      "data": "2026-11-13T01:35:10",
-      "texto": "Fase 2 entregue. Aguardando teste do Eli."
-    },
-    {
-      "data": "2026-11-13T01:19:08",
-      "texto": "H42 concluída: Tocador de WAV (8/16 bits, mono/estéreo, qualquer taxa), canto do sagui, sons de início e de aviso, bip e jogos pela placa (D033)"
-    },
-    {
-      "data": "2026-11-13T01:17:13",
-      "texto": "Início da H42: Tocador e sons do sistema"
-    },
-    {
-      "data": "2026-11-13T01:17:13",
-      "texto": "H41 concluída: Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav"
-    },
-    {
-      "data": "2026-11-13T01:15:43",
-      "texto": "Início da H41: Som para os programas"
-    },
-    {
-      "data": "2026-11-13T01:15:43",
-      "texto": "H40 concluída: Driver Intel HD Audio: CORB/RIRB, descoberta do caminho pino-DAC no codec, fluxo de saída 48 kHz/16 bits por DMA; tom de 440 Hz conferido no .wav do QEMU"
     }
   ],
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
+      "nome": "H67-3-instalado.png",
+      "data": "2026-11-13T18:13:02"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
+      "nome": "H67-2-rodou.png",
+      "data": "2026-11-13T18:12:57"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-1-erro.png",
+      "nome": "H67-1-erro.png",
+      "data": "2026-11-13T18:12:54"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H78-3-navegador-maximizado.png",
+      "nome": "H78-3-navegador-maximizado.png",
+      "data": "2026-11-13T17:56:52"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H78-2-terminal-maximizado.png",
+      "nome": "H78-2-terminal-maximizado.png",
+      "data": "2026-11-13T17:56:41"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H78-1-terminal-menor.png",
+      "nome": "H78-1-terminal-menor.png",
+      "data": "2026-11-13T17:56:38"
+    },
+    {
       "arquivo": "docs/v2/capturas/H77-1-efeitos-leves.png",
       "nome": "H77-1-efeitos-leves.png",
-      "data": "2026-11-13T17:25:12"
+      "data": "2026-11-13T17:56:24"
     },
     {
       "arquivo": "docs/v2/capturas/H76-2-tema-claro.png",
       "nome": "H76-2-tema-claro.png",
-      "data": "2026-11-13T17:25:07"
+      "data": "2026-11-13T17:56:19"
     },
     {
       "arquivo": "docs/v2/capturas/H76-1-tema-escuro.png",
       "nome": "H76-1-tema-escuro.png",
-      "data": "2026-11-13T17:25:01"
+      "data": "2026-11-13T17:56:13"
     },
     {
       "arquivo": "docs/v2/capturas/H75-3-menu.png",
       "nome": "H75-3-menu.png",
-      "data": "2026-11-13T17:24:57"
+      "data": "2026-11-13T17:56:09"
     },
     {
       "arquivo": "docs/v2/capturas/H75-2-doca.png",
       "nome": "H75-2-doca.png",
-      "data": "2026-11-13T17:24:55"
+      "data": "2026-11-13T17:56:07"
     },
     {
       "arquivo": "docs/v2/capturas/H75-1-minimizada.png",
       "nome": "H75-1-minimizada.png",
-      "data": "2026-11-13T17:24:52"
+      "data": "2026-11-13T17:56:04"
     },
     {
       "arquivo": "docs/v2/capturas/H74-2-arrastada.png",
       "nome": "H74-2-arrastada.png",
-      "data": "2026-11-13T17:24:49"
+      "data": "2026-11-13T17:56:01"
     },
     {
       "arquivo": "docs/v2/capturas/H74-1-vidro.png",
       "nome": "H74-1-vidro.png",
-      "data": "2026-11-13T17:24:46"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-7-texto-puro.png",
-      "nome": "H62-7-texto-puro.png",
-      "data": "2026-11-13T17:22:46"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-6-favoritos.png",
-      "nome": "H62-6-favoritos.png",
-      "data": "2026-11-13T17:22:43"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-5-busca.png",
-      "nome": "H62-5-busca.png",
-      "data": "2026-11-13T17:22:39"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-4-ancora.png",
-      "nome": "H62-4-ancora.png",
-      "data": "2026-11-13T17:22:34"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-3-pagina2.png",
-      "nome": "H62-3-pagina2.png",
-      "data": "2026-11-13T17:22:28"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-2-rolada.png",
-      "nome": "H62-2-rolada.png",
-      "data": "2026-11-13T17:22:22"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H62-1-topo.png",
-      "nome": "H62-1-topo.png",
-      "data": "2026-11-13T17:22:19"
+      "data": "2026-11-13T17:55:58"
     },
     {
       "arquivo": "docs/v2/capturas/H70-2-licenca.png",
       "nome": "H70-2-licenca.png",
-      "data": "2026-11-13T13:00:11"
+      "data": "2026-11-13T17:55:20"
     },
     {
       "arquivo": "docs/v2/capturas/H70-1-laco.png",
       "nome": "H70-1-laco.png",
-      "data": "2026-11-13T13:00:08"
+      "data": "2026-11-13T17:55:18"
     },
     {
       "arquivo": "docs/v2/capturas/H69-1-pergunta.png",
       "nome": "H69-1-pergunta.png",
-      "data": "2026-11-13T12:59:35"
+      "data": "2026-11-13T17:54:45"
     },
     {
       "arquivo": "docs/v2/capturas/H63-6-readme.png",
       "nome": "H63-6-readme.png",
-      "data": "2026-11-13T12:59:22"
+      "data": "2026-11-13T17:54:32"
     },
     {
       "arquivo": "docs/v2/capturas/H63-5-documentacao.png",
       "nome": "H63-5-documentacao.png",
-      "data": "2026-11-13T12:59:16"
+      "data": "2026-11-13T17:54:25"
     },
     {
       "arquivo": "docs/v2/capturas/H63-4-example.png",
       "nome": "H63-4-example.png",
-      "data": "2026-11-13T12:59:08"
+      "data": "2026-11-13T17:54:18"
     },
     {
       "arquivo": "docs/v2/capturas/H63-3-wikipedia-busca.png",
       "nome": "H63-3-wikipedia-busca.png",
-      "data": "2026-11-13T12:59:04"
+      "data": "2026-11-13T17:54:13"
     },
     {
       "arquivo": "docs/v2/capturas/H63-2-wikipedia-rolada.png",
       "nome": "H63-2-wikipedia-rolada.png",
-      "data": "2026-11-13T12:58:45"
+      "data": "2026-11-13T17:53:50"
     },
     {
       "arquivo": "docs/v2/capturas/H63-1-wikipedia.png",
       "nome": "H63-1-wikipedia.png",
-      "data": "2026-11-13T12:58:44"
+      "data": "2026-11-13T17:53:48"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-7-texto-puro.png",
+      "nome": "H62-7-texto-puro.png",
+      "data": "2026-11-13T17:53:30"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-6-favoritos.png",
+      "nome": "H62-6-favoritos.png",
+      "data": "2026-11-13T17:53:27"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-5-busca.png",
+      "nome": "H62-5-busca.png",
+      "data": "2026-11-13T17:53:23"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-4-ancora.png",
+      "nome": "H62-4-ancora.png",
+      "data": "2026-11-13T17:53:18"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-3-pagina2.png",
+      "nome": "H62-3-pagina2.png",
+      "data": "2026-11-13T17:53:13"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-2-rolada.png",
+      "nome": "H62-2-rolada.png",
+      "data": "2026-11-13T17:53:07"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-1-topo.png",
+      "nome": "H62-1-topo.png",
+      "data": "2026-11-13T17:53:04"
     },
     {
       "arquivo": "docs/v2/capturas/H58-chave-mudou.png",
       "nome": "H58-chave-mudou.png",
-      "data": "2026-11-13T12:57:58"
+      "data": "2026-11-13T17:52:27"
     },
     {
       "arquivo": "docs/v2/capturas/H58-htop.png",
       "nome": "H58-htop.png",
-      "data": "2026-11-13T12:57:52"
+      "data": "2026-11-13T17:52:20"
     },
     {
       "arquivo": "docs/v2/capturas/H58-vim.png",
       "nome": "H58-vim.png",
-      "data": "2026-11-13T12:57:45"
+      "data": "2026-11-13T17:52:14"
     },
     {
       "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
       "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T12:56:39"
+      "data": "2026-11-13T17:51:32"
     },
     {
       "arquivo": "docs/v2/capturas/H53-https.png",
       "nome": "H53-https.png",
-      "data": "2026-11-13T12:56:18"
+      "data": "2026-11-13T17:51:12"
     },
     {
       "arquivo": "docs/v2/capturas/H49-baixar.png",
       "nome": "H49-baixar.png",
-      "data": "2026-11-13T12:55:03"
+      "data": "2026-11-13T17:49:46"
     },
     {
       "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
       "nome": "H47-3-aba-rede.png",
-      "data": "2026-11-13T12:53:00"
+      "data": "2026-11-13T17:47:47"
     },
     {
       "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
       "nome": "H47-2-barra-sem-cabo.png",
-      "data": "2026-11-13T12:52:57"
+      "data": "2026-11-13T17:47:45"
     },
     {
       "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
       "nome": "H47-1-barra-conectado.png",
-      "data": "2026-11-13T12:52:55"
+      "data": "2026-11-13T17:47:43"
     },
     {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
-      "data": "2026-11-13T12:52:40"
+      "data": "2026-11-13T17:47:29"
     },
     {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
-      "data": "2026-11-13T12:52:29"
+      "data": "2026-11-13T17:47:17"
     },
     {
       "arquivo": "docs/v2/capturas/H42-tocar.png",
       "nome": "H42-tocar.png",
-      "data": "2026-11-13T12:52:09"
+      "data": "2026-11-13T17:46:57"
     },
     {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
-      "data": "2026-11-13T12:51:50"
+      "data": "2026-11-13T17:46:39"
     },
     {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
-      "data": "2026-11-13T12:51:28"
+      "data": "2026-11-13T17:46:16"
     },
     {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T12:51:18"
+      "data": "2026-11-13T17:46:05"
     },
     {
       "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
       "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T12:51:10"
+      "data": "2026-11-13T17:45:59"
     },
     {
       "arquivo": "docs/v2/capturas/H39-1-instalado.png",
       "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T12:51:07"
+      "data": "2026-11-13T17:45:57"
     },
     {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T12:50:49"
+      "data": "2026-11-13T17:45:39"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T12:50:47"
+      "data": "2026-11-13T17:45:37"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T12:50:30"
+      "data": "2026-11-13T17:45:20"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T12:50:12"
+      "data": "2026-11-13T17:45:02"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T12:49:52"
+      "data": "2026-11-13T17:44:47"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T12:49:36"
+      "data": "2026-11-13T17:44:32"
     }
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 13359,
-    "userland": 22220,
-    "ferramentas": 9454
+    "kernel": 13543,
+    "userland": 28698,
+    "ferramentas": 10075
   },
   "imagem": {
-    "bytes_util": 1273344,
-    "bytes_arquivo": 1277952,
+    "bytes_util": 1642496,
+    "bytes_arquivo": 1671168,
     "meta_bytes": null
   },
-  "progresso_geral": 72.7
+  "progresso_geral": 84.1
 }

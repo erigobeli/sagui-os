@@ -20,9 +20,10 @@ import subprocess
 import time
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMAGEM = os.path.join(RAIZ, "build", "saguios.img")
+# SAGUI_IMAGEM: rodar os testes com outra imagem (a H68 usa a dos programas feitos pelo cc).
+IMAGEM = os.environ.get("SAGUI_IMAGEM") or os.path.join(RAIZ, "build", "saguios.img")
 SAIDA = os.path.join(RAIZ, "build", "testes")
-CAPTURAS = os.path.join(RAIZ, "docs", "capturas")
+CAPTURAS = os.environ.get("SAGUI_CAPTURAS") or os.path.join(RAIZ, "docs", "capturas")
 TEMPO_MAX = 180
 
 # Como digitar cada caractere num teclado ABNT2 pelo QEMU. O QEMU nomeia as
@@ -113,7 +114,8 @@ def imagem_de_teste(teste, extras=()):
     subprocess.run(["python3", os.path.join(RAIZ, "tools", "mkimagem.py"),
                     "--mbr", os.path.join(b, "boot", "mbr.bin"), "--estagio2", os.path.join(b, "boot", "estagio2.bin"),
                     "--kernel", os.path.join(b, "kernel.bin"), "--kernel-elf", os.path.join(b, "kernel.elf"),
-                    "--ramdisk", os.path.join(b, "ramdisk.sgfs"), "--saida", destino, "--teste", teste, *extras],
+                    "--ramdisk", os.environ.get("SAGUI_RAMDISK") or os.path.join(b, "ramdisk.sgfs"),
+                    "--saida", destino, "--teste", teste, *extras],
                    check=True, stdout=subprocess.DEVNULL)
     return destino
 
@@ -322,7 +324,7 @@ class Maquina:
         pasta = CAPTURAS
         m = re.match(r"H(\d+)", nome)
         if m and int(m.group(1)) >= 35:      # versão 2.0: capturas em docs/v2/capturas
-            pasta = os.path.join(RAIZ, "docs", "v2", "capturas")
+            pasta = os.environ.get("SAGUI_CAPTURAS") or os.path.join(RAIZ, "docs", "v2", "capturas")
             os.makedirs(pasta, exist_ok=True)
         destino = os.path.join(pasta if guardar else SAIDA, nome + ".png")
         self.monitor(f"screendump {ppm}")
