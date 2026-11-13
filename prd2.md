@@ -14,6 +14,7 @@
 4. Trabalhe em modo autônomo **dentro de cada fase**. Ao terminar uma fase, **pare** e avise o Eli (seção 8). Só comece a próxima depois que ele liberar.
 5. Toda decisão que este PRD não cobre: escolha a opção mais simples que funcione na VM e no G470, anote em `docs/decisoes.md` (numeração continua a partir de D031) e siga em frente.
 6. Ao retomar depois de uma pausa, leia `status-v2.md` primeiro.
+7. **Modo contínuo (pedido do Eli em 13/11/2026):** não esperar o teste do Eli entre as fases. Ao terminar uma fase: rodar todos os testes, gerar `entrega/v2-faseX/`, escrever o roteiro `docs/teste-v2-faseX.md`, marcar a fase como "aguardando teste", criar a tag `v2-faseX` e **seguir direto para a próxima**. O Eli testa as imagens depois, na ordem, e os problemas viram histórias `HXX-fix`. O que depende do Eli (foto do `pci` no G470, chave do OpenRouter, teste no G470) fica registrado como pendência no painel, sem travar o resto.
 
 ---
 

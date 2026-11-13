@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-12T14:11:01",
-  "situacao": "PRD 2.0 pronto. Aguardando o início da fase 1.",
+  "atualizado": "2026-11-13T00:30:04",
+  "situacao": "Trabalhando na H35: Comando `pci` e inventário de hardware",
   "fase_atual": 1,
-  "historia_atual": null,
+  "historia_atual": "H35",
   "bloqueio": "",
   "mensagem_fase": "",
   "raiz": "../../",
@@ -25,7 +25,7 @@ window.SAGUI_STATUS = {
     {
       "numero": 1,
       "nome": "Base e Configurações",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "progresso": 0.0
     },
     {
@@ -91,9 +91,9 @@ window.SAGUI_STATUS = {
       "titulo": "Comando `pci` e inventário de hardware",
       "objetivo": "Lista os dispositivos PCI com classe, fabricante e modelo (com nomes conhecidos para os mais comuns) e grava o relatório em `/usb/hardware.txt`.",
       "aceite": "no QEMU aparecem a placa de rede, o controlador de som e os EHCI; no `docs/teste-v2-fase1.md` o Eli recebe o pedido de fotografar a saída no G470, que define o driver de rede (H46).",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T00:30:04",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@ window.SAGUI_STATUS = {
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T00:30:04",
+      "texto": "Início da H35: Comando `pci` e inventário de hardware"
+    },
+    {
+      "data": "2026-11-13T00:30:03",
+      "texto": "Modo contínuo: o Eli pediu para seguir fase após fase sem esperar os testes; cada fase vira uma imagem em entrega/v2-faseX/."
+    },
     {
       "data": "2026-11-12T14:11:01",
       "texto": "PRD 2.0 escrito com o Eli: 9 fases, histórias H35 a H77."

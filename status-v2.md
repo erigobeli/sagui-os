@@ -1,10 +1,10 @@
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-12T14:11:01_
+_Atualizado em 2026-11-13T00:30:04_
 
-- **Situação:** PRD 2.0 pronto. Aguardando o início da fase 1.
+- **Situação:** Trabalhando na H35: Comando `pci` e inventário de hardware
 - **Fase atual:** 1
-- **História atual:** -
+- **História atual:** H35
 - **Progresso geral:** 0.0%
 - **Bloqueio:** nenhum
 - **Imagem:** 575488 bytes úteis (sem teto: só medida)
@@ -14,7 +14,7 @@ _Atualizado em 2026-11-12T14:11:01_
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Base e Configurações | 0.0% | a fazer |
+| 1 | Base e Configurações | 0.0% | em andamento |
 | 2 | Som | 0.0% | a fazer |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
@@ -29,7 +29,7 @@ _Atualizado em 2026-11-12T14:11:01_
 
 | ID | Título | Estado | Minutos |
 | --- | --- | --- | --- |
-| H35 | Comando `pci` e inventário de hardware | a fazer |  |
+| H35 | Comando `pci` e inventário de hardware | em andamento |  |
 | H36 | Desligar e reiniciar | a fazer |  |
 | H37 | Configurações guardadas | a fazer |  |
 | H38 | App Configurações | a fazer |  |
@@ -75,4 +75,6 @@ _Atualizado em 2026-11-12T14:11:01_
 
 ## Últimas ações
 
+- 2026-11-13T00:30:04: Início da H35: Comando `pci` e inventário de hardware
+- 2026-11-13T00:30:03: Modo contínuo: o Eli pediu para seguir fase após fase sem esperar os testes; cada fase vira uma imagem em entrega/v2-faseX/.
 - 2026-11-12T14:11:01: PRD 2.0 escrito com o Eli: 9 fases, histórias H35 a H77.
