@@ -1,20 +1,20 @@
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T00:35:06_
+_Atualizado em 2026-11-13T00:41:00_
 
-- **Situação:** Trabalhando na H36: Desligar e reiniciar
+- **Situação:** Trabalhando na H37: Configurações guardadas
 - **Fase atual:** 1
-- **História atual:** H36
-- **Progresso geral:** 2.3%
+- **História atual:** H37
+- **Progresso geral:** 4.7%
 - **Bloqueio:** nenhum
-- **Imagem:** 588288 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 9746, userland 6339
+- **Imagem:** 605696 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 9983, userland 6388
 
 ## Fases
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Base e Configurações | 20.0% | em andamento |
+| 1 | Base e Configurações | 40.0% | em andamento |
 | 2 | Som | 0.0% | a fazer |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
@@ -30,8 +30,8 @@ _Atualizado em 2026-11-13T00:35:06_
 | ID | Título | Estado | Minutos |
 | --- | --- | --- | --- |
 | H35 | Comando `pci` e inventário de hardware | feito | 5 |
-| H36 | Desligar e reiniciar | em andamento |  |
-| H37 | Configurações guardadas | a fazer |  |
+| H36 | Desligar e reiniciar | feito | 6 |
+| H37 | Configurações guardadas | em andamento |  |
 | H38 | App Configurações | a fazer |  |
 | H39 | Remover programas | a fazer |  |
 | H40 | Driver Intel HD Audio | a fazer |  |
@@ -75,6 +75,8 @@ _Atualizado em 2026-11-13T00:35:06_
 
 ## Últimas ações
 
+- 2026-11-13T00:41:00: Início da H37: Configurações guardadas
+- 2026-11-13T00:40:59: H36 concluída: Desligar pelo ACPI (_S5_ da DSDT), reiniciar pelo reset do ACPI/0xCF9/teclado, pendrives gravados antes, botão de energia na barra e janela Energia
 - 2026-11-13T00:35:06: Início da H36: Desligar e reiniciar
 - 2026-11-13T00:35:06: H35 concluída: Comando pci com classe, fabricante, modelo e o que o SaguiOS já usa; relatório em /usb/hardware.txt
 - 2026-11-13T00:30:04: Início da H35: Comando `pci` e inventário de hardware

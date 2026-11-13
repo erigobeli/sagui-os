@@ -42,6 +42,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_DESMONTAR] = sis_desmontar,
     [SIS_BIP] = sis_bip,
     [SIS_TECLAS_SEGURADAS] = sis_teclas_seguradas,
+    [SIS_DESLIGAR] = sis_desligar,
 };
 
 bool usuario_ok(const void *p, uint32_t n, bool escrita)

@@ -237,6 +237,11 @@ static void tratar_mouse(evento_mouse_t *m)
 
     if (apertou) {
         int k = janela_em(m->x, m->y);
+        if (k < 0 && m->y < BARRA_SUPERIOR) {
+            /* Na barra de cima: o botão de energia (H36). */
+            if ((m->mudaram & BOTAO_ESQUERDO) && area_energia_em(m->x, m->y)) area_energia_abrir();
+            return;
+        }
         if (k < 0) {
             /* Na área de trabalho: duplo clique num ícone abre o programa. */
             int ic = area_icone_em(m->x, m->y);

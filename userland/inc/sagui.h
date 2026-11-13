@@ -64,6 +64,7 @@ int      ler_data(data_t *d);
 int      info_sistema(int tipo, void *buf, unsigned n);
 void    *aumentar_memoria(unsigned bytes);
 void     reiniciar(void);
+void     desligar(void);   /* grava os pendrives e desliga (H36) */
 int      modo_terminal(int modo);
 int      limpar_tela(void);
 

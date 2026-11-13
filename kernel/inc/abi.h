@@ -56,6 +56,8 @@
 #define SIS_BIP            58   /* (&notas, quantidade, modo) -> volta na hora; o tique do relógio toca */
 /* Jogos (bônus B4) */
 #define SIS_TECLAS_SEGURADAS 59 /* (&mapa[32]) -> 1 se a janela do processo está em foco */
+/* Versão 2.0 */
+#define SIS_DESLIGAR       60   /* () -> grava os pendrives e desliga pelo ACPI (H36) */
 #define SIS_MAX            64
 
 /* Erros (sempre negativos) */

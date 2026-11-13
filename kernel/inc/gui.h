@@ -12,6 +12,9 @@ void area_fundo(superficie_t *s);          /* copia o fundo pronto para o recort
 void area_barra(superficie_t *s);          /* barra superior com o relógio */
 bool area_relogio_mudou(void);
 int  area_icone_em(int x, int y);          /* índice do ícone sob o ponto, ou -1 */
+void area_energia_retangulo(int *x, int *y, int *l, int *a);   /* botão de energia na barra (H36) */
+bool area_energia_em(int x, int y);
+void area_energia_abrir(void);
 void area_icone_abrir(int i);
 int  area_qtd_icones(void);
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a);

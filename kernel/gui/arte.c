@@ -335,6 +335,26 @@ const desenho_t arte_icone_sagui3d    = { icone_sagui3d, 32, 32 };
 const desenho_t arte_icone_sobre      = { icone_sobre, 32, 32 };
 const desenho_t arte_icone_pendrive   = { icone_pendrive, 32, 32 };
 
+/* Botão de energia da barra de cima (H36): o símbolo de liga/desliga. */
+const char *const arte_botao_energia[16] = {
+    "................",
+    ".......BB.......",
+    ".......BB.......",
+    "....B..BB..B....",
+    "...BB..BB..BB...",
+    "..BB...BB...BB..",
+    "..B....BB....B..",
+    ".BB....BB....BB.",
+    ".BB..........BB.",
+    ".BB..........BB.",
+    "..B..........B..",
+    "..BB........BB..",
+    "...BB......BB...",
+    "....BBBBBBBB....",
+    "......BBBB......",
+    "................",
+};
+
 /* Paleta: letra -> cor. Devolve false para transparente. */
 bool arte_cor(char letra, uint32_t *cor)
 {

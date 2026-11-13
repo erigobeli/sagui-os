@@ -156,6 +156,8 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     int_liga();
     memfisica_iniciar();
     paginacao_iniciar();
+    void energia_iniciar(void);
+    energia_iniciar();   /* tabelas ACPI: desligar e reiniciar (H36) */
 
     /* H17/H18: terminal gráfico com a fonte própria. Se não houver modo
      * gráfico, o console continua no modo texto e avisa. */

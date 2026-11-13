@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T00:35:06",
-  "situacao": "Trabalhando na H36: Desligar e reiniciar",
+  "atualizado": "2026-11-13T00:41:00",
+  "situacao": "Trabalhando na H37: Configurações guardadas",
   "fase_atual": 1,
-  "historia_atual": "H36",
+  "historia_atual": "H37",
   "bloqueio": "",
   "mensagem_fase": "",
   "raiz": "../../",
@@ -25,7 +25,7 @@
       "numero": 1,
       "nome": "Base e Configurações",
       "estado": "em andamento",
-      "progresso": 20.0
+      "progresso": 40.0
     },
     {
       "numero": 2,
@@ -103,12 +103,12 @@
       "titulo": "Desligar e reiniciar",
       "objetivo": "Leitura das tabelas ACPI (o suficiente para desligar), reinício pelo método ACPI com o controlador de teclado como reserva. Menu na barra de cima com **Desligar** e **Reiniciar**, perguntando antes se há pendrive montado (desmonta antes de desligar). Comandos `desligar` e `reiniciar`.",
       "aceite": "o QEMU termina sozinho ao desligar; reiniciar volta ao boot; com pendrive montado, os dados ficam gravados.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T00:35:06",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T00:40:59",
+      "minutos": 6,
+      "resultado": "Desligar pelo ACPI (_S5_ da DSDT), reiniciar pelo reset do ACPI/0xCF9/teclado, pendrives gravados antes, botão de energia na barra e janela Energia"
     },
     {
       "id": "H37",
@@ -116,9 +116,9 @@
       "titulo": "Configurações guardadas",
       "objetivo": "Formato `chave = valor` em `/usb/.saguios/configuracoes.txt` (seção 4, item 4), com leitura no boot e gravação ao mudar.",
       "aceite": "mudar uma configuração, reiniciar com o mesmo pendrive e ela continua igual; sem pendrive, aviso e valores padrão.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T00:41:00",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T00:41:00",
+      "texto": "Início da H37: Configurações guardadas"
+    },
+    {
+      "data": "2026-11-13T00:40:59",
+      "texto": "H36 concluída: Desligar pelo ACPI (_S5_ da DSDT), reiniciar pelo reset do ACPI/0xCF9/teclado, pendrives gravados antes, botão de energia na barra e janela Energia"
+    },
+    {
       "data": "2026-11-13T00:35:06",
       "texto": "Início da H36: Desligar e reiniciar"
     },
@@ -737,6 +745,11 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H36-energia.png",
+      "nome": "H36-energia.png",
+      "data": "2026-11-13T00:40:39"
+    },
+    {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
       "data": "2026-11-13T00:34:52"
@@ -744,14 +757,14 @@
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 9746,
-    "userland": 6339,
-    "ferramentas": 3651
+    "kernel": 9983,
+    "userland": 6388,
+    "ferramentas": 3724
   },
   "imagem": {
-    "bytes_util": 588288,
+    "bytes_util": 605696,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 2.3
+  "progresso_geral": 4.7
 }

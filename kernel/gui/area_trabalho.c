@@ -140,7 +140,33 @@ void area_barra(superficie_t *s)
     snformatar(hora, sizeof hora, "%s %02u/%02u/%u  %02u:%02u", semana[dia_da_semana(d.ano, d.mes, d.dia)],
                d.dia, d.mes, d.ano, d.hora, d.minuto);
     sup_texto(s, larg - texto_largura(hora) - 10, 4, hora, 0xFFFFFF);
+    /* Botão de energia (H36), à esquerda do relógio. */
+    int ex, ey, el, ea;
+    area_energia_retangulo(&ex, &ey, &el, &ea);
+    desenho_t energia = { arte_botao_energia, 16, 16 };
+    sup_desenho(s, ex + 2, ey + 2, &energia, 1);
     klog("[GUI] relogio: %s\n", hora);
+}
+
+/* Onde fica o botão de energia na barra: logo à esquerda da data e hora. */
+void area_energia_retangulo(int *x, int *y, int *l, int *a)
+{
+    *l = 20; *a = 20; *y = 2;
+    *x = larg - texto_largura("ddd 00/00/0000  00:00") - 10 - 30;
+}
+
+bool area_energia_em(int x, int y)
+{
+    int ex, ey, el, ea;
+    area_energia_retangulo(&ex, &ey, &el, &ea);
+    return x >= ex && x < ex + el && y >= ey && y < ey + ea;
+}
+
+void area_energia_abrir(void)
+{
+    char *argv[] = { "energia", NULL };
+    int pid = processo_executar("/bin/energia", 1, argv, NULL);
+    klog("[GUI] botao de energia -> /bin/energia (pid %d)\n", pid);
 }
 
 int area_icone_em(int x, int y)

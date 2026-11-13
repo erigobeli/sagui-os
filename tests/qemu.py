@@ -186,13 +186,14 @@ class FalhaTeste(Exception):
 
 
 class Maquina:
-    def __init__(self, nome, modo="ide", imagem=IMAGEM, memoria="512M", extras=None, formato="raw"):
+    def __init__(self, nome, modo="ide", imagem=IMAGEM, memoria="512M", extras=None, formato="raw", reiniciar=False):
         self.nome = f"{nome}-{modo}"
         self.modo = modo
         self.imagem = imagem
         self.memoria = memoria
         self.extras = extras or []
         self.formato = formato
+        self.reiniciar = reiniciar   # True: o QEMU reinicia em vez de sair (teste do H36)
         os.makedirs(SAIDA, exist_ok=True)
         self.arq_serial = os.path.join(SAIDA, self.nome + ".serial")
         self.sock_monitor = os.path.join(SAIDA, self.nome + ".mon")
@@ -207,7 +208,7 @@ class Maquina:
         cmd = ["qemu-system-i386", "-m", self.memoria, "-display", "none",
                "-serial", "file:" + self.arq_serial,
                "-monitor", f"unix:{self.sock_monitor},server,nowait",
-               "-no-reboot"]
+               ] + ([] if self.reiniciar else ["-no-reboot"])
         if self.modo == "ide":
             cmd += ["-drive", f"format={self.formato},file={self.imagem},if=ide,index=0,snapshot=on"]
         elif self.modo == "usb":
@@ -418,3 +419,9 @@ def verificar(condicao, mensagem):
 def mtype(img, caminho):
     """Conteúdo de um arquivo do pendrive (partição em 1 MB), lido com mtools."""
     return subprocess.run(["mtype", "-i", img + "@@1M", f"::{caminho}"], capture_output=True).stdout
+
+
+def janela(serial, titulo):
+    """Posição da área de conteúdo da última janela com esse título (pelo log)."""
+    m = re.findall(rf'criada por \d+: "{re.escape(titulo)}" (\d+)x(\d+) em \((\d+),(\d+)\)', serial)[-1]
+    return dict(l=int(m[0]), a=int(m[1]), x=int(m[2]) + 2, y=int(m[3]) + 24, fx=int(m[2]), fy=int(m[3]))
