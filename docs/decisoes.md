@@ -1274,3 +1274,20 @@ código de fora fica para o que não faz sentido reescrever.
 foram atualizados. Do Cipó (#6), os trechos de terceiros podem entrar, desde
 que separados em `terceiros/` e creditados, depois de conferida a licença
 exata de cada um.
+
+## D042. Ponto flutuante nos programas, pelo SSE2 (H80)
+
+A regra "sem ponto flutuante" da versão 1 era uma simplificação: para os
+programas usarem float e double, o kernel precisa guardar os registradores
+de ponto flutuante de cada processo. Agora guarda: a cada troca de processo,
+FXSAVE do que sai e FXRSTOR do que entra (512 bytes, alinhados em 16), e
+cada processo novo começa com a FPU zerada. Salvar sempre, e não só quando o
+programa usou, é mais simples e custa pouco. O kernel continua compilado sem
+ponto flutuante (-mgeneral-regs-only), para nunca estragar esses registradores.
+
+Os programas são compilados com `-msse2 -mfpmath=sse`: as contas vão pelo
+SSE2, que arredonda cada operação para double exato (IEEE 754). A FPU x87, a
+outra opção, calcula com 80 bits por dentro e só arredonda ao guardar na
+memória, então a mesma conta dá resultados levemente diferentes conforme o
+compilador guarda ou não os valores; o teste da H80 pegou isso, e o
+JavaScript do Cipó exige double exato. O G470, o VirtualBox e o QEMU têm SSE2.

@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T22:20:36",
-  "situacao": "Trabalhando na H46: Rede no G470",
-  "fase_atual": 3,
-  "historia_atual": "H46",
+  "atualizado": "2026-11-13T23:22:18",
+  "situacao": "Trabalhando na H80: Ponto flutuante nos programas",
+  "fase_atual": 11,
+  "historia_atual": "H80",
   "bloqueio": "H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'.",
   "mensagem_fase": "Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8.md. O teste final (5 pedidos com a IA de verdade, H73) precisa da sua chave do OpenRouter.",
   "raiz": "../../",
@@ -82,6 +82,12 @@ window.SAGUI_STATUS = {
       "estado": "a fazer",
       "progresso": 0,
       "opcional": true
+    },
+    {
+      "numero": 11,
+      "nome": "Versão 2.1: comunidade, Cipó e vídeo",
+      "estado": "em andamento",
+      "progresso": 16.7
     }
   ],
   "historias": [
@@ -656,6 +662,75 @@ window.SAGUI_STATUS = {
       "fim": "2026-11-13T19:42:41",
       "minutos": 1,
       "resultado": "borda e canto, maximizar, duplo clique; Terminal, Navegador, Editor, Arquivos; ssh repassa o tamanho"
+    },
+    {
+      "id": "H79",
+      "fase": 9,
+      "titulo": "Correções do teste no G470",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "feito",
+      "bonus": false,
+      "fim": "2026-11-13T23:17:06",
+      "resultado": "vidro do menu, escrita combinada, registro, programas de texto no Terminal, menu do botão direito"
+    },
+    {
+      "id": "H80",
+      "fase": 11,
+      "titulo": "Ponto flutuante nos programas",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-13T23:22:18",
+      "fim": "2026-11-13T23:22:18",
+      "minutos": 1,
+      "resultado": "FXSAVE/FXRSTOR por processo; programas com SSE2; três processos fazendo contas juntos sem se estragar"
+    },
+    {
+      "id": "H81",
+      "fase": 11,
+      "titulo": "Visual do Robson somado ao da 2.0",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "a fazer",
+      "bonus": false
+    },
+    {
+      "id": "H82",
+      "fase": 11,
+      "titulo": "Cipó, o navegador (motor do #6)",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "a fazer",
+      "bonus": false
+    },
+    {
+      "id": "H83",
+      "fase": 11,
+      "titulo": "Pequenos da comunidade (#3, #4, #7)",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "a fazer",
+      "bonus": false
+    },
+    {
+      "id": "H84",
+      "fase": 11,
+      "titulo": "Driver de vídeo Intel HD 3000 (G470)",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "a fazer",
+      "bonus": false
+    },
+    {
+      "id": "H85",
+      "fase": 11,
+      "titulo": "Créditos e versão 2.1",
+      "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
+      "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
+      "estado": "a fazer",
+      "bonus": false
     }
   ],
   "tanenbaum": [
@@ -727,6 +802,22 @@ window.SAGUI_STATUS = {
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T23:22:18",
+      "texto": "H80 concluída: FXSAVE/FXRSTOR por processo; programas com SSE2; três processos fazendo contas juntos sem se estragar"
+    },
+    {
+      "data": "2026-11-13T23:22:18",
+      "texto": "Início da H80: Ponto flutuante nos programas"
+    },
+    {
+      "data": "2026-11-13T23:17:06",
+      "texto": "Versão 2.1 planejada (H80 a H85): aproveitar os PRs da comunidade com crédito e o driver de vídeo do G470"
+    },
+    {
+      "data": "2026-11-13T23:17:06",
+      "texto": "H79 concluída: vidro do menu, escrita combinada, registro, programas de texto no Terminal, menu do botão direito"
+    },
     {
       "data": "2026-11-13T22:20:36",
       "texto": "Início da H46: Rede no G470"
@@ -950,22 +1041,6 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T07:49:03",
       "texto": "H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21"
-    },
-    {
-      "data": "2026-11-13T07:49:03",
-      "texto": "H59 concluída: DEFLATE/zlib/gzip e PNG: 27 PNGs iguais pixel a pixel, zlib níveis 0-9"
-    },
-    {
-      "data": "2026-11-13T07:49:03",
-      "texto": "Início da H61: Leitor de HTML"
-    },
-    {
-      "data": "2026-11-13T07:49:03",
-      "texto": "Início da H60: JPEG"
-    },
-    {
-      "data": "2026-11-13T07:49:03",
-      "texto": "Início da H59: Descompactação e PNG"
     }
   ],
   "erros": [],
@@ -1273,14 +1348,14 @@ window.SAGUI_STATUS = {
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 14112,
-    "userland": 28861,
-    "ferramentas": 10366
+    "kernel": 14163,
+    "userland": 28901,
+    "ferramentas": 10415
   },
   "imagem": {
-    "bytes_util": 1682944,
+    "bytes_util": 1701888,
     "bytes_arquivo": 1703936,
     "meta_bytes": null
   },
-  "progresso_geral": 95.5
+  "progresso_geral": 86.3
 };

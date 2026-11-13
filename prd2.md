@@ -163,6 +163,7 @@ Cada história vale o mesmo peso no progresso. **Cada fase termina numa parada o
 | 7. Compilador C | Compilar programas dentro do SaguiOS | H64 a H68 |
 | 8. Sagui Code | Agente de programação com IA pelo OpenRouter | H69 a H73 |
 | 9. Visual moderno | Transparência, desfoque, cantos arredondados, animações, redimensionar | H74 a H78 |
+| 2.1 | Comunidade: visual do Robson, Cipó, pequenos, vídeo nativo | H80 a H85 |
 | 10. Instalação no HD (opcional) | A decidir com o Eli depois da fase 9 | — |
 
 ### Fase 1: Base e Configurações
@@ -343,6 +344,65 @@ Só depois da 2.0 e com o Eli decidindo. Exige driver SATA (AHCI) e regras de se
 - **Outros provedores no Sagui Code:** Anthropic direto e OpenAI, além do OpenRouter.
 
 ---
+
+### Versão 2.1: comunidade, visual do Robson, Cipó e vídeo nativo (decidida em 14/11/2026)
+
+Depois da 2.0, o projeto recebeu pull requests da comunidade (#1, #3, #4, #6,
+#7) e o Eli decidiu (com o Claude) aproveitar o melhor de cada um, dando o
+crédito, sob a regra D041: **o núcleo continua do zero; aplicativos podem usar
+código livre de terceiros, separado em `terceiros/`, com licença compatível e
+crédito.** Os pull requests não são juntados como estão (foram feitos sobre a
+1.0): as partes boas são trazidas para a 2.0, com o autor como autor ou coautor
+dos commits. As mensagens nos pull requests só são escritas depois do teste do
+Eli. O Claude trabalha em modo contínuo até terminar tudo.
+
+**H80. Ponto flutuante nos programas.** O kernel guarda o estado da FPU/SSE de
+cada processo (FXSAVE/FXRSTOR) e os programas podem usar `float` e `double`
+(a regra antiga "sem ponto flutuante" sai). *Aceite:* um programa de teste faz
+contas em ponto flutuante em dois processos ao mesmo tempo sem um estragar o
+outro.
+
+**H81. Visual do Robson (#1) somado ao da 2.0.** Ícones 64x64 suavizados (com
+um padrão e uma ferramenta para os próximos), moldura verde com filete amarelo,
+botões redondos coloridos, letras suavizadas, menus do botão direito na área de
+trabalho e na barra de título, menus próprios nos programas, mouse mais rápido,
+relógio lido menos vezes; tudo junto com o vidro, a doca, as animações, o
+redimensionar e os efeitos leves da 2.0. Novos temas: "Mata" (as cores do
+Robson) e "Azul" (as do #7), além de claro e escuro. Barra de tarefas como
+opção à doca. Fundos novos: "Brasil com sol" (desenhado por código) e "Mata
+Atlântica" (imagem feita por IA, com crédito). *Aceite:* capturas de cada tema
+e fundo; testes do visual passam.
+
+**H82. Cipó, o navegador.** O navegador da 2.0 passa a se chamar Cipó (nome do
+#3) e recebe do #6: motor de CSS e layout, motor de JavaScript com DOM, fontes
+TrueType, Canvas, SVG, WebGL em software, imagens WebP/GIF/JPEG progressivo,
+vídeo H.264/AAC/MP4 (tocando pelo som HDA da 2.0), fontes da web, cookies e
+HTTP mais completo, quebra de linha Unicode. Usa a rede, o TLS e o som da 2.0.
+Os trechos de terceiros (libwebp, font-rs, V8, tabelas do FFmpeg e do FAAD2)
+vão para `terceiros/` com licença e crédito, se a licença for compatível; o
+que não for, é reescrito. Ficam de fora: o TLS, a rede, o AC97 e o desligar do
+#6, a compactação LZMA do kernel e o script do YouTube. *Aceite:* as páginas de
+teste da 2.0 continuam passando e páginas com JavaScript e CSS moderno abrem.
+
+**H83. Pequenos da comunidade.** `poweroff` e a tela "pode desligar" (#4);
+monitor de processos com a conta de CPU certa, `grep`, `fetch`, `uname`,
+demonstrações de triângulos e da chuva de letras (sem nomes de marcas) e
+`make run` (#7); página inicial do Cipó com sites que funcionam sem HTTPS (#3).
+*Aceite:* testes de cada um.
+
+**H84. Driver de vídeo Intel HD Graphics 3000 (G470).** A placa do G470
+(8086:0116, Sandy Bridge) com a resolução nativa do painel (1366x768) no lugar
+do modo VESA, a partir dos manuais públicos da Intel. Desligado por padrão
+(configuração `video.nativo`), com volta automática ao VESA se algo não
+conferir e diagnóstico no `registro`. Só pode ser testado no G470. *Aceite:* no
+QEMU, nada muda; no G470, o Eli confirma a imagem nítida em tela cheia.
+
+**H85. Créditos e versão 2.1.** `CONTRIBUIDORES.md`, `CREDITOS.md` (seção
+"O que não foi escrito aqui"), README atualizado, regressão completa, imagem em
+`entrega/v2.1/` e roteiro de teste. Depois do teste do Eli, as mensagens dos
+pull requests.
+
+> **PARADA OBRIGATÓRIA: fim da versão 2.1.**
 
 ## 7. Testes automáticos
 

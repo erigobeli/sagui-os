@@ -34,6 +34,9 @@ const char *nome_estado(estado_t e)
     return e <= P_ZUMBI ? n[e] : "?";
 }
 
+static uint8_t fpu_limpa[512] __attribute__((aligned(16)));   /* ver "ponto flutuante" abaixo */
+static void fpu_iniciar(void);
+
 void processos_iniciar(void)
 {
     /* O código que está rodando agora (o fim da inicialização do kernel) vira
@@ -49,7 +52,47 @@ void processos_iniciar(void)
     atual = p;
     fatia = QUANTUM_TIQUES;
     idt_registrar(VETOR_CEDER, ao_ceder);
+    fpu_iniciar();
+    memcpy(p->fpu, fpu_limpa, sizeof p->fpu);
 }
+
+/* ------------------------------------------------------------ ponto flutuante (H80)
+ *
+ * Os programas podem usar float e double. O processador guarda os números
+ * de ponto flutuante em registradores próprios (os 8 do x87 e os 8 XMM do
+ * SSE); como todos os programas dividem o mesmo processador, a cada troca de
+ * processo o kernel salva os registradores do que sai e restaura os do que
+ * entra, com FXSAVE/FXRSTOR (512 bytes, manual da Intel, vol. 1 cap. 10). O
+ * próprio kernel é compilado sem ponto flutuante (-mgeneral-regs-only), então
+ * nunca estraga esses registradores no meio do caminho. Salvar sempre (e não
+ * só quando o programa usou) é mais simples e custa pouco: ~512 bytes. */
+static uint8_t fpu_limpa[512] __attribute__((aligned(16)));
+static bool fpu_ok;
+
+static void fpu_iniciar(void)
+{
+    uint32_t a, b, c, d;
+    __asm__ volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(1));
+    if (!(d & (1u << 24))) { klog("[FPU] processador sem FXSAVE: programas sem ponto flutuante\n"); return; }
+    uint32_t cr0;
+    __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
+    cr0 &= ~((1u << 2) | (1u << 3));          /* EM = 0 (há FPU), TS = 0 */
+    cr0 |= (1u << 1) | (1u << 5);             /* MP = 1, NE = 1 (erros por exceção) */
+    __asm__ volatile("mov %0, %%cr0" :: "r"(cr0));
+    if (d & (1u << 25)) {                     /* SSE: o sistema sabe salvar os XMM */
+        uint32_t cr4;
+        __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+        cr4 |= (1u << 9) | (1u << 10);        /* OSFXSR, OSXMMEXCPT */
+        __asm__ volatile("mov %0, %%cr4" :: "r"(cr4));
+    }
+    __asm__ volatile("fninit");
+    __asm__ volatile("fxsave %0" : "=m"(fpu_limpa));
+    fpu_ok = true;
+    klog("[FPU] ponto flutuante ligado (x87%s, salvo por processo)\n", (d & (1u << 25)) ? " e SSE" : "");
+}
+
+/* Estado inicial de um programa novo: a FPU zerada. */
+void processo_fpu_limpar(processo_t *p) { memcpy(p->fpu, fpu_limpa, sizeof p->fpu); }
 
 processo_t *processo_indice(int i) { return (i >= 0 && i < MAX_PROCESSOS) ? &tabela[i] : NULL; }
 
@@ -69,6 +112,7 @@ processo_t *processo_novo(const char *nome, int pai)
         uint32_t pilha = memfisica_alocar_seguidas(PILHA_KERNEL / PAGINA);
         if (!pilha) return NULL;
         memset(p, 0, sizeof *p);
+        memcpy(p->fpu, fpu_limpa, sizeof p->fpu);
         p->pid = proximo_pid++;
         p->pai = pai;
         p->estado = P_BLOQUEADO;   /* só fica pronto quando o quadro inicial estiver montado */
@@ -201,6 +245,10 @@ quadro_t *escalonar(quadro_t *q)
         tss_definir_pilha(prox->pilha_kernel + PILHA_KERNEL);
     if (prox->espaco != espaco_atual())
         espaco_ativar(prox->espaco);
+    if (fpu_ok && prox != atual) {
+        __asm__ volatile("fxsave %0" : "=m"(atual->fpu));
+        __asm__ volatile("fxrstor %0" :: "m"(prox->fpu));
+    }
     atual = prox;
     return prox->quadro;
 }

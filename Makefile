@@ -36,9 +36,14 @@ ROOTFS     := $(shell find rootfs -type f | sort)
 
 # Programas de usuário: libsagui + um .c por programa em userland/programas/
 # (vão para /bin) e em userland/testes/ (vão para /testes).
-UCFLAGS := -m32 -march=i686 -std=gnu11 -O2 \
+# H80: os programas podem usar ponto flutuante (o kernel salva a FPU de cada
+# processo); o kernel continua com -mgeneral-regs-only. As contas vão pelo
+# SSE2 (double exato, IEEE 754, como o JavaScript pede), e não pela FPU x87,
+# que calcula com 80 bits por dentro e dá resultados que mudam conforme o
+# compilador guarda ou não os valores na memória.
+UCFLAGS := -m32 -march=i686 -msse2 -mfpmath=sse -std=gnu11 -O2 \
            -ffreestanding -fno-builtin -nostdlib -fno-pic -fno-pie \
-           -fno-stack-protector -fno-asynchronous-unwind-tables -mgeneral-regs-only \
+           -fno-stack-protector -fno-asynchronous-unwind-tables \
            -ffunction-sections -fdata-sections \
            -Wall -Wextra -Werror=implicit-function-declaration \
            -finput-charset=UTF-8 -fexec-charset=ISO-8859-1 \
