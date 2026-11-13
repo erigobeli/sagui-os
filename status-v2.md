@@ -1,18 +1,18 @@
 ```
-Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).
+Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-fase3/ e entrega/v2-fase4/ (a mesma imagem), roteiros em docs/teste-v2-fase3.md e docs/teste-v2-fase4.md. Sigo para a fase 5 (SSH) e 6 (navegador).
 ```
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T07:26:21_
+_Atualizado em 2026-11-13T07:48:05_
 
-- **Situação:** Trabalhando na H54: Certificados raiz e créditos
+- **Situação:** Aguardando teste do Eli: fase 4
 - **Fase atual:** 4
-- **História atual:** H54
+- **História atual:** -
 - **Progresso geral:** 46.5%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - **Imagem:** 898560 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12704, userland 15932
+- **Linhas de código:** boot 903, kernel 12704, userland 19149
 
 ## Fases
 
@@ -20,8 +20,8 @@ _Atualizado em 2026-11-13T07:26:21_
 | --- | --- | --- | --- |
 | 1 | Base e Configurações | 100.0% | aguardando teste |
 | 2 | Som | 100.0% | aguardando teste |
-| 3 | Rede | 80.0% | em andamento |
-| 4 | TCP e HTTPS | 100.0% | em andamento |
+| 3 | Rede | 80.0% | aguardando teste |
+| 4 | TCP e HTTPS | 100.0% | aguardando teste |
 | 5 | Terminal e SSH | 25.0% | em andamento |
 | 6 | Sagui Navegador | 0.0% | a fazer |
 | 7 | Compilador C | 0.0% | a fazer |
@@ -41,18 +41,18 @@ _Atualizado em 2026-11-13T07:26:21_
 | H40 | Driver Intel HD Audio | aguardando teste | 7 |
 | H41 | Som para os programas | aguardando teste | 2 |
 | H42 | Tocador e sons do sistema | aguardando teste | 2 |
-| H43 | Driver Intel PRO/1000 | feito | 1 |
-| H44 | Ethernet, ARP, IPv4, ICMP e UDP | feito |  |
-| H45 | DHCP e DNS | feito |  |
+| H43 | Driver Intel PRO/1000 | aguardando teste | 1 |
+| H44 | Ethernet, ARP, IPv4, ICMP e UDP | aguardando teste |  |
+| H45 | DHCP e DNS | aguardando teste |  |
 | H46 | Rede no G470 | a fazer |  |
-| H47 | Rede na interface | feito |  |
-| H48 | TCP e sockets | feito |  |
-| H49 | HTTP e relógio pela internet | feito |  |
-| H50 | Números aleatórios e resumos | feito | 2 |
-| H51 | Cifras e troca de chaves | feito | 1 |
-| H52 | Assinaturas e certificados | feito | 1 |
-| H53 | TLS 1.3 | feito |  |
-| H54 | Certificados raiz e créditos | feito | 1 |
+| H47 | Rede na interface | aguardando teste |  |
+| H48 | TCP e sockets | aguardando teste |  |
+| H49 | HTTP e relógio pela internet | aguardando teste |  |
+| H50 | Números aleatórios e resumos | aguardando teste | 2 |
+| H51 | Cifras e troca de chaves | aguardando teste | 1 |
+| H52 | Assinaturas e certificados | aguardando teste | 1 |
+| H53 | TLS 1.3 | aguardando teste |  |
+| H54 | Certificados raiz e créditos | aguardando teste | 1 |
 | H55 | Terminal completo | feito | 1 |
 | H56 | Transporte SSH | a fazer |  |
 | H57 | Login e sessão | a fazer |  |
@@ -79,6 +79,8 @@ _Atualizado em 2026-11-13T07:26:21_
 
 ## Últimas ações
 
+- 2026-11-13T07:48:05: Fase 4 entregue. Aguardando teste do Eli.
+- 2026-11-13T07:48:05: Fase 3 entregue. Aguardando teste do Eli.
 - 2026-11-13T07:26:21: H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md
 - 2026-11-13T07:26:21: Início da H54: Certificados raiz e créditos
 - 2026-11-13T07:26:21: H53 concluída: TLS 1.3 dentro do SaguiOS (ponte com TCP, gerador do kernel e relógio UTC): baixar https:// funciona com example.com e a Wikipédia (ChaCha20-Poly1305); âncora de confiança por nome + chave
@@ -92,5 +94,3 @@ _Atualizado em 2026-11-13T07:26:21_
 - 2026-11-13T02:25:47: H51 concluída: AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)
 - 2026-11-13T02:25:47: Início da H51: Cifras e troca de chaves
 - 2026-11-13T02:25:47: H48 concluída: TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP
-- 2026-11-13T01:36:59: Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- 2026-11-13T01:36:58: H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)

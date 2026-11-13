@@ -1,11 +1,11 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T07:26:21",
-  "situacao": "Trabalhando na H54: Certificados raiz e créditos",
+  "atualizado": "2026-11-13T07:48:05",
+  "situacao": "Aguardando teste do Eli: fase 4",
   "fase_atual": 4,
-  "historia_atual": "H54",
+  "historia_atual": null,
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
-  "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
+  "mensagem_fase": "Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-fase3/ e entrega/v2-fase4/ (a mesma imagem), roteiros em docs/teste-v2-fase3.md e docs/teste-v2-fase4.md. Sigo para a fase 5 (SSH) e 6 (navegador).",
   "raiz": "../../",
   "links": [
     {
@@ -36,13 +36,13 @@
     {
       "numero": 3,
       "nome": "Rede",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 80.0
     },
     {
       "numero": 4,
       "nome": "TCP e HTTPS",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 100.0
     },
     {
@@ -194,7 +194,7 @@
       "titulo": "Driver Intel PRO/1000",
       "objetivo": "Placa de rede usada pelo QEMU e pelo VirtualBox: inicialização, filas de envio e recepção, interrupções, endereço físico (MAC), estado do cabo.",
       "aceite": "o teste vê pacotes indo e voltando pela rede do QEMU.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T01:35:10",
       "fim": "2026-11-13T01:36:19",
@@ -207,7 +207,7 @@
       "titulo": "Ethernet, ARP, IPv4, ICMP e UDP",
       "objetivo": "A pilha básica no kernel e o comando `ping`.",
       "aceite": "`ping 10.0.2.2` (o QEMU) responde; tempo e perda mostrados.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": null,
       "fim": "2026-11-13T01:36:19",
@@ -220,7 +220,7 @@
       "titulo": "DHCP e DNS",
       "objetivo": "Endereço automático no boot e resolução de nomes; comando `rede` (endereço, máscara, rota, DNS) e `ping google.com`.",
       "aceite": "no QEMU, o DHCP pega o endereço sozinho e um nome resolve pelo DNS do QEMU; teste \"internet\" com um nome real.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": null,
       "fim": "2026-11-13T01:36:19",
@@ -246,7 +246,7 @@
       "titulo": "Rede na interface",
       "objetivo": "Aba **Rede** nas Configurações (estado, endereço, DHCP ou manual) e ícone de rede na barra de cima.",
       "aceite": "capturas com a rede ligada e com o cabo desligado.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": null,
       "fim": "2026-11-13T01:36:58",
@@ -259,7 +259,7 @@
       "titulo": "TCP e sockets",
       "objetivo": "Abertura e fechamento de conexão, números de sequência, confirmações, retransmissão, janela, e as chamadas de sistema de sockets para os programas.",
       "aceite": "um programa do SaguiOS baixa 10 MB de um servidor da VPS sem perder nem trocar nenhum byte (conferido por hash), inclusive com perda de pacotes simulada.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": null,
       "fim": "2026-11-13T02:25:47",
@@ -272,7 +272,7 @@
       "titulo": "HTTP e relógio pela internet",
       "objetivo": "Cliente HTTP/1.1 (com respostas em pedaços e redirecionamentos) numa biblioteca de usuário, comando `baixar <url> [arquivo]`, e NTP com a opção **Relógio automático** nas Configurações.",
       "aceite": "`baixar http://...` de um servidor da VPS grava o arquivo certo no pendrive; o relógio acerta pelo NTP de teste.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": null,
       "fim": "2026-11-13T02:50:51",
@@ -285,7 +285,7 @@
       "titulo": "Números aleatórios e resumos",
       "objetivo": "Gerador do kernel (seção 4, item 2) com teste estatístico simples; SHA-256, SHA-384, SHA-512, HMAC e HKDF.",
       "aceite": "todos os vetores oficiais passam; documentação de como a aleatoriedade é coletada no G470 sem RDRAND.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T02:25:47",
       "fim": "2026-11-13T02:27:43",
@@ -298,7 +298,7 @@
       "titulo": "Cifras e troca de chaves",
       "objetivo": "AES-128 e AES-256 em GCM, ChaCha20-Poly1305, X25519.",
       "aceite": "vetores oficiais; tempo constante onde a especificação recomenda (registrar como foi feito).",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T02:25:47",
       "fim": "2026-11-13T02:25:47",
@@ -311,7 +311,7 @@
       "titulo": "Assinaturas e certificados",
       "objetivo": "Números grandes, RSA (verificação PKCS#1 v1.5 e PSS), ECDSA P-256 e P-384, leitura de certificados X.509 em DER, validação de cadeia, nome e validade.",
       "aceite": "vetores oficiais; uma cadeia de teste válida passa e cinco cadeias erradas (nome errado, vencida, assinatura falsa, autoridade desconhecida, cadeia quebrada) são recusadas com a mensagem certa.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T02:57:46",
       "fim": "2026-11-13T02:57:46",
@@ -324,7 +324,7 @@
       "titulo": "TLS 1.3",
       "objetivo": "Cliente completo (troca de chaves X25519, cifras da H51, verificação do certificado pela H52, alertas), usado pelo `baixar https://...`.",
       "aceite": "conecta no servidor TLS de teste da VPS; recusa o servidor com certificado errado; teste \"internet\" com sites reais.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": null,
       "fim": "2026-11-13T07:26:21",
@@ -337,7 +337,7 @@
       "titulo": "Certificados raiz e créditos",
       "objetivo": "Os poucos certificados raiz necessários para os sites de aceite e para o OpenRouter, em `/sistema/certificados/`, com `CREDITOS.md`; comando para ver a lista.",
       "aceite": "`baixar https://pt.wikipedia.org/` funciona (teste \"internet\"); `CREDITOS.md` lista cada certificado com origem e licença.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:26:21",
       "fim": "2026-11-13T07:26:21",
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T07:48:05",
+      "texto": "Fase 4 entregue. Aguardando teste do Eli."
+    },
+    {
+      "data": "2026-11-13T07:48:05",
+      "texto": "Fase 3 entregue. Aguardando teste do Eli."
+    },
+    {
       "data": "2026-11-13T07:26:21",
       "texto": "H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md"
     },
@@ -873,111 +881,111 @@
   "erros": [],
   "capturas": [
     {
-      "arquivo": "docs/v2/capturas/H53-https.png",
-      "nome": "H53-https.png",
-      "data": "2026-11-13T07:25:53"
-    },
-    {
       "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
       "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T03:08:12"
+      "data": "2026-11-13T07:44:38"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H53-https.png",
+      "nome": "H53-https.png",
+      "data": "2026-11-13T07:44:18"
     },
     {
       "arquivo": "docs/v2/capturas/H49-baixar.png",
       "nome": "H49-baixar.png",
-      "data": "2026-11-13T03:07:13"
+      "data": "2026-11-13T07:43:07"
     },
     {
       "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
       "nome": "H47-3-aba-rede.png",
-      "data": "2026-11-13T03:05:10"
+      "data": "2026-11-13T07:41:06"
     },
     {
       "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
       "nome": "H47-2-barra-sem-cabo.png",
-      "data": "2026-11-13T03:05:08"
+      "data": "2026-11-13T07:41:04"
     },
     {
       "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
       "nome": "H47-1-barra-conectado.png",
-      "data": "2026-11-13T03:05:06"
+      "data": "2026-11-13T07:41:01"
     },
     {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
-      "data": "2026-11-13T03:04:51"
+      "data": "2026-11-13T07:40:47"
     },
     {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
-      "data": "2026-11-13T03:04:39"
+      "data": "2026-11-13T07:40:36"
     },
     {
       "arquivo": "docs/v2/capturas/H42-tocar.png",
       "nome": "H42-tocar.png",
-      "data": "2026-11-13T03:04:20"
+      "data": "2026-11-13T07:40:16"
     },
     {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
-      "data": "2026-11-13T03:04:03"
+      "data": "2026-11-13T07:39:56"
     },
     {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
-      "data": "2026-11-13T03:03:42"
+      "data": "2026-11-13T07:39:35"
     },
     {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T03:03:32"
+      "data": "2026-11-13T07:39:25"
     },
     {
       "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
       "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T03:03:26"
+      "data": "2026-11-13T07:39:19"
     },
     {
       "arquivo": "docs/v2/capturas/H39-1-instalado.png",
       "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T03:03:24"
+      "data": "2026-11-13T07:39:16"
     },
     {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T03:03:06"
+      "data": "2026-11-13T07:38:59"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T03:03:04"
+      "data": "2026-11-13T07:38:57"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T03:02:47"
+      "data": "2026-11-13T07:38:40"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T03:02:31"
+      "data": "2026-11-13T07:38:24"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T03:02:13"
+      "data": "2026-11-13T07:38:04"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T03:01:59"
+      "data": "2026-11-13T07:37:50"
     }
   ],
   "linhas": {
     "boot": 903,
     "kernel": 12704,
-    "userland": 15932,
-    "ferramentas": 7257
+    "userland": 19149,
+    "ferramentas": 8361
   },
   "imagem": {
     "bytes_util": 898560,

@@ -1011,3 +1011,26 @@ memória depois refaria os números já entregues. É o mesmo princípio dos
 geradores dos sistemas grandes, em tamanho de projeto de estudo: não há
 estimativa formal de entropia nem bloqueio até "juntar o suficiente". No
 boot, antes das primeiras chaves, já entraram dezenas de medições.
+
+## D036. Criptografia e TLS com subagentes, e como entram no SaguiOS (H50 a H54)
+
+As partes mais exigentes da fase 4 (a biblioteca de criptografia e o cliente
+TLS 1.3 com a validação de certificados) foram escritas por subagentes no
+Claude Fable 5.2, com as mesmas regras de autoria do projeto: só as RFCs e as
+normas do NIST, nenhum código de biblioteca, comentários em português. Cada
+um registrou como pensou cada parte em `userland/cripto/LEIA-ME.md` e
+`userland/tls/LEIA-ME.md`, e cada um tem o próprio teste (vetores oficiais;
+servidores `openssl` locais; Wikipédia e example.com de verdade).
+
+Os dois foram escritos sem depender do sistema: recebem um "ambiente" de
+funções (mandar, receber sem esperar, esperar, relógio, números aleatórios,
+data). Assim são testados no Linux da VPS e, no SaguiOS, a ponte
+(`userland/libsagui/tls_ponte.c`) liga essas funções ao socket TCP, ao gerador
+do kernel e ao relógio da placa convertido para UTC pelo fuso. A biblioteca
+entra na `libsagui`; o ligador só copia para cada programa o que ele usa.
+
+Um ajuste feito na integração: a âncora de confiança passou a ser o par
+**nome + chave** de uma raiz, e não os bytes exatos do certificado. Servidores
+mandam autoridades "assinadas em cruz" por raízes mais antigas (o example.com,
+via Cloudflare, manda o SSL.com 2022 assinado pela antiga AAA, que já saiu da
+lista da Mozilla); a mesma autoridade, com a mesma chave, está na nossa lista.
