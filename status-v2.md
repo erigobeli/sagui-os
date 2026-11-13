@@ -1,18 +1,18 @@
 ```
-Eli, a fase 5 (Terminal e SSH) está pronta: entrega/v2-fase5/ e docs/teste-v2-fase5.md. O login por senha aceito só dá para conferir num servidor seu. Sigo para a fase 6 (navegador).
+Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-fase6.md. Sigo para a fase 7 (compilador) e 8 (Sagui Code).
 ```
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T08:15:37_
+_Atualizado em 2026-11-13T12:23:13_
 
-- **Situação:** Trabalhando na H63: Sites de aceite
+- **Situação:** Aguardando teste do Eli: fase 6
 - **Fase atual:** 6
-- **História atual:** H63
+- **História atual:** -
 - **Progresso geral:** 65.1%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 1141760 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12704, userland 20446
+- **Imagem:** 1142272 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 12704, userland 22082
 
 ## Fases
 
@@ -23,7 +23,7 @@ _Atualizado em 2026-11-13T08:15:37_
 | 3 | Rede | 80.0% | aguardando teste |
 | 4 | TCP e HTTPS | 100.0% | aguardando teste |
 | 5 | Terminal e SSH | 100.0% | aguardando teste |
-| 6 | Sagui Navegador | 100.0% | em andamento |
+| 6 | Sagui Navegador | 100.0% | aguardando teste |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | a fazer |
 | 9 | Visual moderno | 0.0% | a fazer |
@@ -57,11 +57,11 @@ _Atualizado em 2026-11-13T08:15:37_
 | H56 | Transporte SSH | aguardando teste | 1 |
 | H57 | Login e sessão | aguardando teste | 1 |
 | H58 | SSH de verdade | aguardando teste | 1 |
-| H59 | Descompactação e PNG | feito | 1 |
-| H60 | JPEG | feito | 1 |
-| H61 | Leitor de HTML | feito | 1 |
-| H62 | Janela do navegador | feito | 10 |
-| H63 | Sites de aceite | feito | 6 |
+| H59 | Descompactação e PNG | aguardando teste | 1 |
+| H60 | JPEG | aguardando teste | 1 |
+| H61 | Leitor de HTML | aguardando teste | 1 |
+| H62 | Janela do navegador | aguardando teste | 10 |
+| H63 | Sites de aceite | aguardando teste | 6 |
 | H64 | A linguagem | a fazer |  |
 | H65 | Frente do compilador | a fazer |  |
 | H66 | Fundo do compilador | a fazer |  |
@@ -79,6 +79,7 @@ _Atualizado em 2026-11-13T08:15:37_
 
 ## Últimas ações
 
+- 2026-11-13T12:23:13: Fase 6 entregue. Aguardando teste do Eli.
 - 2026-11-13T08:15:37: H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas
 - 2026-11-13T08:09:36: Início da H63: Sites de aceite
 - 2026-11-13T08:09:36: H62 concluída: janela igual à referência pixel a pixel (topo e rolada); links, voltar/avançar, âncora, busca em UTF-8, favoritos, texto puro
@@ -93,4 +94,3 @@ _Atualizado em 2026-11-13T08:15:37_
 - 2026-11-13T07:58:47: Início da H57: Login e sessão
 - 2026-11-13T07:58:47: Início da H56: Transporte SSH
 - 2026-11-13T07:49:09: H61 concluída: árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória
-- 2026-11-13T07:49:03: Início da H62: Janela do navegador

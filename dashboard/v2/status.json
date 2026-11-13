@@ -1,11 +1,11 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T08:15:37",
-  "situacao": "Trabalhando na H63: Sites de aceite",
+  "atualizado": "2026-11-13T12:23:13",
+  "situacao": "Aguardando teste do Eli: fase 6",
   "fase_atual": 6,
-  "historia_atual": "H63",
+  "historia_atual": null,
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
-  "mensagem_fase": "Eli, a fase 5 (Terminal e SSH) está pronta: entrega/v2-fase5/ e docs/teste-v2-fase5.md. O login por senha aceito só dá para conferir num servidor seu. Sigo para a fase 6 (navegador).",
+  "mensagem_fase": "Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-fase6.md. Sigo para a fase 7 (compilador) e 8 (Sagui Code).",
   "raiz": "../../",
   "links": [
     {
@@ -54,7 +54,7 @@
     {
       "numero": 6,
       "nome": "Sagui Navegador",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 100.0
     },
     {
@@ -402,7 +402,7 @@
       "titulo": "Descompactação e PNG",
       "objetivo": "DEFLATE, zlib e gzip, e o decodificador de PNG (todas as profundidades de cor e transparência).",
       "aceite": "conjunto de PNGs de teste gerados na VPS decodificados iguais pixel a pixel.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:49:03",
       "fim": "2026-11-13T07:49:03",
@@ -415,7 +415,7 @@
       "titulo": "JPEG",
       "objetivo": "Decodificador JPEG (sequencial e progressivo).",
       "aceite": "JPEGs de teste comparados com a referência dentro da tolerância da especificação.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:49:03",
       "fim": "2026-11-13T07:49:03",
@@ -428,7 +428,7 @@
       "titulo": "Leitor de HTML",
       "objetivo": "Leitura tolerante a erros, árvore de elementos, entidades, conjunto de caracteres, links e formulários simples (só leitura de busca, como a da Wikipédia).",
       "aceite": "páginas de teste com HTML mal formado montam a árvore esperada.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:49:03",
       "fim": "2026-11-13T07:49:09",
@@ -441,7 +441,7 @@
       "titulo": "Janela do navegador",
       "objetivo": "Barra de endereço, voltar e avançar, favoritos, rolagem, layout em blocos (títulos, parágrafos, listas, citações, tabelas simples, imagens), cores básicas do HTML, `display: none` e pouco mais de CSS (registrar o que for suportado).",
       "aceite": "páginas de teste servidas pela VPS renderizadas como as capturas de referência.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:59:13",
       "fim": "2026-11-13T08:09:36",
@@ -454,7 +454,7 @@
       "titulo": "Sites de aceite",
       "objetivo": "Abrir, com texto legível, links e imagens: um artigo da **Wikipédia em português**, `example.com`, uma página de documentação simples e o `README.md` do SaguiOS no GitHub (versão em texto).",
       "aceite": "teste \"internet\" com capturas de cada site; roteiro para o Eli na VM e no G470.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T08:09:36",
       "fim": "2026-11-13T08:15:37",
@@ -714,6 +714,10 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T12:23:13",
+      "texto": "Fase 6 entregue. Aguardando teste do Eli."
+    },
+    {
       "data": "2026-11-13T08:15:37",
       "texto": "H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas"
     },
@@ -948,10 +952,6 @@
     {
       "data": "2026-11-13T00:30:04",
       "texto": "Início da H35: Comando `pci` e inventário de hardware"
-    },
-    {
-      "data": "2026-11-13T00:30:03",
-      "texto": "Modo contínuo: o Eli pediu para seguir fase após fase sem esperar os testes; cada fase vira uma imagem em entrega/v2-faseX/."
     }
   ],
   "erros": [],
@@ -959,192 +959,192 @@
     {
       "arquivo": "docs/v2/capturas/H63-6-readme.png",
       "nome": "H63-6-readme.png",
-      "data": "2026-11-13T08:15:15"
+      "data": "2026-11-13T08:36:03"
     },
     {
       "arquivo": "docs/v2/capturas/H63-5-documentacao.png",
       "nome": "H63-5-documentacao.png",
-      "data": "2026-11-13T08:15:08"
+      "data": "2026-11-13T08:35:56"
     },
     {
       "arquivo": "docs/v2/capturas/H63-4-example.png",
       "nome": "H63-4-example.png",
-      "data": "2026-11-13T08:15:00"
+      "data": "2026-11-13T08:35:49"
     },
     {
       "arquivo": "docs/v2/capturas/H63-3-wikipedia-busca.png",
       "nome": "H63-3-wikipedia-busca.png",
-      "data": "2026-11-13T08:14:56"
+      "data": "2026-11-13T08:35:44"
     },
     {
       "arquivo": "docs/v2/capturas/H63-2-wikipedia-rolada.png",
       "nome": "H63-2-wikipedia-rolada.png",
-      "data": "2026-11-13T08:14:37"
+      "data": "2026-11-13T08:35:25"
     },
     {
       "arquivo": "docs/v2/capturas/H63-1-wikipedia.png",
       "nome": "H63-1-wikipedia.png",
-      "data": "2026-11-13T08:14:35"
+      "data": "2026-11-13T08:35:23"
     },
     {
       "arquivo": "docs/v2/capturas/H62-7-texto-puro.png",
       "nome": "H62-7-texto-puro.png",
-      "data": "2026-11-13T08:09:17"
+      "data": "2026-11-13T08:35:06"
     },
     {
       "arquivo": "docs/v2/capturas/H62-6-favoritos.png",
       "nome": "H62-6-favoritos.png",
-      "data": "2026-11-13T08:09:13"
+      "data": "2026-11-13T08:35:03"
     },
     {
       "arquivo": "docs/v2/capturas/H62-5-busca.png",
       "nome": "H62-5-busca.png",
-      "data": "2026-11-13T08:09:09"
+      "data": "2026-11-13T08:34:59"
     },
     {
       "arquivo": "docs/v2/capturas/H62-4-ancora.png",
       "nome": "H62-4-ancora.png",
-      "data": "2026-11-13T08:09:04"
+      "data": "2026-11-13T08:34:54"
     },
     {
       "arquivo": "docs/v2/capturas/H62-3-pagina2.png",
       "nome": "H62-3-pagina2.png",
-      "data": "2026-11-13T08:08:58"
+      "data": "2026-11-13T08:34:49"
     },
     {
       "arquivo": "docs/v2/capturas/H62-2-rolada.png",
       "nome": "H62-2-rolada.png",
-      "data": "2026-11-13T08:08:52"
+      "data": "2026-11-13T08:34:44"
     },
     {
       "arquivo": "docs/v2/capturas/H62-1-topo.png",
       "nome": "H62-1-topo.png",
-      "data": "2026-11-13T08:08:49"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
-      "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T07:58:16"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
-      "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T07:58:10"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
-      "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T07:58:08"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
-      "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T07:57:02"
+      "data": "2026-11-13T08:34:40"
     },
     {
       "arquivo": "docs/v2/capturas/H58-chave-mudou.png",
       "nome": "H58-chave-mudou.png",
-      "data": "2026-11-13T07:55:19"
+      "data": "2026-11-13T08:34:14"
     },
     {
       "arquivo": "docs/v2/capturas/H58-htop.png",
       "nome": "H58-htop.png",
-      "data": "2026-11-13T07:55:13"
+      "data": "2026-11-13T08:34:08"
     },
     {
       "arquivo": "docs/v2/capturas/H58-vim.png",
       "nome": "H58-vim.png",
-      "data": "2026-11-13T07:55:07"
+      "data": "2026-11-13T08:34:01"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
+      "nome": "H55-terminal-vt.png",
+      "data": "2026-11-13T08:32:57"
     },
     {
       "arquivo": "docs/v2/capturas/H53-https.png",
       "nome": "H53-https.png",
-      "data": "2026-11-13T07:44:18"
+      "data": "2026-11-13T08:32:37"
     },
     {
       "arquivo": "docs/v2/capturas/H49-baixar.png",
       "nome": "H49-baixar.png",
-      "data": "2026-11-13T07:43:07"
+      "data": "2026-11-13T08:31:26"
     },
     {
       "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
       "nome": "H47-3-aba-rede.png",
-      "data": "2026-11-13T07:41:06"
+      "data": "2026-11-13T08:29:24"
     },
     {
       "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
       "nome": "H47-2-barra-sem-cabo.png",
-      "data": "2026-11-13T07:41:04"
+      "data": "2026-11-13T08:29:22"
     },
     {
       "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
       "nome": "H47-1-barra-conectado.png",
-      "data": "2026-11-13T07:41:01"
+      "data": "2026-11-13T08:29:20"
     },
     {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
-      "data": "2026-11-13T07:40:47"
+      "data": "2026-11-13T08:29:05"
     },
     {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
-      "data": "2026-11-13T07:40:36"
+      "data": "2026-11-13T08:28:53"
     },
     {
       "arquivo": "docs/v2/capturas/H42-tocar.png",
       "nome": "H42-tocar.png",
-      "data": "2026-11-13T07:40:16"
+      "data": "2026-11-13T08:28:34"
     },
     {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
-      "data": "2026-11-13T07:39:56"
+      "data": "2026-11-13T08:28:16"
     },
     {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
-      "data": "2026-11-13T07:39:35"
+      "data": "2026-11-13T08:27:55"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
+      "nome": "H39-3-banana-escondida.png",
+      "data": "2026-11-13T08:27:45"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
+      "nome": "H39-2-aba-programas.png",
+      "data": "2026-11-13T08:27:38"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
+      "nome": "H39-1-instalado.png",
+      "data": "2026-11-13T08:27:36"
     },
     {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T07:38:59"
+      "data": "2026-11-13T08:27:19"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T07:38:57"
+      "data": "2026-11-13T08:27:16"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T07:38:40"
+      "data": "2026-11-13T08:26:59"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T07:38:24"
+      "data": "2026-11-13T08:26:43"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T07:38:04"
+      "data": "2026-11-13T08:26:24"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T07:37:50"
+      "data": "2026-11-13T08:26:10"
     }
   ],
   "linhas": {
     "boot": 903,
     "kernel": 12704,
-    "userland": 20446,
-    "ferramentas": 8993
+    "userland": 22082,
+    "ferramentas": 9095
   },
   "imagem": {
-    "bytes_util": 1141760,
+    "bytes_util": 1142272,
     "bytes_arquivo": 1146880,
     "meta_bytes": null
   },

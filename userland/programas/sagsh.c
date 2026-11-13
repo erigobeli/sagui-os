@@ -547,7 +547,13 @@ static bool executar_linha(char *linha)
 
 int principal(int argc, char **argv)
 {
-    (void)argc; (void)argv;
+    /* sagsh -c "linha": roda uma linha só e sai (o Sagui Code usa, H70). */
+    if (argc >= 3 && compara_texto(argv[1], "-c") == 0) {
+        char linha[MAX_LINHA];
+        copia_texto(linha, argv[2], sizeof linha);
+        executar_linha(linha);
+        return 0;
+    }
     imprimir("sagsh: o shell do SaguiOS (processo %d). Digite ajuda para ver os comandos.\n", meu_pid());
     char linha[MAX_LINHA];
     for (;;) {
