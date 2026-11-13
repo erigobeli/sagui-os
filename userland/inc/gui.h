@@ -7,15 +7,15 @@
 #define SAGUI_GUI_H
 #include "sagui.h"
 
-/* Cores do tema. */
-#define COR_FUNDO      0xF4F4F0
-#define COR_TEXTO      0x1E2328
-#define COR_TEXTO_FRACO 0x6A737C
-#define COR_BORDA      0x8A939C
-#define COR_BOTAO      0xE2E6EA
-#define COR_BOTAO_APERTADO 0xC4CBD2
-#define COR_DESTAQUE   0x0B7A3E   /* verde do SaguiOS */
-#define COR_SELECAO    0x2A6FD8
+/* Cores do tema (padrão 2026: tons suaves, escuro por padrão). */
+#define COR_FUNDO      0xF1F5F9
+#define COR_TEXTO      0x0F172A
+#define COR_TEXTO_FRACO 0x64748B
+#define COR_BORDA      0xCBD5E1
+#define COR_BOTAO      0xE2E8F0
+#define COR_BOTAO_APERTADO 0xCBD5E1
+#define COR_DESTAQUE   0x2563EB   /* azul moderno do SaguiOS */
+#define COR_SELECAO    0xBFDBFE
 #define COR_BRANCO     0xFFFFFF
 
 typedef struct {

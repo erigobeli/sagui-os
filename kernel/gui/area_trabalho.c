@@ -42,6 +42,11 @@ static const icone_t icones[] = {
     { "Configurações", "/bin/configuracoes", &arte_icone_configuracoes },   /* H38 */
     { "Sobre",       "/bin/sobre-o-sistema",   &arte_icone_sobre },
     { "Pendrive",    "/bin/arquivos",    &arte_icone_pendrive },   /* só aparece com um pendrive conectado (H34) */
+    { "Top",         "/bin/top",         &arte_icone_terminal },   /* monitor de processos */
+    { "Fetch",       "/bin/fetch",       &arte_icone_sobre },      /* informações do sistema */
+    { "uname",       "/bin/uname",       &arte_icone_terminal },   /* versão do sistema */
+    { "Grep",        "/bin/grep",        &arte_icone_editor },     /* busca em arquivos */
+    { "Car3D",       "/bin/car3d",       &arte_icone_banana },     /* corrida 3D */
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
 #define ICONE_PENDRIVE (QTD_ICONES - 1)
@@ -143,15 +148,14 @@ static void desenhar_fundo(void)
     superficie_t s;
     sup_iniciar(&s, fundo, larg, alt);
     /* Degradê vertical em três cores, escolhido em Configurações > Aparência
-     * (H38). O padrão são as cores do Brasil (verde, amarelo, azul) em tons
-     * mais suaves que os da bandeira, para o texto e os ícones continuarem
-     * legíveis. */
-    uint32_t c0 = 0x0B7A3E, c1 = 0xE0B92A, c2 = 0x14337E;
+     * (H38). Padrão 2026: tons suaves e sóbrios, para o texto e ícones
+     * continuarem legíveis. */
+    uint32_t c0 = 0x0F172A, c1 = 0x1E293B, c2 = 0x334155;
     const char *tema = config_obter("aparencia.fundo");
-    if (tema && txt_compara(tema, "mata") == 0)       { c0 = 0x0E3B22; c1 = 0x2E7D32; c2 = 0x0A2416; }
-    else if (tema && txt_compara(tema, "ceu") == 0)   { c0 = 0x1E5AA8; c1 = 0x6FB3E8; c2 = 0xD8EEF8; }
-    else if (tema && txt_compara(tema, "noite") == 0) { c0 = 0x0B1026; c1 = 0x2B1E5A; c2 = 0x060814; }
-    else if (tema && txt_compara(tema, "terra") == 0) { c0 = 0x7A3E14; c1 = 0xD98A3A; c2 = 0x3A1E0C; }
+    if (tema && txt_compara(tema, "mata") == 0)       { c0 = 0x064E3B; c1 = 0x0F766E; c2 = 0x115E59; }
+    else if (tema && txt_compara(tema, "ceu") == 0)   { c0 = 0x0EA5E9; c1 = 0x38BDF8; c2 = 0xBAE6FD; }
+    else if (tema && txt_compara(tema, "noite") == 0) { c0 = 0x020617; c1 = 0x0F172A; c2 = 0x1E293B; }
+    else if (tema && txt_compara(tema, "terra") == 0) { c0 = 0x78350F; c1 = 0xC2410C; c2 = 0xEA580C; }
     for (int y = 0; y < alt; y++) {
         uint32_t c = y < alt / 2 ? mistura(c0, c1, y, alt / 2)
                                  : mistura(c1, c2, y - alt / 2, alt - alt / 2);
