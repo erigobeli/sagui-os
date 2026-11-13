@@ -4,12 +4,12 @@ Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T07:48:05_
+_Atualizado em 2026-11-13T07:49:03_
 
-- **Situação:** Aguardando teste do Eli: fase 4
-- **Fase atual:** 4
-- **História atual:** -
-- **Progresso geral:** 46.5%
+- **Situação:** Trabalhando na H62: Janela do navegador
+- **Fase atual:** 6
+- **História atual:** H62
+- **Progresso geral:** 51.2%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - **Imagem:** 898560 bytes úteis (sem teto: só medida)
 - **Linhas de código:** boot 903, kernel 12704, userland 19149
@@ -23,7 +23,7 @@ _Atualizado em 2026-11-13T07:48:05_
 | 3 | Rede | 80.0% | aguardando teste |
 | 4 | TCP e HTTPS | 100.0% | aguardando teste |
 | 5 | Terminal e SSH | 25.0% | em andamento |
-| 6 | Sagui Navegador | 0.0% | a fazer |
+| 6 | Sagui Navegador | 40.0% | em andamento |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | a fazer |
 | 9 | Visual moderno | 0.0% | a fazer |
@@ -57,10 +57,10 @@ _Atualizado em 2026-11-13T07:48:05_
 | H56 | Transporte SSH | a fazer |  |
 | H57 | Login e sessão | a fazer |  |
 | H58 | SSH de verdade | a fazer |  |
-| H59 | Descompactação e PNG | a fazer |  |
-| H60 | JPEG | a fazer |  |
-| H61 | Leitor de HTML | a fazer |  |
-| H62 | Janela do navegador | a fazer |  |
+| H59 | Descompactação e PNG | feito | 1 |
+| H60 | JPEG | feito | 1 |
+| H61 | Leitor de HTML | em andamento |  |
+| H62 | Janela do navegador | em andamento |  |
 | H63 | Sites de aceite | a fazer |  |
 | H64 | A linguagem | a fazer |  |
 | H65 | Frente do compilador | a fazer |  |
@@ -79,6 +79,12 @@ _Atualizado em 2026-11-13T07:48:05_
 
 ## Últimas ações
 
+- 2026-11-13T07:49:03: Início da H62: Janela do navegador
+- 2026-11-13T07:49:03: H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21
+- 2026-11-13T07:49:03: H59 concluída: DEFLATE/zlib/gzip e PNG: 27 PNGs iguais pixel a pixel, zlib níveis 0-9
+- 2026-11-13T07:49:03: Início da H61: Leitor de HTML
+- 2026-11-13T07:49:03: Início da H60: JPEG
+- 2026-11-13T07:49:03: Início da H59: Descompactação e PNG
 - 2026-11-13T07:48:05: Fase 4 entregue. Aguardando teste do Eli.
 - 2026-11-13T07:48:05: Fase 3 entregue. Aguardando teste do Eli.
 - 2026-11-13T07:26:21: H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md
@@ -88,9 +94,3 @@ _Atualizado em 2026-11-13T07:48:05_
 - 2026-11-13T02:57:46: Início da H52: Assinaturas e certificados
 - 2026-11-13T02:50:51: H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito
 - 2026-11-13T02:50:51: Início da H55: Terminal completo
-- 2026-11-13T02:50:51: H49 concluída: Cliente HTTP/1.1 (tamanho, pedaços, redirecionamento), comando baixar, relogio internet por NTP com fuso, relógio automático depois do DHCP
-- 2026-11-13T02:27:43: H50 concluída: Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto
-- 2026-11-13T02:25:47: Início da H50: Números aleatórios e resumos
-- 2026-11-13T02:25:47: H51 concluída: AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)
-- 2026-11-13T02:25:47: Início da H51: Cifras e troca de chaves
-- 2026-11-13T02:25:47: H48 concluída: TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP

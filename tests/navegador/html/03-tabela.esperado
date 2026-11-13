@@ -1,0 +1,44 @@
+titulo: 
+utf8: 1
+<table border="1">
+  <caption>
+    "Cap"
+  <thead>
+    <tr>
+      <th>
+        "A"
+      <th>
+        "B"
+  <tbody>
+    <tr>
+      <td>
+        "1"
+      <td>
+        <p>
+          "par"
+      <td>
+        "3"
+    <tr>
+      <td colspan="2">
+        "junto"
+<p>
+  "depois"
+<p>
+  "texto "
+  <span style="display:none">
+    "escondido"
+  <span class="x">
+    "MAIUSCULA"
+  <custom-tag data-x="1">
+    "outro"
+<select>
+  <option>
+    "um"
+  <option selected="">
+    "dois"
+<textarea>
+  "a <b> b"
+<p>
+  "sem fechar "
+<div>
+  "bloco"

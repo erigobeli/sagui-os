@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T07:48:05",
-  "situacao": "Aguardando teste do Eli: fase 4",
-  "fase_atual": 4,
-  "historia_atual": null,
+  "atualizado": "2026-11-13T07:49:03",
+  "situacao": "Trabalhando na H62: Janela do navegador",
+  "fase_atual": 6,
+  "historia_atual": "H62",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-fase3/ e entrega/v2-fase4/ (a mesma imagem), roteiros em docs/teste-v2-fase3.md e docs/teste-v2-fase4.md. Sigo para a fase 5 (SSH) e 6 (navegador).",
   "raiz": "../../",
@@ -54,8 +54,8 @@
     {
       "numero": 6,
       "nome": "Sagui Navegador",
-      "estado": "a fazer",
-      "progresso": 0.0
+      "estado": "em andamento",
+      "progresso": 40.0
     },
     {
       "numero": 7,
@@ -402,12 +402,12 @@
       "titulo": "Descompactação e PNG",
       "objetivo": "DEFLATE, zlib e gzip, e o decodificador de PNG (todas as profundidades de cor e transparência).",
       "aceite": "conjunto de PNGs de teste gerados na VPS decodificados iguais pixel a pixel.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T07:49:03",
+      "fim": "2026-11-13T07:49:03",
+      "minutos": 1,
+      "resultado": "DEFLATE/zlib/gzip e PNG: 27 PNGs iguais pixel a pixel, zlib níveis 0-9"
     },
     {
       "id": "H60",
@@ -415,12 +415,12 @@
       "titulo": "JPEG",
       "objetivo": "Decodificador JPEG (sequencial e progressivo).",
       "aceite": "JPEGs de teste comparados com a referência dentro da tolerância da especificação.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T07:49:03",
+      "fim": "2026-11-13T07:49:03",
+      "minutos": 1,
+      "resultado": "JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21"
     },
     {
       "id": "H61",
@@ -428,9 +428,9 @@
       "titulo": "Leitor de HTML",
       "objetivo": "Leitura tolerante a erros, árvore de elementos, entidades, conjunto de caracteres, links e formulários simples (só leitura de busca, como a da Wikipédia).",
       "aceite": "páginas de teste com HTML mal formado montam a árvore esperada.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T07:49:03",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -441,9 +441,9 @@
       "titulo": "Janela do navegador",
       "objetivo": "Barra de endereço, voltar e avançar, favoritos, rolagem, layout em blocos (títulos, parágrafos, listas, citações, tabelas simples, imagens), cores básicas do HTML, `display: none` e pouco mais de CSS (registrar o que for suportado).",
       "aceite": "páginas de teste servidas pela VPS renderizadas como as capturas de referência.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T07:49:03",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -713,6 +713,30 @@
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T07:49:03",
+      "texto": "Início da H62: Janela do navegador"
+    },
+    {
+      "data": "2026-11-13T07:49:03",
+      "texto": "H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21"
+    },
+    {
+      "data": "2026-11-13T07:49:03",
+      "texto": "H59 concluída: DEFLATE/zlib/gzip e PNG: 27 PNGs iguais pixel a pixel, zlib níveis 0-9"
+    },
+    {
+      "data": "2026-11-13T07:49:03",
+      "texto": "Início da H61: Leitor de HTML"
+    },
+    {
+      "data": "2026-11-13T07:49:03",
+      "texto": "Início da H60: JPEG"
+    },
+    {
+      "data": "2026-11-13T07:49:03",
+      "texto": "Início da H59: Descompactação e PNG"
+    },
     {
       "data": "2026-11-13T07:48:05",
       "texto": "Fase 4 entregue. Aguardando teste do Eli."
@@ -992,5 +1016,5 @@
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 46.5
+  "progresso_geral": 51.2
 }

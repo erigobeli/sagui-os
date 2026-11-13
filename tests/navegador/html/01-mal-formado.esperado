@@ -1,0 +1,57 @@
+titulo: Página de teste
+utf8: 1
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>
+      " Página de teste "
+    <style>
+      "p { color: red }"
+    <script>
+      "if (a < b && c) document.write("<p>x</p>")"
+  <body>
+    <p>
+      "Um "
+      <b>
+        "negrito "
+        <i>
+          "e itálico"
+      " fora fim "
+    <p>
+      "Segundo & é é é ©2026 &bogus; "aspas" - traço... a&b "
+    <ul>
+      <li>
+        "um"
+      <li>
+        "dois"
+        <ul>
+          <li>
+            "dentro"
+      <li>
+        "três"
+    <table>
+      <tr>
+        <td>
+          "a"
+        <td>
+          "b"
+      <tr>
+        <td>
+          "c"
+    <div>
+      "sem fechar"
+      <p>
+        "par"
+    "depois "
+    <a href="/x?a=1&b=2">
+      "link "
+    <a href="y">
+      "outro"
+    <img src="foto.jpg" alt="Uma "foto"">
+    <br>
+    "fim"
+    <br>
+    <form action="/w/index.php">
+      <input name="search" type="search">
+      <input type="hidden" name="title" value="Especial:Pesquisar">
+    " 1 < 2 > 0 depois do fim "

@@ -1,0 +1,1 @@
+/* http.h simulado (vazio). */
