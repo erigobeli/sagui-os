@@ -12,10 +12,10 @@ typedef struct {
 
 /* O TLS (H53) fica atrás desta ponte; o HTTP não sabe como ele é por dentro. */
 typedef struct tls_sessao tls_sessao_t;
-tls_sessao_t *tls_conectar(int socket, const char *servidor, char *erro, int max_erro);
-int  tls_ler(tls_sessao_t *t, void *buf, unsigned max);           /* 0 nada ainda, <0 fim ou erro */
-int  tls_escrever(tls_sessao_t *t, const void *dados, unsigned n);
-void tls_fechar(tls_sessao_t *t);
+tls_sessao_t *ponte_tls_conectar(int socket, const char *servidor, char *erro, int max_erro);
+int  ponte_tls_ler(tls_sessao_t *t, void *buf, unsigned max);           /* 0 nada ainda, <0 fim ou erro */
+int  ponte_tls_escrever(tls_sessao_t *t, const void *dados, unsigned n);
+void ponte_tls_fechar(tls_sessao_t *t);
 
 typedef struct {
     int           socket;

@@ -48,13 +48,13 @@ int url_separar(const char *url, url_t *u)
 
 static int canal_ler(canal_t *c, void *buf, unsigned max)
 {
-    if (c->tls) return tls_ler(c->tls, buf, max);
+    if (c->tls) return ponte_tls_ler(c->tls, buf, max);
     return rede_receber(c->socket, buf, max, NULL);
 }
 
 static int canal_escrever(canal_t *c, const void *dados, unsigned n)
 {
-    if (c->tls) return tls_escrever(c->tls, dados, n);
+    if (c->tls) return ponte_tls_escrever(c->tls, dados, n);
     return tcp_enviar_tudo(c->socket, dados, n);
 }
 
@@ -68,7 +68,7 @@ int canal_abrir(canal_t *c, const url_t *u, char *erro, int max_erro)
     c->socket = tcp_conectar(ip, u->porta, 15000);
     if (c->socket < 0) { formatar_texto(erro, (size_t)max_erro, "%s: não conectou", u->servidor); return c->socket; }
     if (u->seguro) {
-        c->tls = tls_conectar(c->socket, u->servidor, erro, max_erro);
+        c->tls = ponte_tls_conectar(c->socket, u->servidor, erro, max_erro);
         if (!c->tls) { rede_fechar(c->socket); c->socket = -1; return ERRO_REDE; }
     }
     return 0;
@@ -76,7 +76,7 @@ int canal_abrir(canal_t *c, const url_t *u, char *erro, int max_erro)
 
 void canal_fechar(canal_t *c)
 {
-    if (c->tls) tls_fechar(c->tls);
+    if (c->tls) ponte_tls_fechar(c->tls);
     if (c->socket >= 0) rede_fechar(c->socket);
     c->tls = NULL;
     c->socket = -1;

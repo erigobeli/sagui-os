@@ -3,6 +3,7 @@
  * O console tem dois motores: o modo texto da placa VGA (fases 1 a 3, e
  * reserva se o modo gráfico não ligar) e o terminal gráfico desenhado com a
  * fonte própria (fase 4 em diante). Quem escreve não precisa saber qual. */
+#include "cpu.h"
 #include "console.h"
 
 void textovga_iniciar(void);
@@ -71,10 +72,14 @@ void kprintf(const char *fmt, ...)
     va_start(ap, fmt);
     formatar(buf, sizeof buf, fmt, ap);
     va_end(ap);
+    /* A linha inteira sai de uma vez: sem isso, o log de uma tarefa do kernel
+     * (a rede, por exemplo) podia entrar no meio da frase de outra. */
+    bool i0 = int_salva_desliga();
     for (char *p = buf; *p; p++) {
         console_char(*p);
         serial_char(*p);
     }
+    int_restaura(i0);
     console_mostrar();
 }
 
@@ -85,5 +90,7 @@ void klog(const char *fmt, ...)
     va_start(ap, fmt);
     formatar(buf, sizeof buf, fmt, ap);
     va_end(ap);
+    bool i0 = int_salva_desliga();   /* a linha inteira de uma vez (ver kprintf) */
     serial_texto(buf);
+    int_restaura(i0);
 }

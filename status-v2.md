@@ -4,15 +4,15 @@ Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T02:57:46_
+_Atualizado em 2026-11-13T07:26:21_
 
-- **Situação:** Trabalhando na H52: Assinaturas e certificados
+- **Situação:** Trabalhando na H54: Certificados raiz e créditos
 - **Fase atual:** 4
-- **História atual:** H52
-- **Progresso geral:** 41.9%
+- **História atual:** H54
+- **Progresso geral:** 46.5%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 805888 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12697, userland 13767
+- **Imagem:** 898560 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 12704, userland 15932
 
 ## Fases
 
@@ -21,7 +21,7 @@ _Atualizado em 2026-11-13T02:57:46_
 | 1 | Base e Configurações | 100.0% | aguardando teste |
 | 2 | Som | 100.0% | aguardando teste |
 | 3 | Rede | 80.0% | em andamento |
-| 4 | TCP e HTTPS | 71.4% | em andamento |
+| 4 | TCP e HTTPS | 100.0% | em andamento |
 | 5 | Terminal e SSH | 25.0% | em andamento |
 | 6 | Sagui Navegador | 0.0% | a fazer |
 | 7 | Compilador C | 0.0% | a fazer |
@@ -51,8 +51,8 @@ _Atualizado em 2026-11-13T02:57:46_
 | H50 | Números aleatórios e resumos | feito | 2 |
 | H51 | Cifras e troca de chaves | feito | 1 |
 | H52 | Assinaturas e certificados | feito | 1 |
-| H53 | TLS 1.3 | a fazer |  |
-| H54 | Certificados raiz e créditos | a fazer |  |
+| H53 | TLS 1.3 | feito |  |
+| H54 | Certificados raiz e créditos | feito | 1 |
 | H55 | Terminal completo | feito | 1 |
 | H56 | Transporte SSH | a fazer |  |
 | H57 | Login e sessão | a fazer |  |
@@ -79,6 +79,9 @@ _Atualizado em 2026-11-13T02:57:46_
 
 ## Últimas ações
 
+- 2026-11-13T07:26:21: H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md
+- 2026-11-13T07:26:21: Início da H54: Certificados raiz e créditos
+- 2026-11-13T07:26:21: H53 concluída: TLS 1.3 dentro do SaguiOS (ponte com TCP, gerador do kernel e relógio UTC): baixar https:// funciona com example.com e a Wikipédia (ChaCha20-Poly1305); âncora de confiança por nome + chave
 - 2026-11-13T02:57:46: H52 concluída: Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)
 - 2026-11-13T02:57:46: Início da H52: Assinaturas e certificados
 - 2026-11-13T02:50:51: H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito
@@ -91,6 +94,3 @@ _Atualizado em 2026-11-13T02:57:46_
 - 2026-11-13T02:25:47: H48 concluída: TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP
 - 2026-11-13T01:36:59: Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - 2026-11-13T01:36:58: H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)
-- 2026-11-13T01:36:19: H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome
-- 2026-11-13T01:36:19: H44 concluída: Ethernet, ARP com fila de espera, IPv4, ICMP (eco), UDP com soma; comando ping
-- 2026-11-13T01:36:19: H43 concluída: Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo

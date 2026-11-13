@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T02:57:46",
-  "situacao": "Trabalhando na H52: Assinaturas e certificados",
+  "atualizado": "2026-11-13T07:26:21",
+  "situacao": "Trabalhando na H54: Certificados raiz e créditos",
   "fase_atual": 4,
-  "historia_atual": "H52",
+  "historia_atual": "H54",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
   "raiz": "../../",
@@ -43,7 +43,7 @@
       "numero": 4,
       "nome": "TCP e HTTPS",
       "estado": "em andamento",
-      "progresso": 71.4
+      "progresso": 100.0
     },
     {
       "numero": 5,
@@ -324,12 +324,12 @@
       "titulo": "TLS 1.3",
       "objetivo": "Cliente completo (troca de chaves X25519, cifras da H51, verificação do certificado pela H52, alertas), usado pelo `baixar https://...`.",
       "aceite": "conecta no servidor TLS de teste da VPS; recusa o servidor com certificado errado; teste \"internet\" com sites reais.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
       "inicio": null,
-      "fim": null,
+      "fim": "2026-11-13T07:26:21",
       "minutos": null,
-      "resultado": ""
+      "resultado": "TLS 1.3 dentro do SaguiOS (ponte com TCP, gerador do kernel e relógio UTC): baixar https:// funciona com example.com e a Wikipédia (ChaCha20-Poly1305); âncora de confiança por nome + chave"
     },
     {
       "id": "H54",
@@ -337,12 +337,12 @@
       "titulo": "Certificados raiz e créditos",
       "objetivo": "Os poucos certificados raiz necessários para os sites de aceite e para o OpenRouter, em `/sistema/certificados/`, com `CREDITOS.md`; comando para ver a lista.",
       "aceite": "`baixar https://pt.wikipedia.org/` funciona (teste \"internet\"); `CREDITOS.md` lista cada certificado com origem e licença.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T07:26:21",
+      "fim": "2026-11-13T07:26:21",
+      "minutos": 1,
+      "resultado": "24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md"
     },
     {
       "id": "H55",
@@ -714,6 +714,18 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T07:26:21",
+      "texto": "H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md"
+    },
+    {
+      "data": "2026-11-13T07:26:21",
+      "texto": "Início da H54: Certificados raiz e créditos"
+    },
+    {
+      "data": "2026-11-13T07:26:21",
+      "texto": "H53 concluída: TLS 1.3 dentro do SaguiOS (ponte com TCP, gerador do kernel e relógio UTC): baixar https:// funciona com example.com e a Wikipédia (ChaCha20-Poly1305); âncora de confiança por nome + chave"
+    },
+    {
       "data": "2026-11-13T02:57:46",
       "texto": "H52 concluída: Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)"
     },
@@ -861,111 +873,116 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H53-https.png",
+      "nome": "H53-https.png",
+      "data": "2026-11-13T07:25:53"
+    },
+    {
       "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
       "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T02:47:58"
+      "data": "2026-11-13T03:08:12"
     },
     {
       "arquivo": "docs/v2/capturas/H49-baixar.png",
       "nome": "H49-baixar.png",
-      "data": "2026-11-13T02:45:49"
+      "data": "2026-11-13T03:07:13"
     },
     {
       "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
       "nome": "H47-3-aba-rede.png",
-      "data": "2026-11-13T02:41:10"
+      "data": "2026-11-13T03:05:10"
     },
     {
       "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
       "nome": "H47-2-barra-sem-cabo.png",
-      "data": "2026-11-13T02:41:08"
+      "data": "2026-11-13T03:05:08"
     },
     {
       "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
       "nome": "H47-1-barra-conectado.png",
-      "data": "2026-11-13T02:41:05"
+      "data": "2026-11-13T03:05:06"
     },
     {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
-      "data": "2026-11-13T02:40:51"
+      "data": "2026-11-13T03:04:51"
     },
     {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
-      "data": "2026-11-13T02:40:39"
+      "data": "2026-11-13T03:04:39"
     },
     {
       "arquivo": "docs/v2/capturas/H42-tocar.png",
       "nome": "H42-tocar.png",
-      "data": "2026-11-13T02:40:19"
+      "data": "2026-11-13T03:04:20"
     },
     {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
-      "data": "2026-11-13T02:40:01"
+      "data": "2026-11-13T03:04:03"
     },
     {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
-      "data": "2026-11-13T02:39:40"
+      "data": "2026-11-13T03:03:42"
     },
     {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T02:39:29"
+      "data": "2026-11-13T03:03:32"
     },
     {
       "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
       "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T02:39:21"
+      "data": "2026-11-13T03:03:26"
     },
     {
       "arquivo": "docs/v2/capturas/H39-1-instalado.png",
       "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T02:39:19"
+      "data": "2026-11-13T03:03:24"
     },
     {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T02:39:02"
+      "data": "2026-11-13T03:03:06"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T02:38:59"
+      "data": "2026-11-13T03:03:04"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T02:38:42"
+      "data": "2026-11-13T03:02:47"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T02:38:26"
+      "data": "2026-11-13T03:02:31"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T02:38:07"
+      "data": "2026-11-13T03:02:13"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T02:37:53"
+      "data": "2026-11-13T03:01:59"
     }
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 12697,
-    "userland": 13767,
-    "ferramentas": 7066
+    "kernel": 12704,
+    "userland": 15932,
+    "ferramentas": 7257
   },
   "imagem": {
-    "bytes_util": 805888,
+    "bytes_util": 898560,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 41.9
+  "progresso_geral": 46.5
 }

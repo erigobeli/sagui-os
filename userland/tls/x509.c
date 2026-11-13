@@ -639,6 +639,19 @@ int x509_validar_cadeia(const X509Der *cadeia, u32 ncadeia,
          * na cadeia, ou o usuário confia direto neste certificado.) */
         for (i = 0; i < nraizes; i++)
             if (fatia_igual((Fatia){ raizes[i].der, raizes[i].n }, atual->der, atual->nder)) goto confiavel;
+        /* 1b. A mesma autoridade (mesmo nome e mesma chave) de uma raiz de
+         * confiança, mesmo que em outra "versão" do certificado: é o caso da
+         * autoridade "assinada em cruz" por uma raiz mais antiga (o servidor de
+         * example.com manda o USERTrust assinado pela antiga AAA, que nem está
+         * mais na lista da Mozilla; o USERTrust próprio está). A âncora de
+         * confiança é o par nome + chave, não os bytes do certificado. */
+        for (i = 0; i < nraizes; i++) {
+            if (x509_ler(&raiz, raizes[i].der, raizes[i].n)) continue;
+            if (!mesmo_nome(raiz.sujeito, raiz.nsujeito, atual->sujeito, atual->nsujeito)) continue;
+            if (!fatia_igual((Fatia){ raiz.info_chave, raiz.ninfo_chave }, atual->info_chave, atual->ninfo_chave)) continue;
+            if (comparar_datas(agora, raiz.inicio) < 0 || comparar_datas(agora, raiz.fim) > 0) continue;
+            goto confiavel;
+        }
 
         /* 2. Alguma raiz de confiança o assinou? */
         for (i = 0; i < nraizes; i++) {
