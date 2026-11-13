@@ -1,10 +1,14 @@
+```
+Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar quando puder: entrega/v2-fase1/ e roteiro em docs/teste-v2-fase1.md. Pedido especial: a foto do comando pci no G470. Sigo para a fase 2 (som).
+```
+
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T00:54:44_
+_Atualizado em 2026-11-13T01:08:35_
 
-- **Situação:** Trabalhando na H39: Remover programas
-- **Fase atual:** 1
-- **História atual:** H39
+- **Situação:** Trabalhando na H40: Driver Intel HD Audio
+- **Fase atual:** 2
+- **História atual:** H40
 - **Progresso geral:** 11.6%
 - **Bloqueio:** nenhum
 - **Imagem:** 647680 bytes úteis (sem teto: só medida)
@@ -14,8 +18,8 @@ _Atualizado em 2026-11-13T00:54:44_
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Base e Configurações | 100.0% | em andamento |
-| 2 | Som | 0.0% | a fazer |
+| 1 | Base e Configurações | 100.0% | aguardando teste |
+| 2 | Som | 0.0% | em andamento |
 | 3 | Rede | 0.0% | a fazer |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
 | 5 | Terminal e SSH | 0.0% | a fazer |
@@ -29,12 +33,12 @@ _Atualizado em 2026-11-13T00:54:44_
 
 | ID | Título | Estado | Minutos |
 | --- | --- | --- | --- |
-| H35 | Comando `pci` e inventário de hardware | feito | 5 |
-| H36 | Desligar e reiniciar | feito | 6 |
-| H37 | Configurações guardadas | feito | 3 |
-| H38 | App Configurações | feito | 6 |
-| H39 | Remover programas | feito | 5 |
-| H40 | Driver Intel HD Audio | a fazer |  |
+| H35 | Comando `pci` e inventário de hardware | aguardando teste | 5 |
+| H36 | Desligar e reiniciar | aguardando teste | 6 |
+| H37 | Configurações guardadas | aguardando teste | 3 |
+| H38 | App Configurações | aguardando teste | 6 |
+| H39 | Remover programas | aguardando teste | 5 |
+| H40 | Driver Intel HD Audio | em andamento |  |
 | H41 | Som para os programas | a fazer |  |
 | H42 | Tocador e sons do sistema | a fazer |  |
 | H43 | Driver Intel PRO/1000 | a fazer |  |
@@ -75,6 +79,8 @@ _Atualizado em 2026-11-13T00:54:44_
 
 ## Últimas ações
 
+- 2026-11-13T01:08:35: Início da H40: Driver Intel HD Audio
+- 2026-11-13T01:08:35: Fase 1 entregue. Aguardando teste do Eli.
 - 2026-11-13T00:54:44: H39 concluída: Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema
 - 2026-11-13T00:50:05: Início da H39: Remover programas
 - 2026-11-13T00:50:05: H38 concluída: App Configurações com Relógio (acerta o CMOS, fuso), Aparência (5 fundos, sagui do canto) e Sobre o computador; ícones em duas colunas (D032)

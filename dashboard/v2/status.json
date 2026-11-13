@@ -1,11 +1,11 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T00:54:44",
-  "situacao": "Trabalhando na H39: Remover programas",
-  "fase_atual": 1,
-  "historia_atual": "H39",
+  "atualizado": "2026-11-13T01:08:35",
+  "situacao": "Trabalhando na H40: Driver Intel HD Audio",
+  "fase_atual": 2,
+  "historia_atual": "H40",
   "bloqueio": "",
-  "mensagem_fase": "",
+  "mensagem_fase": "Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar quando puder: entrega/v2-fase1/ e roteiro em docs/teste-v2-fase1.md. Pedido especial: a foto do comando pci no G470. Sigo para a fase 2 (som).",
   "raiz": "../../",
   "links": [
     {
@@ -24,13 +24,13 @@
     {
       "numero": 1,
       "nome": "Base e Configurações",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 100.0
     },
     {
       "numero": 2,
       "nome": "Som",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "progresso": 0.0
     },
     {
@@ -90,7 +90,7 @@
       "titulo": "Comando `pci` e inventário de hardware",
       "objetivo": "Lista os dispositivos PCI com classe, fabricante e modelo (com nomes conhecidos para os mais comuns) e grava o relatório em `/usb/hardware.txt`.",
       "aceite": "no QEMU aparecem a placa de rede, o controlador de som e os EHCI; no `docs/teste-v2-fase1.md` o Eli recebe o pedido de fotografar a saída no G470, que define o driver de rede (H46).",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T00:30:04",
       "fim": "2026-11-13T00:35:06",
@@ -103,7 +103,7 @@
       "titulo": "Desligar e reiniciar",
       "objetivo": "Leitura das tabelas ACPI (o suficiente para desligar), reinício pelo método ACPI com o controlador de teclado como reserva. Menu na barra de cima com **Desligar** e **Reiniciar**, perguntando antes se há pendrive montado (desmonta antes de desligar). Comandos `desligar` e `reiniciar`.",
       "aceite": "o QEMU termina sozinho ao desligar; reiniciar volta ao boot; com pendrive montado, os dados ficam gravados.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T00:35:06",
       "fim": "2026-11-13T00:40:59",
@@ -116,7 +116,7 @@
       "titulo": "Configurações guardadas",
       "objetivo": "Formato `chave = valor` em `/usb/.saguios/configuracoes.txt` (seção 4, item 4), com leitura no boot e gravação ao mudar.",
       "aceite": "mudar uma configuração, reiniciar com o mesmo pendrive e ela continua igual; sem pendrive, aviso e valores padrão.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T00:41:00",
       "fim": "2026-11-13T00:43:52",
@@ -129,7 +129,7 @@
       "titulo": "App Configurações",
       "objetivo": "Janela com abas: **Relógio** (data, hora, fuso; o automático chega na fase 4), **Aparência** (cor ou desenho do fundo, tamanho dos ícones), **Sobre o computador** (memória, processador, dispositivos). Abas novas entram nas fases seguintes (Som, Rede, IA). Ajustar o espaçamento dos ícones da área de trabalho, que ficou apertado com o Sagui 3D.",
       "aceite": "mudar o relógio pelo app muda o relógio da barra e do `data`; captura de cada aba.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T00:43:52",
       "fim": "2026-11-13T00:50:05",
@@ -142,7 +142,7 @@
       "titulo": "Remover programas",
       "objetivo": "Programas instalados ficam em `/usb/programas/` (persistentes) e aparecem na área de trabalho e no Terminal; a aba **Programas** das Configurações lista os instalados e remove com confirmação. Os programas que vêm com o sistema podem ser ocultados, não apagados.",
       "aceite": "instalar um programa de teste copiando para `/usb/programas/`, ele aparece; remover pelas Configurações, ele some e o arquivo é apagado.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T00:50:05",
       "fim": "2026-11-13T00:54:44",
@@ -155,9 +155,9 @@
       "titulo": "Driver Intel HD Audio",
       "objetivo": "Controlador (comandos ao codec pelas filas da especificação), descoberta do codec e do caminho até a saída (alto-falante e fone), reprodução por DMA com lista de buffers.",
       "aceite": "o QEMU grava num `.wav` uma senoide de 440 Hz tocada pelo SaguiOS; o teste mede a frequência gravada.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T01:08:35",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:08:35",
+      "texto": "Início da H40: Driver Intel HD Audio"
+    },
+    {
+      "data": "2026-11-13T01:08:35",
+      "texto": "Fase 1 entregue. Aguardando teste do Eli."
+    },
+    {
       "data": "2026-11-13T00:54:44",
       "texto": "H39 concluída: Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema"
     },
@@ -767,47 +775,47 @@
     {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T00:54:21"
+      "data": "2026-11-13T01:07:04"
     },
     {
       "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
       "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T00:54:15"
+      "data": "2026-11-13T01:06:58"
     },
     {
       "arquivo": "docs/v2/capturas/H39-1-instalado.png",
       "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T00:54:13"
+      "data": "2026-11-13T01:06:56"
     },
     {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T00:48:25"
+      "data": "2026-11-13T01:06:38"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T00:48:22"
+      "data": "2026-11-13T01:06:36"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T00:48:06"
+      "data": "2026-11-13T01:06:19"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T00:43:31"
+      "data": "2026-11-13T01:06:03"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T00:40:39"
+      "data": "2026-11-13T01:05:46"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T00:34:52"
+      "data": "2026-11-13T01:05:33"
     }
   ],
   "linhas": {
