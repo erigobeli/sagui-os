@@ -44,7 +44,7 @@ static struct { char url[MAX_URL]; int rolagem; } hist[MAX_HIST];
 static int hist_qtd, hist_pos = -1;
 
 /* Barra de endereço própria (a caixa_t do kit só guarda 128 letras). */
-static struct { char t[MAX_URL]; int cursor, inicio; bool foco; } ende;
+static struct { char t[MAX_URL]; int cursor, inicio; bool foco, tudo; } ende;   /* tudo: texto todo selecionado */
 
 static struct { int x, l; const char *texto; } botoes[] = {
     { 6, 26, "<" }, { 34, 26, ">" }, { 62, 26, "R" },
@@ -88,7 +88,8 @@ static void desenhar_endereco(void)
     if (ende.cursor > ende.inicio + cabe) ende.inicio = ende.cursor - cabe;
     if (!ende.foco) ende.inicio = 0;
     int m = n - ende.inicio < cabe ? n - ende.inicio : cabe;
-    if (m > 0) g_texto_n(j, ENDE_X + 5, 9, ende.t + ende.inicio, m, COR_TEXTO);
+    if (ende.foco && ende.tudo && m > 0) g_retangulo(j, ENDE_X + 4, 8, m * LETRA_L + 2, 18, COR_SELECAO);
+    if (m > 0) g_texto_n(j, ENDE_X + 5, 9, ende.t + ende.inicio, m, ende.foco && ende.tudo ? COR_BRANCO : COR_TEXTO);
     if (ende.foco) g_retangulo(j, ENDE_X + 5 + (ende.cursor - ende.inicio) * LETRA_L, 8, 1, 18, COR_TEXTO);
 }
 
@@ -451,9 +452,10 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     formatar_texto(titulo, sizeof titulo, "%s - Sagui Navegador", curto);
     titulo_janela(j->id, titulo);
     formatar_texto(status, sizeof status, "%s%s%u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", r.n / 1024, tempo_ms() - inicio);
-    registrar("navegador: carregada %s (%u bytes, %s, situacao %d) em %u ms: %d nos, %d pecas, %d links, %d imagens, altura %d, titulo \"%s\"",
+    registrar("navegador: carregada %s (%u bytes, %s, situacao %d) em %u ms: %d nos, %d pecas, %d links, %d imagens, altura %d",
               url, r.n, tipo[0] ? tipo : "?", situacao, tempo_ms() - inicio, doc->qtd_nos, pag->qtd, pag->nlinks, pag->nimgs,
-              pag->altura, doc->titulo);
+              pag->altura);
+    registrar("navegador: titulo %s", doc->titulo);
     desenhar_tudo();
     carregar_imagens();
     formatar_texto(status, sizeof status, "%s%sPronto: %u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", r.n / 1024, tempo_ms() - inicio);
@@ -578,8 +580,8 @@ static int cursor_campo;
 static void tratar_tecla(const evento_t *e)
 {
     unsigned t = e->tecla;
-    if (t == 12 && (e->modificadores & 2)) { ende.foco = true; campo_foco = -1; ende.cursor = (int)tam_texto(ende.t); desenhar_tudo(); return; }
-    if (t == 'l' && (e->modificadores & 2)) { ende.foco = true; campo_foco = -1; ende.cursor = (int)tam_texto(ende.t); desenhar_tudo(); return; }
+    if (t == 12 && (e->modificadores & 2)) { ende.foco = true; ende.tudo = true; campo_foco = -1; ende.cursor = (int)tam_texto(ende.t); desenhar_tudo(); return; }
+    if (t == 'l' && (e->modificadores & 2)) { ende.foco = true; ende.tudo = true; campo_foco = -1; ende.cursor = (int)tam_texto(ende.t); desenhar_tudo(); return; }
     if (ende.foco) {
         if (t == '\n' || t == '\r') {
             char u[MAX_URL];
@@ -588,6 +590,12 @@ static void tratar_tecla(const evento_t *e)
             return;
         }
         if (t == TECLA_ESC) { ende.foco = false; definir_endereco(url_atual); desenhar_tudo(); return; }
+        if (ende.tudo) {
+            ende.tudo = false;
+            /* Com tudo selecionado, digitar ou apagar troca o endereço inteiro; as setas só desfazem a seleção. */
+            if (t == 8 || t == TECLA_DELETE || (t >= 32 && t < 256)) { ende.t[0] = 0; ende.cursor = 0; ende.inicio = 0; }
+            if (t == 8 || t == TECLA_DELETE) { desenhar_barra(); jan_mostrar_area(j, 0, 0, LARG, BARRA); return; }
+        }
         editar_texto(ende.t, sizeof ende.t, &ende.cursor, t);
         desenhar_barra();
         jan_mostrar_area(j, 0, 0, LARG, BARRA);
@@ -635,6 +643,7 @@ static void tratar_clique(const evento_t *e)
             return;
         }
         if (e->x >= ENDE_X && e->x < ENDE_X + ENDE_L) {
+            ende.tudo = !ende.foco;              /* o primeiro clique seleciona tudo; o segundo põe o cursor */
             ende.foco = true;
             campo_foco = -1;
             int c = ende.inicio + (e->x - ENDE_X - 5 + LETRA_L / 2) / LETRA_L;

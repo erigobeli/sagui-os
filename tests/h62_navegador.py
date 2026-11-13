@@ -308,11 +308,8 @@ def botao(j, qual):
 
 
 def digitar_endereco(m, j, texto):
-    m.clique(j["x"] + 300, j["y"] + 17)
-    m.tecla("end", 0.05)
-    for _ in range(80):
-        m.tecla("backspace", 0.01)
-    m.digitar(texto + "\n", 0.03)
+    m.clique(j["x"] + 300, j["y"] + 17)       # o primeiro clique seleciona o endereço todo
+    m.digitar(texto + "\n", 0.03)             # e digitar troca
 
 
 if __name__ == "__main__":

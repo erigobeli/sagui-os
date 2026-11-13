@@ -1,7 +1,7 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T08:09:36",
+  "atualizado": "2026-11-13T08:15:37",
   "situacao": "Trabalhando na H63: Sites de aceite",
   "fase_atual": 6,
   "historia_atual": "H63",
@@ -56,7 +56,7 @@ window.SAGUI_STATUS = {
       "numero": 6,
       "nome": "Sagui Navegador",
       "estado": "em andamento",
-      "progresso": 80.0
+      "progresso": 100.0
     },
     {
       "numero": 7,
@@ -455,12 +455,12 @@ window.SAGUI_STATUS = {
       "titulo": "Sites de aceite",
       "objetivo": "Abrir, com texto legível, links e imagens: um artigo da **Wikipédia em português**, `example.com`, uma página de documentação simples e o `README.md` do SaguiOS no GitHub (versão em texto).",
       "aceite": "teste \"internet\" com capturas de cada site; roteiro para o Eli na VM e no G470.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T08:09:36",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T08:15:37",
+      "minutos": 6,
+      "resultado": "Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas"
     },
     {
       "id": "H64",
@@ -715,6 +715,10 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T08:15:37",
+      "texto": "H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas"
+    },
+    {
       "data": "2026-11-13T08:09:36",
       "texto": "Início da H63: Sites de aceite"
     },
@@ -949,14 +953,40 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T00:30:03",
       "texto": "Modo contínuo: o Eli pediu para seguir fase após fase sem esperar os testes; cada fase vira uma imagem em entrega/v2-faseX/."
-    },
-    {
-      "data": "2026-11-12T14:11:01",
-      "texto": "PRD 2.0 escrito com o Eli: 9 fases, histórias H35 a H77."
     }
   ],
   "erros": [],
   "capturas": [
+    {
+      "arquivo": "docs/v2/capturas/H63-6-readme.png",
+      "nome": "H63-6-readme.png",
+      "data": "2026-11-13T08:15:15"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H63-5-documentacao.png",
+      "nome": "H63-5-documentacao.png",
+      "data": "2026-11-13T08:15:08"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H63-4-example.png",
+      "nome": "H63-4-example.png",
+      "data": "2026-11-13T08:15:00"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H63-3-wikipedia-busca.png",
+      "nome": "H63-3-wikipedia-busca.png",
+      "data": "2026-11-13T08:14:56"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H63-2-wikipedia-rolada.png",
+      "nome": "H63-2-wikipedia-rolada.png",
+      "data": "2026-11-13T08:14:37"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H63-1-wikipedia.png",
+      "nome": "H63-1-wikipedia.png",
+      "data": "2026-11-13T08:14:35"
+    },
     {
       "arquivo": "docs/v2/capturas/H62-7-texto-puro.png",
       "nome": "H62-7-texto-puro.png",
@@ -1111,13 +1141,13 @@ window.SAGUI_STATUS = {
   "linhas": {
     "boot": 903,
     "kernel": 12704,
-    "userland": 20437,
-    "ferramentas": 8876
+    "userland": 20446,
+    "ferramentas": 8993
   },
   "imagem": {
     "bytes_util": 1141760,
     "bytes_arquivo": 1146880,
     "meta_bytes": null
   },
-  "progresso_geral": 62.8
+  "progresso_geral": 65.1
 };

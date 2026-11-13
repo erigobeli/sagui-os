@@ -4,15 +4,15 @@ Eli, a fase 5 (Terminal e SSH) está pronta: entrega/v2-fase5/ e docs/teste-v2-f
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T08:09:36_
+_Atualizado em 2026-11-13T08:15:37_
 
 - **Situação:** Trabalhando na H63: Sites de aceite
 - **Fase atual:** 6
 - **História atual:** H63
-- **Progresso geral:** 62.8%
+- **Progresso geral:** 65.1%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - **Imagem:** 1141760 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12704, userland 20437
+- **Linhas de código:** boot 903, kernel 12704, userland 20446
 
 ## Fases
 
@@ -23,7 +23,7 @@ _Atualizado em 2026-11-13T08:09:36_
 | 3 | Rede | 80.0% | aguardando teste |
 | 4 | TCP e HTTPS | 100.0% | aguardando teste |
 | 5 | Terminal e SSH | 100.0% | aguardando teste |
-| 6 | Sagui Navegador | 80.0% | em andamento |
+| 6 | Sagui Navegador | 100.0% | em andamento |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | a fazer |
 | 9 | Visual moderno | 0.0% | a fazer |
@@ -61,7 +61,7 @@ _Atualizado em 2026-11-13T08:09:36_
 | H60 | JPEG | feito | 1 |
 | H61 | Leitor de HTML | feito | 1 |
 | H62 | Janela do navegador | feito | 10 |
-| H63 | Sites de aceite | em andamento |  |
+| H63 | Sites de aceite | feito | 6 |
 | H64 | A linguagem | a fazer |  |
 | H65 | Frente do compilador | a fazer |  |
 | H66 | Fundo do compilador | a fazer |  |
@@ -79,6 +79,7 @@ _Atualizado em 2026-11-13T08:09:36_
 
 ## Últimas ações
 
+- 2026-11-13T08:15:37: H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas
 - 2026-11-13T08:09:36: Início da H63: Sites de aceite
 - 2026-11-13T08:09:36: H62 concluída: janela igual à referência pixel a pixel (topo e rolada); links, voltar/avançar, âncora, busca em UTF-8, favoritos, texto puro
 - 2026-11-13T07:59:13: Início da H62: Janela do navegador
@@ -93,4 +94,3 @@ _Atualizado em 2026-11-13T08:09:36_
 - 2026-11-13T07:58:47: Início da H56: Transporte SSH
 - 2026-11-13T07:49:09: H61 concluída: árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória
 - 2026-11-13T07:49:03: Início da H62: Janela do navegador
-- 2026-11-13T07:49:03: H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21
