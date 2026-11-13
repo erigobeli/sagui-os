@@ -77,6 +77,47 @@ void g_linha(jan_t *j, int x0, int y0, int x1, int y1, uint32_t cor)
     }
 }
 
+/* Desenha um triângulo preenchido (scanline) na janela. Cor sólida.
+ * v0, v1, v2 são coordenadas já em pixels da tela.
+ * O atributo used evita que o coletor de seções --gc-sections remova a
+ * função quando só o programa (não a libsagui) a referencia. */
+void __attribute__((used)) g_triangulo_preenchido(jan_t *j, int x0, int y0, int x1, int y1,
+                                                  int x2, int y2, uint32_t cor)
+{
+    /* Ordena vértices por Y crescente. */
+    int ax = x0, ay = y0, bx = x1, by = y1, cx = x2, cy = y2;
+    int t;
+    if (ay > by) { t = ax; ax = bx; bx = t; t = ay; ay = by; by = t; }
+    if (ay > cy) { t = ax; ax = cx; cx = t; t = ay; ay = cy; cy = t; }
+    if (by > cy) { t = bx; bx = cx; cx = t; t = by; by = cy; cy = t; }
+
+    if (ay == cy) return;   /* triângulo degenerado */
+
+    /* Parte superior (de ay a by). */
+    if (by != ay) {
+        for (int y = ay; y <= by; y++) {
+            int xa = ax + (bx - ax) * (y - ay) / (by - ay);
+            int xb = ax + (cx - ax) * (y - ay) / (cy - ay);
+            if (xa > xb) { t = xa; xa = xb; xb = t; }
+            if (xa < 0) xa = 0;
+            if (xb >= j->larg) xb = j->larg - 1;
+            if (xa <= xb) g_retangulo(j, xa, y, xb - xa + 1, 1, cor);
+        }
+    }
+
+    /* Parte inferior (de by a cy). */
+    if (cy != by) {
+        for (int y = by; y <= cy; y++) {
+            int xa = bx + (cx - bx) * (y - by) / (cy - by);
+            int xb = ax + (cx - ax) * (y - ay) / (cy - ay);
+            if (xa > xb) { t = xa; xa = xb; xb = t; }
+            if (xa < 0) xa = 0;
+            if (xb >= j->larg) xb = j->larg - 1;
+            if (xa <= xb) g_retangulo(j, xa, y, xb - xa + 1, 1, cor);
+        }
+    }
+}
+
 void g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor)
 {
     for (int k = 0; k < n && t[k]; k++, x += LETRA_L) {

@@ -52,3 +52,7 @@ long long __sagui_resto64(long long a, long long b)
             b < 0 ? 0 - (unsigned long long)b : (unsigned long long)b, &r);
     return a < 0 ? -(long long)r : (long long)r;     /* o resto acompanha o sinal do dividendo */
 }
+
+/* Nomes que o GCC chama ao usar "long long" sem libgcc. */
+long long __muldi3(long long a, long long b) { return __sagui_mul64(a, b); }
+long long __divdi3(long long a, long long b) { return __sagui_div64(a, b); }

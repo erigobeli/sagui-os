@@ -37,6 +37,8 @@ void   jan_mostrar_area(jan_t *j, int x, int y, int l, int a);
 void   g_retangulo(jan_t *j, int x, int y, int l, int a, uint32_t cor);
 void   g_moldura(jan_t *j, int x, int y, int l, int a, uint32_t cor);
 void   g_linha(jan_t *j, int x0, int y0, int x1, int y1, uint32_t cor);
+void   g_triangulo_preenchido(jan_t *j, int x0, int y0, int x1, int y1,
+                              int x2, int y2, uint32_t cor);
 void   g_texto(jan_t *j, int x, int y, const char *t, uint32_t cor);
 void   g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor);
 void   g_desenho(jan_t *j, int x, int y, const char *const *linhas, int l, int a,

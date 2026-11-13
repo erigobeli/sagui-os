@@ -23,6 +23,7 @@
 #include "mouse.h"
 #include "i8042.h"
 #include "gui.h"
+#include "gpu.h"
 #include "usb.h"
 
 #define SAGUI_VERSAO "1.0"
@@ -164,6 +165,8 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     /* H17/H18: terminal gráfico com a fonte própria. Se não houver modo
      * gráfico, o console continua no modo texto e avisa. */
     bool grafico = console_grafico();
+    if (grafico)
+        video_gpu_iniciar();   /* camada de abstração de vídeo/GPU (driver software VESA) */
 
     int largura = console_colunas();
     console_cor(COR_AMARELO, COR_VERDE);
