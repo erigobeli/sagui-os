@@ -47,11 +47,11 @@ ULDFLAGS := -m elf_i386 -nostdlib -T userland/programa.ld --gc-sections -z max-p
             -z noexecstack --no-warn-rwx-segments
 # A criptografia (H50-H52) e o TLS (H53) entram na libsagui; só o que cada
 # programa usa vai para ele (--gc-sections).
-CRIPTO_OBJ := $(patsubst userland/%.c,$(B)/userland/%.o,$(wildcard userland/cripto/*.c) $(wildcard userland/tls/*.c))
+CRIPTO_OBJ := $(patsubst userland/%.c,$(B)/userland/%.o,$(wildcard userland/cripto/*.c) $(wildcard userland/tls/*.c) $(wildcard userland/ssh/*.c))
 LIBSAGUI_OBJ := $(CRIPTO_OBJ) $(B)/userland/fonte8x16.o \
                 $(patsubst userland/libsagui/%.c,$(B)/userland/libsagui/%.o,$(wildcard userland/libsagui/*.c)) \
                 $(patsubst userland/libsagui/%.asm,$(B)/userland/libsagui/%.asm.o,$(wildcard userland/libsagui/*.asm))
-USER_HDR  := $(wildcard userland/inc/*.h) $(wildcard userland/cripto/*.h) $(wildcard userland/tls/*.h) kernel/inc/abi.h
+USER_HDR  := $(wildcard userland/inc/*.h) $(wildcard userland/cripto/*.h) $(wildcard userland/tls/*.h) $(wildcard userland/ssh/*.h) kernel/inc/abi.h
 PROGRAMAS := $(patsubst userland/programas/%.c,$(B)/userland/bin/%,$(wildcard userland/programas/*.c))
 # O Sagui 3D (B4) tem vários arquivos, numa pasta própria.
 SAGUI3D_OBJ := $(patsubst userland/sagui3d/%.c,$(B)/userland/sagui3d/%.o,$(wildcard userland/sagui3d/*.c))

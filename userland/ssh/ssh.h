@@ -7,7 +7,7 @@
  * criptografia vem toda de ../cripto/cripto.h.
  *
  * Como a cripto e o TLS, esta biblioteca não depende de nada (nem libc, nem
- * núcleo) e não reserva memória: quem chama passa um "Ssh" (uns 53 KB, com
+ * núcleo) e não reserva memória: quem chama passa um "Ssh" (uns 55 KB, com
  * todos os buffers dentro; NÃO o ponha na pilha) e uma tabela de funções
  * para falar com o mundo (SshAmbiente). O mesmo código roda no teste, sobre
  * soquetes do Linux, e no SaguiOS, sobre o TCP do sistema.

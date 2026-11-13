@@ -1,6 +1,6 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T07:49:03",
+  "atualizado": "2026-11-13T07:58:47",
   "situacao": "Trabalhando na H62: Janela do navegador",
   "fase_atual": 6,
   "historia_atual": "H62",
@@ -49,13 +49,13 @@
       "numero": 5,
       "nome": "Terminal e SSH",
       "estado": "em andamento",
-      "progresso": 25.0
+      "progresso": 100.0
     },
     {
       "numero": 6,
       "nome": "Sagui Navegador",
       "estado": "em andamento",
-      "progresso": 40.0
+      "progresso": 60.0
     },
     {
       "numero": 7,
@@ -363,12 +363,12 @@
       "titulo": "Transporte SSH",
       "objetivo": "Troca de chaves `curve25519-sha256`, chave do servidor `ssh-ed25519` (com SHA-512), cifra `aes128-ctr` com `hmac-sha2-256` ou `aes256-gcm`, e o arquivo de servidores conhecidos (aviso na primeira conexão e alerta forte se a chave mudar).",
       "aceite": "conecta no `sshd` local da VPS; recusa conexão quando a chave do servidor muda.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T07:58:47",
+      "fim": "2026-11-13T07:58:47",
+      "minutos": 1,
+      "resultado": "transporte contra o sshd local: 77 conferências; chave mudada recusada"
     },
     {
       "id": "H57",
@@ -376,12 +376,12 @@
       "titulo": "Login e sessão",
       "objetivo": "Autenticação por senha e por chave Ed25519 (comando `ssh-chave` gera o par no pendrive), terminal remoto com tamanho da janela, `exit` limpo.",
       "aceite": "login das duas formas; redimensionar a janela muda o tamanho no servidor.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T07:58:47",
+      "fim": "2026-11-13T07:58:47",
+      "minutos": 1,
+      "resultado": "ssh-chave + login pela chave no QEMU; senha recusada testada, aceita fica para o roteiro"
     },
     {
       "id": "H58",
@@ -389,12 +389,12 @@
       "titulo": "SSH de verdade",
       "objetivo": "Comando `ssh usuario@servidor`.",
       "aceite": "no teste automático, `htop` e `vim` rodam no servidor de teste e as capturas mostram a tela certa; no roteiro, o Eli entra num servidor dele.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T07:58:47",
+      "fim": "2026-11-13T07:58:47",
+      "minutos": 1,
+      "resultado": "ssh no Terminal: vim (setas em modo de aplicação) e htop com capturas"
     },
     {
       "id": "H59",
@@ -428,12 +428,12 @@
       "titulo": "Leitor de HTML",
       "objetivo": "Leitura tolerante a erros, árvore de elementos, entidades, conjunto de caracteres, links e formulários simples (só leitura de busca, como a da Wikipédia).",
       "aceite": "páginas de teste com HTML mal formado montam a árvore esperada.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T07:49:03",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T07:49:09",
+      "minutos": 1,
+      "resultado": "árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória"
     },
     {
       "id": "H62",
@@ -443,7 +443,7 @@
       "aceite": "páginas de teste servidas pela VPS renderizadas como as capturas de referência.",
       "estado": "em andamento",
       "bonus": false,
-      "inicio": "2026-11-13T07:49:03",
+      "inicio": "2026-11-13T07:58:47",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,38 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T07:58:47",
+      "texto": "Início da H62: Janela do navegador"
+    },
+    {
+      "data": "2026-11-13T07:58:47",
+      "texto": "H58 concluída: ssh no Terminal: vim (setas em modo de aplicação) e htop com capturas"
+    },
+    {
+      "data": "2026-11-13T07:58:47",
+      "texto": "H57 concluída: ssh-chave + login pela chave no QEMU; senha recusada testada, aceita fica para o roteiro"
+    },
+    {
+      "data": "2026-11-13T07:58:47",
+      "texto": "H56 concluída: transporte contra o sshd local: 77 conferências; chave mudada recusada"
+    },
+    {
+      "data": "2026-11-13T07:58:47",
+      "texto": "Início da H58: SSH de verdade"
+    },
+    {
+      "data": "2026-11-13T07:58:47",
+      "texto": "Início da H57: Login e sessão"
+    },
+    {
+      "data": "2026-11-13T07:58:47",
+      "texto": "Início da H56: Transporte SSH"
+    },
+    {
+      "data": "2026-11-13T07:49:09",
+      "texto": "H61 concluída: árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória"
+    },
+    {
       "data": "2026-11-13T07:49:03",
       "texto": "Início da H62: Janela do navegador"
     },
@@ -905,9 +937,39 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
+      "nome": "H39-3-banana-escondida.png",
+      "data": "2026-11-13T07:58:16"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
+      "nome": "H39-2-aba-programas.png",
+      "data": "2026-11-13T07:58:10"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
+      "nome": "H39-1-instalado.png",
+      "data": "2026-11-13T07:58:08"
+    },
+    {
       "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
       "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T07:44:38"
+      "data": "2026-11-13T07:57:02"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H58-chave-mudou.png",
+      "nome": "H58-chave-mudou.png",
+      "data": "2026-11-13T07:55:19"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H58-htop.png",
+      "nome": "H58-htop.png",
+      "data": "2026-11-13T07:55:13"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H58-vim.png",
+      "nome": "H58-vim.png",
+      "data": "2026-11-13T07:55:07"
     },
     {
       "arquivo": "docs/v2/capturas/H53-https.png",
@@ -960,21 +1022,6 @@
       "data": "2026-11-13T07:39:35"
     },
     {
-      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
-      "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T07:39:25"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
-      "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T07:39:19"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
-      "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T07:39:16"
-    },
-    {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
       "data": "2026-11-13T07:38:59"
@@ -1008,13 +1055,13 @@
   "linhas": {
     "boot": 903,
     "kernel": 12704,
-    "userland": 19149,
-    "ferramentas": 8361
+    "userland": 19584,
+    "ferramentas": 8553
   },
   "imagem": {
-    "bytes_util": 898560,
+    "bytes_util": 981504,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 51.2
+  "progresso_geral": 60.5
 }

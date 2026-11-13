@@ -38,10 +38,18 @@ int ssh_conectar(Ssh *s, const SshAmbiente *amb, const SshOpcoes *op)
      * podem se cruzar. A troca em si começa quando o dele chega. */
     r = ssh_i_enviar_kexinit(s);
     if (r < 0) return r;
-    while (!s->tem_sessao || !s->rx.ativa) {
-        int tipo = ssh_i_proximo(s);
-        if (tipo < 0) return tipo;
-        return ssh_i_falhar(s, MOTIVO_PROTOCOLO, "o servidor mandou outra coisa antes da troca de chaves");
+    while (!s->rx.ativa) {
+        r = ssh_i_receber_esperando(s);
+        if (r < 0) return r;
+        if (ssh_i_carga(s)[0] == MSG_KEXINIT) {
+            r = ssh_i_trocar(s);
+            if (r < 0) return r;
+            continue;
+        }
+        r = ssh_i_basico(s);
+        if (r < 0) return r;
+        if (r == 0)
+            return ssh_i_falhar(s, MOTIVO_PROTOCOLO, "o servidor mandou outra coisa antes da troca de chaves");
     }
 
     /* Com o transporte de pé, pedimos o serviço de autenticação. */

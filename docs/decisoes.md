@@ -1034,3 +1034,40 @@ Um ajuste feito na integração: a âncora de confiança passou a ser o par
 mandam autoridades "assinadas em cruz" por raízes mais antigas (o example.com,
 via Cloudflare, manda o SSL.com 2022 assinado pela antiga AAA, que já saiu da
 lista da Mozilla); a mesma autoridade, com a mesma chave, está na nossa lista.
+
+## D037. SSH: biblioteca separada, servidores conhecidos e o que fica para o Eli conferir (H56 a H58)
+
+Como o TLS, o cliente SSH 2 (`userland/ssh`) foi escrito por um subagente no
+Claude Fable 5.2 só a partir das RFCs (4251 a 4254, 4344, 6668, 8709, 8731,
+8332, 4648), sem depender do sistema: recebe um "ambiente" de funções e é
+testado no Linux da VPS contra o `sshd` do OpenSSH (77 conferências em
+`tests/h56_h58_ssh.py`: as quatro combinações de cifra e chave do servidor,
+corrupção de pacotes, trocas de chave no meio da sessão, 2,7 MB de saída
+conferidos por SHA-256, servidor que cai). No SaguiOS entra na `libsagui`, e
+dois programas usam: `ssh` e `ssh-chave`.
+
+Escolhas:
+- **Cifras:** `aes128-ctr`/`aes256-ctr` com `hmac-sha2-256` (o PRD aceitava
+  esta ou `aes256-gcm`; a CTR com HMAC é a que todo servidor ainda aceita).
+  Chave do servidor `ssh-ed25519` ou `rsa-sha2-256`.
+- **Servidores conhecidos** em `<pasta>/conhecidos` (linhas
+  `nome tipo base64`, como o `known_hosts` sem os nomes embaralhados). Na
+  primeira conexão, mostra a impressão digital e pergunta; se a chave mudar,
+  recusa com aviso forte e diz qual linha apagar.
+- `<pasta>` é `/usb/.saguios/ssh` se houver pendrive configurado; sem ele,
+  `/tmp/ssh` (e o programa avisa que a chave some ao desligar).
+- **Teclas:** o Terminal manda ESC + letra; o `ssh` traduz para o xterm e
+  acompanha o pedido de "modo de aplicação" das setas (ESC [ ? 1 h). Outras
+  sequências (respostas do próprio Terminal, como a posição do cursor que o
+  vim pergunta) passam como estão.
+- O Terminal ganhou `ESC [ n b` (repetir a última letra), que o ncurses usa
+  para desenhar barras: sem ela, o htop saía com colunas tortas.
+
+O que os testes automáticos não cobrem, e vai no roteiro:
+- **Login por senha aceito.** O `sshd` de teste roda sem ser root e não
+  consegue conferir senhas; o teste só cobre a senha recusada. A primeira
+  prova é o Eli entrar num servidor dele.
+- **Redimensionar.** A janela do Terminal do SaguiOS tem tamanho fixo
+  (94 x 28); a mudança de tamanho (`window-change`) está pronta e testada na
+  biblioteca (de 43 x 132 para 30 x 100), e passa a ser usada quando o
+  Terminal puder mudar de tamanho.

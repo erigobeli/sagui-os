@@ -72,6 +72,7 @@ typedef struct {
     int      faltam;
     uint8_t  primeiro;                         /* o byte que abriu a sequência */
     bool     dois_bytes;                       /* já veio pelo menos uma continuação */
+    uint8_t  ultima;                           /* última letra escrita (para ESC [ n b) */
 } aba_t;
 
 static jan_t *j;
@@ -287,6 +288,7 @@ static void escrever_letra(aba_t *a, uint8_t g)
         a->apos_fim = false;
         if (a->quebra) { a->col = 0; nova_linha(a); }
     }
+    a->ultima = g;
     grade(a)[a->lin][a->col] = (celula_t){ g, a->attr, a->frente, a->fundo };
     if (a == &abas[atual_aba]) sujar(a->lin);
     if (a->col == COLS - 1) a->apos_fim = true;
@@ -388,6 +390,13 @@ static void csi(aba_t *a, char f)
         break;
     }
     case 'X': limpar_faixa(a, a->lin, a->col, a->col + n - 1); break;
+    case 'b': {                                 /* REP: repete a última letra n vezes (o ncurses usa) */
+        bool g = a->grafico;
+        a->grafico = false;                     /* a letra guardada já foi convertida */
+        for (int k = 0; k < n && k < COLS * LINS; k++) escrever_letra(a, a->ultima);
+        a->grafico = g;
+        break;
+    }
     case 'P':
         for (int c = a->col; c < COLS; c++) g[a->lin][c] = c + n < COLS ? g[a->lin][c + n] : vazia(a);
         break;

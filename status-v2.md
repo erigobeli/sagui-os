@@ -4,15 +4,15 @@ Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T07:49:03_
+_Atualizado em 2026-11-13T07:58:47_
 
 - **Situação:** Trabalhando na H62: Janela do navegador
 - **Fase atual:** 6
 - **História atual:** H62
-- **Progresso geral:** 51.2%
+- **Progresso geral:** 60.5%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 898560 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12704, userland 19149
+- **Imagem:** 981504 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 12704, userland 19584
 
 ## Fases
 
@@ -22,8 +22,8 @@ _Atualizado em 2026-11-13T07:49:03_
 | 2 | Som | 100.0% | aguardando teste |
 | 3 | Rede | 80.0% | aguardando teste |
 | 4 | TCP e HTTPS | 100.0% | aguardando teste |
-| 5 | Terminal e SSH | 25.0% | em andamento |
-| 6 | Sagui Navegador | 40.0% | em andamento |
+| 5 | Terminal e SSH | 100.0% | em andamento |
+| 6 | Sagui Navegador | 60.0% | em andamento |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | a fazer |
 | 9 | Visual moderno | 0.0% | a fazer |
@@ -54,12 +54,12 @@ _Atualizado em 2026-11-13T07:49:03_
 | H53 | TLS 1.3 | aguardando teste |  |
 | H54 | Certificados raiz e créditos | aguardando teste | 1 |
 | H55 | Terminal completo | feito | 1 |
-| H56 | Transporte SSH | a fazer |  |
-| H57 | Login e sessão | a fazer |  |
-| H58 | SSH de verdade | a fazer |  |
+| H56 | Transporte SSH | feito | 1 |
+| H57 | Login e sessão | feito | 1 |
+| H58 | SSH de verdade | feito | 1 |
 | H59 | Descompactação e PNG | feito | 1 |
 | H60 | JPEG | feito | 1 |
-| H61 | Leitor de HTML | em andamento |  |
+| H61 | Leitor de HTML | feito | 1 |
 | H62 | Janela do navegador | em andamento |  |
 | H63 | Sites de aceite | a fazer |  |
 | H64 | A linguagem | a fazer |  |
@@ -79,6 +79,14 @@ _Atualizado em 2026-11-13T07:49:03_
 
 ## Últimas ações
 
+- 2026-11-13T07:58:47: Início da H62: Janela do navegador
+- 2026-11-13T07:58:47: H58 concluída: ssh no Terminal: vim (setas em modo de aplicação) e htop com capturas
+- 2026-11-13T07:58:47: H57 concluída: ssh-chave + login pela chave no QEMU; senha recusada testada, aceita fica para o roteiro
+- 2026-11-13T07:58:47: H56 concluída: transporte contra o sshd local: 77 conferências; chave mudada recusada
+- 2026-11-13T07:58:47: Início da H58: SSH de verdade
+- 2026-11-13T07:58:47: Início da H57: Login e sessão
+- 2026-11-13T07:58:47: Início da H56: Transporte SSH
+- 2026-11-13T07:49:09: H61 concluída: árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória
 - 2026-11-13T07:49:03: Início da H62: Janela do navegador
 - 2026-11-13T07:49:03: H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21
 - 2026-11-13T07:49:03: H59 concluída: DEFLATE/zlib/gzip e PNG: 27 PNGs iguais pixel a pixel, zlib níveis 0-9
@@ -86,11 +94,3 @@ _Atualizado em 2026-11-13T07:49:03_
 - 2026-11-13T07:49:03: Início da H60: JPEG
 - 2026-11-13T07:49:03: Início da H59: Descompactação e PNG
 - 2026-11-13T07:48:05: Fase 4 entregue. Aguardando teste do Eli.
-- 2026-11-13T07:48:05: Fase 3 entregue. Aguardando teste do Eli.
-- 2026-11-13T07:26:21: H54 concluída: 24 raízes públicas (Mozilla, MPL 2.0) em /sistema/certificados, escolhidas por tools/mkraizes.py, com CREDITOS.md
-- 2026-11-13T07:26:21: Início da H54: Certificados raiz e créditos
-- 2026-11-13T07:26:21: H53 concluída: TLS 1.3 dentro do SaguiOS (ponte com TCP, gerador do kernel e relógio UTC): baixar https:// funciona com example.com e a Wikipédia (ChaCha20-Poly1305); âncora de confiança por nome + chave
-- 2026-11-13T02:57:46: H52 concluída: Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)
-- 2026-11-13T02:57:46: Início da H52: Assinaturas e certificados
-- 2026-11-13T02:50:51: H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito
-- 2026-11-13T02:50:51: Início da H55: Terminal completo
