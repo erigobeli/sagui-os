@@ -11,8 +11,11 @@
  *   - abertura em três passos: SYN, SYN+ACK, ACK;
  *   - cada conexão tem um anel de envio (o que o programa mandou e ainda não
  *     foi confirmado) e um de recepção (o que chegou e o programa não leu);
- *   - o que chega fora de ordem é descartado: o outro lado manda de novo, e
- *     o ACK repetido avisa que falta um pedaço;
+ *   - o que chega fora de ordem (depois de um pedaço perdido) fica guardado
+ *     num "estacionamento" de até 24 pedaços; o ACK repetido avisa o outro
+ *     lado do buraco, e quando o pedaço que faltava chega, os estacionados
+ *     entram em seguida. Sem isso, cada perda obrigaria o outro lado a mandar
+ *     de novo tudo o que veio depois dela, um pedaço por ida e volta;
  *   - sem confirmação a tempo, manda de novo a partir do primeiro byte não
  *     confirmado, dobrando a espera a cada falha (de 0,5 s até 8 s);
  *   - três ACKs repetidos seguidos também disparam o reenvio, sem esperar;
@@ -57,7 +60,10 @@ typedef struct {
     int      acks_repetidos;
     uint32_t aberta_em;
     uint32_t bytes_rx, bytes_tx, reenvios;
+    struct adiantado { bool usado; uint32_t seq, tam; uint8_t dados[MSS + 200]; } *adiantados;
 } conexao_t;
+
+#define MAX_ADIANTADOS 24
 
 static conexao_t conexoes[MAX_TCP];
 static uint16_t proxima_porta = 50000;
@@ -166,6 +172,50 @@ void tcp_tique(void)
 
 /* ------------------------------------------------------------ recepção */
 
+static void guardar_em_ordem(conexao_t *c, const uint8_t *dados, uint32_t n)
+{
+    uint32_t cabe = ANEL - c->rec_qtd;
+    if (n > cabe) n = cabe;
+    for (uint32_t i = 0; i < n; i++) c->rec[(c->rec_ini + c->rec_qtd + i) % ANEL] = dados[i];
+    c->rec_qtd += n;
+    c->rcv_nxt += n;
+    c->bytes_rx += n;
+}
+
+static void estacionar(conexao_t *c, uint32_t seq, const uint8_t *dados, uint32_t n)
+{
+    if (n > MSS + 200) return;
+    int livre = -1;
+    for (int i = 0; i < MAX_ADIANTADOS; i++) {
+        if (c->adiantados[i].usado && c->adiantados[i].seq == seq) return;   /* já está aqui */
+        if (!c->adiantados[i].usado && livre < 0) livre = i;
+    }
+    if (livre < 0) return;
+    c->adiantados[livre].usado = true;
+    c->adiantados[livre].seq = seq;
+    c->adiantados[livre].tam = n;
+    memcpy(c->adiantados[livre].dados, dados, n);
+}
+
+/* Depois que um pedaço em ordem chega, os estacionados que agora "encaixam" entram. */
+static void juntar_adiantados(conexao_t *c)
+{
+    if (!c->adiantados) return;
+    for (bool achou = true; achou;) {
+        achou = false;
+        for (int i = 0; i < MAX_ADIANTADOS; i++) {
+            struct adiantado *a = &c->adiantados[i];
+            if (!a->usado) continue;
+            int32_t antes = (int32_t)(a->seq - c->rcv_nxt);
+            if (antes > 0) continue;                      /* ainda há buraco antes dele */
+            uint32_t pular = (uint32_t)(-antes);
+            if (pular < a->tam) guardar_em_ordem(c, a->dados + pular, a->tam - pular);
+            a->usado = false;
+            achou = true;
+        }
+    }
+}
+
 void tcp_receber(ip4_t origem, const uint8_t *s, uint32_t tam)
 {
     if (tam < 20) return;
@@ -226,18 +276,19 @@ void tcp_receber(ip4_t origem, const uint8_t *s, uint32_t tam)
         c->snd_janela = janela;
     }
 
-    /* Dados: só aceita o que vem exatamente na ordem esperada. */
+    /* Dados: entram no anel na ordem; os adiantados ficam estacionados. */
     bool responder = false;
     if (n > 0) {
-        if (seq == c->rcv_nxt) {
-            uint32_t cabe = ANEL - c->rec_qtd;
-            if (n > cabe) n = cabe;
-            for (uint32_t i = 0; i < n; i++) c->rec[(c->rec_ini + c->rec_qtd + i) % ANEL] = dados[i];
-            c->rec_qtd += n;
-            c->rcv_nxt += n;
-            c->bytes_rx += n;
+        int32_t adiante = (int32_t)(seq - c->rcv_nxt);
+        if (adiante <= 0 && (int32_t)(seq + n - c->rcv_nxt) > 0) {
+            /* Começa no que esperávamos (ou antes, repetido em parte): pula o já recebido. */
+            uint32_t pular = (uint32_t)(-adiante);
+            guardar_em_ordem(c, dados + pular, n - pular);
+            juntar_adiantados(c);
+        } else if (adiante > 0 && (uint32_t)adiante < ANEL - c->rec_qtd && c->adiantados) {
+            estacionar(c, seq, dados, n);
         }
-        responder = true;                         /* fora de ordem também: o ACK repetido avisa o que falta */
+        responder = true;                         /* sempre: o ACK repetido avisa o que falta */
     }
     if ((flags & F_FIN) && seq + (tam - cab) == c->rcv_nxt && !c->fin_recebido) {
         c->rcv_nxt++;
@@ -269,10 +320,13 @@ int tcp_abrir(ip4_t ip, uint16_t porta)
             if (dono_vivo || (c->estado != T_FECHADO && c->estado != T_FALHOU && c->estado != T_ESPERA_TEMPO)) continue;
         }
         uint8_t *env = c->env, *rec = c->rec;
+        struct adiantado *adi = c->adiantados;
         memset(c, 0, sizeof *c);
         c->env = env ? env : kmalloc(ANEL);
         c->rec = rec ? rec : kmalloc(ANEL);
-        if (!c->env || !c->rec) return ERRO_SEM_MEMORIA;
+        c->adiantados = adi ? adi : kmalloc(sizeof(struct adiantado) * MAX_ADIANTADOS);
+        if (!c->env || !c->rec || !c->adiantados) return ERRO_SEM_MEMORIA;
+        memset(c->adiantados, 0, sizeof(struct adiantado) * MAX_ADIANTADOS);
         c->usado = true;
         c->pid = atual->pid;
         c->ip = ip;

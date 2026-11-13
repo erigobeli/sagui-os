@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:36:59",
-  "situacao": "Trabalhando na H43: Driver Intel PRO/1000",
-  "fase_atual": 3,
-  "historia_atual": "H43",
+  "atualizado": "2026-11-13T02:25:47",
+  "situacao": "Trabalhando na H50: Números aleatórios e resumos",
+  "fase_atual": 4,
+  "historia_atual": "H50",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
   "raiz": "../../",
@@ -43,8 +43,8 @@ window.SAGUI_STATUS = {
     {
       "numero": 4,
       "nome": "TCP e HTTPS",
-      "estado": "a fazer",
-      "progresso": 0.0
+      "estado": "em andamento",
+      "progresso": 28.6
     },
     {
       "numero": 5,
@@ -260,12 +260,12 @@ window.SAGUI_STATUS = {
       "titulo": "TCP e sockets",
       "objetivo": "Abertura e fechamento de conexão, números de sequência, confirmações, retransmissão, janela, e as chamadas de sistema de sockets para os programas.",
       "aceite": "um programa do SaguiOS baixa 10 MB de um servidor da VPS sem perder nem trocar nenhum byte (conferido por hash), inclusive com perda de pacotes simulada.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
       "inicio": null,
-      "fim": null,
+      "fim": "2026-11-13T02:25:47",
       "minutos": null,
-      "resultado": ""
+      "resultado": "TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP"
     },
     {
       "id": "H49",
@@ -286,9 +286,9 @@ window.SAGUI_STATUS = {
       "titulo": "Números aleatórios e resumos",
       "objetivo": "Gerador do kernel (seção 4, item 2) com teste estatístico simples; SHA-256, SHA-384, SHA-512, HMAC e HKDF.",
       "aceite": "todos os vetores oficiais passam; documentação de como a aleatoriedade é coletada no G470 sem RDRAND.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T02:25:47",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -299,12 +299,12 @@ window.SAGUI_STATUS = {
       "titulo": "Cifras e troca de chaves",
       "objetivo": "AES-128 e AES-256 em GCM, ChaCha20-Poly1305, X25519.",
       "aceite": "vetores oficiais; tempo constante onde a especificação recomenda (registrar como foi feito).",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T02:25:47",
+      "fim": "2026-11-13T02:25:47",
+      "minutos": 1,
+      "resultado": "AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)"
     },
     {
       "id": "H52",
@@ -715,6 +715,22 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T02:25:47",
+      "texto": "Início da H50: Números aleatórios e resumos"
+    },
+    {
+      "data": "2026-11-13T02:25:47",
+      "texto": "H51 concluída: AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)"
+    },
+    {
+      "data": "2026-11-13T02:25:47",
+      "texto": "Início da H51: Cifras e troca de chaves"
+    },
+    {
+      "data": "2026-11-13T02:25:47",
+      "texto": "H48 concluída: TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP"
+    },
+    {
       "data": "2026-11-13T01:36:59",
       "texto": "Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue"
     },
@@ -909,14 +925,14 @@ window.SAGUI_STATUS = {
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 12485,
-    "userland": 8937,
-    "ferramentas": 4379
+    "kernel": 12539,
+    "userland": 10385,
+    "ferramentas": 5854
   },
   "imagem": {
-    "bytes_util": 750080,
+    "bytes_util": 751104,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 27.9
+  "progresso_geral": 32.6
 };

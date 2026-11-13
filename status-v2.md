@@ -4,15 +4,15 @@ Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T01:36:59_
+_Atualizado em 2026-11-13T02:25:47_
 
-- **Situação:** Trabalhando na H43: Driver Intel PRO/1000
-- **Fase atual:** 3
-- **História atual:** H43
-- **Progresso geral:** 27.9%
+- **Situação:** Trabalhando na H50: Números aleatórios e resumos
+- **Fase atual:** 4
+- **História atual:** H50
+- **Progresso geral:** 32.6%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 750080 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12485, userland 8937
+- **Imagem:** 751104 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 12539, userland 10385
 
 ## Fases
 
@@ -21,7 +21,7 @@ _Atualizado em 2026-11-13T01:36:59_
 | 1 | Base e Configurações | 100.0% | aguardando teste |
 | 2 | Som | 100.0% | aguardando teste |
 | 3 | Rede | 80.0% | em andamento |
-| 4 | TCP e HTTPS | 0.0% | a fazer |
+| 4 | TCP e HTTPS | 28.6% | em andamento |
 | 5 | Terminal e SSH | 0.0% | a fazer |
 | 6 | Sagui Navegador | 0.0% | a fazer |
 | 7 | Compilador C | 0.0% | a fazer |
@@ -46,10 +46,10 @@ _Atualizado em 2026-11-13T01:36:59_
 | H45 | DHCP e DNS | feito |  |
 | H46 | Rede no G470 | a fazer |  |
 | H47 | Rede na interface | feito |  |
-| H48 | TCP e sockets | a fazer |  |
+| H48 | TCP e sockets | feito |  |
 | H49 | HTTP e relógio pela internet | a fazer |  |
-| H50 | Números aleatórios e resumos | a fazer |  |
-| H51 | Cifras e troca de chaves | a fazer |  |
+| H50 | Números aleatórios e resumos | em andamento |  |
+| H51 | Cifras e troca de chaves | feito | 1 |
 | H52 | Assinaturas e certificados | a fazer |  |
 | H53 | TLS 1.3 | a fazer |  |
 | H54 | Certificados raiz e créditos | a fazer |  |
@@ -79,6 +79,10 @@ _Atualizado em 2026-11-13T01:36:59_
 
 ## Últimas ações
 
+- 2026-11-13T02:25:47: Início da H50: Números aleatórios e resumos
+- 2026-11-13T02:25:47: H51 concluída: AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)
+- 2026-11-13T02:25:47: Início da H51: Cifras e troca de chaves
+- 2026-11-13T02:25:47: H48 concluída: TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP
 - 2026-11-13T01:36:59: Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - 2026-11-13T01:36:58: H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)
 - 2026-11-13T01:36:19: H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome
@@ -90,7 +94,3 @@ _Atualizado em 2026-11-13T01:36:59_
 - 2026-11-13T01:17:13: Início da H42: Tocador e sons do sistema
 - 2026-11-13T01:17:13: H41 concluída: Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav
 - 2026-11-13T01:15:43: Início da H41: Som para os programas
-- 2026-11-13T01:15:43: H40 concluída: Driver Intel HD Audio: CORB/RIRB, descoberta do caminho pino-DAC no codec, fluxo de saída 48 kHz/16 bits por DMA; tom de 440 Hz conferido no .wav do QEMU
-- 2026-11-13T01:08:35: Início da H40: Driver Intel HD Audio
-- 2026-11-13T01:08:35: Fase 1 entregue. Aguardando teste do Eli.
-- 2026-11-13T00:54:44: H39 concluída: Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema
