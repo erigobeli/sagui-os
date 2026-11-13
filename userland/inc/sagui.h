@@ -68,6 +68,7 @@ void     desligar(void);   /* grava os pendrives e desliga (H36) */
 /* Configurações do sistema (H37): guardadas em /usb/.saguios/configuracoes.txt. */
 int      config_ler(const char *chave, char *valor, int max);    /* tamanho, ou ERRO_NAO_EXISTE */
 int      config_gravar(const char *chave, const char *valor);    /* 1 guardada no pendrive, 0 só até desligar */
+int      ajustar_data(const data_t *d);                         /* acerta o relógio da placa-mãe (H38) */
 int      modo_terminal(int modo);
 int      limpar_tela(void);
 

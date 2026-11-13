@@ -176,7 +176,7 @@ Cada história vale o mesmo peso no progresso. **Cada fase termina numa parada o
 **H37. Configurações guardadas.** Formato `chave = valor` em `/usb/.saguios/configuracoes.txt` (seção 4, item 4), com leitura no boot e gravação ao mudar.
 *Aceite:* mudar uma configuração, reiniciar com o mesmo pendrive e ela continua igual; sem pendrive, aviso e valores padrão.
 
-**H38. App Configurações.** Janela com abas: **Relógio** (data, hora, fuso; o automático chega na fase 4), **Aparência** (cor ou desenho do fundo, tamanho dos ícones), **Sobre o computador** (memória, processador, dispositivos). Abas novas entram nas fases seguintes (Som, Rede, IA). Ajustar o espaçamento dos ícones da área de trabalho, que ficou apertado com o Sagui 3D.
+**H38. App Configurações.** Janela com abas: **Relógio** (data, hora, fuso; o automático chega na fase 4), **Aparência** (fundo da área de trabalho e o sagui do canto; o tamanho dos ícones ficou de fora, ver D032), **Sobre o computador** (memória, processador, dispositivos). Abas novas entram nas fases seguintes (Som, Rede, IA). Ajustar o espaçamento dos ícones da área de trabalho, que ficou apertado com o Sagui 3D.
 *Aceite:* mudar o relógio pelo app muda o relógio da barra e do `data`; captura de cada aba.
 
 **H39. Remover programas.** Programas instalados ficam em `/usb/programas/` (persistentes) e aparecem na área de trabalho e no Terminal; a aba **Programas** das Configurações lista os instalados e remove com confirmação. Os programas que vêm com o sistema podem ser ocultados, não apagados.

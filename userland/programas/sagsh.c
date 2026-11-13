@@ -66,6 +66,7 @@ static const comando_t comandos[] = {
     { "editor", NULL, false, true, "editor de texto", "editor [arquivo]", "Abre o Editor de texto numa janela." },
     { "calculadora", NULL, false, true, "calculadora", "calculadora", "Abre a Calculadora numa janela." },
     { "banana", NULL, false, true, "jogo do sagui", "banana", "Abre o jogo Sagui Pega Banana." },
+    { "configuracoes", NULL, false, true, "abre as Configurações", "configuracoes [aba]", "Abre as Configurações (relógio, aparência, sobre o computador)." },
     { "sagui3d", NULL, false, true, "jogo em 3D", "sagui3d [fase]", "Abre o jogo Sagui 3D (ou só uma fase, dando o arquivo)." },
 };
 #define QTD_COMANDOS (int)(sizeof comandos / sizeof comandos[0])

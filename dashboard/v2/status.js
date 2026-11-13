@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T00:43:52",
-  "situacao": "Trabalhando na H38: App Configurações",
+  "atualizado": "2026-11-13T00:50:05",
+  "situacao": "Trabalhando na H39: Remover programas",
   "fase_atual": 1,
-  "historia_atual": "H38",
+  "historia_atual": "H39",
   "bloqueio": "",
   "mensagem_fase": "",
   "raiz": "../../",
@@ -26,7 +26,7 @@ window.SAGUI_STATUS = {
       "numero": 1,
       "nome": "Base e Configurações",
       "estado": "em andamento",
-      "progresso": 60.0
+      "progresso": 80.0
     },
     {
       "numero": 2,
@@ -130,12 +130,12 @@ window.SAGUI_STATUS = {
       "titulo": "App Configurações",
       "objetivo": "Janela com abas: **Relógio** (data, hora, fuso; o automático chega na fase 4), **Aparência** (cor ou desenho do fundo, tamanho dos ícones), **Sobre o computador** (memória, processador, dispositivos). Abas novas entram nas fases seguintes (Som, Rede, IA). Ajustar o espaçamento dos ícones da área de trabalho, que ficou apertado com o Sagui 3D.",
       "aceite": "mudar o relógio pelo app muda o relógio da barra e do `data`; captura de cada aba.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T00:43:52",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T00:50:05",
+      "minutos": 6,
+      "resultado": "App Configurações com Relógio (acerta o CMOS, fuso), Aparência (5 fundos, sagui do canto) e Sobre o computador; ícones em duas colunas (D032)"
     },
     {
       "id": "H39",
@@ -143,9 +143,9 @@ window.SAGUI_STATUS = {
       "titulo": "Remover programas",
       "objetivo": "Programas instalados ficam em `/usb/programas/` (persistentes) e aparecem na área de trabalho e no Terminal; a aba **Programas** das Configurações lista os instalados e remove com confirmação. Os programas que vêm com o sistema podem ser ocultados, não apagados.",
       "aceite": "instalar um programa de teste copiando para `/usb/programas/`, ele aparece; remover pelas Configurações, ele some e o arquivo é apagado.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T00:50:05",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -715,6 +715,14 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T00:50:05",
+      "texto": "Início da H39: Remover programas"
+    },
+    {
+      "data": "2026-11-13T00:50:05",
+      "texto": "H38 concluída: App Configurações com Relógio (acerta o CMOS, fuso), Aparência (5 fundos, sagui do canto) e Sobre o computador; ícones em duas colunas (D032)"
+    },
+    {
       "data": "2026-11-13T00:43:52",
       "texto": "Início da H38: App Configurações"
     },
@@ -754,6 +762,21 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
+      "nome": "H38-3-sobre.png",
+      "data": "2026-11-13T00:48:25"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
+      "nome": "H38-2-aparencia-noite.png",
+      "data": "2026-11-13T00:48:22"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
+      "nome": "H38-1-relogio.png",
+      "data": "2026-11-13T00:48:06"
+    },
+    {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
       "data": "2026-11-13T00:43:31"
@@ -771,14 +794,14 @@ window.SAGUI_STATUS = {
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 10188,
-    "userland": 6426,
-    "ferramentas": 3775
+    "kernel": 10313,
+    "userland": 6722,
+    "ferramentas": 3857
   },
   "imagem": {
-    "bytes_util": 615424,
+    "bytes_util": 643072,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 7.0
+  "progresso_geral": 9.3
 };

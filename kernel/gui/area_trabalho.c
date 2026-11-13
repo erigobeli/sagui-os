@@ -10,6 +10,8 @@
 #include "memoria.h"
 #include "processo.h"
 #include "relogio.h"
+#include "configuracoes.h"
+#include "texto.h"
 #include "texto.h"
 #include "video.h"
 #include "disco.h"
@@ -32,6 +34,7 @@ static const icone_t icones[] = {
     { "Calculadora", "/bin/calculadora", &arte_icone_calculadora },
     { "Banana",      "/bin/banana",      &arte_icone_banana },
     { "Sagui 3D",    "/bin/sagui3d",     &arte_icone_sagui3d },   /* bônus B4 */
+    { "Configurações", "/bin/configuracoes", &arte_icone_configuracoes },   /* H38 */
     { "Sobre",       "/bin/sobre-o-sistema",   &arte_icone_sobre },
     { "Pendrive",    "/bin/arquivos",    &arte_icone_pendrive },   /* só aparece com um pendrive conectado (H34) */
 };
@@ -43,7 +46,8 @@ static char nome_pendrive[24] = "Pendrive";
 static bool icone_visivel(int i) { return i != ICONE_PENDRIVE || pendrive_visivel; }
 #define ICONE_X 20
 #define ICONE_Y0 (BARRA_SUPERIOR + 16)
-#define ICONE_PASSO 84   /* 8 ícones cabem em 768 linhas */
+#define ICONE_PASSO 92
+#define ICONE_COLUNA 110   /* distância entre as colunas de ícones */
 #define ICONE_L 96
 #define ICONE_A 88
 
@@ -51,7 +55,13 @@ int area_qtd_icones(void) { return QTD_ICONES; }
 
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
 {
-    *x = ICONE_X; *y = ICONE_Y0 + i * ICONE_PASSO; *l = ICONE_L; *a = ICONE_A;
+    /* Os ícones descem pela coluna da esquerda e, quando não cabem mais
+     * (8 ou mais numa tela de 768 linhas), continuam numa segunda coluna. */
+    int por_coluna = (alt - ICONE_Y0) / ICONE_PASSO;
+    if (por_coluna < 1) por_coluna = 1;
+    *x = ICONE_X + (i / por_coluna) * ICONE_COLUNA;
+    *y = ICONE_Y0 + (i % por_coluna) * ICONE_PASSO;
+    *l = ICONE_L; *a = ICONE_A;
 }
 
 /* Interpolação de um canal em inteiros. */
@@ -75,21 +85,30 @@ static void desenhar_fundo(void)
 {
     superficie_t s;
     sup_iniciar(&s, fundo, larg, alt);
-    /* Degradê vertical nas cores do Brasil: verde em cima, amarelo no meio,
-     * azul embaixo, em tons mais suaves que os da bandeira para o texto e os
-     * ícones continuarem legíveis. */
-    const uint32_t verde = 0x0B7A3E, amarelo = 0xE0B92A, azul = 0x14337E;
+    /* Degradê vertical em três cores, escolhido em Configurações > Aparência
+     * (H38). O padrão são as cores do Brasil (verde, amarelo, azul) em tons
+     * mais suaves que os da bandeira, para o texto e os ícones continuarem
+     * legíveis. */
+    uint32_t c0 = 0x0B7A3E, c1 = 0xE0B92A, c2 = 0x14337E;
+    const char *tema = config_obter("aparencia.fundo");
+    if (tema && txt_compara(tema, "mata") == 0)       { c0 = 0x0E3B22; c1 = 0x2E7D32; c2 = 0x0A2416; }
+    else if (tema && txt_compara(tema, "ceu") == 0)   { c0 = 0x1E5AA8; c1 = 0x6FB3E8; c2 = 0xD8EEF8; }
+    else if (tema && txt_compara(tema, "noite") == 0) { c0 = 0x0B1026; c1 = 0x2B1E5A; c2 = 0x060814; }
+    else if (tema && txt_compara(tema, "terra") == 0) { c0 = 0x7A3E14; c1 = 0xD98A3A; c2 = 0x3A1E0C; }
     for (int y = 0; y < alt; y++) {
-        uint32_t c = y < alt / 2 ? mistura(verde, amarelo, y, alt / 2)
-                                 : mistura(amarelo, azul, y - alt / 2, alt - alt / 2);
+        uint32_t c = y < alt / 2 ? mistura(c0, c1, y, alt / 2)
+                                 : mistura(c1, c2, y - alt / 2, alt - alt / 2);
         uint32_t *p = fundo + y * larg;
         for (int x = 0; x < larg; x++) p[x] = c;
     }
-    /* O mascote, grande, no canto de baixo à direita. */
-    int esc = larg >= 1000 ? 5 : 3;
-    int mx = larg - 32 * esc - 30, my = alt - 32 * esc - 40;
-    sup_desenho(&s, mx, my, &arte_sagui, esc);
-    texto_com_sombra(&s, mx + 16 * esc - texto_largura("SaguiOS") / 2, my + 32 * esc + 6, "SaguiOS", 0xFFFFFF);
+    /* O mascote, grande, no canto de baixo à direita (dá para esconder). */
+    const char *mascote = config_obter("aparencia.sagui");
+    if (!mascote || txt_compara(mascote, "nao") != 0) {
+        int esc = larg >= 1000 ? 5 : 3;
+        int mx = larg - 32 * esc - 30, my = alt - 32 * esc - 40;
+        sup_desenho(&s, mx, my, &arte_sagui, esc);
+        texto_com_sombra(&s, mx + 16 * esc - texto_largura("SaguiOS") / 2, my + 32 * esc + 6, "SaguiOS", 0xFFFFFF);
+    }
     /* Ícones na coluna da esquerda, com o nome embaixo. */
     for (int i = 0; i < QTD_ICONES; i++) {
         if (!icone_visivel(i)) continue;
@@ -107,6 +126,16 @@ bool area_iniciar(void)
     alt = (int)video_altura();
     fundo = kmalloc((uint32_t)(larg * alt) * 4);
     if (!fundo) return false;
+    desenhar_fundo();
+    return true;
+}
+
+/* As configurações mudaram (H38)? Redesenha o fundo; true = redesenhar a tela. */
+bool area_config_mudou(void)
+{
+    static uint32_t vista = 0;
+    if (config_geracao() == vista) return false;
+    vista = config_geracao();
     desenhar_fundo();
     return true;
 }

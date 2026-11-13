@@ -1,0 +1,293 @@
+/* configuracoes - o app de Configurações do SaguiOS (H38).
+ *
+ * Uma janela com abas na lateral. Cada aba é um pequeno "painel" com uma
+ * função que desenha e outra que trata os eventos. As escolhas vão para as
+ * configurações do sistema (config_gravar, H37), guardadas no pendrive; o
+ * kernel percebe a mudança e redesenha o que depender delas (o fundo da
+ * área de trabalho, por exemplo). As fases seguintes acrescentam abas
+ * (Som, Rede, IA, Programas). */
+#include "sagui.h"
+#include "gui.h"
+
+#define L 600
+#define A 440
+#define LATERAL 170
+#define X0 (LATERAL + 20)
+
+static jan_t *j;
+static int aba;
+static char recado[96];
+
+enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOBRE, QTD_ABAS };
+static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Sobre o computador" };
+static botao_t botoes_abas[QTD_ABAS];
+
+static void mostrar_mensagem(const char *fmt, int r)
+{
+    /* r: 1 guardado no pendrive, 0 só até desligar, <0 erro */
+    if (r == 1) formatar_texto(recado, sizeof recado, "%s Guardado no pendrive.", fmt);
+    else if (r == 0) formatar_texto(recado, sizeof recado, "%s Sem pendrive: vale até desligar.", fmt);
+    else formatar_texto(recado, sizeof recado, "%s", fmt);
+    g_retangulo(j, X0, A - 36, L - X0 - 10, LETRA_A, COR_FUNDO);
+    g_texto(j, X0, A - 36, recado, r < 0 && r != -100 ? 0xB03030 : COR_DESTAQUE);
+    jan_mostrar_area(j, X0, A - 36, L - X0 - 10, LETRA_A);
+}
+
+static void titulo(const char *t)
+{
+    g_texto(j, X0, 16, t, COR_TEXTO);
+    g_retangulo(j, X0, 36, L - X0 - 20, 1, COR_BORDA);
+}
+
+/* ------------------------------------------------------------ Relógio */
+
+static caixa_t c_dia, c_mes, c_ano, c_hora, c_min, c_fuso;
+static botao_t b_aplicar, b_fuso;
+
+static void numero_em(caixa_t *c, int v, int digitos)
+{
+    char t[8];
+    formatar_texto(t, sizeof t, digitos == 4 ? "%04d" : "%02d", v);
+    caixa_definir(c, t);
+}
+
+static void relogio_agora(void)
+{
+    data_t d;
+    ler_data(&d);
+    char t[48];
+    formatar_texto(t, sizeof t, "Agora: %02u/%02u/%u  %02u:%02u:%02u", d.dia, d.mes, d.ano, d.hora, d.minuto, d.segundo);
+    g_retangulo(j, X0, 52, 320, LETRA_A, COR_FUNDO);
+    g_texto(j, X0, 52, t, COR_TEXTO);
+    jan_mostrar_area(j, X0, 52, 320, LETRA_A);
+}
+
+static void relogio_desenhar(void)
+{
+    titulo("Relógio");
+    relogio_agora();
+    data_t d;
+    ler_data(&d);
+    g_texto(j, X0, 92, "Dia    Mês    Ano        Hora   Minuto", COR_TEXTO_FRACO);
+    c_dia = (caixa_t){ .x = X0, .y = 112, .l = 40 };            numero_em(&c_dia, d.dia, 2);
+    c_mes = (caixa_t){ .x = X0 + 56, .y = 112, .l = 40 };       numero_em(&c_mes, d.mes, 2);
+    c_ano = (caixa_t){ .x = X0 + 112, .y = 112, .l = 56 };      numero_em(&c_ano, d.ano, 4);
+    c_hora = (caixa_t){ .x = X0 + 200, .y = 112, .l = 40 };     numero_em(&c_hora, d.hora, 2);
+    c_min = (caixa_t){ .x = X0 + 256, .y = 112, .l = 40 };      numero_em(&c_min, d.minuto, 2);
+    caixa_desenhar(j, &c_dia); caixa_desenhar(j, &c_mes); caixa_desenhar(j, &c_ano);
+    caixa_desenhar(j, &c_hora); caixa_desenhar(j, &c_min);
+    b_aplicar = (botao_t){ X0, 150, 150, 28, "Acertar o relógio", false };
+    botao_desenhar(j, &b_aplicar);
+
+    g_texto(j, X0, 210, "Fuso horário (horas a partir de UTC):", COR_TEXTO);
+    g_texto(j, X0, 230, "Brasília = -3. Usado pelo relógio automático", COR_TEXTO_FRACO);
+    g_texto(j, X0, 248, "pela internet (chega com a rede).", COR_TEXTO_FRACO);
+    char fuso[16];
+    if (config_ler("relogio.fuso", fuso, sizeof fuso) < 0) copia_texto(fuso, "-3", sizeof fuso);
+    c_fuso = (caixa_t){ .x = X0, .y = 274, .l = 60 };
+    caixa_definir(&c_fuso, fuso);
+    caixa_desenhar(j, &c_fuso);
+    b_fuso = (botao_t){ X0 + 76, 272, 110, 28, "Salvar fuso", false };
+    botao_desenhar(j, &b_fuso);
+}
+
+static void relogio_tratar(const evento_t *e)
+{
+    caixa_t *cs[] = { &c_dia, &c_mes, &c_ano, &c_hora, &c_min, &c_fuso };
+    for (int i = 0; i < 6; i++) caixa_tratar(j, cs[i], e);
+    if (botao_tratar(j, &b_aplicar, e)) {
+        data_t d = { 0 };
+        d.dia = (unsigned char)texto_para_int(c_dia.texto);
+        d.mes = (unsigned char)texto_para_int(c_mes.texto);
+        d.ano = (unsigned short)texto_para_int(c_ano.texto);
+        d.hora = (unsigned char)texto_para_int(c_hora.texto);
+        d.minuto = (unsigned char)texto_para_int(c_min.texto);
+        int r = ajustar_data(&d);
+        registrar("configuracoes: acertar relogio -> %d", r);
+        mostrar_mensagem(r < 0 ? "Data ou hora inválida." : "Relógio acertado.", r < 0 ? -1 : -100);
+        relogio_agora();
+    }
+    if (botao_tratar(j, &b_fuso, e)) {
+        int f = texto_para_int(c_fuso.texto);
+        if (f < -12 || f > 14) { mostrar_mensagem("Fuso inválido (de -12 a 14).", -1); return; }
+        char t[8];
+        formatar_texto(t, sizeof t, "%d", f);
+        int r = config_gravar("relogio.fuso", t);
+        registrar("configuracoes: fuso %s -> %d", t, r);
+        mostrar_mensagem("Fuso salvo.", r);
+    }
+}
+
+/* ------------------------------------------------------------ Aparência */
+
+#define QTD_FUNDOS 5
+static const char *const fundos[QTD_FUNDOS] = { "brasil", "mata", "ceu", "noite", "terra" };
+static const char *const nomes_fundos[QTD_FUNDOS] = { "Brasil", "Mata", "Céu", "Noite", "Terra" };
+static const uint32_t amostras[QTD_FUNDOS][3] = {
+    { 0x0B7A3E, 0xE0B92A, 0x14337E }, { 0x0E3B22, 0x2E7D32, 0x0A2416 }, { 0x1E5AA8, 0x6FB3E8, 0xD8EEF8 },
+    { 0x0B1026, 0x2B1E5A, 0x060814 }, { 0x7A3E14, 0xD98A3A, 0x3A1E0C },
+};
+static botao_t b_fundos[QTD_FUNDOS], b_sagui;
+
+static void aparencia_desenhar(void)
+{
+    titulo("Aparência");
+    char atual[16];
+    if (config_ler("aparencia.fundo", atual, sizeof atual) < 0) copia_texto(atual, "brasil", sizeof atual);
+    g_texto(j, X0, 52, "Fundo da área de trabalho:", COR_TEXTO);
+    for (int i = 0; i < QTD_FUNDOS; i++) {
+        int x = X0 + (i % 3) * 136, y = 78 + (i / 3) * 96;
+        for (int k = 0; k < 3; k++) g_retangulo(j, x, y + k * 18, 120, 18, amostras[i][k]);
+        bool escolhido = compara_texto(atual, fundos[i]) == 0;
+        g_moldura(j, x - 2, y - 2, 124, 58, escolhido ? COR_SELECAO : COR_BORDA);
+        if (escolhido) g_moldura(j, x - 3, y - 3, 126, 60, COR_SELECAO);
+        b_fundos[i] = (botao_t){ x, y + 60, 120, 24, nomes_fundos[i], false };
+        botao_desenhar(j, &b_fundos[i]);
+    }
+    char sagui[8];
+    bool mostra = config_ler("aparencia.sagui", sagui, sizeof sagui) < 0 || compara_texto(sagui, "nao") != 0;
+    g_texto(j, X0, 286, "O sagui no canto da área de trabalho:", COR_TEXTO);
+    b_sagui = (botao_t){ X0, 308, 160, 28, mostra ? "Mostrando: esconder" : "Escondido: mostrar", false };
+    botao_desenhar(j, &b_sagui);
+}
+
+static void aparencia_tratar(const evento_t *e)
+{
+    for (int i = 0; i < QTD_FUNDOS; i++)
+        if (botao_tratar(j, &b_fundos[i], e)) {
+            int r = config_gravar("aparencia.fundo", fundos[i]);
+            registrar("configuracoes: fundo %s -> %d", fundos[i], r);
+            g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+            aparencia_desenhar();
+            jan_mostrar(j);
+            mostrar_mensagem("Fundo trocado.", r);
+            return;
+        }
+    if (botao_tratar(j, &b_sagui, e)) {
+        char sagui[8];
+        bool mostra = config_ler("aparencia.sagui", sagui, sizeof sagui) < 0 || compara_texto(sagui, "nao") != 0;
+        int r = config_gravar("aparencia.sagui", mostra ? "nao" : "sim");
+        registrar("configuracoes: sagui %s -> %d", mostra ? "nao" : "sim", r);
+        g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+        aparencia_desenhar();
+        jan_mostrar(j);
+        mostrar_mensagem(mostra ? "O sagui foi descansar." : "O sagui voltou.", r);
+    }
+}
+
+/* ------------------------------------------------------------ Sobre o computador */
+
+/* Nome do processador pela instrução CPUID (que os programas podem usar). */
+static void nome_processador(char *t, int max)
+{
+    unsigned a, b, c, d;
+    __asm__ volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(0x80000000u));
+    if (a < 0x80000004u) { copia_texto(t, "processador x86", (size_t)max); return; }
+    char nome[49];
+    unsigned *p = (unsigned *)nome;
+    for (unsigned f = 0; f < 3; f++) {
+        __asm__ volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(0x80000002u + f));
+        p[f * 4] = a; p[f * 4 + 1] = b; p[f * 4 + 2] = c; p[f * 4 + 3] = d;
+    }
+    nome[48] = 0;
+    const char *s = nome;
+    while (*s == ' ') s++;
+    copia_texto(t, s, (size_t)max);
+}
+
+static void sobre_desenhar(void)
+{
+    titulo("Sobre o computador");
+    char t[96], cpu[49];
+    info_versao_t v;
+    info_memoria_t m;
+    info_sistema(INFO_VERSAO, &v, sizeof v);
+    info_sistema(INFO_MEMORIA, &m, sizeof m);
+    nome_processador(cpu, sizeof cpu);
+    registrar("configuracoes: processador %s, memoria %u MB", cpu, m.ram_total_kb / 1024);
+    int y = 52;
+    formatar_texto(t, sizeof t, "SaguiOS %s", v.versao);                       g_texto(j, X0, y, t, COR_TEXTO); y += 22;
+    g_texto(j, X0, y, "Processador:", COR_TEXTO_FRACO);                         g_texto(j, X0 + 112, y, cpu, COR_TEXTO); y += 22;
+    formatar_texto(t, sizeof t, "%u MB no total, %u MB livres", m.ram_total_kb / 1024, m.livre_kb / 1024);
+    g_texto(j, X0, y, "Memória:", COR_TEXTO_FRACO);                             g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 22;
+    formatar_texto(t, sizeof t, "%ux%u", v.largura, v.altura);
+    g_texto(j, X0, y, "Tela:", COR_TEXTO_FRACO);                                g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 22;
+    formatar_texto(t, sizeof t, "%u min", v.segundos_ligado / 60);
+    g_texto(j, X0, y, "Ligado há:", COR_TEXTO_FRACO);                           g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 30;
+    g_texto(j, X0, y, "Dispositivos (comando pci para detalhes):", COR_TEXTO_FRACO); y += 22;
+    static char pci[8192];
+    int n = info_sistema(INFO_PCI, pci, sizeof pci - 1);
+    if (n < 0) n = 0;
+    pci[n] = 0;
+    /* As linhas "BB:DD.F  vvvv:mmmm  Classe" viram uma lista de classes. */
+    for (char *l = pci; *l && y < A - 50;) {
+        char *fim = l;
+        while (*fim && *fim != '\n') fim++;
+        char guardado = *fim;
+        *fim = 0;
+        if (l[2] == ':' && l[5] == '.' && tam_texto(l) > 20) {
+            g_texto_n(j, X0, y, l + 20, 48, COR_TEXTO);
+            y += 18;
+        }
+        if (!guardado) break;
+        l = fim + 1;
+    }
+}
+
+/* ------------------------------------------------------------ janela */
+
+static void desenhar_tudo(void)
+{
+    g_retangulo(j, 0, 0, L, A, COR_FUNDO);
+    g_retangulo(j, 0, 0, LATERAL, A, 0xE6EAE6);
+    g_retangulo(j, LATERAL, 0, 1, A, COR_BORDA);
+    for (int i = 0; i < QTD_ABAS; i++) {
+        botoes_abas[i] = (botao_t){ 10, 16 + i * 40, LATERAL - 20, 30, nomes_abas[i], i == aba };
+        botao_desenhar(j, &botoes_abas[i]);
+    }
+    if (aba == ABA_RELOGIO) relogio_desenhar();
+    else if (aba == ABA_APARENCIA) aparencia_desenhar();
+    else sobre_desenhar();
+    char p[8];
+    config_ler("sistema.persistente", p, sizeof p);
+    g_texto(j, 10, A - 54, compara_texto(p, "sim") == 0 ? "Guardando no" : "Sem pendrive:", COR_TEXTO_FRACO);
+    g_texto(j, 10, A - 36, compara_texto(p, "sim") == 0 ? "pendrive." : "até desligar.", COR_TEXTO_FRACO);
+    jan_mostrar(j);
+}
+
+int principal(int argc, char **argv)
+{
+    j = jan_abrir("Configurações", L, A);
+    if (!j) return 1;
+    if (argc > 1) {
+        for (int i = 0; i < QTD_ABAS; i++)
+            if (compara_texto_n(argv[1], nomes_abas[i], 3) == 0) aba = i;
+        if (compara_texto(argv[1], "aparencia") == 0) aba = ABA_APARENCIA;
+        if (compara_texto(argv[1], "sobre") == 0) aba = ABA_SOBRE;
+    }
+    desenhar_tudo();
+    registrar("configuracoes: aberto na aba %s", nomes_abas[aba]);
+    evento_t e;
+    unsigned ultimo = tempo_ms();
+    for (;;) {
+        if (proximo_evento(j->id, &e, false) == 1) {
+            if (e.tipo == EV_FECHAR) break;
+            bool trocou = false;
+            for (int i = 0; i < QTD_ABAS; i++)
+                if (botao_tratar(j, &botoes_abas[i], &e) && i != aba) {
+                    aba = i;
+                    trocou = true;
+                    recado[0] = 0;
+                    registrar("configuracoes: aba %s", nomes_abas[aba]);
+                }
+            if (trocou) { desenhar_tudo(); continue; }
+            if (aba == ABA_RELOGIO) relogio_tratar(&e);
+            else if (aba == ABA_APARENCIA) aparencia_tratar(&e);
+            continue;
+        }
+        if (aba == ABA_RELOGIO && tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); relogio_agora(); }
+        dormir(40);
+    }
+    jan_fechar(j);
+    return 0;
+}

@@ -15,6 +15,7 @@ int  area_icone_em(int x, int y);          /* índice do ícone sob o ponto, ou 
 void area_energia_retangulo(int *x, int *y, int *l, int *a);   /* botão de energia na barra (H36) */
 bool area_energia_em(int x, int y);
 void area_energia_abrir(void);
+bool area_config_mudou(void);              /* H38: a aparência mudou, redesenhar */
 void area_icone_abrir(int i);
 int  area_qtd_icones(void);
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a);

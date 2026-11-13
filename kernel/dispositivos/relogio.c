@@ -108,6 +108,41 @@ void cmos_ler_data(data_hora_t *d)
     d->ano = (uint16_t)(seculo * 100 + b[5]);
 }
 
+static void cmos_escreve(uint8_t reg, uint8_t v)
+{
+    porta_escreve8(0x70, reg | 0x80);
+    porta_escreve8(0x71, v);
+}
+
+static uint8_t para_bcd(uint8_t v) { return (uint8_t)(((v / 10) << 4) | (v % 10)); }
+
+/* Acerta o relógio da placa-mãe (H38). Liga o bit SET do registrador B, que
+ * congela a contagem enquanto os valores mudam, escreve no mesmo formato que
+ * o chip usa (BCD ou binário, 12 ou 24 horas) e solta o bit. */
+void cmos_gravar_data(const data_hora_t *d)
+{
+    bool i0 = int_salva_desliga();
+    uint8_t status_b = cmos_le(0x0B);
+    bool bcd = !(status_b & 0x04);
+    bool h12 = !(status_b & 0x02);
+    cmos_escreve(0x0B, status_b | 0x80);
+    uint8_t hora = d->hora;
+    uint8_t pm = 0;
+    if (h12) {
+        pm = hora >= 12 ? 0x80 : 0;
+        hora = (uint8_t)(hora % 12 == 0 ? 12 : hora % 12);
+    }
+    uint8_t v[7] = { d->segundo, d->minuto, hora, d->dia, d->mes, (uint8_t)(d->ano % 100), (uint8_t)(d->ano / 100) };
+    if (bcd)
+        for (int i = 0; i < 7; i++) v[i] = para_bcd(v[i]);
+    v[2] |= pm;
+    cmos_escreve(0x00, v[0]); cmos_escreve(0x02, v[1]); cmos_escreve(0x04, v[2]);
+    cmos_escreve(0x07, v[3]); cmos_escreve(0x08, v[4]); cmos_escreve(0x09, v[5]);
+    cmos_escreve(0x32, v[6]);
+    cmos_escreve(0x0B, status_b & 0x7F);
+    int_restaura(i0);
+}
+
 /* Dia da semana: conta os dias desde 01/01/2000, que foi um sábado.
  * Devolve 0 = domingo ... 6 = sábado. */
 int dia_da_semana(int ano, int mes, int dia)

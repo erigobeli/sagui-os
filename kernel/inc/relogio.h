@@ -16,6 +16,7 @@ typedef struct {
 } data_hora_t;
 
 void cmos_ler_data(data_hora_t *d);
+void cmos_gravar_data(const data_hora_t *d);   /* H38 */
 int  dia_da_semana(int ano, int mes, int dia);   /* 0 = domingo */
 
 #endif

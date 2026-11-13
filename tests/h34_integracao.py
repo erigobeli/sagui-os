@@ -23,8 +23,17 @@ def janela(serial, titulo):
     return dict(l=int(m[0]), a=int(m[1]), x=int(m[2]) + 2, y=int(m[3]) + 24, fx=int(m[2]), fy=int(m[3]))
 
 
+POR_COLUNA = (768 - 40) // 92   # os ícones continuam numa segunda coluna (H38)
+PENDRIVE = 8                    # o último ícone
+
+
 def icone(i):
-    return 20 + 48, 24 + 16 + i * 84 + 32
+    return 20 + (i // POR_COLUNA) * 110 + 48, 40 + (i % POR_COLUNA) * 92 + 32
+
+
+def canto_icone(i):
+    """Canto de cima à esquerda do desenho do ícone (64x64)."""
+    return 20 + (i // POR_COLUNA) * 110 + 16, 40 + (i % POR_COLUNA) * 92
 
 
 def mtype(img, caminho):
@@ -47,9 +56,9 @@ def main():
         time.sleep(0.6)
         png = m.captura("H34-1-pendrive-conectado")
         verificar(True, "ao espetar: notificação 'Pendrive conectado: MEUPEN (64 MB)'")
-        verificar(cor_do_pixel(png, 36 + 2 * 10 + 1, 628 + 2 * 10 + 1) == (42, 111, 216), "ícone do pendrive apareceu na área de trabalho")
+        verificar(cor_do_pixel(png, canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 10 + 1) == (42, 111, 216), "ícone do pendrive apareceu na área de trabalho")
 
-        m.clique(*icone(7), duplo=True)
+        m.clique(*icone(PENDRIVE), duplo=True)
         m.esperar_serial("arquivos: pasta /usb", 15)
         verificar("Pendrive montado em /usb" in m.serial(), "duplo clique no ícone monta o pendrive e abre o Arquivos em /usb")
         time.sleep(0.5)
@@ -85,13 +94,13 @@ def main():
         m.esperar_serial("notificacao: Pendrive removido.", 15)
         time.sleep(0.6)
         png = m.captura("H34-5-pendrive-removido")
-        verificar(cor_do_pixel(png, 36 + 2 * 10 + 1, 628 + 2 * 10 + 1) != (42, 111, 216), "removido: o ícone some")
+        verificar(cor_do_pixel(png, canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 10 + 1) != (42, 111, 216), "removido: o ícone some")
 
         # Espeta de novo, monta pelo ícone e arranca sem desmontar.
         espetar(m, pen, "p2")
         m.esperar_serial("usb1: QEMU", 20)
         time.sleep(1)
-        m.clique(*icone(7), duplo=True)
+        m.clique(*icone(PENDRIVE), duplo=True)
         m.esperar_serial("[FAT32] montado", 15)
         time.sleep(0.5)
         m.monitor("device_del dev-p2")
@@ -138,7 +147,7 @@ def main():
         m.esperar_serial("notificacao: Pendrive conectado: DADOS", 20)
         verificar(True, "boot e dados no mesmo pendrive: a FAT32 na segunda partição é achada e notificada")
         time.sleep(1)
-        m.clique(*icone(7), duplo=True)
+        m.clique(*icone(PENDRIVE), duplo=True)
         m.esperar_serial("arquivos: pasta /usb (1 itens)", 15)
         verificar(True, "o ícone abre o Arquivos com o arquivo que veio do PC")
         m.captura("H34-8-um-pendrive-so")

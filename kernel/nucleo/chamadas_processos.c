@@ -91,6 +91,22 @@ int32_t sis_data(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
     return 0;
 }
 
+/* SIS_AJUSTAR_DATA (&data): acerta o relógio da placa-mãe (H38). */
+int32_t sis_ajustar_data(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)b; (void)c; (void)d; (void)e;
+    const data_t *dt = (const data_t *)ptr;
+    if (!usuario_ok(dt, sizeof *dt, false)) return ERRO_ENDERECO;
+    static const uint8_t dias[12] = { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    if (dt->ano < 2000 || dt->ano > 2099 || dt->mes < 1 || dt->mes > 12 || dt->dia < 1 || dt->dia > dias[dt->mes - 1] ||
+        dt->hora > 23 || dt->minuto > 59 || dt->segundo > 59)
+        return ERRO_INVALIDO;
+    data_hora_t h = { dt->ano, dt->mes, dt->dia, dt->hora, dt->minuto, dt->segundo };
+    cmos_gravar_data(&h);
+    klog("[RELOGIO] acertado para %02u/%02u/%u %02u:%02u:%02u\n", h.dia, h.mes, h.ano, h.hora, h.minuto, h.segundo);
+    return 0;
+}
+
 int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, uint32_t e)
 {
     (void)d; (void)e;

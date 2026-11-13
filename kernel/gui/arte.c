@@ -335,6 +335,43 @@ const desenho_t arte_icone_sagui3d    = { icone_sagui3d, 32, 32 };
 const desenho_t arte_icone_sobre      = { icone_sobre, 32, 32 };
 const desenho_t arte_icone_pendrive   = { icone_pendrive, 32, 32 };
 
+/* Configurações (H38): uma engrenagem com luz vindo de cima à esquerda. */
+static const char *const icone_configuracoes[] = {
+    "................................",
+    "................................",
+    "..............PPPP..............",
+    "..............LLLL..............",
+    ".......P......LLLL......P.......",
+    "......PP...PPPLLLLPPP...PP......",
+    ".....PPLL.PPLLLLLLLLPP.CCPP.....",
+    "....PPLLLLLLLLLLLLLLCCCCCCPP....",
+    "......LLLLLLLLLLLLLCCCCCCC......",
+    ".......LLLLLLLLLLLCCCCCCC.......",
+    "......PLLLLLLLPPPPCCCCCCCP......",
+    ".....PPLLLLLPPPPPPPPCCCCCPP.....",
+    ".....PLLLLLPP......PPCCCCkP.....",
+    ".....PLLLLLP........PCCCkkP.....",
+    "..PLLLLLLLPP........PPCkkkkkkP..",
+    "..PLLLLLLLPP........PPkkkkkkkP..",
+    "..PLLLLLLLPP........PPkkkkkkkP..",
+    "..PLLLLLLLPP........PPkkkkkkkP..",
+    ".....PLLLCCP........PkkkkkP.....",
+    ".....PLLCCCPP......PPkkkkkP.....",
+    ".....PPCCCCCPPPPPPPPkkkkkPP.....",
+    "......PCCCCCCCPPPPkkkkkkkP......",
+    ".......CCCCCCCCkkkkkkkkkk.......",
+    "......CCCCCCCCkkkkkkkkkkkk......",
+    "....PPCCCCCCCkkkkkkkkkkkkkPP....",
+    ".....PPCC.PPkkkkkkkkPP.kkPP.....",
+    "......PP...PPPkkkkPPP...PP......",
+    ".......P......kkkk......P.......",
+    "..............kkkk..............",
+    "..............PPPP..............",
+    "................................",
+    "................................",
+};
+const desenho_t arte_icone_configuracoes = { icone_configuracoes, 32, 32 };
+
 /* Botão de energia da barra de cima (H36): o símbolo de liga/desliga. */
 const char *const arte_botao_energia[16] = {
     "................",

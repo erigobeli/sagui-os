@@ -922,3 +922,18 @@ ninguém. Os outros pendrives continuam esperando o usuário montar, como na
 
 Mudanças feitas sem pendrive valem até desligar; se um pendrive for montado
 depois, elas são gravadas junto na próxima mudança.
+
+## D032. Aparência e ícones em colunas (H38)
+
+A aba Aparência troca o degradê do fundo (Brasil, Mata, Céu, Noite, Terra) e
+mostra ou esconde o sagui do canto. O kernel guarda o fundo pronto num
+buffer; quando as configurações mudam (um contador de "geração" aumenta), a
+tarefa das janelas redesenha o fundo e a tela. O tamanho dos ícones, previsto
+no PRD, ficou de fora: com 8 ou 9 ícones, ícones maiores não cabem em 768
+linhas. Em vez disso, os ícones voltaram ao espaçamento folgado da 1.0 e
+continuam numa segunda coluna quando não cabem mais na primeira.
+
+Acertar o relógio grava direto no relógio da placa-mãe (CMOS), com o bit SET
+ligado durante a escrita para o chip não avançar no meio, no mesmo formato
+(BCD ou binário, 12 ou 24 horas) que ele já usa. O fuso horário é guardado
+nas configurações para o relógio automático pela internet (fase 4).
