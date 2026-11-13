@@ -18,8 +18,8 @@ static jan_t *j;
 static int aba;
 static char recado[96];
 
-enum { ABA_RELOGIO, ABA_APARENCIA, ABA_PROGRAMAS, ABA_SOBRE, QTD_ABAS };
-static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Programas", "Sobre o computador" };
+enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOM, ABA_PROGRAMAS, ABA_SOBRE, QTD_ABAS };
+static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Som", "Programas", "Sobre o computador" };
 static botao_t botoes_abas[QTD_ABAS];
 
 static void mostrar_mensagem(const char *fmt, int r)
@@ -172,6 +172,77 @@ static void aparencia_tratar(const evento_t *e)
         aparencia_desenhar();
         jan_mostrar(j);
         mostrar_mensagem(mostra ? "O sagui foi descansar." : "O sagui voltou.", r);
+    }
+}
+
+/* ------------------------------------------------------------ Som (H41) */
+
+static botao_t b_menos, b_mais, b_sistema, b_testar;
+
+static void som_desenhar(void)
+{
+    titulo("Som");
+    int vol = som_volume(-1);
+    if (vol < 0) {
+        g_texto(j, X0, 56, "Nenhuma placa de som HD Audio encontrada.", COR_TEXTO);
+        g_texto(j, X0, 76, "Os sons saem pelo alto-falante do PC (bip).", COR_TEXTO_FRACO);
+        return;
+    }
+    char t[32];
+    g_texto(j, X0, 56, "Volume:", COR_TEXTO);
+    b_menos = (botao_t){ X0, 80, 36, 28, "-", false };
+    b_mais = (botao_t){ X0 + 260, 80, 36, 28, "+", false };
+    botao_desenhar(j, &b_menos);
+    botao_desenhar(j, &b_mais);
+    g_moldura(j, X0 + 44, 86, 208, 16, COR_BORDA);
+    g_retangulo(j, X0 + 46, 88, 204 * vol / 100, 12, COR_DESTAQUE);
+    formatar_texto(t, sizeof t, "%d%%", vol);
+    g_texto(j, X0 + 306, 86, t, COR_TEXTO);
+    char sis[8];
+    bool ligados = config_ler("som.sistema", sis, sizeof sis) < 0 || compara_texto(sis, "nao") != 0;
+    g_texto(j, X0, 136, "Sons do sistema (início, avisos):", COR_TEXTO);
+    b_sistema = (botao_t){ X0, 158, 200, 28, ligados ? "Ligados: desligar" : "Desligados: ligar", false };
+    botao_desenhar(j, &b_sistema);
+    b_testar = (botao_t){ X0, 210, 140, 28, "Testar o som", false };
+    botao_desenhar(j, &b_testar);
+}
+
+static void som_redesenhar(void)
+{
+    g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+    som_desenhar();
+    jan_mostrar(j);
+}
+
+static void som_tratar(const evento_t *e)
+{
+    int vol = som_volume(-1);
+    if (vol < 0) return;
+    if (botao_tratar(j, &b_menos, e) || botao_tratar(j, &b_mais, e)) {
+        bool mais = e->x >= b_mais.x;
+        vol = som_volume(mais ? (vol + 10 > 100 ? 100 : vol + 10) : (vol - 10 < 0 ? 0 : vol - 10));
+        registrar("configuracoes: volume %d", vol);
+        static const nota_t clique[] = { { 880, 40 } };
+        tocar(clique, 1, BIP_SUBSTITUIR);
+        som_redesenhar();
+        char p[8];
+        config_ler("sistema.persistente", p, sizeof p);
+        mostrar_mensagem("Volume ajustado.", compara_texto(p, "sim") == 0 ? 1 : 0);
+        return;
+    }
+    if (botao_tratar(j, &b_sistema, e)) {
+        char sis[8];
+        bool ligados = config_ler("som.sistema", sis, sizeof sis) < 0 || compara_texto(sis, "nao") != 0;
+        int r = config_gravar("som.sistema", ligados ? "nao" : "sim");
+        registrar("configuracoes: sons do sistema %s", ligados ? "desligados" : "ligados");
+        som_redesenhar();
+        mostrar_mensagem(ligados ? "Sons do sistema desligados." : "Sons do sistema ligados.", r);
+        return;
+    }
+    if (botao_tratar(j, &b_testar, e)) {
+        static const nota_t melodia[] = { { 523, 120 }, { 659, 120 }, { 784, 120 }, { 1047, 300 } };
+        tocar(melodia, 4, BIP_SUBSTITUIR);
+        registrar("configuracoes: testar o som");
     }
 }
 
@@ -342,6 +413,7 @@ static void desenhar_tudo(void)
     if (aba == ABA_RELOGIO) relogio_desenhar();
     else if (aba == ABA_APARENCIA) aparencia_desenhar();
     else if (aba == ABA_PROGRAMAS) programas_desenhar();
+    else if (aba == ABA_SOM) som_desenhar();
     else sobre_desenhar();
     char p[8];
     config_ler("sistema.persistente", p, sizeof p);
@@ -360,6 +432,7 @@ int principal(int argc, char **argv)
         if (compara_texto(argv[1], "aparencia") == 0) aba = ABA_APARENCIA;
         if (compara_texto(argv[1], "sobre") == 0) aba = ABA_SOBRE;
         if (compara_texto(argv[1], "programas") == 0) aba = ABA_PROGRAMAS;
+        if (compara_texto(argv[1], "som") == 0) aba = ABA_SOM;
     }
     desenhar_tudo();
     registrar("configuracoes: aberto na aba %s", nomes_abas[aba]);
@@ -380,6 +453,7 @@ int principal(int argc, char **argv)
             if (aba == ABA_RELOGIO) relogio_tratar(&e);
             else if (aba == ABA_APARENCIA) aparencia_tratar(&e);
             else if (aba == ABA_PROGRAMAS) programas_tratar(&e);
+            else if (aba == ABA_SOM) som_tratar(&e);
             continue;
         }
         if (aba == ABA_RELOGIO && tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); relogio_agora(); }

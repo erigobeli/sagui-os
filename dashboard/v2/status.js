@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:15:43",
-  "situacao": "Trabalhando na H41: Som para os programas",
+  "atualizado": "2026-11-13T01:17:13",
+  "situacao": "Trabalhando na H42: Tocador e sons do sistema",
   "fase_atual": 2,
-  "historia_atual": "H41",
+  "historia_atual": "H42",
   "bloqueio": "",
   "mensagem_fase": "Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar quando puder: entrega/v2-fase1/ e roteiro em docs/teste-v2-fase1.md. Pedido especial: a foto do comando pci no G470. Sigo para a fase 2 (som).",
   "raiz": "../../",
@@ -32,7 +32,7 @@ window.SAGUI_STATUS = {
       "numero": 2,
       "nome": "Som",
       "estado": "em andamento",
-      "progresso": 33.3
+      "progresso": 66.7
     },
     {
       "numero": 3,
@@ -169,12 +169,12 @@ window.SAGUI_STATUS = {
       "titulo": "Som para os programas",
       "objetivo": "Chamadas de sistema de som, mistura de vários programas tocando ao mesmo tempo, volume. Aba **Som** nas Configurações.",
       "aceite": "dois programas tocando juntos aparecem misturados no `.wav`; volume em 0 grava silêncio.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T01:15:43",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T01:17:13",
+      "minutos": 2,
+      "resultado": "Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav"
     },
     {
       "id": "H42",
@@ -182,9 +182,9 @@ window.SAGUI_STATUS = {
       "titulo": "Tocador e sons do sistema",
       "objetivo": "Comando `tocar arquivo.wav`, sons do sistema (início, notificação, pendrive conectado) com opção de desligar, e o Sagui 3D e o Sagui Pega Banana usando o som novo quando houver placa (o bip continua como reserva).",
       "aceite": "captura do `.wav` com os sons do jogo; no G470, o Eli ouve o som de início.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T01:17:13",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -715,6 +715,14 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:17:13",
+      "texto": "Início da H42: Tocador e sons do sistema"
+    },
+    {
+      "data": "2026-11-13T01:17:13",
+      "texto": "H41 concluída: Misturador com até 8 programas + notas, volume com corte em 16 bits, chamadas SIS_SOM_*, aba Som nas Configurações; mistura conferida por Goertzel no .wav"
+    },
+    {
       "data": "2026-11-13T01:15:43",
       "texto": "Início da H41: Som para os programas"
     },
@@ -782,6 +790,11 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H41-aba-som.png",
+      "nome": "H41-aba-som.png",
+      "data": "2026-11-13T01:17:03"
+    },
+    {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
       "data": "2026-11-13T01:15:29"
@@ -835,13 +848,13 @@ window.SAGUI_STATUS = {
   "linhas": {
     "boot": 903,
     "kernel": 11156,
-    "userland": 6920,
-    "ferramentas": 3982
+    "userland": 6994,
+    "ferramentas": 4051
   },
   "imagem": {
-    "bytes_util": 664064,
+    "bytes_util": 666624,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 14.0
+  "progresso_geral": 16.3
 };

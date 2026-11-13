@@ -54,7 +54,7 @@ def main():
         time.sleep(1.5)
         png = m.captura("H38-2-aparencia-noite")
         verificar(sum(cor_do_pixel(png, 700, 700)) < 120, "o fundo da área de trabalho ficou escuro (tema Noite)")
-        m.clique(x0 + 10 + 65, y0 + 16 + 120 + 15)             # aba Sobre o computador
+        m.clique(x0 + 10 + 65, y0 + 16 + 160 + 15)             # aba Sobre o computador
         m.esperar_serial("configuracoes: aba Sobre o computador", 10)
         time.sleep(0.8)
         m.captura("H38-3-sobre")
