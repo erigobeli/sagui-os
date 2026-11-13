@@ -1,12 +1,12 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T07:58:47",
+  "atualizado": "2026-11-13T07:59:13",
   "situacao": "Trabalhando na H62: Janela do navegador",
   "fase_atual": 6,
   "historia_atual": "H62",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
-  "mensagem_fase": "Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-fase3/ e entrega/v2-fase4/ (a mesma imagem), roteiros em docs/teste-v2-fase3.md e docs/teste-v2-fase4.md. Sigo para a fase 5 (SSH) e 6 (navegador).",
+  "mensagem_fase": "Eli, a fase 5 (Terminal e SSH) está pronta: entrega/v2-fase5/ e docs/teste-v2-fase5.md. O login por senha aceito só dá para conferir num servidor seu. Sigo para a fase 6 (navegador).",
   "raiz": "../../",
   "links": [
     {
@@ -49,7 +49,7 @@ window.SAGUI_STATUS = {
     {
       "numero": 5,
       "nome": "Terminal e SSH",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 100.0
     },
     {
@@ -351,7 +351,7 @@ window.SAGUI_STATUS = {
       "titulo": "Terminal completo",
       "objetivo": "Emulação das sequências de terminal usadas por programas de servidor (cursor, apagar, cores de 16 e 256, regiões de rolagem, tela alternativa, títulos), UTF-8 e fonte com desenho de caixas. Abas e copiar e colar no Terminal.",
       "aceite": "um arquivo de teste com as sequências desenha a tela esperada (comparação com captura de referência).",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T02:50:51",
       "fim": "2026-11-13T02:50:51",
@@ -364,7 +364,7 @@ window.SAGUI_STATUS = {
       "titulo": "Transporte SSH",
       "objetivo": "Troca de chaves `curve25519-sha256`, chave do servidor `ssh-ed25519` (com SHA-512), cifra `aes128-ctr` com `hmac-sha2-256` ou `aes256-gcm`, e o arquivo de servidores conhecidos (aviso na primeira conexão e alerta forte se a chave mudar).",
       "aceite": "conecta no `sshd` local da VPS; recusa conexão quando a chave do servidor muda.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:58:47",
       "fim": "2026-11-13T07:58:47",
@@ -377,7 +377,7 @@ window.SAGUI_STATUS = {
       "titulo": "Login e sessão",
       "objetivo": "Autenticação por senha e por chave Ed25519 (comando `ssh-chave` gera o par no pendrive), terminal remoto com tamanho da janela, `exit` limpo.",
       "aceite": "login das duas formas; redimensionar a janela muda o tamanho no servidor.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:58:47",
       "fim": "2026-11-13T07:58:47",
@@ -390,7 +390,7 @@ window.SAGUI_STATUS = {
       "titulo": "SSH de verdade",
       "objetivo": "Comando `ssh usuario@servidor`.",
       "aceite": "no teste automático, `htop` e `vim` rodam no servidor de teste e as capturas mostram a tela certa; no roteiro, o Eli entra num servidor dele.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T07:58:47",
       "fim": "2026-11-13T07:58:47",
@@ -444,7 +444,7 @@ window.SAGUI_STATUS = {
       "aceite": "páginas de teste servidas pela VPS renderizadas como as capturas de referência.",
       "estado": "em andamento",
       "bonus": false,
-      "inicio": "2026-11-13T07:58:47",
+      "inicio": "2026-11-13T07:59:13",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,18 @@ window.SAGUI_STATUS = {
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T07:59:13",
+      "texto": "Início da H62: Janela do navegador"
+    },
+    {
+      "data": "2026-11-13T07:59:13",
+      "texto": "Fase 5 entregue. Aguardando teste do Eli."
+    },
+    {
+      "data": "2026-11-13T07:59:13",
+      "texto": "Início da H62: Janela do navegador"
+    },
     {
       "data": "2026-11-13T07:58:47",
       "texto": "Início da H62: Janela do navegador"

@@ -1,10 +1,10 @@
 ```
-Eli, as fases 3 (Rede) e 4 (TCP e HTTPS) estão prontas para testar: entrega/v2-fase3/ e entrega/v2-fase4/ (a mesma imagem), roteiros em docs/teste-v2-fase3.md e docs/teste-v2-fase4.md. Sigo para a fase 5 (SSH) e 6 (navegador).
+Eli, a fase 5 (Terminal e SSH) está pronta: entrega/v2-fase5/ e docs/teste-v2-fase5.md. O login por senha aceito só dá para conferir num servidor seu. Sigo para a fase 6 (navegador).
 ```
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T07:58:47_
+_Atualizado em 2026-11-13T07:59:13_
 
 - **Situação:** Trabalhando na H62: Janela do navegador
 - **Fase atual:** 6
@@ -22,7 +22,7 @@ _Atualizado em 2026-11-13T07:58:47_
 | 2 | Som | 100.0% | aguardando teste |
 | 3 | Rede | 80.0% | aguardando teste |
 | 4 | TCP e HTTPS | 100.0% | aguardando teste |
-| 5 | Terminal e SSH | 100.0% | em andamento |
+| 5 | Terminal e SSH | 100.0% | aguardando teste |
 | 6 | Sagui Navegador | 60.0% | em andamento |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | a fazer |
@@ -53,10 +53,10 @@ _Atualizado em 2026-11-13T07:58:47_
 | H52 | Assinaturas e certificados | aguardando teste | 1 |
 | H53 | TLS 1.3 | aguardando teste |  |
 | H54 | Certificados raiz e créditos | aguardando teste | 1 |
-| H55 | Terminal completo | feito | 1 |
-| H56 | Transporte SSH | feito | 1 |
-| H57 | Login e sessão | feito | 1 |
-| H58 | SSH de verdade | feito | 1 |
+| H55 | Terminal completo | aguardando teste | 1 |
+| H56 | Transporte SSH | aguardando teste | 1 |
+| H57 | Login e sessão | aguardando teste | 1 |
+| H58 | SSH de verdade | aguardando teste | 1 |
 | H59 | Descompactação e PNG | feito | 1 |
 | H60 | JPEG | feito | 1 |
 | H61 | Leitor de HTML | feito | 1 |
@@ -79,6 +79,9 @@ _Atualizado em 2026-11-13T07:58:47_
 
 ## Últimas ações
 
+- 2026-11-13T07:59:13: Início da H62: Janela do navegador
+- 2026-11-13T07:59:13: Fase 5 entregue. Aguardando teste do Eli.
+- 2026-11-13T07:59:13: Início da H62: Janela do navegador
 - 2026-11-13T07:58:47: Início da H62: Janela do navegador
 - 2026-11-13T07:58:47: H58 concluída: ssh no Terminal: vim (setas em modo de aplicação) e htop com capturas
 - 2026-11-13T07:58:47: H57 concluída: ssh-chave + login pela chave no QEMU; senha recusada testada, aceita fica para o roteiro
@@ -91,6 +94,3 @@ _Atualizado em 2026-11-13T07:58:47_
 - 2026-11-13T07:49:03: H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21
 - 2026-11-13T07:49:03: H59 concluída: DEFLATE/zlib/gzip e PNG: 27 PNGs iguais pixel a pixel, zlib níveis 0-9
 - 2026-11-13T07:49:03: Início da H61: Leitor de HTML
-- 2026-11-13T07:49:03: Início da H60: JPEG
-- 2026-11-13T07:49:03: Início da H59: Descompactação e PNG
-- 2026-11-13T07:48:05: Fase 4 entregue. Aguardando teste do Eli.
