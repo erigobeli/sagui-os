@@ -224,6 +224,7 @@ iso: $(B)/saguios.img $(B)/boot/mbr.bin
 	@if command -v xorriso >/dev/null 2>&1; then \
 		xorriso -as mkisofs -o $(B)/saguios.iso \
 			-V "SAGUIOS" -volset "SaguiOS" \
+			-isohybrid-mbr $(B)/boot/mbr.bin \
 			-b boot/mbr.bin -no-emul-boot -boot-load-size 4 \
 			$(B)/iso_tree $(B)/saguios.img; \
 	elif command -v mkisofs >/dev/null 2>&1; then \
