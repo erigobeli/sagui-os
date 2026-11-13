@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T02:50:51",
-  "situacao": "Trabalhando na H55: Terminal completo",
-  "fase_atual": 5,
-  "historia_atual": "H55",
+  "atualizado": "2026-11-13T02:57:46",
+  "situacao": "Trabalhando na H52: Assinaturas e certificados",
+  "fase_atual": 4,
+  "historia_atual": "H52",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
   "raiz": "../../",
@@ -43,7 +43,7 @@
       "numero": 4,
       "nome": "TCP e HTTPS",
       "estado": "em andamento",
-      "progresso": 57.1
+      "progresso": 71.4
     },
     {
       "numero": 5,
@@ -311,12 +311,12 @@
       "titulo": "Assinaturas e certificados",
       "objetivo": "Números grandes, RSA (verificação PKCS#1 v1.5 e PSS), ECDSA P-256 e P-384, leitura de certificados X.509 em DER, validação de cadeia, nome e validade.",
       "aceite": "vetores oficiais; uma cadeia de teste válida passa e cinco cadeias erradas (nome errado, vencida, assinatura falsa, autoridade desconhecida, cadeia quebrada) são recusadas com a mensagem certa.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T02:57:46",
+      "fim": "2026-11-13T02:57:46",
+      "minutos": 1,
+      "resultado": "Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)"
     },
     {
       "id": "H53",
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T02:57:46",
+      "texto": "H52 concluída: Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)"
+    },
+    {
+      "data": "2026-11-13T02:57:46",
+      "texto": "Início da H52: Assinaturas e certificados"
+    },
+    {
       "data": "2026-11-13T02:50:51",
       "texto": "H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito"
     },
@@ -952,12 +960,12 @@
     "boot": 903,
     "kernel": 12697,
     "userland": 13767,
-    "ferramentas": 7060
+    "ferramentas": 7066
   },
   "imagem": {
     "bytes_util": 805888,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 39.5
+  "progresso_geral": 41.9
 }

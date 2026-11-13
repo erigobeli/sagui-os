@@ -4,12 +4,12 @@ Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T02:50:51_
+_Atualizado em 2026-11-13T02:57:46_
 
-- **Situação:** Trabalhando na H55: Terminal completo
-- **Fase atual:** 5
-- **História atual:** H55
-- **Progresso geral:** 39.5%
+- **Situação:** Trabalhando na H52: Assinaturas e certificados
+- **Fase atual:** 4
+- **História atual:** H52
+- **Progresso geral:** 41.9%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - **Imagem:** 805888 bytes úteis (sem teto: só medida)
 - **Linhas de código:** boot 903, kernel 12697, userland 13767
@@ -21,7 +21,7 @@ _Atualizado em 2026-11-13T02:50:51_
 | 1 | Base e Configurações | 100.0% | aguardando teste |
 | 2 | Som | 100.0% | aguardando teste |
 | 3 | Rede | 80.0% | em andamento |
-| 4 | TCP e HTTPS | 57.1% | em andamento |
+| 4 | TCP e HTTPS | 71.4% | em andamento |
 | 5 | Terminal e SSH | 25.0% | em andamento |
 | 6 | Sagui Navegador | 0.0% | a fazer |
 | 7 | Compilador C | 0.0% | a fazer |
@@ -50,7 +50,7 @@ _Atualizado em 2026-11-13T02:50:51_
 | H49 | HTTP e relógio pela internet | feito |  |
 | H50 | Números aleatórios e resumos | feito | 2 |
 | H51 | Cifras e troca de chaves | feito | 1 |
-| H52 | Assinaturas e certificados | a fazer |  |
+| H52 | Assinaturas e certificados | feito | 1 |
 | H53 | TLS 1.3 | a fazer |  |
 | H54 | Certificados raiz e créditos | a fazer |  |
 | H55 | Terminal completo | feito | 1 |
@@ -79,6 +79,8 @@ _Atualizado em 2026-11-13T02:50:51_
 
 ## Últimas ações
 
+- 2026-11-13T02:57:46: H52 concluída: Leitor DER estrito, X.509 (RSA, P-256/384, Ed25519, PKCS#1/PSS/ECDSA), cadeia com datas, CA, pathLen e nome (curinga RFC 6125); 30 cadeias boas e ruins testadas (subagente Fable 5.2)
+- 2026-11-13T02:57:46: Início da H52: Assinaturas e certificados
 - 2026-11-13T02:50:51: H55 concluída: Terminal novo: CSI, cores 16/256/24 bits, região de rolagem, tela alternativa, OSC, UTF-8 com volta ao Latin-1, molduras e blocos na fonte (0x80-0x9F), abas, histórico (Shift+PgUp), copiar arrastando e colar com o botão direito
 - 2026-11-13T02:50:51: Início da H55: Terminal completo
 - 2026-11-13T02:50:51: H49 concluída: Cliente HTTP/1.1 (tamanho, pedaços, redirecionamento), comando baixar, relogio internet por NTP com fuso, relógio automático depois do DHCP
@@ -92,5 +94,3 @@ _Atualizado em 2026-11-13T02:50:51_
 - 2026-11-13T01:36:19: H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome
 - 2026-11-13T01:36:19: H44 concluída: Ethernet, ARP com fila de espera, IPv4, ICMP (eco), UDP com soma; comando ping
 - 2026-11-13T01:36:19: H43 concluída: Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo
-- 2026-11-13T01:35:10: Início da H43: Driver Intel PRO/1000
-- 2026-11-13T01:35:10: Fase 2 entregue. Aguardando teste do Eli.
