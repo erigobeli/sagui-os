@@ -1,11 +1,11 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T21:34:04",
+  "atualizado": "2026-11-13T21:49:17",
   "situacao": "Aguardando teste do Eli: fase 8",
   "fase_atual": 8,
   "historia_atual": null,
-  "bloqueio": "H46 (rede no G470) espera a foto do pci ou o adaptador USB RTL8153; H73 (Sagui Code com IA de verdade) espera a chave do OpenRouter e a escolha do modelo pelo Eli",
+  "bloqueio": "H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'.",
   "mensagem_fase": "Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8.md. O teste final (5 pedidos com a IA de verdade, H73) precisa da sua chave do OpenRouter.",
   "raiz": "../../",
   "links": [
@@ -728,6 +728,10 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T21:49:17",
+      "texto": "Bloqueio: H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'."
+    },
+    {
       "data": "2026-11-13T21:34:04",
       "texto": "Correções do teste do Eli no G470: vidro do menu, escrita combinada no vídeo, registro, diagnóstico do som, programas de texto no Terminal, menu do botão direito nos ícones"
     },
@@ -962,10 +966,6 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T07:48:05",
       "texto": "Fase 4 entregue. Aguardando teste do Eli."
-    },
-    {
-      "data": "2026-11-13T07:48:05",
-      "texto": "Fase 3 entregue. Aguardando teste do Eli."
     }
   ],
   "erros": [],
