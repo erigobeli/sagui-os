@@ -267,6 +267,9 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     } else {
         klog("[SOM] sem placa HD Audio: so o bip\n");
     }
+    /* H50: gerador de números aleatórios (precisa do relógio rodando). */
+    void aleatorio_iniciar(void);
+    aleatorio_iniciar();
     /* Fase 3 da 2.0: rede com cabo (DHCP na tarefa da rede). */
     rede_iniciar();
     if (rede_tem_placa()) {

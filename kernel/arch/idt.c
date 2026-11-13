@@ -57,6 +57,8 @@ void irq_registrar(uint8_t irq, manipulador_t m)
     pic_habilitar(irq);
 }
 
+void aleatorio_evento(uint32_t origem);
+
 quadro_t *tratar_interrupcao(quadro_t *q)
 {
     uint32_t v = q->vetor;
@@ -65,6 +67,7 @@ quadro_t *tratar_interrupcao(quadro_t *q)
         uint8_t irq = (uint8_t)(v - VETOR_IRQ0);
         if (pic_espuria(irq))
             return q;
+        aleatorio_evento(irq);   /* o instante de cada interrupção alimenta o gerador (H50) */
         if (manipuladores[v])
             q = manipuladores[v](q);
         pic_fim(irq);

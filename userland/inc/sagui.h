@@ -65,6 +65,7 @@ int      info_sistema(int tipo, void *buf, unsigned n);
 void    *aumentar_memoria(unsigned bytes);
 void     reiniciar(void);
 void     desligar(void);   /* grava os pendrives e desliga (H36) */
+int      bytes_aleatorios(void *destino, unsigned n);   /* bytes imprevisíveis, para chaves (H50) */
 /* Configurações do sistema (H37): guardadas em /usb/.saguios/configuracoes.txt. */
 int      config_ler(const char *chave, char *valor, int max);    /* tamanho, ou ERRO_NAO_EXISTE */
 int      config_gravar(const char *chave, const char *valor);    /* 1 guardada no pendrive, 0 só até desligar */

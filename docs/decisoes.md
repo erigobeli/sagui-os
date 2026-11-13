@@ -992,3 +992,22 @@ adaptador USB que o QEMU simula é de velocidade plena (USB 1.1) e o driver EHCI
 do SaguiOS só fala com dispositivos de alta velocidade, então esse caminho não
 dá para testar no QEMU como o PRD supunha: ele será testado com o adaptador de
 verdade.
+
+## D035. Números aleatórios sem RDRAND (H50)
+
+A criptografia depende de números que ninguém consiga prever, e o processador
+do G470 (Sandy Bridge, 2011) não tem a instrução RDRAND. A fonte de incerteza é
+o próprio hardware: o kernel lê o contador de ciclos da CPU (RDTSC) em toda
+interrupção (relógio, teclado, touchpad, USB) e, no boot, em 32 tiques
+seguidos do relógio; o instante exato em ciclos varia por motivos físicos
+(osciladores independentes, atrasos de barramento, uma pessoa digitando). A
+data do relógio da placa e, se existir, o RDRAND também entram.
+
+Os valores são misturados num poço de 16 palavras com as mesmas operações do
+ChaCha (somar, girar, ou-exclusivo). Para entregar números, o poço vira a
+chave de um ChaCha20 escrito no kernel; o primeiro bloco de cada pedido
+substitui a chave ("apagar a chave depois de usar"), então nem quem lesse a
+memória depois refaria os números já entregues. É o mesmo princípio dos
+geradores dos sistemas grandes, em tamanho de projeto de estudo: não há
+estimativa formal de entropia nem bloqueio até "juntar o suficiente". No
+boot, antes das primeiras chaves, já entraram dezenas de medições.

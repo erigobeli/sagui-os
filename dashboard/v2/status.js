@@ -1,7 +1,7 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T02:25:47",
+  "atualizado": "2026-11-13T02:27:43",
   "situacao": "Trabalhando na H50: Números aleatórios e resumos",
   "fase_atual": 4,
   "historia_atual": "H50",
@@ -44,7 +44,7 @@ window.SAGUI_STATUS = {
       "numero": 4,
       "nome": "TCP e HTTPS",
       "estado": "em andamento",
-      "progresso": 28.6
+      "progresso": 42.9
     },
     {
       "numero": 5,
@@ -286,12 +286,12 @@ window.SAGUI_STATUS = {
       "titulo": "Números aleatórios e resumos",
       "objetivo": "Gerador do kernel (seção 4, item 2) com teste estatístico simples; SHA-256, SHA-384, SHA-512, HMAC e HKDF.",
       "aceite": "todos os vetores oficiais passam; documentação de como a aleatoriedade é coletada no G470 sem RDRAND.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T02:25:47",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T02:27:43",
+      "minutos": 2,
+      "resultado": "Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto"
     },
     {
       "id": "H51",
@@ -715,6 +715,10 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T02:27:43",
+      "texto": "H50 concluída: Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto"
+    },
+    {
       "data": "2026-11-13T02:25:47",
       "texto": "Início da H50: Números aleatórios e resumos"
     },
@@ -925,14 +929,14 @@ window.SAGUI_STATUS = {
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 12539,
-    "userland": 10385,
-    "ferramentas": 5854
+    "kernel": 12683,
+    "userland": 10407,
+    "ferramentas": 5894
   },
   "imagem": {
-    "bytes_util": 751104,
+    "bytes_util": 759296,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 32.6
+  "progresso_geral": 34.9
 };
