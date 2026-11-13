@@ -1,0 +1,4 @@
+e60_struct_em_conta.c:9:9: erro: o operador '==' não funciona com 'ponto_t'
+    9 |     if (a == b) imprimir("iguais\n");
+      |         ^
+dica: structs e unions não entram em contas nem comparações; use os campos (a.x == b.x) ou memcmp

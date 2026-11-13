@@ -1,0 +1,4 @@
+e26_case_fora.c:7:5: erro: 'case' fora de um switch
+    7 |     case 1: x++;
+      |     ^
+dica: o case só existe dentro das chaves de um switch

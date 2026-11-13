@@ -1,0 +1,14 @@
+2 + 3 * 4              14
+(2 + 3) * 4            20
+lado = 12              lado = 12
+area = lado * lado     area = 144
+area - 100 / (lado - 2) 134
+-(-lado) % 5           2
+x = (area + 1          erro: falta )
+area / (lado - 12)     erro: divisao por zero
+y + 1                  erro: variavel desconhecida
+2 3                    erro: sobrou texto
+total = area + lado * 4 - -1 total = 193
+total                  193
+3 variaveis
+[codigo 0]

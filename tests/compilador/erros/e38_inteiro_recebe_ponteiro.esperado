@@ -1,0 +1,4 @@
+e38_inteiro_recebe_ponteiro.c:6:13: erro: em inicialização: esperava o inteiro 'int', mas veio o ponteiro 'char *'
+    6 |     int n = "123";
+      |             ^
+dica: para pegar o valor apontado use *ponteiro; para o número escrito num texto use texto_para_int(texto); se quer mesmo o endereço como número, escreva (unsigned)ponteiro

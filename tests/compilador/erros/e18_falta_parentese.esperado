@@ -1,0 +1,4 @@
+e18_falta_parentese.c:6:23: erro: faltou ')' antes de ';'
+    6 |     int x = (3 + 4 * 2;
+      |                       ^
+dica: cada ( precisa do seu )

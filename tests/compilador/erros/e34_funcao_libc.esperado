@@ -1,0 +1,4 @@
+e34_funcao_libc.c:6:15: erro: a função 'malloc' não foi declarada
+    6 |     char *p = malloc(10);
+      |               ^
+dica: o SaguiOS não tem a biblioteca padrão do C; no lugar de 'malloc' use aloca (com #include "sagui.h")

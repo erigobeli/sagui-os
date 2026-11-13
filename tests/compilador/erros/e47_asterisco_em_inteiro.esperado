@@ -1,0 +1,4 @@
+e47_asterisco_em_inteiro.c:7:22: erro: 'int' não é um ponteiro: não dá para pegar o que ele aponta
+    7 |     imprimir("%d\n", *x);
+      |                      ^
+dica: só um ponteiro (ou vetor) pode ser seguido com *, [ ] ou ->

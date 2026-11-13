@@ -1,0 +1,4 @@
+e30_palavra_reservada.c:6:9: erro: 'switch' é uma palavra reservada do C e não pode ser usada como nome
+    6 |     int switch = 3;
+      |         ^
+dica: escolha outro nome para a variável ou função

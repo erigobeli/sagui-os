@@ -1,0 +1,4 @@
+e09_tipo_float.c:3:1: erro: o tipo 'float' não é aceito
+    3 | float media(int a, int b)
+      | ^
+dica: o C do Sagui não tem ponto flutuante; use int e guarde o valor multiplicado (centavos, milésimos)

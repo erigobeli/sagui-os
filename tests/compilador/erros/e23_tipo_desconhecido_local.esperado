@@ -1,0 +1,4 @@
+e23_tipo_desconhecido_local.c:4:5: erro: 'size_t' não é um tipo conhecido
+    4 |     size_t n = 0;
+      |     ^
+dica: os tipos uint8_t, uint32_t, bool e size_t vêm de #include "sagui.h"; um struct é citado com a palavra struct (struct ponto p;) ou por um typedef

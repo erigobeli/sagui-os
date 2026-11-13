@@ -1,0 +1,4 @@
+e29_expressao_incompleta.c:7:9: erro: não esperava ';' aqui
+    7 |     x = ;
+      |         ^
+dica: aqui devia haver um valor: um número, uma variável, uma chamada de função...

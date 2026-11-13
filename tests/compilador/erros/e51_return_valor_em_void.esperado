@@ -1,0 +1,4 @@
+e51_return_valor_em_void.c:6:12: erro: 'return' com valor numa função void
+    6 |     return n;
+      |            ^
+dica: tire o valor do return, ou troque o void da declaração pelo tipo do valor

@@ -1,0 +1,4 @@
+e45_ponto_em_ponteiro.c:9:23: erro: 'ponto_t *' não tem campos: não dá para usar '.x'
+    9 |     imprimir("%d\n", q.x);
+      |                       ^
+dica: isto é um ponteiro para struct: use -> no lugar do ponto (p->campo)

@@ -1,0 +1,4 @@
+e53_struct_incompleto.c:8:15: erro: a variável 'primeiro' tem tipo incompleto 'struct no'
+    8 |     struct no primeiro;
+      |               ^
+dica: defina o struct por completo antes de criar uma variável dele

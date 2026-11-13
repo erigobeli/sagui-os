@@ -1,0 +1,4 @@
+e52_return_sem_valor.c:5:16: erro: 'return' sem valor numa função que devolve 'int'
+    5 |     if (n < 0) return;
+      |                ^
+dica: escreva o valor depois do return, ou declare a função como void

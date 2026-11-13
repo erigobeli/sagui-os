@@ -1,0 +1,4 @@
+e73_struct_sem_ponto_virgula.c:5:2: erro: faltou ';' depois do '}' (antes de 'int')
+    5 | }
+      |  ^
+dica: a definição de um struct, union ou enum termina com ponto e vírgula: struct ponto { int x, y; };

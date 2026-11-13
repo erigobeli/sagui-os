@@ -1,0 +1,4 @@
+e58_goto_sem_rotulo.c:6:24: erro: o goto vai para o rótulo 'saida', que não existe nesta função
+    6 |     if (argc > 5) goto saida;
+      |                        ^
+dica: crie o rótulo em algum lugar da mesma função, assim: nome:

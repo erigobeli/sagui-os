@@ -1,0 +1,4 @@
+e01_comentario_aberto.c:3:1: erro: este comentário não foi fechado
+    3 | /* este comentário nunca termina
+      | ^
+dica: todo comentário aberto com /* precisa terminar com */

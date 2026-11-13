@@ -1,0 +1,4 @@
+e27_break_fora.c:6:19: erro: 'break' fora de laço e de switch
+    6 |     if (argc > 1) break;
+      |                   ^
+dica: o break sai de um while, do, for ou switch; fora deles use return

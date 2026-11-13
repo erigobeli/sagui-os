@@ -1,0 +1,4 @@
+e46_seta_em_struct.c:9:23: erro: 'ponto_t' não é um ponteiro: não dá para usar ->
+    9 |     imprimir("%d\n", p->x);
+      |                       ^
+dica: isto é o próprio struct, não um ponteiro: use ponto (s.campo)

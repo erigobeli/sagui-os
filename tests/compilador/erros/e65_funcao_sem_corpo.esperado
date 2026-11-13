@@ -1,0 +1,2 @@
+cc: erro: 'calcula' é usado em 'principal' mas não está definido nem no programa nem na libsagui
+dica: a função (ou variável) foi declarada, mas o corpo dela não está em lugar nenhum: escreva a função, ou confira o nome

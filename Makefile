@@ -62,6 +62,12 @@ PROGRAMAS += $(B)/userland/bin/navegador
 # O Sagui Code (fase 8).
 SAGUICODE_OBJ := $(patsubst userland/saguicode/%.c,$(B)/userland/saguicode/%.o,$(wildcard userland/saguicode/*.c))
 PROGRAMAS += $(B)/userland/bin/saguicode
+# O compilador C do SaguiOS (fase 7 da versão 2.0): o comando cc, a libsagui
+# num objeto só (o que o cc liga aos programas) e os cabeçalhos que ele lê.
+COMPILADOR_OBJ := $(patsubst userland/compilador/%.c,$(B)/userland/compilador/%.o,$(wildcard userland/compilador/*.c))
+PROGRAMAS += $(B)/userland/bin/cc
+CC_LIB := $(B)/userland/libsagui.o
+CC_INC := userland/inc/sagui.h userland/inc/gui.h userland/inc/http.h kernel/inc/abi.h
 PROG_TESTE := $(patsubst userland/testes/%.c,$(B)/userland/testes/%,$(wildcard userland/testes/*.c))
 
 .PHONY: all vazio vdi test rodar entrega limpar dashboard
@@ -148,6 +154,23 @@ $(B)/userland/bin/saguicode: $(SAGUICODE_OBJ) $(LIBSAGUI_OBJ) userland/programa.
 	$(LD) $(ULDFLAGS) -o $@.elf $(SAGUICODE_OBJ) $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
+# -Os: o cc vai dentro da imagem, e o tamanho pesa mais que a velocidade.
+$(B)/userland/compilador/%.o: userland/compilador/%.c $(wildcard userland/compilador/*.h) $(USER_HDR)
+	@mkdir -p $(dir $@)
+	$(CC) $(UCFLAGS) -Os -c -o $@ $<
+
+$(B)/userland/bin/cc: $(COMPILADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $(COMPILADOR_OBJ) $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
+# A libsagui inteira num objeto relocável: cada função continua na sua seção,
+# e o ligador do cc só leva para o programa as que ele usa.
+$(CC_LIB): $(LIBSAGUI_OBJ)
+	@mkdir -p $(dir $@)
+	$(LD) -m elf_i386 -r -z noexecstack -o $@ $(LIBSAGUI_OBJ)
+	objcopy --strip-unneeded -R .comment -R .note.GNU-stack $@
+
 $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)
 	$(LD) $(ULDFLAGS) -o $@.elf $< $(LIBSAGUI_OBJ)
@@ -156,11 +179,14 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # ---------- ramdisk (SGFS) ----------
 # O ramdisk é montado a partir de uma cópia do rootfs/ com os programas em
 # /bin e os programas de teste em /testes.
-$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) tools/mksgfs.py
+$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) tools/mksgfs.py
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
 	$(if $(PROG_TESTE),mkdir -p $(B)/rootfs/testes && cp $(PROG_TESTE) $(B)/rootfs/testes/)
+	mkdir -p $(B)/rootfs/sistema/lib $(B)/rootfs/sistema/inc
+	cp $(CC_LIB) $(B)/rootfs/sistema/lib/libsagui.o
+	cp $(CC_INC) $(B)/rootfs/sistema/inc/
 	$(PY) tools/mksgfs.py $(B)/rootfs $@
 
 # ---------- imagem final ----------

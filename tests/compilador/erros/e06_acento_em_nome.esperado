@@ -1,0 +1,4 @@
+e06_acento_em_nome.c:6:10: erro: letra com acento (ou símbolo) dentro de um nome
+    6 |     int número = 3;
+      |          ^
+dica: nomes de variáveis e funções só podem ter letras sem acento, dígitos e _ (escreva 'numero', não 'número')

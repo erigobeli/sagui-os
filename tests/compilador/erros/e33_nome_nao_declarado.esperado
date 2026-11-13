@@ -1,0 +1,4 @@
+e33_nome_nao_declarado.c:7:5: erro: o nome 'contadr' não foi declarado
+    7 |     contadr++;
+      |     ^
+dica: existe 'contador', com nome parecido; era isso? Se não, declare 'contadr' antes de usar

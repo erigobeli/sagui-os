@@ -1,0 +1,4 @@
+e40_argumentos_a_menos.c:7:5: erro: a função 'copia_texto' recebe 3 argumento(s), mas a chamada passa 2
+    7 |     copia_texto(buf, "abc");
+      |     ^
+dica: confira a declaração da função e passe exatamente os argumentos que ela pede

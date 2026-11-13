@@ -1,0 +1,4 @@
+e72_typeof.c:6:5: erro: a função 'typeof' não foi declarada
+    6 |     typeof(a) b = 2;
+      |     ^
+dica: o C do Sagui não tem typeof; escreva o tipo por extenso

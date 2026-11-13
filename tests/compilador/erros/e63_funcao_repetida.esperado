@@ -1,0 +1,4 @@
+e63_funcao_repetida.c:4:12: erro: a função 'um' já foi definida
+    4 | static int um(void) { return 1; }
+      |            ^
+dica: a outra definição está na linha 3; apague uma das duas ou dê outro nome

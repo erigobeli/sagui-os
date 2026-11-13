@@ -1,0 +1,4 @@
+e02_texto_aberto.c:6:14: erro: este texto entre aspas não foi fechado
+    6 |     imprimir("ola);
+      |              ^
+dica: feche o texto com " na mesma linha; para quebrar a linha dentro do texto use \n

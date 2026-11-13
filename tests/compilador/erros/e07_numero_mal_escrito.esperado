@@ -1,0 +1,4 @@
+e07_numero_mal_escrito.c:6:13: erro: número mal escrito
+    6 |     int x = 12abc;
+      |             ^
+dica: um número só pode terminar com os sufixos u, l ou ll; um nome não pode começar com dígito

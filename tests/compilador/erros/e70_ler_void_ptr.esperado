@@ -1,0 +1,4 @@
+e70_ler_void_ptr.c:8:22: erro: não dá para ler através de um 'void *': ele não diz o tipo do que aponta
+    8 |     imprimir("%d\n", *p);
+      |                      ^
+dica: converta antes para um ponteiro de tipo conhecido: *(char *)p

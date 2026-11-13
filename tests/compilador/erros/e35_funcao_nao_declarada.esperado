@@ -1,0 +1,4 @@
+e35_funcao_nao_declarada.c:6:13: erro: a função 'calcula_media' não foi declarada
+    6 |     int r = calcula_media(3, 4);
+      |             ^
+dica: declare a função antes de usar (o protótipo ou a função inteira mais acima) ou inclua o cabeçalho dela, como "sagui.h"

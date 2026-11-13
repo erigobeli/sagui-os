@@ -1,0 +1,4 @@
+e14_macro_argumentos.c:8:22: erro: a macro 'MAIOR' recebe 2 argumento(s), mas vieram 1
+    8 |     imprimir("%d\n", MAIOR(3));
+      |                      ^
+dica: confira as vírgulas e os parênteses da chamada; a macro foi criada num #define mais acima

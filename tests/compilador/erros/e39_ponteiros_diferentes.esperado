@@ -1,0 +1,4 @@
+e39_ponteiros_diferentes.c:7:15: erro: em inicialização: esperava 'char *', mas veio 'int *'
+    7 |     char *p = v;
+      |               ^
+dica: se a conversão é mesmo o que você quer, escreva-a às claras: (tipo *)valor

@@ -1,0 +1,4 @@
+e41_argumentos_demais.c:8:22: erro: a função 'soma' recebe 2 argumento(s), mas a chamada passa 3
+    8 |     imprimir("%d\n", soma(1, 2, 3));
+      |                      ^
+dica: confira a declaração da função e passe exatamente os argumentos que ela pede

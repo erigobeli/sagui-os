@@ -1,0 +1,4 @@
+e11_include_inexistente.c:3:2: erro: não achei o arquivo 'meu_modulo.h' do #include
+    3 | #include "meu_modulo.h"
+      |  ^
+dica: os cabeçalhos do sistema são "sagui.h", "gui.h" e "http.h"; um arquivo seu precisa estar na mesma pasta do .c

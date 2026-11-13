@@ -1,0 +1,4 @@
+e31_parametro_sem_nome.c:3:21: erro: falta o nome do parâmetro 1
+    3 | static int dobro(int)
+      |                     ^
+dica: na definição de uma função todo parâmetro tem nome: int dobro(int x)
