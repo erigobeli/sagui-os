@@ -33,7 +33,7 @@ int usb_controle(usb_disp_t *d, uint8_t tipo, uint8_t pedido, uint16_t valor, ui
     return ehci_controle(d->ctl, d->endereco, d->mps0, setup, dados, tam, (tipo & 0x80) != 0);
 }
 
-static int descritor(usb_disp_t *d, uint8_t tipo, uint8_t indice, uint16_t idioma, void *buf, uint16_t tam)
+int usb_descritor(usb_disp_t *d, uint8_t tipo, uint8_t indice, uint16_t idioma, void *buf, uint16_t tam)
 {
     int r = USB_ERRO;
     for (int t = 0; t < 3 && r < 0; t++)
@@ -42,12 +42,12 @@ static int descritor(usb_disp_t *d, uint8_t tipo, uint8_t indice, uint16_t idiom
 }
 
 /* Texto USB (UTF-16LE) para Latin-1: o que não couber vira '?'. */
-static void ler_texto(usb_disp_t *d, uint8_t indice, uint16_t idioma, char *saida, int max)
+void usb_ler_texto(usb_disp_t *d, uint8_t indice, uint16_t idioma, char *saida, int max)
 {
     saida[0] = 0;
     if (!indice) return;
     uint8_t b[128];
-    int n = descritor(d, 3, indice, idioma, b, sizeof b);
+    int n = usb_descritor(d, 3, indice, idioma, b, sizeof b);
     if (n < 2 || b[1] != 3) return;
     int k = 0;
     for (int i = 2; i + 1 < n && i + 1 < b[0] && k < max - 1; i += 2) {
@@ -97,7 +97,7 @@ static usb_disp_t *enumerar(ehci_t *c, usb_disp_t *hub, uint8_t porta)
     d->endereco = 0;
     d->mps0 = 64;
     uint8_t b[256];
-    if (descritor(d, 1, 0, 0, b, 8) < 8) goto falhou;
+    if (usb_descritor(d, 1, 0, 0, b, 8) < 8) goto falhou;
     ultimo_passo = 2;
     d->mps0 = b[7] ? b[7] : 64;
     uint8_t endereco = c->proximo_endereco++;
@@ -106,25 +106,26 @@ static usb_disp_t *enumerar(ehci_t *c, usb_disp_t *hub, uint8_t porta)
     d->endereco = endereco;
     ehci_esperar_ms(c, 10);
     ultimo_passo = 3;
-    if (descritor(d, 1, 0, 0, b, 18) < 18) goto falhou;
+    if (usb_descritor(d, 1, 0, 0, b, 18) < 18) goto falhou;
     ultimo_passo = 4;
     d->id_fabricante = (uint16_t)(b[8] | (b[9] << 8));
     d->id_produto = (uint16_t)(b[10] | (b[11] << 8));
     d->classe = b[4]; d->subclasse = b[5]; d->protocolo = b[6];
+    int configuracoes = b[17];
     uint8_t i_fab = b[14], i_prod = b[15];
     uint16_t idioma = 0x0409;
     uint8_t l[8];
-    if (descritor(d, 3, 0, 0, l, 4) >= 4) idioma = (uint16_t)(l[2] | (l[3] << 8));
-    ler_texto(d, i_fab, idioma, d->fabricante, sizeof d->fabricante);
-    ler_texto(d, i_prod, idioma, d->produto, sizeof d->produto);
+    if (usb_descritor(d, 3, 0, 0, l, 4) >= 4) idioma = (uint16_t)(l[2] | (l[3] << 8));
+    usb_ler_texto(d, i_fab, idioma, d->fabricante, sizeof d->fabricante);
+    usb_ler_texto(d, i_prod, idioma, d->produto, sizeof d->produto);
     if (!d->fabricante[0]) snformatar(d->fabricante, sizeof d->fabricante, "%04x", d->id_fabricante);
     if (!d->produto[0]) snformatar(d->produto, sizeof d->produto, "%04x", d->id_produto);
 
     /* Configuração 0: cabeçalho de 9 bytes, depois inteira. */
-    if (descritor(d, 2, 0, 0, b, 9) < 9) goto falhou;
+    if (usb_descritor(d, 2, 0, 0, b, 9) < 9) goto falhou;
     uint16_t total = (uint16_t)(b[2] | (b[3] << 8));
     if (total > sizeof b) total = sizeof b;
-    int n = descritor(d, 2, 0, 0, b, total);
+    int n = usb_descritor(d, 2, 0, 0, b, total);
     if (n < 9) goto falhou;
     d->config = b[5];
     bool achou_interface = false;
@@ -140,6 +141,14 @@ static usb_disp_t *enumerar(ehci_t *c, usb_disp_t *hub, uint8_t porta)
         }
     }
     ultimo_passo = 5;
+    /* Adaptador de rede (H46)? Ele escolhe a própria configuração (a ECM). */
+    if ((configuracoes > 1 || d->classe == 0x02 || d->classe == 0xFF) && rede_usb_conectar(d, configuracoes)) {
+        ultimo_passo = 0;
+        if (!hub) c->resultado[porta] = 0;
+        klog("[USB] conectado: %s %s (%04x:%04x) como adaptador de rede, endereco %u\n",
+             d->fabricante, d->produto, d->id_fabricante, d->id_produto, d->endereco);
+        return d;
+    }
     if (usb_controle(d, 0x00, 9, d->config, 0, NULL, 0) < 0) goto falhou;
     ultimo_passo = 0;
     if (!hub) c->resultado[porta] = 0;
@@ -228,6 +237,7 @@ static void remover(usb_disp_t *d)
     for (int i = 0; i < USB_MAX_DISP; i++)
         if (disps[i].usado && disps[i].hub == d) remover(&disps[i]);   /* primeiro o que estava atrás dele */
     if (d->disco) armaz_desconectar(d);
+    if (d->rede) rede_usb_desconectar(d);
     klog("[USB] removido: %s %s (endereco %u)\n", d->fabricante, d->produto, d->endereco);
     d->usado = false;
 }

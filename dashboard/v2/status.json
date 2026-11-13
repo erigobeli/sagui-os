@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T21:49:17",
-  "situacao": "Aguardando teste do Eli: fase 8",
-  "fase_atual": 8,
-  "historia_atual": null,
+  "atualizado": "2026-11-13T22:20:36",
+  "situacao": "Trabalhando na H46: Rede no G470",
+  "fase_atual": 3,
+  "historia_atual": "H46",
   "bloqueio": "H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'.",
   "mensagem_fase": "Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8.md. O teste final (5 pedidos com a IA de verdade, H73) precisa da sua chave do OpenRouter.",
   "raiz": "../../",
@@ -233,9 +233,9 @@
       "titulo": "Rede no G470",
       "objetivo": "Driver da placa do G470, se o manual for público (decidido com a foto do H35); se não for, driver **USB CDC (ECM/NCM)** para um adaptador USB-Ethernet (seção 3.2). Registrar a decisão em `docs/decisoes.md`.",
       "aceite": "no G470 (ou com o adaptador), `ping` responde; teste automático do caminho escolhido no QEMU (o QEMU tem adaptador USB de rede padrão).",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T22:20:36",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -727,6 +727,10 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T22:20:36",
+      "texto": "Início da H46: Rede no G470"
+    },
+    {
       "data": "2026-11-13T21:49:17",
       "texto": "Bloqueio: H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'."
     },
@@ -961,14 +965,15 @@
     {
       "data": "2026-11-13T07:49:03",
       "texto": "Início da H59: Descompactação e PNG"
-    },
-    {
-      "data": "2026-11-13T07:48:05",
-      "texto": "Fase 4 entregue. Aguardando teste do Eli."
     }
   ],
   "erros": [],
   "capturas": [
+    {
+      "arquivo": "docs/v2/capturas/H45-rede.png",
+      "nome": "H45-rede.png",
+      "data": "2026-11-13T22:18:24"
+    },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
@@ -1220,11 +1225,6 @@
       "data": "2026-11-13T18:32:11"
     },
     {
-      "arquivo": "docs/v2/capturas/H45-rede.png",
-      "nome": "H45-rede.png",
-      "data": "2026-11-13T18:31:56"
-    },
-    {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
       "data": "2026-11-13T18:31:43"
@@ -1272,12 +1272,12 @@
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 13801,
+    "kernel": 14112,
     "userland": 28861,
-    "ferramentas": 10323
+    "ferramentas": 10366
   },
   "imagem": {
-    "bytes_util": 1678336,
+    "bytes_util": 1682944,
     "bytes_arquivo": 1703936,
     "meta_bytes": null
   },

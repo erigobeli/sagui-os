@@ -4,15 +4,15 @@ Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T21:49:17_
+_Atualizado em 2026-11-13T22:20:36_
 
-- **Situação:** Aguardando teste do Eli: fase 8
-- **Fase atual:** 8
-- **História atual:** -
+- **Situação:** Trabalhando na H46: Rede no G470
+- **Fase atual:** 3
+- **História atual:** H46
 - **Progresso geral:** 95.5%
 - **Bloqueio:** H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'.
-- **Imagem:** 1678336 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 13801, userland 28861
+- **Imagem:** 1682944 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 14112, userland 28861
 
 ## Fases
 
@@ -44,7 +44,7 @@ _Atualizado em 2026-11-13T21:49:17_
 | H43 | Driver Intel PRO/1000 | aguardando teste | 1 |
 | H44 | Ethernet, ARP, IPv4, ICMP e UDP | aguardando teste |  |
 | H45 | DHCP e DNS | aguardando teste |  |
-| H46 | Rede no G470 | a fazer |  |
+| H46 | Rede no G470 | em andamento |  |
 | H47 | Rede na interface | aguardando teste |  |
 | H48 | TCP e sockets | aguardando teste |  |
 | H49 | HTTP e relógio pela internet | aguardando teste |  |
@@ -80,6 +80,7 @@ _Atualizado em 2026-11-13T21:49:17_
 
 ## Últimas ações
 
+- 2026-11-13T22:20:36: Início da H46: Rede no G470
 - 2026-11-13T21:49:17: Bloqueio: H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'.
 - 2026-11-13T21:34:04: Correções do teste do Eli no G470: vidro do menu, escrita combinada no vídeo, registro, diagnóstico do som, programas de texto no Terminal, menu do botão direito nos ícones
 - 2026-11-13T19:56:57: Fase 8 entregue. Aguardando teste do Eli.
@@ -94,4 +95,3 @@ _Atualizado em 2026-11-13T21:49:17_
 - 2026-11-13T19:42:41: Fase 7 entregue. Aguardando teste do Eli.
 - 2026-11-13T19:42:41: H70 concluída: laço completo com servidor falso e o cc de verdade: escrever, erro, corrigir, compilar, rodar; licenças e limite de passos
 - 2026-11-13T19:42:41: Início da H70: O laço do agente
-- 2026-11-13T19:42:41: H78 concluída: borda e canto, maximizar, duplo clique; Terminal, Navegador, Editor, Arquivos; ssh repassa o tamanho

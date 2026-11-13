@@ -308,8 +308,12 @@ static void preparar_qtd(qtd_t *t, uint32_t pid, uint32_t alterna, uint32_t ende
 }
 
 /* Pendura a QH no anel, espera o último qTD e tira a QH. Devolve 0 ou erro. */
-static int executar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, int n_qtd, uint32_t tempo_ms)
+/* vazio_uf: se > 0, desiste depois de tantos microquadros (125 µs) sem
+ * nenhum byte chegar (para a rede: "não tem pacote agora"). Se algum byte já
+ * chegou, espera o resto até tempo_ms, para não cortar um pacote no meio. */
+static int executar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, int n_qtd, uint32_t tempo_ms, uint32_t vazio_uf)
 {
+    uint32_t tam_inicial = (qtds[0].ficha >> 16) & 0x7FFF;
     for (int i = 0; i < n_qtd - 1; i++) qtds[i].proximo = (uint32_t)&qtds[i + 1];
     memset((void *)fila, 0, sizeof *fila);
     fila->caracteristicas = (uint32_t)endereco | ((uint32_t)ep << 8) | (2u << 12) /* alta velocidade */ |
@@ -333,6 +337,7 @@ static int executar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, int n
         passou += (agora - antes) & 0x3FFF;
         antes = agora;
         if (passou > tempo_ms * 8) { r = USB_ERRO_TEMPO; break; }
+        if (vazio_uf && passou > vazio_uf && ((qtds[0].ficha >> 16) & 0x7FFF) == tam_inicial) { r = USB_ERRO_TEMPO; break; }
         if (c->op[USBSTS] & STS_HALTED) { r = USB_ERRO; break; }
     }
 
@@ -357,7 +362,7 @@ int ehci_controle(ehci_t *c, uint8_t endereco, uint8_t mps0, const void *setup, 
     if (tam) preparar_qtd(&qtds[n++], entrada ? PID_ENTRADA : PID_SAIDA, 1, (uint32_t)buffer, tam, false);
     /* Estado: sempre alternância 1, na direção contrária aos dados (ou IN sem dados). */
     preparar_qtd(&qtds[n++], (tam && entrada) ? PID_SAIDA : PID_ENTRADA, 1, (uint32_t)buffer, 0, true);
-    int r = executar(c, endereco, 0, mps0 ? mps0 : 64, n, 1000);
+    int r = executar(c, endereco, 0, mps0 ? mps0 : 64, n, 1000, 0);
     int feito = 0;
     if (r == 0 && tam) {
         feito = (int)tam - (int)((qtds[1].ficha >> 16) & 0x7FFF);
@@ -367,7 +372,8 @@ int ehci_controle(ehci_t *c, uint8_t endereco, uint8_t mps0, const void *setup, 
     return r < 0 ? r : feito;
 }
 
-int ehci_bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entrada, uint8_t *alterna, void *dados, uint32_t tam)
+static int bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entrada, uint8_t *alterna, void *dados, uint32_t tam,
+                uint32_t vazio_uf)
 {
     if (tam > BUFFER_BYTES || tam > (uint32_t)MAX_QTD * QTD_MAX_BYTES) return USB_ERRO;
     bool i0 = int_salva_desliga();
@@ -385,7 +391,7 @@ int ehci_bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entrad
         n++;
     } while (feito_antes < tam);
     qtds[n - 1].ficha |= 1u << 15;
-    int r = executar(c, endereco, ep, mps, n, 5000);
+    int r = executar(c, endereco, ep, mps, n, 5000, vazio_uf);
     uint32_t feito = 0;
     for (int i = 0; i < n; i++) {
         uint32_t pedido = i < n - 1 ? QTD_MAX_BYTES : tam - (uint32_t)(n - 1) * QTD_MAX_BYTES;
@@ -401,4 +407,18 @@ int ehci_bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entrad
     if (entrada && feito) memcpy(dados, buffer, feito);
     int_restaura(i0);
     return r < 0 ? r : (int)feito;
+}
+
+int ehci_bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entrada, uint8_t *alterna, void *dados, uint32_t tam)
+{
+    return bulk(c, endereco, ep, mps, entrada, alterna, dados, tam, 0);
+}
+
+/* Entrada sem esperar (rede USB, H46): se em ~1 ms nada começou a chegar,
+ * devolve 0 (o dispositivo respondeu NAK: não tem pacote). Sem pacote, a
+ * alternância não muda. */
+int ehci_bulk_tentar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, uint8_t *alterna, void *dados, uint32_t tam)
+{
+    int r = bulk(c, endereco, ep, mps, true, alterna, dados, tam, 8);
+    return r == USB_ERRO_TEMPO ? 0 : r;
 }

@@ -104,6 +104,7 @@ static void arp_guardar(ip4_t ip, const uint8_t *mac)
 
 static void arp_enviar(uint16_t operacao, const uint8_t *mac_destino, ip4_t ip_destino)
 {
+    if (!placa) return;                   /* o adaptador USB pode ter saído */
     uint8_t p[28];
     p[0] = 0; p[1] = 1;                   /* Ethernet */
     p[2] = 0x08; p[3] = 0x00;             /* IPv4 */
@@ -263,6 +264,7 @@ static int dhcp_estado;   /* 0 parado, 1 esperando oferta, 2 esperando confirma�
 
 static void dhcp_enviar(int tipo)
 {
+    if (!placa) return;
     uint8_t m[300];
     memset(m, 0, sizeof m);
     m[0] = 1; m[1] = 1; m[2] = 6;
@@ -459,6 +461,16 @@ static void tarefa_rede(void *arg)
     bool cabo_antes = false;
     for (;;) {
         bool i0 = int_salva_desliga();
+        if (!placa) {                             /* sem placa (ainda): espera um adaptador USB aparecer */
+            cabo_antes = false;
+            int_restaura(i0);
+            atual->acordar_em = relogio_tiques() + 10;
+            int_desliga();
+            bloquear(&canal);
+            ceder();
+            int_liga();
+            continue;
+        }
         aplicar_configuracoes();
         bool cabo = placa->cabo(placa);
         if (cabo != cabo_antes) {
@@ -481,9 +493,32 @@ static void tarefa_rede(void *arg)
 
 void rede_iniciar(void)
 {
-    placa = e1000_iniciar();
-    if (!placa) { klog("[REDE] nenhuma placa de rede com driver\n"); return; }
+    /* O USB começa antes: um adaptador USB pode já estar aqui. A placa
+     * interna, se houver, tem preferência. */
+    placa_t *interna = e1000_iniciar();
+    if (interna) placa = interna;
+    if (!placa) klog("[REDE] nenhuma placa de rede com driver (um adaptador USB pode aparecer depois)\n");
     tarefa_kernel("rede", tarefa_rede, NULL);
+}
+
+/* Adaptador USB de rede (H46): a placa aparece e some com o adaptador. A
+ * placa interna, se houver, tem preferência. */
+void rede_placa_usb(placa_t *p, bool conectou)
+{
+    bool i0 = int_salva_desliga();
+    if (conectou && !placa) {
+        placa = p;
+        configurado = false;
+        dhcp_estado = 0;
+        if (modo_dhcp) meu_ip = 0;
+        klog("[REDE] placa nova: %s\n", p->nome);
+    } else if (!conectou && placa == p) {
+        placa = NULL;
+        configurado = false;
+        dhcp_estado = 0;
+        klog("[REDE] placa removida: %s\n", p->nome);
+    }
+    int_restaura(i0);
 }
 
 /* Para o ícone da barra (H47): 0 sem placa, 1 sem cabo, 2 pedindo endereço, 3 conectado. */

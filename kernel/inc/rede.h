@@ -34,6 +34,7 @@ static inline uint32_t troca32(uint32_t v)
 }
 
 placa_t *e1000_iniciar(void);
+void     rede_placa_usb(placa_t *p, bool conectou);   /* adaptador USB de rede (H46) */
 void     rede_iniciar(void);
 bool     rede_tem_placa(void);
 void     rede_relatorio(char *s, int max);

@@ -32,6 +32,7 @@ typedef struct usb_disp {
     uint8_t   alterna_entrada, alterna_saida;  /* "data toggle" de cada endpoint bulk */
     uint8_t   hub_portas;                      /* se for hub */
     void     *disco;                           /* se for armazenamento */
+    void     *rede;                            /* se for adaptador de rede (H46) */
 } usb_disp_t;
 
 /* ---- ehci.c ---- */
@@ -59,10 +60,16 @@ void ehci_esperar_ms(ehci_t *c, uint32_t ms);
 /* Transferências síncronas. Devolvem bytes transferidos ou um erro USB_ERRO_*. */
 int  ehci_controle(ehci_t *c, uint8_t endereco, uint8_t mps0, const void *setup, void *dados, uint16_t tam, bool entrada);
 int  ehci_bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entrada, uint8_t *alterna, void *dados, uint32_t tam);
+int  ehci_bulk_tentar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, uint8_t *alterna, void *dados, uint32_t tam);   /* 0 = nada agora */
 
 /* ---- usb.c ---- */
 void usb_iniciar(void);
 int  usb_controle(usb_disp_t *d, uint8_t tipo, uint8_t pedido, uint16_t valor, uint16_t indice, void *dados, uint16_t tam);
+int  usb_descritor(usb_disp_t *d, uint8_t tipo, uint8_t indice, uint16_t idioma, void *buf, uint16_t tam);
+void usb_ler_texto(usb_disp_t *d, uint8_t indice, uint16_t idioma, char *saida, int max);
+/* ---- rede_usb.c (H46) ---- */
+bool rede_usb_conectar(usb_disp_t *d, int configuracoes);
+void rede_usb_desconectar(usb_disp_t *d);
 usb_disp_t *usb_disp(int i);
 void usb_verificar_conexoes(void);             /* conexão e remoção a quente */
 
