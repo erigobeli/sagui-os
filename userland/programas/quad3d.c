@@ -22,11 +22,12 @@
 #define ALT_JAN  480
 
 /* ------------------------------------------------------------ ponto fixo 16.16 */
-#define FIXO_ONE  (1 << 16)
+#define FIXO_ONE  (1 << 16)      /* 1 ciclo = 360 graus */
 #define I2F(x)    ((int32_t)((uint32_t)(x) << 16))
 #define F2I(x)    ((x) >> 16)
 #define FMUL(a,b) ((int32_t)(((int64_t)(a) * (int64_t)(b)) >> 16))
 #define FDIV(a,b) ((int32_t)(((int64_t)(a) << 16) / (int64_t)(b)))
+#define GRAUS(g)  ((int32_t)(((int64_t)(g) * FIXO_ONE) / 360))  /* graus -> fixo */
 
 typedef struct { int32_t x, y, z; } v3_t;
 
@@ -179,9 +180,9 @@ int principal(int argc, char **argv)
     jan_t *j = jan_abrir("Sagui Quad3D", LARG_JAN, ALT_JAN);
     if (!j) return 1;
 
-    /* Um quadrado girando no centro da tela. */
+    /* Um quadrado girando no centro da tela. Velocidades em graus por frame. */
     obj_iniciar(&obj, (v3_t){ 0, 0, I2F(300) },
-                0, 0, 0, I2F(2), I2F(3), I2F(1),
+                0, 0, 0, GRAUS(2), GRAUS(3), GRAUS(1),
                 0x60A5FA);
 
     bool rodando = true;
