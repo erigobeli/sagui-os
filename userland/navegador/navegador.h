@@ -141,4 +141,10 @@ int       pagina_peca_em(pagina_t *p, int x, int y);
 int       pagina_ancora(pagina_t *p, const char *nome);
 void      pagina_liberar(pagina_t *p);
 
+/* ---- endereços (enderecos.c) ---- */
+#define MAX_URL_NAV 1024
+bool endereco_tem_esquema(const char *u);
+void endereco_resolver(const char *base, const char *rel, char *out, int max);
+void endereco_codificar(const char *s, char *out, int max);     /* para formulários: espaço vira + */
+void endereco_para_rede(const char *u, char *out, int max);     /* acentos e espaços viram %XX; tira o #fragmento */
 #endif

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Página de teste do Sagui Navegador</title>
+<style>
+.escondido { display: none }
+.destaque { background-color: #fff3c4; color: #7a4b00 }
+#vermelho { color: red }
+p.centro { text-align: center }
+</style></head>
+<body>
+<h1>Título grande</h1>
+<p>Um parágrafo com <b>negrito</b>, <i>itálico</i>, <u>sublinhado</u>, <s>riscado</s> e um <a href="pagina2.html">link para a página 2</a>. Acentos: ação, coração, pão, avô, café, ÁÉÍÓÚ ç.</p>
+<p class="escondido">ESTE TEXTO NÃO PODE APARECER</p>
+<p style="display:none">NEM ESTE</p>
+<p class="destaque">Um parágrafo com fundo amarelo e letra marrom (classe no &lt;style&gt;).</p>
+<p id="vermelho">Texto vermelho pelo id.</p>
+<p class="centro">Centralizado pela regra p.centro</p>
+<h2>Listas</h2>
+<ul><li>Primeiro item<li>Segundo item com <a href="#secao">link para a seção</a><ul><li>Dentro</ul><li>Terceiro</ul>
+<ol><li>Um<li>Dois<li>Três</ol>
+<blockquote>Uma citação, recuada em relação ao texto.</blockquote>
+<h2>Tabela</h2>
+<table border="1"><tr><th>Nome</th><th>Cor</th><th>Valor</th></tr>
+<tr><td>Sagui</td><td bgcolor="#d8f0d0">verde</td><td>10</td></tr>
+<tr><td>Mico-leão</td><td style="background:#ffd7a0">laranja</td><td>200</td></tr></table>
+<h2>Imagens</h2>
+<p><img src="imagens/sagui.png" alt="sagui"> <img src="imagens/foto.jpg" width="120" alt="foto"> <img src="imagens/progressiva.jpg" alt="prog"></p>
+<pre>texto   pré-formatado
+    com espaços    guardados</pre>
+<form action="/busca"><input type="hidden" name="fonte" value="teste"><input type="text" name="q"> <input type="submit" value="Buscar"></form>
+<p><font color="blue">Cor pelo atributo antigo.</font> <span style="color:#008000">Verde pelo style.</span></p>
+<p>Texto comprido para encher a página e testar a rolagem. Lorem do sagui: o sagui pula de galho em galho, come frutas, insetos e goma das árvores, e vive em grupos pequenos na Mata Atlântica e no Cerrado.</p>
+<p>Mais um parágrafo. Mais um parágrafo. Mais um parágrafo. Mais um parágrafo. Mais um parágrafo. Mais um parágrafo. Mais um parágrafo. Mais um parágrafo.</p>
+<hr>
+<h2 id="secao">Seção do fim</h2>
+<p>Esta seção é o destino do link com #secao.</p>
+<p>Linha 1<br>Linha 2<br>Linha 3<br>Linha 4<br>Linha 5<br>Linha 6<br>Linha 7<br>Linha 8<br>Linha 9<br>Linha 10<br>Linha 11<br>Linha 12<br>Linha 13<br>Linha 14<br>Linha 15</p>
+</body></html>

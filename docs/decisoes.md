@@ -1071,3 +1071,48 @@ O que os testes automáticos não cobrem, e vai no roteiro:
   (94 x 28); a mudança de tamanho (`window-change`) está pronta e testada na
   biblioteca (de 43 x 132 para 30 x 100), e passa a ser usada quando o
   Terminal puder mudar de tamanho.
+
+## D038. Sagui Navegador: o que ele entende, e como é testado (H59 a H63)
+
+O navegador é um programa só (`userland/navegador`), em cinco partes:
+descompactação (DEFLATE/zlib/gzip), imagens (PNG e JPEG), leitor de HTML,
+layout e a janela. Nada de JavaScript, de CSS externo nem de fontes: a ideia
+é ler páginas de texto (Wikipédia, documentação, README) bem, e não imitar um
+navegador completo.
+
+**HTML.** Leitura tolerante a erros com as regras mais comuns dos
+navegadores (parágrafos que fecham sozinhos, `li`/`dt`/`dd`/`tr`/`td`, tags
+de fechamento sem par ignoradas, texto cru em `script`/`style`/`textarea`).
+Entidades com nome (as do Latin-1 e as tipográficas mais usadas) e
+numéricas. Texto em UTF-8, Latin-1 ou Windows-1252 vira Latin-1 (a fonte do
+SaguiOS); o que não existe vira o parecido (aspas curvas viram retas,
+travessão vira hífen) ou `?`.
+
+**Layout.** Blocos (p, div, h1-h6, listas, citações, pre, hr, tabelas),
+texto corrido com quebra por palavra, imagens na linha, tabelas com largura
+de coluna pela largura mínima e preferida das células, e caixas que
+**flutuam à direita** (as "infobox" e as figuras "thumb" da Wikipédia, e
+`float: right`/`align=right`). h1 sai em letra dobrada; h2 tem um traço
+embaixo; links em azul sublinhado.
+
+**CSS suportado** (no atributo `style` e em `<style>` com seletores simples
+`tag`, `.classe`, `#id`, `tag.classe` e listas com vírgula; o resto é
+ignorado): `display: none`, `visibility: hidden`, `color`,
+`background`/`background-color` (só a cor), `text-align: center/right`,
+`font-weight: bold`, `text-decoration: underline/line-through`. Atributos
+antigos: `bgcolor`, `color` (em `font`), `align`, `hidden`, `width`/`height`
+de imagens, `border` de tabelas. Uma folha própria esconde o que só funciona
+com JavaScript ou com o CSS do site (menus da Wikipédia, botões de
+"mover para a barra lateral" etc.).
+
+**Formulários.** Só GET, só campos de texto/busca, ocultos e o botão de
+enviar (é o que a busca da Wikipédia precisa). O texto vai em UTF-8.
+
+**Teste.** O mesmo código de layout e desenho é compilado também no
+computador de desenvolvimento (com um `sagui.h` simulado) e desenha a página
+inteira; a janela no QEMU tem de mostrar exatamente os mesmos pixels. Assim
+a "captura de referência" não é uma foto aprovada uma vez, e sim o próprio
+programa rodando fora do SaguiOS: se o layout mudar, os dois mudam juntos, e
+o que o teste confere é que o SaguiOS desenha o que o layout manda (imagens
+que chegaram pela rede, rolagem, recorte). As imagens e o HTML também têm
+testes próprios (H59 a H61), contra o Pillow e árvores conferidas à mão.

@@ -733,7 +733,7 @@ static void layout_tabela(fluxo_t *f, const no_t *tabela, const estilo_t *e, int
     } else if (soma_min <= disponivel) {
         int extra = disponivel - soma_min, falta = soma_pref - soma_min;
         for (int c = 0; c < ncol; c++)
-            larg[c] = minimo[c] + (falta ? (int)((long long)extra * (preferido[c] - minimo[c]) / falta) : 0);
+            larg[c] = minimo[c] + (falta ? (int)((int)extra * (preferido[c] - minimo[c]) / falta) : 0);
     } else {
         for (int c = 0; c < ncol; c++) larg[c] = minimo[c] * disponivel / soma_min;
     }

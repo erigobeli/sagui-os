@@ -56,6 +56,9 @@ PROGRAMAS := $(patsubst userland/programas/%.c,$(B)/userland/bin/%,$(wildcard us
 # O Sagui 3D (B4) tem vários arquivos, numa pasta própria.
 SAGUI3D_OBJ := $(patsubst userland/sagui3d/%.c,$(B)/userland/sagui3d/%.o,$(wildcard userland/sagui3d/*.c))
 PROGRAMAS += $(B)/userland/bin/sagui3d
+# O Sagui Navegador (fase 6 da versão 2.0) também.
+NAVEGADOR_OBJ := $(patsubst userland/navegador/%.c,$(B)/userland/navegador/%.o,$(wildcard userland/navegador/*.c))
+PROGRAMAS += $(B)/userland/bin/navegador
 PROG_TESTE := $(patsubst userland/testes/%.c,$(B)/userland/testes/%,$(wildcard userland/testes/*.c))
 
 .PHONY: all vazio vdi test rodar entrega limpar dashboard
@@ -122,6 +125,15 @@ $(B)/userland/sagui3d/%.o: userland/sagui3d/%.c userland/sagui3d/jogo.h $(USER_H
 $(B)/userland/bin/sagui3d: $(SAGUI3D_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)
 	$(LD) $(ULDFLAGS) -o $@.elf $(SAGUI3D_OBJ) $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
+$(B)/userland/navegador/%.o: userland/navegador/%.c userland/navegador/navegador.h $(USER_HDR)
+	@mkdir -p $(dir $@)
+	$(CC) $(UCFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/navegador: $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
 $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/programa.ld

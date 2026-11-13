@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T07:59:13",
-  "situacao": "Trabalhando na H62: Janela do navegador",
+  "atualizado": "2026-11-13T08:09:36",
+  "situacao": "Trabalhando na H63: Sites de aceite",
   "fase_atual": 6,
-  "historia_atual": "H62",
+  "historia_atual": "H63",
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 5 (Terminal e SSH) está pronta: entrega/v2-fase5/ e docs/teste-v2-fase5.md. O login por senha aceito só dá para conferir num servidor seu. Sigo para a fase 6 (navegador).",
   "raiz": "../../",
@@ -56,7 +56,7 @@ window.SAGUI_STATUS = {
       "numero": 6,
       "nome": "Sagui Navegador",
       "estado": "em andamento",
-      "progresso": 60.0
+      "progresso": 80.0
     },
     {
       "numero": 7,
@@ -442,12 +442,12 @@ window.SAGUI_STATUS = {
       "titulo": "Janela do navegador",
       "objetivo": "Barra de endereço, voltar e avançar, favoritos, rolagem, layout em blocos (títulos, parágrafos, listas, citações, tabelas simples, imagens), cores básicas do HTML, `display: none` e pouco mais de CSS (registrar o que for suportado).",
       "aceite": "páginas de teste servidas pela VPS renderizadas como as capturas de referência.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T07:59:13",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T08:09:36",
+      "minutos": 10,
+      "resultado": "janela igual à referência pixel a pixel (topo e rolada); links, voltar/avançar, âncora, busca em UTF-8, favoritos, texto puro"
     },
     {
       "id": "H63",
@@ -455,9 +455,9 @@ window.SAGUI_STATUS = {
       "titulo": "Sites de aceite",
       "objetivo": "Abrir, com texto legível, links e imagens: um artigo da **Wikipédia em português**, `example.com`, uma página de documentação simples e o `README.md` do SaguiOS no GitHub (versão em texto).",
       "aceite": "teste \"internet\" com capturas de cada site; roteiro para o Eli na VM e no G470.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T08:09:36",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -715,6 +715,14 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T08:09:36",
+      "texto": "Início da H63: Sites de aceite"
+    },
+    {
+      "data": "2026-11-13T08:09:36",
+      "texto": "H62 concluída: janela igual à referência pixel a pixel (topo e rolada); links, voltar/avançar, âncora, busca em UTF-8, favoritos, texto puro"
+    },
+    {
       "data": "2026-11-13T07:59:13",
       "texto": "Início da H62: Janela do navegador"
     },
@@ -950,6 +958,41 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H62-7-texto-puro.png",
+      "nome": "H62-7-texto-puro.png",
+      "data": "2026-11-13T08:09:17"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-6-favoritos.png",
+      "nome": "H62-6-favoritos.png",
+      "data": "2026-11-13T08:09:13"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-5-busca.png",
+      "nome": "H62-5-busca.png",
+      "data": "2026-11-13T08:09:09"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-4-ancora.png",
+      "nome": "H62-4-ancora.png",
+      "data": "2026-11-13T08:09:04"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-3-pagina2.png",
+      "nome": "H62-3-pagina2.png",
+      "data": "2026-11-13T08:08:58"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-2-rolada.png",
+      "nome": "H62-2-rolada.png",
+      "data": "2026-11-13T08:08:52"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H62-1-topo.png",
+      "nome": "H62-1-topo.png",
+      "data": "2026-11-13T08:08:49"
+    },
+    {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
       "data": "2026-11-13T07:58:16"
@@ -1068,13 +1111,13 @@ window.SAGUI_STATUS = {
   "linhas": {
     "boot": 903,
     "kernel": 12704,
-    "userland": 19584,
-    "ferramentas": 8553
+    "userland": 20437,
+    "ferramentas": 8876
   },
   "imagem": {
-    "bytes_util": 981504,
-    "bytes_arquivo": 1048576,
+    "bytes_util": 1141760,
+    "bytes_arquivo": 1146880,
     "meta_bytes": null
   },
-  "progresso_geral": 60.5
+  "progresso_geral": 62.8
 };
