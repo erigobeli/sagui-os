@@ -141,6 +141,7 @@ typedef struct {
     Pos   pos;
 } Espec;
 
+static int   fundura_decl;
 static int   espec(Espec *e);
 static Tipo *declarador(Tipo *base, Nome **nome, Pos *pos);
 
@@ -305,6 +306,10 @@ static int espec(Espec *e)
         if (t->tipo != T_NOME) break;
         c = t->nome->chave;
         if (!c) {
+            if (e->tipo && t->nome->sim && t->nome->sim->classe == S_TYPEDEF && G.it > 0 && G.toks[G.it - 1].tipo == T_PONT &&
+                G.toks[G.it - 1].pont == '}' && tk_adiante(1)->tipo == T_NOME)
+                erro(pos_anterior_fim(), "a definição de um struct, union ou enum termina com ponto e vírgula: struct ponto { int x, y; };",
+                     "faltou ';' depois do '}' (antes de '%N')", t->nome);
             if (algum_tipo || !t->nome->sim || t->nome->sim->classe != S_TYPEDEF) break;
             e->tipo = t->nome->sim->tipo;
             algum_tipo = 1;
@@ -313,6 +318,10 @@ static int espec(Espec *e)
             continue;
         }
         if (c > CH_ATTRIBUTE) break;
+        /* "struct x { ... }" seguido de outro tipo: quase sempre é o ; esquecido depois do } */
+        if (e->tipo && c >= CH_VOID && c <= CH_ENUM && G.it > 0 && G.toks[G.it - 1].tipo == T_PONT && G.toks[G.it - 1].pont == '}')
+            erro(pos_anterior_fim(), "a definição de um struct, union ou enum termina com ponto e vírgula: struct ponto { int x, y; };",
+                 "faltou ';' depois do '}' (antes de '%N')", t->nome);
         viu = 1;
         switch (c) {
         case CH_TYPEDEF: case CH_EXTERN: case CH_STATIC:
@@ -380,6 +389,7 @@ static Tipo *sufixos(Tipo *base)
     Pos p = tk()->pos;
     if (aceita('[')) {
         Tipo *dentro;
+        if (++fundura_decl > 60) erro(p, NULL, "vetor com dimensões demais");
         i64 n = 0;
         int tem = 0;
         if (!eh_pont(']')) {
@@ -395,6 +405,7 @@ static Tipo *sufixos(Tipo *base)
         if (!tp_completo(dentro))
             erro(p, "só o primeiro [ ] de um vetor pode ficar sem tamanho; os outros (e o tipo dos elementos) precisam estar completos",
                  "vetor de elementos de tipo incompleto '%T'", dentro);
+        fundura_decl--;
         return tp_vetor(dentro, (u32)n, tem);
     }
     if (aceita('(')) {
@@ -439,6 +450,7 @@ static Tipo *sufixos(Tipo *base)
 static Tipo *declarador(Tipo *base, Nome **nome, Pos *pos)
 {
     Token *t;
+    if (++fundura_decl > 60) erro(tk()->pos, "simplifique a declaração (use typedef para as partes)", "declaração complicada demais");
     pula_atributo();
     while (aceita('*')) {
         base = tp_ponteiro(base);
@@ -469,6 +481,7 @@ static Tipo *declarador(Tipo *base, Nome **nome, Pos *pos)
             tp = declarador(tp, nome, pos);
             exige(')', NULL);
             G.it = depois;
+            fundura_decl--;
             return tp;
         }
     }
@@ -478,7 +491,9 @@ static Tipo *declarador(Tipo *base, Nome **nome, Pos *pos)
         avanca();
     }
     pula_atributo();
-    return sufixos(base);
+    base = sufixos(base);
+    fundura_decl--;
+    return base;
 }
 
 Tipo *nome_de_tipo(void)
@@ -601,10 +616,13 @@ static void lista(Tipo **pt, u32 desloc)
     if (t->classe == TP_VETOR && !t->completo) *pt = tp_vetor(t->base, maior, 1);
 }
 
+static int fundura_inic;
+
 static void inic_obj(Tipo **pt, u32 desloc, int dentro_de_lista)
 {
     Tipo *t = *pt;
     No *v;
+    if (fundura_inic > 60) erro(tk()->pos, NULL, "inicializador com chaves aninhadas demais");
     if (t->classe == TP_VETOR && tp_inteiro(t->base) && tp_tam(t->base) == 1 && !pend) {
         /* vetor de char iniciado com "texto" (com ou sem chaves em volta) */
         int chaves = eh_pont('{') && tk_adiante(1)->tipo == T_TEXTO;
@@ -629,7 +647,9 @@ static void inic_obj(Tipo **pt, u32 desloc, int dentro_de_lista)
         Pos p = tk()->pos;
         if (!pend && eh_pont('{')) {
             avanca();
+            fundura_inic++;
             lista(pt, desloc);
+            fundura_inic--;
             exige('}', "feche a lista de valores com }");
             return;
         }
@@ -682,6 +702,7 @@ ItemInic *ler_inicializador(Tipo **tipo)
     No *pend_antes = pend;
     ini_fim = &lista_itens;
     pend = NULL;
+    fundura_inic = 0;
     inic_obj(tipo, 0, 0);
     ini_fim = fim_antes;
     pend = pend_antes;
@@ -917,7 +938,20 @@ static void bloco(void)
     avanca();
 }
 
+static int fundura_comando;
+static void comando_de_dentro(void);
+
+/* Um comando pode ter outro dentro (if dentro de if...). O contador evita
+ * que um programa absurdo esgote a pilha do compilador. */
 static void comando(void)
+{
+    if (++fundura_comando > 1000)
+        erro(tk()->pos, "divida a função em funções menores", "comandos aninhados demais (um dentro do outro mais de 1000 vezes)");
+    comando_de_dentro();
+    fundura_comando--;
+}
+
+static void comando_de_dentro(void)
 {
     Token *t = tk();
     Pos p = t->pos;
@@ -1234,6 +1268,7 @@ void analisar_unidade(void)
     n_sai = n_segue = 0;
     selecao = NULL;
     conta_estaticos = 0;
+    fundura_comando = fundura_decl = 0;
     pend = NULL;
     G.fundura = 0;
     declarar(nome_c("__builtin_va_list"), S_TYPEDEF, t_ptr_char, nada);

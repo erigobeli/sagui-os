@@ -1,5 +1,5 @@
 /* x86.c - o fundo do compilador: da representação intermediária para as
- * instrução do x86 de 32 bits.
+ * instruções do x86 de 32 bits.
  *
  * O plano é o mais simples que funciona, sem tentar ser esperto:
  *
@@ -39,7 +39,6 @@
  * libsagui (longo64.c). */
 #include "montador.h"
 
-static ModuloRI *mod;
 static FuncaoRI *f;
 static i32  *casa;          /* por temporário: distância de EBP, ou 0 = sem casa */
 static int  *ultimo;        /* por temporário: índice da última instrução que o cita */
@@ -472,7 +471,6 @@ static void funcao(SimboloRI *s, Secao *sec)
     m_u32(0);
 
     for (i = 0; i < f->qtd; ) {
-        Instr *in = &f->ins[i];
         int passo = instrucao(i), j;
         for (j = i; j < i + passo; j++) {
             Instr *x = &f->ins[j];
@@ -486,7 +484,6 @@ static void funcao(SimboloRI *s, Secao *sec)
                 solta(d, j);
             }
         }
-        (void)in;
         i += passo;
     }
     /* A lista sempre termina num retorna (a frente garante). */
@@ -503,7 +500,6 @@ Objeto *x86_gerar(ModuloRI *m, const char *nome)
                                     "__sagui_restou64", "__sagui_desle64", "__sagui_desld64", "__sagui_deslu64" };
     Objeto *o = novo(sizeof *o);
     int i, k;
-    mod = m;
     for (i = 0; i < 8; i++) ajudas[i] = ri_simbolo(NOMES[i]);      /* antes de tudo: a lista de símbolos não muda mais */
     o->nome = nome;
     o->qtd_sims = m->qtd;

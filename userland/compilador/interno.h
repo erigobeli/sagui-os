@@ -132,7 +132,6 @@ struct Tipo {
     u8    completo;     /* struct/union com os campos; vetor com tamanho */
     u8    variadica;    /* função com ... */
     u8    sem_lista;    /* função declarada com (): aceita qualquer argumento */
-    u8    eh_enum;
     u32   tam, alinha;
     Tipo *base;         /* ponteiro: para o quê; vetor: de quê; função: o que devolve */
     Tipo *puro;         /* o mesmo tipo sem const (ele mesmo, se não tem) */

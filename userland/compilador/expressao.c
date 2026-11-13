@@ -85,13 +85,18 @@ No *converte(No *n, Tipo *para)
     return c;
 }
 
+/* Como converte, mas sem embrulhar o que já é do tipo pedido (operandos de contas). */
+static No *iguala(No *n, Tipo *para)
+{
+    if (n->tipo == para) return n;
+    return converte(n, para);
+}
+
 static No *promove(No *n)
 {
     n = valor_de(n);
     if (tp_inteiro(n->tipo) && n->tipo->classe < TP_INT) return converte(n, t_int);
-    if (n->tipo->constante || n->tipo->eh_enum) {       /* o valor não leva o const junto */
-        if (tp_inteiro(n->tipo) && n->op != N_NUM) return converte(n, n->tipo->puro->eh_enum ? t_int : n->tipo->puro);
-    }
+    if (n->tipo->constante && tp_inteiro(n->tipo) && n->op != N_NUM) return converte(n, n->tipo->puro);    /* o valor não leva o const junto */
     return n;
 }
 
@@ -245,7 +250,7 @@ static No *binaria(int op, No *a, No *b, Pos p)
             return no_bin(op, t_int, a, b, p);
         }
         t = comum(a->tipo, b->tipo);
-        return no_bin(op, t_int, converte(a, t), converte(b, t), p);
+        return no_bin(op, t_int, iguala(a, t), iguala(b, t), p);
     case N_E_LOG: case N_OU_LOG:
         if (a->op == N_NUM && b->op == N_NUM)
             return no_num(op == N_E_LOG ? (a->valor && b->valor) : (a->valor || b->valor), t_int, p);
@@ -258,12 +263,12 @@ static No *binaria(int op, No *a, No *b, Pos p)
     case N_DESL_E: case N_DESL_D:
         exige_inteiro(a, s);
         exige_inteiro(b, s);
-        return no_bin(op, a->tipo, a, converte(b, t_int), p);
+        return no_bin(op, a->tipo, a, iguala(b, t_int), p);
     }
     exige_inteiro(a, s);
     exige_inteiro(b, s);
     t = comum(a->tipo, b->tipo);
-    return no_bin(op, t, converte(a, t), converte(b, t), p);
+    return no_bin(op, t, iguala(a, t), iguala(b, t), p);
 }
 
 /* Confere se "n" pode ir para um lugar do tipo "para" (atribuição, argumento,
@@ -338,13 +343,33 @@ static const char *dica_nome(Nome *n, int funcao)
         { "fwrite", "escrever" }, { "close", "fechar" }, { "fclose", "fechar" }, { "sleep", "dormir (em milissegundos)" },
         { "usleep", "dormir (em milissegundos)" }, { "isspace", "eh_espaco" }, { "gets", "ler_linha" }, { "fgets", "ler_linha" },
         { "scanf", "ler_linha e texto_para_int" }, { "getchar", "ler(ENTRADA, &c, 1)" }, { "rand", "bytes_aleatorios" },
-        { "time", "tempo_ms ou ler_data" }, { "main", "principal" }, { "true", "true (inclua \"sagui.h\")" },
-        { "false", "false (inclua \"sagui.h\")" }, { "NULL", "NULL (inclua \"sagui.h\")" }, { NULL, NULL }
+        { "time", "tempo_ms ou ler_data" }, { "main", "principal" }, { "abs", "uma conta sua: x < 0 ? -x : x" },
+        { "memchr", "um laço, ou acha_char para textos" }, { "strstr", "um laço com comeca_com" }, { "qsort", "uma ordenação sua" },
+        { "getc", "ler(fd, &c, 1)" }, { "putc", "escrever(fd, &c, 1)" }, { "perror", "imprimir_em(ERROS, ...) com nome_erro(codigo)" },
+        { "strtol", "texto_para_int" }, { "remove", "apagar" }, { "rename", "renomear" }, { NULL, NULL }
+    };
+    /* Coisas de outros compiladores que o C do Sagui não tem. */
+    static const char *FORA[][2] = {
+        { "asm", "assembly dentro do C não é aceito; escreva em C ou use uma função da libsagui" },
+        { "__asm__", "assembly dentro do C não é aceito; escreva em C ou use uma função da libsagui" },
+        { "typeof", "o C do Sagui não tem typeof; escreva o tipo por extenso" },
+        { "__typeof__", "o C do Sagui não tem typeof; escreva o tipo por extenso" },
+        { "_Static_assert", "o C do Sagui não tem _Static_assert; apague a linha (ou confira com #if e #error)" },
+        { "static_assert", "o C do Sagui não tem static_assert; apague a linha (ou confira com #if e #error)" },
+        { "__func__", "o C do Sagui não tem __func__; escreva o nome da função entre aspas" },
+        { "alloca", "o C do Sagui não tem alloca; use aloca(tamanho) e depois libera(ponteiro)" },
+        { "L", "letras e textos largos (L'a', L\"...\") não são aceitos; use 'a' e \"...\" comuns" },
+        { "NULL", "NULL, true, false, bool e os tipos uint8_t... vêm de #include \"sagui.h\"" },
+        { "true", "NULL, true, false, bool e os tipos uint8_t... vêm de #include \"sagui.h\"" },
+        { "false", "NULL, true, false, bool e os tipos uint8_t... vêm de #include \"sagui.h\"" },
+        { NULL, NULL }
     };
     static char dica[200];
     Nome *melhor = NULL, *x;
     u32 d_melhor = 3, g;
     int i;
+    for (i = 0; FORA[i][0]; i++)
+        if (txt_igual(n->texto, FORA[i][0])) return FORA[i][1];
     for (i = 0; TROCAS[i][0]; i++)
         if (txt_igual(n->texto, TROCAS[i][0])) {
             formatar(dica, sizeof dica, "o SaguiOS não tem a biblioteca padrão do C; no lugar de '%s' use %s (com #include \"sagui.h\")",
@@ -858,7 +883,6 @@ No *expr_atribuicao(void)
         erro(p, NULL, "o operador '%s' não funciona com '%T' e '%T'", texto_pont(t->pont), a->tipo, b->tipo);
     {
         Tipo *pa = a->tipo->classe < TP_INT ? t_int : a->tipo->puro;
-        if (pa->eh_enum) pa = t_int;
         if (op == N_DESL_E || op == N_DESL_D) { n->tipo_conta = pa; n->b = converte(b, t_int); }
         else { n->tipo_conta = comum(pa, b->tipo); n->b = converte(b, n->tipo_conta); }
     }

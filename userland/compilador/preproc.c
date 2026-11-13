@@ -222,6 +222,7 @@ static int c_pont(int p) { return ci < cn && ct[ci].tipo == T_PONT && ct[ci].pon
 static i64 conta_un(void)
 {
     i64 v;
+    if (cn - ci > 400) erro(cpos, NULL, "condição do #if comprida demais");
     if (ci >= cn) erro(cpos, "depois de #if vem uma conta, como: #if VERSAO >= 2", "a condição do #if está incompleta");
     if (c_pont('!')) { ci++; return !conta_un(); }
     if (c_pont('-')) { ci++; return -conta_un(); }

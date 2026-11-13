@@ -131,6 +131,13 @@ def validos(regravar):
         feitos[nome] = (f, d)
     verificar(len(fontes) >= 50, f"H65: {len(fontes)} programas válidos compilam e viram executáveis ELF do SaguiOS")
 
+    # O Editor do SaguiOS grava em Latin-1; os arquivos vindos de fora são UTF-8. Dá no mesmo.
+    latin = os.path.join(B, "latin1.c")
+    open(latin, "wb").write(open(feitos["v15_textos"][0], encoding="utf-8").read().encode("latin-1"))
+    r = rodar([CC, latin] + INC + ["-L", LIB, "-o", latin + ".bin"])
+    verificar(r.returncode == 0 and open(latin + ".bin", "rb").read() == feitos["v15_textos"][1],
+              "um arquivo gravado em Latin-1 (como o Editor do SaguiOS grava) dá o mesmo executável que em UTF-8")
+
     # Passada rápida no Linux, com a libsagui de teste.
     falhas = []
     for nome, (f, _) in feitos.items():

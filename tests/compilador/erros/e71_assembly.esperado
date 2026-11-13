@@ -1,0 +1,4 @@
+e71_assembly.c:6:5: erro: a função '__asm__' não foi declarada
+    6 |     __asm__("cli");
+      |     ^
+dica: assembly dentro do C não é aceito; escreva em C ou use uma função da libsagui

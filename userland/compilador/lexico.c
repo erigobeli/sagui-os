@@ -139,11 +139,15 @@ static int le_letra(Leitor *l, Pos inicio, int aspas)
         }
     }
     if (c < 0x80) return c;
-    /* UTF-8: junta os bytes do caractere e fica com ele se couber no Latin-1. */
-    if (c >= 0xC0) {
+    /* UTF-8: junta os bytes do caractere e fica com ele se couber no Latin-1.
+     * Se os bytes seguintes não fecham um caractere UTF-8, o arquivo já está
+     * em Latin-1 (é como o Editor do SaguiOS grava) e o byte vale como está. */
+    if (c >= 0xC2 && c <= 0xF4) {
         int faltam = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : 1;
+        for (i = 0; i < faltam; i++)
+            if ((olha(l, (u32)i) & 0xC0) != 0x80) return c;
         v = c & (0x3F >> faltam);
-        while (faltam-- && (olha(l, 0) & 0xC0) == 0x80) { v = (v << 6) | (olha(l, 0) & 0x3F); passa(l); }
+        while (faltam--) { v = (v << 6) | (olha(l, 0) & 0x3F); passa(l); }
         return v < 256 ? v : '?';
     }
     return c;       /* já era Latin-1 */

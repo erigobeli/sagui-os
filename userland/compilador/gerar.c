@@ -17,6 +17,8 @@
  */
 #include "interno.h"
 
+static int fundura_gera;
+
 /* ------------------------------------------------------------ montagem */
 
 int ri_simbolo(const char *nome)
@@ -53,6 +55,7 @@ void ri_reloc(SimboloRI *s, u32 desloc, int sim)
 
 void ri_funcao_inicio(int sim)
 {
+    fundura_gera = 0;
     G.f = novo(sizeof(FuncaoRI));
     G.mod->sims[sim].funcao = G.f;
 }
@@ -251,7 +254,21 @@ static int op_ri(int op, Tipo *t)
     return RI_NADA;
 }
 
+static Oper gera_no(No *n);
+
+/* Uma conta muito comprida (a + b + c + ... milhares de vezes) vira uma
+ * árvore muito funda; o contador troca o estouro da pilha por uma mensagem. */
 Oper gera(No *n)
+{
+    Oper r;
+    if (++fundura_gera > 1500)
+        erro(n->pos, "quebre a conta em partes, guardando pedaços em variáveis", "expressão comprida demais");
+    r = gera_no(n);
+    fundura_gera--;
+    return r;
+}
+
+static Oper gera_no(No *n)
 {
     Oper a, b, e;
     int t, r1, r2;

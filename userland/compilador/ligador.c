@@ -36,7 +36,7 @@ static void poe32(u8 *p, u32 v) { p[0] = (u8)v; p[1] = (u8)(v >> 8); p[2] = (u8)
 Objeto *elf_ler_objeto(const char *nome, u8 *d, u32 tam)
 {
     Objeto *o = novo(sizeof *o);
-    u32 shoff, shnum, i, k, simtab = 0, qtd_comuns = 0;
+    u32 shoff, shnum, i, k, simtab = 0;
     Secao **mapa;
     const u8 *sh, *nomes_sec;
     const char *ruim = "a biblioteca do sistema parece estragada; refaça a imagem do SaguiOS";
@@ -75,8 +75,6 @@ Objeto *elf_ler_objeto(const char *nome, u8 *d, u32 tam)
         u32 n = le32(s + 20) / 16;
         o->qtd_sims = (int)n;
         o->sims = novo(sizeof(SimLig) * (n + 1));
-        for (i = 0; i < n; i++)
-            if (le16(tab + i * 16 + 14) == 0xFFF2) qtd_comuns++;
         for (i = 0; i < n; i++) {
             const u8 *e = tab + i * 16;
             u32 onde = le16(e + 14);
@@ -122,7 +120,6 @@ Objeto *elf_ler_objeto(const char *nome, u8 *d, u32 tam)
             alvo->relocs[k].tipo = (u8)tipo;
         }
     }
-    (void)qtd_comuns;
     return o;
 }
 
