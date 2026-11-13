@@ -4,15 +4,15 @@ Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T01:36:19_
+_Atualizado em 2026-11-13T01:36:59_
 
 - **Situação:** Trabalhando na H43: Driver Intel PRO/1000
 - **Fase atual:** 3
 - **História atual:** H43
-- **Progresso geral:** 25.6%
-- **Bloqueio:** nenhum
+- **Progresso geral:** 27.9%
+- **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
 - **Imagem:** 750080 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12485, userland 8225
+- **Linhas de código:** boot 903, kernel 12485, userland 8937
 
 ## Fases
 
@@ -20,7 +20,7 @@ _Atualizado em 2026-11-13T01:36:19_
 | --- | --- | --- | --- |
 | 1 | Base e Configurações | 100.0% | aguardando teste |
 | 2 | Som | 100.0% | aguardando teste |
-| 3 | Rede | 60.0% | em andamento |
+| 3 | Rede | 80.0% | em andamento |
 | 4 | TCP e HTTPS | 0.0% | a fazer |
 | 5 | Terminal e SSH | 0.0% | a fazer |
 | 6 | Sagui Navegador | 0.0% | a fazer |
@@ -45,7 +45,7 @@ _Atualizado em 2026-11-13T01:36:19_
 | H44 | Ethernet, ARP, IPv4, ICMP e UDP | feito |  |
 | H45 | DHCP e DNS | feito |  |
 | H46 | Rede no G470 | a fazer |  |
-| H47 | Rede na interface | a fazer |  |
+| H47 | Rede na interface | feito |  |
 | H48 | TCP e sockets | a fazer |  |
 | H49 | HTTP e relógio pela internet | a fazer |  |
 | H50 | Números aleatórios e resumos | a fazer |  |
@@ -79,6 +79,8 @@ _Atualizado em 2026-11-13T01:36:19_
 
 ## Últimas ações
 
+- 2026-11-13T01:36:59: Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
+- 2026-11-13T01:36:58: H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)
 - 2026-11-13T01:36:19: H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome
 - 2026-11-13T01:36:19: H44 concluída: Ethernet, ARP com fila de espera, IPv4, ICMP (eco), UDP com soma; comando ping
 - 2026-11-13T01:36:19: H43 concluída: Driver Intel PRO/1000 (anéis de descritores, sem interrupções), endereço físico, cabo
@@ -92,5 +94,3 @@ _Atualizado em 2026-11-13T01:36:19_
 - 2026-11-13T01:08:35: Início da H40: Driver Intel HD Audio
 - 2026-11-13T01:08:35: Fase 1 entregue. Aguardando teste do Eli.
 - 2026-11-13T00:54:44: H39 concluída: Programas em /usb/programas viram ícone e comando; aba Programas remove com confirmação e esconde ícones do sistema
-- 2026-11-13T00:50:05: Início da H39: Remover programas
-- 2026-11-13T00:50:05: H38 concluída: App Configurações com Relógio (acerta o CMOS, fuso), Aparência (5 fundos, sagui do canto) e Sobre o computador; ícones em duas colunas (D032)

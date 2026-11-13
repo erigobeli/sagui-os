@@ -11,6 +11,7 @@
 #include "processo.h"
 #include "relogio.h"
 #include "configuracoes.h"
+#include "rede.h"
 #include "fat32.h"
 #include "texto.h"
 #include "texto.h"
@@ -21,6 +22,7 @@
 static uint32_t *fundo;
 static int larg, alt;
 static int minuto_mostrado = -1;
+static int rede_mostrada = -1;
 
 typedef struct {
     const char *nome;
@@ -223,6 +225,7 @@ void area_fundo(superficie_t *s)
 
 bool area_relogio_mudou(void)
 {
+    if (rede_estado() != rede_mostrada) return true;   /* o ícone de rede também vive na barra */
     data_hora_t d;
     cmos_ler_data(&d);
     return d.minuto != minuto_mostrado;
@@ -245,6 +248,24 @@ void area_barra(superficie_t *s)
     snformatar(hora, sizeof hora, "%s %02u/%02u/%u  %02u:%02u", semana[dia_da_semana(d.ano, d.mes, d.dia)],
                d.dia, d.mes, d.ano, d.hora, d.minuto);
     sup_texto(s, larg - texto_largura(hora) - 10, 4, hora, 0xFFFFFF);
+    /* Ícone de rede (H47), à esquerda do botão de energia: verde conectado,
+     * amarelo pedindo endereço, cinza sem cabo; some se não há placa. */
+    int estado = rede_estado();
+    rede_mostrada = estado;
+    if (estado > 0) {
+        int ex0, ey0, el0, ea0;
+        area_energia_retangulo(&ex0, &ey0, &el0, &ea0);
+        uint32_t cor = estado == 3 ? 0x5FD35F : (estado == 2 ? 0xF4D03F : 0x8A939C);
+        for (int y = 0; y < 16; y++)
+            for (int x = 0; x < 16; x++)
+                if (arte_icone_rede[y][x] == 'B') sup_retangulo(s, ex0 - 28 + x, ey0 + 2 + y, 1, 1, cor);
+        if (estado == 1) {   /* sem cabo: um x vermelho por cima */
+            for (int k = 0; k < 8; k++) {
+                sup_retangulo(s, ex0 - 28 + 4 + k, ey0 + 2 + 2 + k, 1, 1, 0xE04848);
+                sup_retangulo(s, ex0 - 28 + 11 - k, ey0 + 2 + 2 + k, 1, 1, 0xE04848);
+            }
+        }
+    }
     /* Botão de energia (H36), à esquerda do relógio. */
     int ex, ey, el, ea;
     area_energia_retangulo(&ex, &ey, &el, &ea);

@@ -429,6 +429,27 @@ const char *const arte_botao_energia[16] = {
     "................",
 };
 
+/* Ícone de rede da barra de cima (H47): um monitor com o "sinal" de cabo.
+ * A cor muda conforme o estado (desenhado com cor própria em area_barra). */
+const char *const arte_icone_rede[16] = {
+    "................",
+    ".BBBBBBBBBBBBBB.",
+    ".B............B.",
+    ".B............B.",
+    ".B............B.",
+    ".B............B.",
+    ".B............B.",
+    ".B............B.",
+    ".BBBBBBBBBBBBBB.",
+    "......BBBB......",
+    ".......BB.......",
+    ".......BB.......",
+    ".BBBBBBBBBBBBBB.",
+    "................",
+    "................",
+    "................",
+};
+
 /* Paleta: letra -> cor. Devolve false para transparente. */
 bool arte_cor(char letra, uint32_t *cor)
 {

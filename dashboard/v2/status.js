@@ -1,11 +1,11 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:36:19",
+  "atualizado": "2026-11-13T01:36:59",
   "situacao": "Trabalhando na H43: Driver Intel PRO/1000",
   "fase_atual": 3,
   "historia_atual": "H43",
-  "bloqueio": "",
+  "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
   "mensagem_fase": "Eli, a fase 2 da versão 2.0 (Som) está pronta para testar: entrega/v2-fase2/ e roteiro em docs/teste-v2-fase2.md. Sigo para a fase 3 (rede).",
   "raiz": "../../",
   "links": [
@@ -38,7 +38,7 @@ window.SAGUI_STATUS = {
       "numero": 3,
       "nome": "Rede",
       "estado": "em andamento",
-      "progresso": 60.0
+      "progresso": 80.0
     },
     {
       "numero": 4,
@@ -247,12 +247,12 @@ window.SAGUI_STATUS = {
       "titulo": "Rede na interface",
       "objetivo": "Aba **Rede** nas Configurações (estado, endereço, DHCP ou manual) e ícone de rede na barra de cima.",
       "aceite": "capturas com a rede ligada e com o cabo desligado.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
       "inicio": null,
-      "fim": null,
+      "fim": "2026-11-13T01:36:58",
       "minutos": null,
-      "resultado": ""
+      "resultado": "Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)"
     },
     {
       "id": "H48",
@@ -715,6 +715,14 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:36:59",
+      "texto": "Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue"
+    },
+    {
+      "data": "2026-11-13T01:36:58",
+      "texto": "H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)"
+    },
+    {
       "data": "2026-11-13T01:36:19",
       "texto": "H45 concluída: Cliente DHCP no kernel, resolvedor de DNS próprio na libsagui; comandos rede, dns e ping por nome"
     },
@@ -814,6 +822,21 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
+      "nome": "H47-3-aba-rede.png",
+      "data": "2026-11-13T01:36:29"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
+      "nome": "H47-2-barra-sem-cabo.png",
+      "data": "2026-11-13T01:36:27"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
+      "nome": "H47-1-barra-conectado.png",
+      "data": "2026-11-13T01:36:25"
+    },
+    {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
       "data": "2026-11-13T01:35:59"
@@ -887,7 +910,7 @@ window.SAGUI_STATUS = {
   "linhas": {
     "boot": 903,
     "kernel": 12485,
-    "userland": 8225,
+    "userland": 8937,
     "ferramentas": 4379
   },
   "imagem": {
@@ -895,5 +918,5 @@ window.SAGUI_STATUS = {
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 25.6
+  "progresso_geral": 27.9
 };

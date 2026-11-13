@@ -18,8 +18,8 @@ static jan_t *j;
 static int aba;
 static char recado[96];
 
-enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOM, ABA_PROGRAMAS, ABA_SOBRE, QTD_ABAS };
-static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Som", "Programas", "Sobre o computador" };
+enum { ABA_RELOGIO, ABA_APARENCIA, ABA_SOM, ABA_REDE, ABA_PROGRAMAS, ABA_SOBRE, QTD_ABAS };
+static const char *const nomes_abas[QTD_ABAS] = { "Relógio", "Aparência", "Som", "Rede", "Programas", "Sobre o computador" };
 static botao_t botoes_abas[QTD_ABAS];
 
 static void mostrar_mensagem(const char *fmt, int r)
@@ -246,6 +246,88 @@ static void som_tratar(const evento_t *e)
     }
 }
 
+/* ------------------------------------------------------------ Rede (H47) */
+
+static caixa_t c_ip, c_masc, c_rot, c_dns;
+static botao_t b_modo, b_aplicar_rede;
+static bool rede_manual;
+
+static void rede_estado_desenhar(void)
+{
+    info_rede_t r;
+    char t[64], ip[16];
+    g_retangulo(j, X0, 52, L - X0 - 10, 40, COR_FUNDO);
+    if (rede_info(&r) < 0) { g_texto(j, X0, 52, "Nenhuma placa de rede com driver.", COR_TEXTO); return; }
+    g_texto_n(j, X0, 52, r.placa, 44, COR_TEXTO);
+    ip_para_texto(r.ip, ip);
+    if (!r.cabo) copia_texto(t, "Cabo desligado.", sizeof t);
+    else if (!r.configurado) copia_texto(t, "Pedindo endereço ao roteador...", sizeof t);
+    else formatar_texto(t, sizeof t, "Conectado: %s", ip);
+    g_texto(j, X0, 72, t, r.configurado ? COR_DESTAQUE : COR_TEXTO_FRACO);
+    jan_mostrar_area(j, X0, 52, L - X0 - 10, 40);
+}
+
+static void caixa_com_rotulo(caixa_t *c, int y, const char *rotulo, const char *chave, unsigned padrao)
+{
+    g_texto(j, X0, y + 4, rotulo, rede_manual ? COR_TEXTO : COR_TEXTO_FRACO);
+    *c = (caixa_t){ .x = X0 + 110, .y = y, .l = 150 };
+    char v[24];
+    if (config_ler(chave, v, sizeof v) < 0) ip_para_texto(padrao, v);
+    caixa_definir(c, v);
+    caixa_desenhar(j, c);
+}
+
+static void rede_desenhar(void)
+{
+    titulo("Rede");
+    rede_estado_desenhar();
+    char modo[12];
+    rede_manual = config_ler("rede.modo", modo, sizeof modo) >= 0 && compara_texto(modo, "manual") == 0;
+    b_modo = (botao_t){ X0, 104, 270, 28, rede_manual ? "Manual: usar automático (DHCP)" : "Automático (DHCP): usar manual", false };
+    botao_desenhar(j, &b_modo);
+    info_rede_t r;
+    if (rede_info(&r) < 0) memset(&r, 0, sizeof r);
+    caixa_com_rotulo(&c_ip, 148, "Endereço:", "rede.ip", r.ip);
+    caixa_com_rotulo(&c_masc, 180, "Máscara:", "rede.mascara", r.mascara);
+    caixa_com_rotulo(&c_rot, 212, "Roteador:", "rede.roteador", r.roteador);
+    caixa_com_rotulo(&c_dns, 244, "DNS:", "rede.dns", r.dns);
+    b_aplicar_rede = (botao_t){ X0, 284, 140, 28, "Aplicar", false };
+    if (rede_manual) botao_desenhar(j, &b_aplicar_rede);
+}
+
+static void rede_redesenhar(void)
+{
+    g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+    rede_desenhar();
+    jan_mostrar(j);
+}
+
+static void rede_tratar(const evento_t *e)
+{
+    if (rede_manual) {
+        caixa_t *cs[] = { &c_ip, &c_masc, &c_rot, &c_dns };
+        for (int i = 0; i < 4; i++) caixa_tratar(j, cs[i], e);
+    }
+    if (botao_tratar(j, &b_modo, e)) {
+        int r = config_gravar("rede.modo", rede_manual ? "dhcp" : "manual");
+        registrar("configuracoes: rede %s", rede_manual ? "automatica" : "manual");
+        rede_redesenhar();
+        mostrar_mensagem(rede_manual ? "Modo manual: preencha e aplique." : "Endereço automático (DHCP).", r);
+        return;
+    }
+    if (rede_manual && botao_tratar(j, &b_aplicar_rede, e)) {
+        caixa_t *cs[] = { &c_ip, &c_masc, &c_rot, &c_dns };
+        static const char *const chaves[] = { "rede.ip", "rede.mascara", "rede.roteador", "rede.dns" };
+        for (int i = 0; i < 4; i++)
+            if (!texto_para_ip(cs[i]->texto)) { mostrar_mensagem("Endereço inválido (use 192.168.0.10).", -1); return; }
+        int r = 0;
+        for (int i = 0; i < 4; i++) r = config_gravar(chaves[i], cs[i]->texto);
+        config_gravar("rede.modo", "manual");   /* reaplica com os valores novos */
+        registrar("configuracoes: rede manual %s", c_ip.texto);
+        mostrar_mensagem("Rede configurada.", r);
+    }
+}
+
 /* ------------------------------------------------------------ Programas (H39) */
 
 #define MAX_INST 8
@@ -414,6 +496,7 @@ static void desenhar_tudo(void)
     else if (aba == ABA_APARENCIA) aparencia_desenhar();
     else if (aba == ABA_PROGRAMAS) programas_desenhar();
     else if (aba == ABA_SOM) som_desenhar();
+    else if (aba == ABA_REDE) rede_desenhar();
     else sobre_desenhar();
     char p[8];
     config_ler("sistema.persistente", p, sizeof p);
@@ -433,6 +516,7 @@ int principal(int argc, char **argv)
         if (compara_texto(argv[1], "sobre") == 0) aba = ABA_SOBRE;
         if (compara_texto(argv[1], "programas") == 0) aba = ABA_PROGRAMAS;
         if (compara_texto(argv[1], "som") == 0) aba = ABA_SOM;
+        if (compara_texto(argv[1], "rede") == 0) aba = ABA_REDE;
     }
     desenhar_tudo();
     registrar("configuracoes: aberto na aba %s", nomes_abas[aba]);
@@ -454,9 +538,11 @@ int principal(int argc, char **argv)
             else if (aba == ABA_APARENCIA) aparencia_tratar(&e);
             else if (aba == ABA_PROGRAMAS) programas_tratar(&e);
             else if (aba == ABA_SOM) som_tratar(&e);
+            else if (aba == ABA_REDE) rede_tratar(&e);
             continue;
         }
         if (aba == ABA_RELOGIO && tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); relogio_agora(); }
+        if (aba == ABA_REDE && tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); rede_estado_desenhar(); }
         dormir(40);
     }
     jan_fechar(j);

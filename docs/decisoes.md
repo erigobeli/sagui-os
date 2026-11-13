@@ -971,3 +971,24 @@ mudar uma linha.
 **Testes.** O QEMU grava a saída da placa num `.wav`; o teste mede a frequência
 (cruzamentos do zero) e a mistura (algoritmo de Goertzel para cada frequência).
 O canto do sagui (`/sons/sagui.wav`) é sintetizado por `tools/mksom.py`.
+
+## D034. Rede: tudo por consulta, e a pendência do G470 (H43 a H47)
+
+A placa Intel PRO/1000 (a das máquinas virtuais) trabalha com dois anéis de
+descritores na memória; o driver não usa interrupções: a tarefa da rede acorda
+a cada tique (10 ms), tira o que chegou e cuida dos relógios (DHCP, ARP, TCP).
+Com 10 ms de folga, o atraso extra é pequeno e o código fica muito mais simples
+e previsível. A pilha guarda os endereços IPv4 "na ordem da rede" (o primeiro
+número no byte mais baixo), o que evita converter em cada comparação.
+
+O DNS fica fora do kernel (na `libsagui`), como manda o PRD: é só uma pergunta
+UDP para o servidor que o DHCP informou. Os nomes "comprimidos" das respostas
+são pulados sem montar o texto, porque só o endereço interessa.
+
+**H46 (rede no G470) ficou pendente.** Depende da foto do comando `pci` no
+notebook: se o chip de rede tiver manual público, ganha driver próprio; se não,
+o plano B é um adaptador USB-Ethernet da classe CDC (especificação pública). O
+adaptador USB que o QEMU simula é de velocidade plena (USB 1.1) e o driver EHCI
+do SaguiOS só fala com dispositivos de alta velocidade, então esse caminho não
+dá para testar no QEMU como o PRD supunha: ele será testado com o adaptador de
+verdade.
