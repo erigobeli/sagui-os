@@ -1116,3 +1116,45 @@ programa rodando fora do SaguiOS: se o layout mudar, os dois mudam juntos, e
 o que o teste confere é que o SaguiOS desenha o que o layout manda (imagens
 que chegaram pela rede, rolagem, recorte). As imagens e o HTML também têm
 testes próprios (H59 a H61), contra o Pillow e árvores conferidas à mão.
+
+## D040. Visual moderno: vidro só nas barras, desfoque por recorte e efeitos automáticos (H74 a H77)
+
+(D039 fica para o compilador, feito em paralelo.)
+
+- **Onde há vidro:** nas barras de título, na barra de cima, na doca, no menu
+  e nos balões. O conteúdo das janelas continua opaco (é desenhado pelos
+  programas, e vidro atrás de texto atrapalha a leitura).
+- **Desfoque:** média de caixa de 13 x 13 em duas passadas com somas
+  corridas (`kernel/gui/vidro.c`). O custo não depende do raio e cada pixel
+  custa poucas somas e três divisões.
+- **Só onde a tela mudou:** o gerenciador já recompunha só o retângulo sujo.
+  O vidro precisa do que está atrás e em volta dele. Por isso, quando o
+  retângulo sujo encosta num vidro, ele cresce para cobrir o vidro inteiro
+  mais o raio do desfoque (`expandir_vidro`). Assim a borda do desfoque nunca
+  lê pixels de um quadro velho.
+- **Sombra:** um degradê de 12 pixels, quadrático, deslocado 4 pixels para
+  baixo. A área suja de uma janela passou a incluir a sombra.
+- **Cantos:** uma tabela de 8 linhas diz quantos pixels pular em cada ponta
+  (raio 8). Os botões de fechar e minimizar ficaram redondos.
+- **Doca:** na parte de baixo, no meio, com os programas fixos (Arquivos,
+  Terminal, Navegador, Editor, Configurações), uma linha e depois os
+  programas abertos. Um ponto amarelo marca os que estão abertos, e o nome
+  aparece num balão. Clicar traz a janela do programa (restaurando se estiver
+  minimizada) ou abre o programa.
+- **Menu do sagui:** a cabecinha na barra de cima abre a lista de programas,
+  mais "Desligar...". O ícone de som mostra o volume e abre Configurações >
+  Som.
+- **Animações:** abrir, fechar, minimizar e restaurar desenham um contorno
+  que vai de um retângulo a outro em 10 tiques (100 ms). A janela que está
+  aparecendo só é desenhada quando o contorno chega. Um contorno custa quase
+  nada, ao contrário de redimensionar os pixels da janela a cada quadro.
+- **Tema claro e escuro:** valem para o que o sistema desenha (barras,
+  doca, menu, molduras). Os programas usam as cores do kit (`gui.h`), que já
+  são claras; fazer cada programa trocar de cor precisaria de uma chamada
+  nova, que fica para depois.
+- **Efeitos automáticos (H77):** na partida, o gerenciador mede quanto custa
+  recompor a tela inteira com vidro (média de 4 quadros). Acima de 40 ms, o
+  computador é lento e fica com os efeitos leves: sem desfoque, sem sombra e
+  sem animação, com as barras na cor sólida. Em Configurações > Aparência
+  dá para escolher automático, completos ou leves. No QEMU (sem aceleração),
+  o quadro inteiro custou 17 ms.

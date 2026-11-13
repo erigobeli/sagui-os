@@ -9,7 +9,9 @@
 /* Área de trabalho (area_trabalho.c) */
 bool area_iniciar(void);
 void area_fundo(superficie_t *s);          /* copia o fundo pronto para o recorte de s */
-void area_barra(superficie_t *s);          /* barra superior com o relógio */
+void area_barra(superficie_t *s, bool vidro, bool claro);   /* barra superior com o relógio */
+void area_som_retangulo(int *x, int *y, int *l, int *a);
+bool area_som_em(int x, int y);
 bool area_relogio_mudou(void);
 int  area_icone_em(int x, int y);          /* índice do ícone sob o ponto, ou -1 */
 void area_energia_retangulo(int *x, int *y, int *l, int *a);   /* botão de energia na barra (H36) */

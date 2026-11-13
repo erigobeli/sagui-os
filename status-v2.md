@@ -4,15 +4,15 @@ Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T12:31:12_
+_Atualizado em 2026-11-13T17:25:33_
 
-- **Situação:** Trabalhando na H69: JSON e cliente do OpenRouter
-- **Fase atual:** 8
-- **História atual:** H69
-- **Progresso geral:** 65.1%
+- **Situação:** Trabalhando na H78: Redimensionar e maximizar janelas (pedido do Eli)
+- **Fase atual:** 9
+- **História atual:** H78
+- **Progresso geral:** 72.7%
 - **Bloqueio:** H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue
-- **Imagem:** 1260544 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 12704, userland 22186
+- **Imagem:** 1273344 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 903, kernel 13359, userland 22220
 
 ## Fases
 
@@ -26,7 +26,7 @@ _Atualizado em 2026-11-13T12:31:12_
 | 6 | Sagui Navegador | 100.0% | aguardando teste |
 | 7 | Compilador C | 0.0% | a fazer |
 | 8 | Sagui Code | 0.0% | em andamento |
-| 9 | Visual moderno | 0.0% | a fazer |
+| 9 | Visual moderno | 80.0% | em andamento |
 | 10 | Instalação no HD (opcional, a decidir) | 0% | a fazer |
 
 ## Histórias
@@ -72,25 +72,26 @@ _Atualizado em 2026-11-13T12:31:12_
 | H71 | Instruções e contexto | a fazer |  |
 | H72 | Interface | a fazer |  |
 | H73 | Aceite com IA de verdade | a fazer |  |
-| H74 | Vidro | a fazer |  |
-| H75 | Forma | a fazer |  |
-| H76 | Movimento e tema | a fazer |  |
-| H77 | Leve no G470 | a fazer |  |
+| H74 | Vidro | feito | 1 |
+| H75 | Forma | feito | 1 |
+| H76 | Movimento e tema | feito | 1 |
+| H77 | Leve no G470 | feito | 1 |
+| H78 | Redimensionar e maximizar janelas (pedido do Eli) | em andamento |  |
 
 ## Últimas ações
 
+- 2026-11-13T17:25:33: Início da H78: Redimensionar e maximizar janelas (pedido do Eli)
+- 2026-11-13T17:25:33: H77 concluída: efeitos automáticos pela medida do quadro, ou completos/leves nas Configurações
+- 2026-11-13T17:25:33: H76 concluída: animações de contorno, ícone do navegador, tema claro e escuro
+- 2026-11-13T17:25:33: H75 concluída: cantos, doca com fixos e abertos, minimizar, menu do sagui, ícone de som
+- 2026-11-13T17:25:33: H74 concluída: vidro nas barras com desfoque por recorte; sombras; quadro inteiro em 12-17 ms no QEMU
+- 2026-11-13T17:25:33: Início da H77: Leve no G470
+- 2026-11-13T17:25:33: Início da H76: Movimento e tema
+- 2026-11-13T17:25:33: Início da H75: Forma
+- 2026-11-13T17:25:32: Início da H74: Vidro
+- 2026-11-13T12:53:08: Eli pediu redimensionar, minimizar e maximizar janelas: virou a H78 (fase 9)
 - 2026-11-13T12:31:12: H69/H70: Sagui Code testado contra servidor falso (falta o laço com o cc e a conversa com a API real)
 - 2026-11-13T12:31:12: Início da H69: JSON e cliente do OpenRouter
 - 2026-11-13T12:23:13: Fase 6 entregue. Aguardando teste do Eli.
 - 2026-11-13T08:15:37: H63 concluída: Wikipédia (artigo, imagens e busca), example.com, man page do ls e README do SaguiOS, com capturas
 - 2026-11-13T08:09:36: Início da H63: Sites de aceite
-- 2026-11-13T08:09:36: H62 concluída: janela igual à referência pixel a pixel (topo e rolada); links, voltar/avançar, âncora, busca em UTF-8, favoritos, texto puro
-- 2026-11-13T07:59:13: Início da H62: Janela do navegador
-- 2026-11-13T07:59:13: Fase 5 entregue. Aguardando teste do Eli.
-- 2026-11-13T07:59:13: Início da H62: Janela do navegador
-- 2026-11-13T07:58:47: Início da H62: Janela do navegador
-- 2026-11-13T07:58:47: H58 concluída: ssh no Terminal: vim (setas em modo de aplicação) e htop com capturas
-- 2026-11-13T07:58:47: H57 concluída: ssh-chave + login pela chave no QEMU; senha recusada testada, aceita fica para o roteiro
-- 2026-11-13T07:58:47: H56 concluída: transporte contra o sshd local: 77 conferências; chave mudada recusada
-- 2026-11-13T07:58:47: Início da H58: SSH de verdade
-- 2026-11-13T07:58:47: Início da H57: Login e sessão

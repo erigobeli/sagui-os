@@ -24,7 +24,7 @@ def main():
             verificar(topo[1] > topo[0] and topo[1] > topo[2], f"[{modo}] topo verde {topo}")
             verificar(meio[0] > 180 and meio[1] > 150 and meio[2] < 90, f"[{modo}] meio amarelo {meio}")
             verificar(base[2] > base[0] and base[2] > base[1], f"[{modo}] base azul {base}")
-            verificar(cor_do_pixel(png, 300, 2) == (0x18, 0x20, 0x2A), f"[{modo}] barra superior escura")
+            verificar(sum(cor_do_pixel(png, 300, 2)) < 200, f"[{modo}] barra superior escura (vidro escuro, H74)")
             verificar(cor_do_pixel(png, 836, 595) == (245, 245, 240), f"[{modo}] tufo branco do sagui no canto")
             verificar(cor_do_pixel(png, 47, 65) == (255, 213, 46), f"[{modo}] ícone da pasta (Arquivos)")
             hora = re.findall(r"\[GUI\] relogio: (\S+) (\d\d/\d\d/\d{4})\s+(\d\d):(\d\d)", m.serial())[-1]

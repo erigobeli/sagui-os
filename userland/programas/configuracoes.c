@@ -156,6 +156,8 @@ static const uint32_t amostras[QTD_FUNDOS][3] = {
 };
 static botao_t b_fundos[QTD_FUNDOS], b_sagui;
 
+static botao_t b_tema, b_efeitos;
+
 static void aparencia_desenhar(void)
 {
     titulo("Aparência");
@@ -176,10 +178,42 @@ static void aparencia_desenhar(void)
     g_texto(j, X0, 286, "O sagui no canto da área de trabalho:", COR_TEXTO);
     b_sagui = (botao_t){ X0, 308, 160, 28, mostra ? "Mostrando: esconder" : "Escondido: mostrar", false };
     botao_desenhar(j, &b_sagui);
+    /* Tema (H76) e efeitos (H77). */
+    char tema[12], efeitos[12];
+    bool claro = config_ler("aparencia.tema", tema, sizeof tema) >= 0 && compara_texto(tema, "claro") == 0;
+    if (config_ler("aparencia.efeitos", efeitos, sizeof efeitos) < 0) copia_texto(efeitos, "auto", sizeof efeitos);
+    g_texto(j, X0 + 190, 286, "Tema:", COR_TEXTO);
+    b_tema = (botao_t){ X0 + 190, 308, 170, 28, claro ? "Claro: usar escuro" : "Escuro: usar claro", false };
+    botao_desenhar(j, &b_tema);
+    g_texto(j, X0, 346, "Efeitos (vidro, sombras, animações):", COR_TEXTO);
+    b_efeitos = (botao_t){ X0, 366, 360, 28,
+                           compara_texto(efeitos, "leves") == 0 ? "Leves (rápido): trocar para automático" :
+                           compara_texto(efeitos, "completos") == 0 ? "Completos: trocar para leves" :
+                           "Automático (pela velocidade): trocar para completos", false };
+    botao_desenhar(j, &b_efeitos);
 }
 
 static void aparencia_tratar(const evento_t *e)
 {
+    if (botao_tratar(j, &b_tema, e) || botao_tratar(j, &b_efeitos, e)) {
+        int r;
+        char v[12];
+        if (b_tema.texto[0] && e->tipo == EV_SOLTOU && e->x >= b_tema.x && e->x < b_tema.x + b_tema.l && e->y >= b_tema.y && e->y < b_tema.y + b_tema.a) {
+            bool claro = config_ler("aparencia.tema", v, sizeof v) >= 0 && compara_texto(v, "claro") == 0;
+            r = config_gravar("aparencia.tema", claro ? "escuro" : "claro");
+            registrar("configuracoes: tema %s", claro ? "escuro" : "claro");
+        } else {
+            if (config_ler("aparencia.efeitos", v, sizeof v) < 0) copia_texto(v, "auto", sizeof v);
+            const char *novo = compara_texto(v, "auto") == 0 ? "completos" : compara_texto(v, "completos") == 0 ? "leves" : "auto";
+            r = config_gravar("aparencia.efeitos", novo);
+            registrar("configuracoes: efeitos %s", novo);
+        }
+        g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+        aparencia_desenhar();
+        jan_mostrar(j);
+        mostrar_mensagem("Aparência trocada.", r);
+        return;
+    }
     for (int i = 0; i < QTD_FUNDOS; i++)
         if (botao_tratar(j, &b_fundos[i], e)) {
             int r = config_gravar("aparencia.fundo", fundos[i]);

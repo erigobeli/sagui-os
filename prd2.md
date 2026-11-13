@@ -162,7 +162,7 @@ Cada história vale o mesmo peso no progresso. **Cada fase termina numa parada o
 | 6. Sagui Navegador | Páginas simples com texto, links e imagens | H59 a H63 |
 | 7. Compilador C | Compilar programas dentro do SaguiOS | H64 a H68 |
 | 8. Sagui Code | Agente de programação com IA pelo OpenRouter | H69 a H73 |
-| 9. Visual moderno | Transparência, desfoque, cantos arredondados, animações | H74 a H77 |
+| 9. Visual moderno | Transparência, desfoque, cantos arredondados, animações, redimensionar | H74 a H78 |
 | 10. Instalação no HD (opcional) | A decidir com o Eli depois da fase 9 | — |
 
 ### Fase 1: Base e Configurações
@@ -324,6 +324,9 @@ Cada história vale o mesmo peso no progresso. **Cada fase termina numa parada o
 
 **H76. Movimento e tema.** Animações de abrir, fechar e minimizar, ícones redesenhados e tema claro ou escuro nas Configurações.
 *Aceite:* capturas dos dois temas.
+
+**H78. Redimensionar e maximizar (pedido do Eli em 13/11/2026).** Arrastar a borda ou o canto de uma janela muda o tamanho dela; um botão de maximizar (e duplo clique na barra de título) ocupa a tela inteira entre a barra de cima e a doca, e clicar de novo volta ao tamanho de antes. O programa recebe um evento com o tamanho novo e se redesenha; programas antigos, que não pedirem para ser redimensionáveis, continuam com tamanho fixo (sem o botão). Terminal, Navegador, Editor e Arquivos aceitam.
+*Aceite:* capturas de uma janela redimensionada e maximizada; o Terminal muda o número de linhas e colunas (e avisa o programa dentro dele, inclusive o `ssh`).
 
 **H77. Leve no G470.** Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.
 *Aceite:* no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).

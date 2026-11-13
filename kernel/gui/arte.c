@@ -451,6 +451,43 @@ const char *const arte_icone_rede[16] = {
 };
 
 /* Paleta: letra -> cor. Devolve false para transparente. */
+/* Navegador (H62/H75): um globo com os continentes em verde. */
+static const char *const icone_navegador[] = {
+    "................................",
+    "................................",
+    "............PPPPPPPP............",
+    "..........PPPssssssPPP..........",
+    "........PPVssVVssVVssVPP........",
+    ".......PPVVsVVVssVVVsVVPP.......",
+    "......PVVVssVVVssVVVssVVVP......",
+    ".....PVVVVsVVVVssGGGGGVVVVP.....",
+    "....PPVVGGGGGVVssGGGGGVVVVPP....",
+    "....PVVGGGGGGGVssGGGGGsVVVVP....",
+    "...PVVVGGGGGGGVssVVVVVsVVVVVP...",
+    "...PVVVGGGGGGGVssVVVVVsVVVVVP...",
+    "..PPVVVVGGGGGVVssVVVVVsVVVVVPP..",
+    "..PVVVVVVsVVVVVssVVVVVsVVVVVVP..",
+    "..PVVVVVsVVVVVVssVVVVGGGVVVVVP..",
+    "..PssssssssssssssssssGGGsssssP..",
+    "..PsssssssssGGGGGssssGGGsssssP..",
+    "..PVVVVVsVVGGGGGGGVVVGGGVVVVVP..",
+    "..PVVVVVVsVGGGGGGGVVVGGGVVVVVP..",
+    "..PPVVVGGGVGGGGGGGVVVGGGVVVVPP..",
+    "...PVVVGGGVGGGGGGGVVVGGGVVVVP...",
+    "...PVVVGGGVGGGGGGGVVVVsVVVVVP...",
+    "....PVVVVsVVGGGGGVVVVVsVVVVP....",
+    "....PPVVVVsVVVVssVVVVsVVVVPP....",
+    ".....PVVVVsVVVVssVVVVsVVVVP.....",
+    "......PVVVssVVVssVVVssVVVP......",
+    ".......PPVVsVVVssVVVsVVPP.......",
+    "........PPVssVVssVVssVPP........",
+    "..........PPPssssssPPP..........",
+    "............PPPPPPPP............",
+    "................................",
+    "................................",
+};
+const desenho_t arte_icone_navegador = { icone_navegador, 32, 32 };
+
 bool arte_cor(char letra, uint32_t *cor)
 {
     switch (letra) {

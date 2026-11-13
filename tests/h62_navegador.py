@@ -138,6 +138,12 @@ def comparar(m, ref, j, rolagem, nome):
     vista = tela.crop((j["x"], j["y"] + BARRA, j["x"] + VISTA_L, j["y"] + BARRA + VISTA_A))
     esperado = Image.new("RGB", (VISTA_L, VISTA_A), (255, 255, 255))
     esperado.paste(ref.crop((0, rolagem, VISTA_L, min(ref.size[1], rolagem + VISTA_A))), (0, 0))
+    # A doca (H75) fica por cima do pé da janela: a comparação para acima
+    # dela (e do balão com o nome, 30 pixels acima).
+    corte = 768 - 6 - 56 - 30 - (j["y"] + BARRA)
+    if 0 < corte < VISTA_A:
+        vista = vista.crop((0, 0, VISTA_L, corte))
+        esperado = esperado.crop((0, 0, VISTA_L, corte))
     dif = ImageChops.difference(vista, esperado)
     caixa = dif.getbbox()
     if caixa:

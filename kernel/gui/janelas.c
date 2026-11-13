@@ -27,6 +27,8 @@
 #include "texto.h"
 #include "video.h"
 #include "disco.h"
+#include "vidro.h"
+#include "configuracoes.h"
 
 #define MAX_JANELAS     32
 #define FILA_EVENTOS    64
@@ -48,6 +50,8 @@ typedef struct {
     uint32_t   virt;          /* endereço dos pixels no espaço do programa */
     evento_t   fila[FILA_EVENTOS];
     uint32_t   ini, fim;
+    bool       minimizada;    /* H75: escondida, só o ícone na doca */
+    bool       escondida;     /* durante a animação de abrir ou restaurar (H76) */
 } janela_t;
 
 static janela_t janelas[MAX_JANELAS];
@@ -124,34 +128,334 @@ void gui_redesenhar(int x, int y, int l, int a)
     if (y + a > suj_y1) suj_y1 = y + a;
 }
 
-/* Inclui o contorno escuro de 1 pixel, desenhado por fora da moldura (sem
- * isso, arrastar deixava rastros). */
+/* Inclui a sombra em volta da moldura (sem isso, arrastar deixava rastros). */
 static void redesenhar_janela(janela_t *j)
 {
-    gui_redesenhar(j->x - 1, j->y - 1, moldura_l(j) + 2, moldura_a(j) + 2);
+    int m = VIDRO_SOMBRA + 1;
+    gui_redesenhar(j->x - m, j->y - m, moldura_l(j) + 2 * m, moldura_a(j) + 2 * m + 4);
 }
 
+/* A janela de cima que não está minimizada tem o foco. */
 static janela_t *focada(void)
 {
-    return qtd ? &janelas[ordem[qtd - 1]] : NULL;
+    for (int k = qtd - 1; k >= 0; k--)
+        if (!janelas[ordem[k]].minimizada) return &janelas[ordem[k]];
+    return NULL;
 }
+
+/* ------------------------------------------------------------ tema (H76) e efeitos (H77) */
+
+typedef struct {
+    uint32_t titulo_foco, titulo, texto_foco, texto;   /* barras de título */
+    int      k_titulo;                                  /* quanto da cor vai no vidro (de 256) */
+    uint32_t topo, topo_nome, topo_frase, topo_relogio; /* barra de cima */
+    int      k_topo;
+    uint32_t doca, doca_destaque, doca_ponto, doca_texto;
+    int      k_doca;
+    bool     claro;
+} tema_t;
+
+static const tema_t tema_escuro = {
+    0x0B7A3E, 0x3A4450, 0xFFFFFF, 0xD0D4D8, 175,
+    0x101820, 0xFFDF4A, 0xA8B4C2, 0xFFFFFF, 150,
+    0x101820, 0xFFFFFF, 0xFFDF4A, 0xFFFFFF, 130, false,
+};
+static const tema_t tema_claro = {
+    0x2E9E5B, 0xC4CCD4, 0xFFFFFF, 0x2A323A, 205,
+    0xF2F4F6, 0x0B6A36, 0x4A5560, 0x1E2328, 200,
+    0xF2F4F6, 0x1E2328, 0x0B7A3E, 0x1E2328, 185, true,
+};
+static const tema_t *tema = &tema_escuro;
+static bool efeitos_automaticos = true, efeitos_lento;
+
+static void ler_tema(void)
+{
+    const char *t = config_obter("aparencia.tema");
+    tema = t && txt_compara(t, "claro") == 0 ? &tema_claro : &tema_escuro;
+    const char *e = config_obter("aparencia.efeitos");
+    efeitos_automaticos = !e || txt_compara(e, "auto") == 0;
+    if (efeitos_automaticos) vidro_efeitos = !efeitos_lento;
+    else vidro_efeitos = txt_compara(e, "leves") != 0;
+}
+
+/* ------------------------------------------------------------ doca (H75) */
+
+typedef struct { const char *nome, *programa, *processo; const desenho_t *desenho; } fixo_t;
+static const fixo_t fixos[] = {
+    { "Arquivos", "/bin/arquivos", "arquivos", &arte_icone_arquivos },
+    { "Terminal", "/bin/terminal", "terminal", &arte_icone_terminal },
+    { "Navegador", "/bin/navegador", "navegador", &arte_icone_navegador },
+    { "Editor", "/bin/editor", "editor", &arte_icone_editor },
+    { "Configurações", "/bin/configuracoes", "configuracoes", &arte_icone_configuracoes },
+};
+#define QTD_FIXOS (int)(sizeof fixos / sizeof fixos[0])
+#define DOCA_CELULA 52
+#define DOCA_A      56
+#define MAX_DOCA    14
+
+typedef struct {
+    const char       *nome;
+    const desenho_t  *desenho;
+    const char       *programa;   /* NULL: só uma janela aberta */
+    int               janela;     /* índice em janelas[] de uma janela desse programa, ou -1 */
+} item_doca_t;
+static item_doca_t doca[MAX_DOCA];
+static int qtd_doca, doca_x, doca_y, doca_l, doca_sob = -1;
+static bool doca_ligada = true;
+
+static const char *nome_processo(janela_t *j)
+{
+    processo_t *p = processo_por_pid(j->pid);
+    return p ? p->nome : "";
+}
+
+static const desenho_t *desenho_de(const char *processo)
+{
+    static const struct { const char *p; const desenho_t *d; } t[] = {
+        { "calculadora", &arte_icone_calculadora }, { "banana", &arte_icone_banana }, { "sagui3d", &arte_icone_sagui3d },
+        { "sobre-o-sistema", &arte_icone_sobre }, { "energia", &arte_icone_sobre },
+    };
+    for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++) if (txt_compara(t[i].p, processo) == 0) return t[i].d;
+    return &arte_icone_instalado;
+}
+
+/* Monta a lista: os fixos e, depois, os programas abertos que não são fixos. */
+static void montar_doca(void)
+{
+    qtd_doca = 0;
+    for (int f = 0; f < QTD_FIXOS; f++) {
+        item_doca_t *it = &doca[qtd_doca++];
+        it->nome = fixos[f].nome; it->desenho = fixos[f].desenho; it->programa = fixos[f].programa; it->janela = -1;
+        for (int k = qtd - 1; k >= 0; k--)
+            if (txt_compara(nome_processo(&janelas[ordem[k]]), fixos[f].processo) == 0) { it->janela = ordem[k]; break; }
+    }
+    for (int k = 0; k < qtd && qtd_doca < MAX_DOCA; k++) {
+        janela_t *j = &janelas[ordem[k]];
+        const char *np = nome_processo(j);
+        bool fixo = false, repetido = false;
+        for (int f = 0; f < QTD_FIXOS; f++) if (txt_compara(np, fixos[f].processo) == 0) fixo = true;
+        for (int d = QTD_FIXOS; d < qtd_doca; d++) if (doca[d].janela >= 0 && janelas[doca[d].janela].pid == j->pid) repetido = true;
+        if (fixo || repetido) continue;
+        item_doca_t *it = &doca[qtd_doca++];
+        it->nome = j->titulo; it->desenho = desenho_de(np); it->programa = NULL; it->janela = ordem[k];
+    }
+    int antes_x = doca_x, antes_l = doca_l;
+    doca_l = qtd_doca * DOCA_CELULA + 16;
+    doca_x = ((int)video_largura() - doca_l) / 2;
+    doca_y = (int)video_altura() - DOCA_A - 6;
+    if (antes_l != doca_l || antes_x != doca_x) {
+        /* Mudou de tamanho: redesenha onde ela estava e onde está. */
+        int m = VIDRO_SOMBRA + VIDRO_RAIO;
+        int x0 = antes_x < doca_x ? antes_x : doca_x, x1 = antes_x + antes_l > doca_x + doca_l ? antes_x + antes_l : doca_x + doca_l;
+        gui_redesenhar(x0 - m, doca_y - 30, x1 - x0 + 2 * m, DOCA_A + 36 + m);
+    }
+}
+
+static void redesenhar_doca(void)
+{
+    int m = VIDRO_SOMBRA + VIDRO_RAIO;
+    gui_redesenhar(doca_x - m - DOCA_CELULA, doca_y - 30, doca_l + 2 * m + 2 * DOCA_CELULA, DOCA_A + 36);
+}
+
+static int doca_item_em(int x, int y)
+{
+    if (!doca_ligada || y < doca_y || y >= doca_y + DOCA_A || x < doca_x + 8) return -1;
+    int i = (x - doca_x - 8) / DOCA_CELULA;
+    return i < qtd_doca ? i : -1;
+}
+
+static void desenhar_doca(void)
+{
+    if (!doca_ligada) return;
+    vidro_sombra(&tela, doca_x, doca_y, doca_l, DOCA_A);
+    vidro_pintar(&tela, doca_x, doca_y, doca_l, DOCA_A, tema->doca, tema->k_doca, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    janela_t *f = focada();
+    for (int i = 0; i < qtd_doca; i++) {
+        int cx = doca_x + 8 + i * DOCA_CELULA;
+        bool aberto = doca[i].janela >= 0;
+        if (aberto && f && &janelas[doca[i].janela] == f)
+            vidro_pintar(&tela, cx + 2, doca_y + 4, DOCA_CELULA - 4, DOCA_A - 8, tema->doca_destaque, 50, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+        sup_desenho(&tela, cx + (DOCA_CELULA - 32) / 2, doca_y + 8, doca[i].desenho, 1);
+        if (aberto) sup_retangulo(&tela, cx + DOCA_CELULA / 2 - 3, doca_y + DOCA_A - 10, 6, 3, tema->doca_ponto);
+        if (i == QTD_FIXOS - 1 && qtd_doca > QTD_FIXOS)
+            sup_retangulo(&tela, cx + DOCA_CELULA + 1, doca_y + 12, 1, DOCA_A - 24, tema->doca_texto);
+    }
+    /* O nome do item sob o mouse, num balão acima da doca. */
+    if (doca_sob >= 0 && doca_sob < qtd_doca) {
+        char nome[40];
+        txt_copia_n(nome, doca[doca_sob].nome, sizeof nome);
+        int l = texto_largura(nome) + 16, x = doca_x + 8 + doca_sob * DOCA_CELULA + DOCA_CELULA / 2 - l / 2;
+        vidro_pintar(&tela, x, doca_y - 28, l, 22, tema->doca, tema->k_doca + 40 > 255 ? 255 : tema->k_doca + 40,
+                     CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+        sup_texto(&tela, x + 8, doca_y - 25, nome, tema->doca_texto);
+    }
+}
+
+/* ------------------------------------------------------------ menu do sagui (H75) */
+
+static const fixo_t menu_itens[] = {
+    { "Arquivos", "/bin/arquivos", "", 0 }, { "Terminal", "/bin/terminal", "", 0 },
+    { "Navegador", "/bin/navegador", "", 0 }, { "Editor", "/bin/editor", "", 0 },
+    { "Calculadora", "/bin/calculadora", "", 0 }, { "Banana", "/bin/banana", "", 0 },
+    { "Sagui 3D", "/bin/sagui3d", "", 0 }, { "Configurações", "/bin/configuracoes", "", 0 },
+    { "Sobre o SaguiOS", "/bin/sobre-o-sistema", "", 0 }, { "Desligar...", "/bin/energia", "", 0 },
+};
+#define QTD_MENU (int)(sizeof menu_itens / sizeof menu_itens[0])
+#define MENU_X 4
+#define MENU_Y (BARRA_SUPERIOR + 4)
+#define MENU_L 200
+#define MENU_ITEM 26
+static bool menu_aberto;
+static int menu_sob = -1;
+
+static void redesenhar_menu(void)
+{
+    gui_redesenhar(0, 0, MENU_X + MENU_L + VIDRO_SOMBRA + VIDRO_RAIO, MENU_Y + QTD_MENU * MENU_ITEM + 12 + VIDRO_SOMBRA + VIDRO_RAIO);
+}
+
+static void desenhar_menu(void)
+{
+    if (!menu_aberto) return;
+    int a = QTD_MENU * MENU_ITEM + 8;
+    vidro_sombra(&tela, MENU_X, MENU_Y, MENU_L, a);
+    vidro_pintar(&tela, MENU_X, MENU_Y, MENU_L, a, tema->topo, tema->k_topo + 30 > 255 ? 255 : tema->k_topo + 30,
+                 CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    for (int i = 0; i < QTD_MENU; i++) {
+        int y = MENU_Y + 4 + i * MENU_ITEM;
+        if (i == menu_sob) sup_retangulo(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, 0x0B7A3E);
+        sup_texto(&tela, MENU_X + 14, y + 5, menu_itens[i].nome, i == menu_sob ? 0xFFFFFF : tema->topo_relogio);
+    }
+}
+
+static int menu_item_em(int x, int y)
+{
+    if (!menu_aberto || x < MENU_X || x >= MENU_X + MENU_L || y < MENU_Y + 4) return -1;
+    int i = (y - MENU_Y - 4) / MENU_ITEM;
+    return i < QTD_MENU ? i : -1;
+}
+
+static void abrir_programa(const char *caminho)
+{
+    const char *nome = caminho;
+    for (const char *p = caminho; *p; p++) if (*p == '/') nome = p + 1;
+    char *argv[] = { (char *)nome, NULL };
+    int pid = processo_executar(caminho, 1, argv, NULL);
+    klog("[GUI] abrir %s (pid %d)\n", caminho, pid);
+}
+
+/* ------------------------------------------------------------ animações (H76) */
+
+/* Um contorno que vai de um retângulo a outro em alguns tiques: abrir,
+ * fechar, minimizar e restaurar. A janela que está abrindo fica escondida
+ * até o contorno chegar. */
+#define MAX_ANIM 6
+#define ANIM_TIQUES 10
+typedef struct { bool ativa; int de[4], para[4]; int passo; int janela; } anim_t;
+static anim_t anims[MAX_ANIM];
+
+static void anim_retangulo(anim_t *a, int r[4])
+{
+    for (int k = 0; k < 4; k++) r[k] = a->de[k] + (a->para[k] - a->de[k]) * a->passo / ANIM_TIQUES;
+}
+
+static void anim_sujar(anim_t *a)
+{
+    int r[4];
+    anim_retangulo(a, r);
+    gui_redesenhar(r[0] - 2, r[1] - 2, r[2] + 4, r[3] + 4);
+}
+
+static void animar(int de_x, int de_y, int de_l, int de_a, int x, int y, int l, int a, int janela)
+{
+    if (!vidro_efeitos) return;
+    for (int i = 0; i < MAX_ANIM; i++) {
+        if (anims[i].ativa) continue;
+        anims[i] = (anim_t){ true, { de_x, de_y, de_l, de_a }, { x, y, l, a }, 0, janela };
+        if (janela >= 0) janelas[janela].escondida = true;
+        anim_sujar(&anims[i]);
+        return;
+    }
+}
+
+static void anim_tique(void)
+{
+    for (int i = 0; i < MAX_ANIM; i++) {
+        anim_t *a = &anims[i];
+        if (!a->ativa) continue;
+        anim_sujar(a);
+        if (++a->passo > ANIM_TIQUES) {
+            a->ativa = false;
+            if (a->janela >= 0 && janelas[a->janela].usada) {
+                janelas[a->janela].escondida = false;
+                redesenhar_janela(&janelas[a->janela]);
+            }
+            continue;
+        }
+        anim_sujar(a);
+    }
+}
+
+static void desenhar_anims(void)
+{
+    for (int i = 0; i < MAX_ANIM; i++) {
+        if (!anims[i].ativa) continue;
+        int r[4];
+        anim_retangulo(&anims[i], r);
+        sup_moldura(&tela, r[0], r[1], r[2], r[3], 0xFFFFFF);
+        sup_moldura(&tela, r[0] + 1, r[1] + 1, r[2] - 2, r[3] - 2, 0x0B7A3E);
+    }
+}
+
+/* ------------------------------------------------------------ composição */
 
 static void desenhar_moldura(janela_t *j, bool foco)
 {
     int x = j->x, y = j->y, l = moldura_l(j), a = moldura_a(j);
-    uint32_t barra = foco ? 0x0B7A3E : 0x5A6470;
-    sup_retangulo(&tela, x, y, l, BARRA_TITULO, barra);
-    sup_retangulo(&tela, x, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, barra);
-    sup_retangulo(&tela, x + l - BORDA, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, barra);
-    sup_retangulo(&tela, x, y + a - BORDA, l, BORDA, barra);
-    sup_moldura(&tela, x - 1, y - 1, l + 2, a + 2, 0x101010);
-    sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? 0xFFFFFF : 0xD0D4D8);
-    /* Botão de fechar: um quadrado vermelho com um X. */
+    uint32_t cor = foco ? tema->titulo_foco : tema->titulo;
+    vidro_sombra(&tela, x, y, l, a);
+    vidro_pintar(&tela, x, y, l, BARRA_TITULO, cor, tema->k_titulo, CANTOS_EM_CIMA);
+    sup_retangulo(&tela, x, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
+    sup_retangulo(&tela, x + l - BORDA, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
+    sup_retangulo(&tela, x, y + a - BORDA, l, BORDA, cor);
+    if (!vidro_efeitos) sup_moldura(&tela, x - 1, y - 1, l + 2, a + 2, 0x101010);
+    sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
+    /* Fechar: um círculo vermelho com um X; minimizar: um traço. */
     int bx = x + l - BORDA - 20, by = y + 4;
-    sup_retangulo(&tela, bx, by, 16, 16, foco ? 0xD03C32 : 0x8A5A56);
-    for (int k = 3; k < 13; k++) {
-        sup_retangulo(&tela, bx + k, by + k, 2, 1, 0xFFFFFF);
-        sup_retangulo(&tela, bx + 15 - k - 1, by + k, 2, 1, 0xFFFFFF);
+    uint32_t vermelho = foco ? 0xE0483E : 0x9A6A66;
+    for (int r = 0; r < 16; r++) {
+        int pula = r < 4 ? (int[]){ 5, 3, 2, 1 }[r] : (r > 11 ? (int[]){ 1, 2, 3, 5 }[r - 12] : 0);
+        sup_retangulo(&tela, bx + pula, by + r, 16 - 2 * pula, 1, vermelho);
+    }
+    for (int k = 4; k < 12; k++) {
+        sup_retangulo(&tela, bx + k, by + k, 1, 1, 0xFFFFFF);
+        sup_retangulo(&tela, bx + 15 - k, by + k, 1, 1, 0xFFFFFF);
+    }
+    int mx = bx - 24;
+    sup_retangulo(&tela, mx + 3, by + 11, 10, 2, foco ? tema->texto_foco : tema->texto);
+}
+
+/* O vidro precisa do que está atrás dele: se o pedaço a redesenhar encosta
+ * num vidro, o pedaço cresce para cobrir o vidro inteiro e mais a margem do
+ * desfoque. Repete porque crescer pode encostar em outro vidro. */
+static bool cruza(int x, int y, int l, int a) { return x < suj_x1 && x + l > suj_x0 && y < suj_y1 && y + a > suj_y0; }
+
+static void expandir_vidro(void)
+{
+    if (!vidro_efeitos) return;
+    const int R = VIDRO_RAIO;
+    for (int volta = 0; volta < 4; volta++) {
+        int antes[4] = { suj_x0, suj_y0, suj_x1, suj_y1 };
+        if (cruza(0, 0, (int)video_largura(), BARRA_SUPERIOR + R)) gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR + R);
+        if (doca_ligada && cruza(doca_x - R, doca_y - 30 - R, doca_l + 2 * R, DOCA_A + 30 + 2 * R))
+            gui_redesenhar(doca_x - R - DOCA_CELULA, doca_y - 30 - R, doca_l + 2 * R + 2 * DOCA_CELULA, DOCA_A + 30 + 2 * R);
+        if (menu_aberto && cruza(0, 0, MENU_X + MENU_L + R, MENU_Y + QTD_MENU * MENU_ITEM + 8 + R)) redesenhar_menu();
+        for (int k = 0; k < qtd; k++) {
+            janela_t *j = &janelas[ordem[k]];
+            if (j->minimizada || j->escondida) continue;
+            if (cruza(j->x - R, j->y - R, moldura_l(j) + 2 * R, BARRA_TITULO + 2 * R))
+                gui_redesenhar(j->x - R, j->y - R, moldura_l(j) + 2 * R, BARRA_TITULO + 2 * R);
+        }
+        if (antes[0] == suj_x0 && antes[1] == suj_y0 && antes[2] == suj_x1 && antes[3] == suj_y1) break;
     }
 }
 
@@ -159,18 +463,28 @@ static void desenhar_moldura(janela_t *j, bool foco)
 void gui_mostrar(void)
 {
     if (!ativa || suj_x0 >= suj_x1) return;
+    montar_doca();
+    expandir_vidro();
     int x = suj_x0, y = suj_y0, l = suj_x1 - suj_x0, a = suj_y1 - suj_y0;
     suj_x0 = suj_x1 = 0;
     sup_recorte(&tela, x, y, l, a);
     if (tela.cx0 >= tela.cx1 || tela.cy0 >= tela.cy1) return;
     area_fundo(&tela);
+    janela_t *f = focada();
     for (int k = 0; k < qtd; k++) {
         janela_t *j = &janelas[ordem[k]];
-        desenhar_moldura(j, k == qtd - 1);
+        if (j->minimizada || j->escondida) continue;
+        desenhar_moldura(j, j == f);
         sup_copiar(&tela, j->x + BORDA, j->y + BARRA_TITULO, j->px, j->larg, j->alt, j->larg);
     }
+    desenhar_anims();
+    desenhar_doca();
+    if (tela.cy0 < BARRA_SUPERIOR) {
+        if (vidro_efeitos) vidro_pintar(&tela, 0, 0, (int)video_largura(), BARRA_SUPERIOR, tema->topo, tema->k_topo, 0);
+        area_barra(&tela, vidro_efeitos, tema->claro);
+    }
+    desenhar_menu();
     desenhar_aviso(&tela);
-    if (tela.cy0 < BARRA_SUPERIOR) area_barra(&tela);
     video_marcar(tela.cx0, tela.cy0, tela.cx1 - tela.cx0, tela.cy1 - tela.cy0);
     video_mostrar();
 }
@@ -195,6 +509,7 @@ static int janela_em(int x, int y)   /* índice em ordem[], de cima para baixo *
 {
     for (int k = qtd - 1; k >= 0; k--) {
         janela_t *j = &janelas[ordem[k]];
+        if (j->minimizada || j->escondida) continue;
         if (x >= j->x && x < j->x + moldura_l(j) && y >= j->y && y < j->y + moldura_a(j))
             return k;
     }
@@ -203,13 +518,50 @@ static int janela_em(int x, int y)   /* índice em ordem[], de cima para baixo *
 
 static void trazer_para_cima(int k)
 {
+    int i = ordem[k];
+    if (janelas[i].minimizada) {                  /* restaurar (H75): sai da doca */
+        janelas[i].minimizada = false;
+        janela_t *j = &janelas[i];
+        int d = -1;
+        for (int t = 0; t < qtd_doca; t++) if (doca[t].janela == i) d = t;
+        if (d >= 0) animar(doca_x + 8 + d * DOCA_CELULA, doca_y, DOCA_CELULA, DOCA_A, j->x, j->y, moldura_l(j), moldura_a(j), i);
+        klog("[GUI] janela %d restaurada\n", j->id);
+        redesenhar_janela(j);
+        redesenhar_doca();
+    }
     if (k == qtd - 1) return;
     janela_t *antes = focada();
-    int i = ordem[k];
     for (; k < qtd - 1; k++) ordem[k] = ordem[k + 1];
     ordem[qtd - 1] = i;
     if (antes) redesenhar_janela(antes);
     redesenhar_janela(&janelas[i]);
+    redesenhar_doca();
+}
+
+static void minimizar(janela_t *j)
+{
+    montar_doca();
+    int d = -1;
+    for (int t = 0; t < qtd_doca; t++) if (doca[t].janela == (int)(j - janelas)) d = t;
+    j->minimizada = true;
+    redesenhar_janela(j);
+    if (d >= 0) animar(j->x, j->y, moldura_l(j), moldura_a(j), doca_x + 8 + d * DOCA_CELULA, doca_y, DOCA_CELULA, DOCA_A, -1);
+    redesenhar_doca();
+    if (focada()) redesenhar_janela(focada());
+    klog("[GUI] janela %d minimizada\n", j->id);
+}
+
+/* Clique num item da doca: traz a janela do programa (restaurando se
+ * estiver minimizada) ou abre o programa. */
+static void doca_clique(int i)
+{
+    item_doca_t *it = &doca[i];
+    klog("[GUI] doca: %s\n", it->nome);
+    if (it->janela >= 0 && janelas[it->janela].usada) {
+        for (int k = 0; k < qtd; k++) if (ordem[k] == it->janela) { trazer_para_cima(k); break; }
+        return;
+    }
+    if (it->programa) abrir_programa(it->programa);
 }
 
 static void tratar_mouse(evento_mouse_t *m)
@@ -238,10 +590,31 @@ static void tratar_mouse(evento_mouse_t *m)
     }
 
     if (apertou) {
+        /* O menu aberto pega o clique: num item, abre; fora, só fecha. */
+        if (menu_aberto) {
+            int mi = menu_item_em(m->x, m->y);
+            menu_aberto = false;
+            menu_sob = -1;
+            redesenhar_menu();
+            if (mi >= 0) { klog("[GUI] menu: %s\n", menu_itens[mi].nome); abrir_programa(menu_itens[mi].programa); }
+            if (mi >= 0 || m->y >= BARRA_SUPERIOR) return;
+            if (m->x < 110) return;               /* clicou no próprio botão do menu: fecha */
+        }
+        int di = doca_item_em(m->x, m->y);
+        if (di >= 0) {
+            if (m->mudaram & BOTAO_ESQUERDO) doca_clique(di);
+            captura = -1;
+            return;
+        }
         int k = janela_em(m->x, m->y);
         if (k < 0 && m->y < BARRA_SUPERIOR) {
-            /* Na barra de cima: o botão de energia (H36). */
-            if ((m->mudaram & BOTAO_ESQUERDO) && area_energia_em(m->x, m->y)) area_energia_abrir();
+            /* Na barra de cima: o menu do sagui, o som e o botão de energia (H36, H75). */
+            if (!(m->mudaram & BOTAO_ESQUERDO)) return;
+            if (m->x < 110) { menu_aberto = true; redesenhar_menu(); klog("[GUI] menu aberto\n"); }
+            else if (area_som_em(m->x, m->y)) {
+                char *argv[] = { "configuracoes", "som", NULL };
+                processo_executar("/bin/configuracoes", 2, argv, NULL);
+            } else if (area_energia_em(m->x, m->y)) area_energia_abrir();
             return;
         }
         if (k < 0) {
@@ -266,6 +639,8 @@ static void tratar_mouse(evento_mouse_t *m)
                 evento_t e = { .tipo = EV_FECHAR };
                 entregar(j, &e);
                 klog("[GUI] fechar janela %d (%s)\n", j->id, j->titulo);
+            } else if ((m->mudaram & BOTAO_ESQUERDO) && rx >= bx - 24 && rx < bx - 8 && ry >= 4 && ry < 20) {
+                minimizar(j);
             } else if (m->mudaram & BOTAO_ESQUERDO) {
                 arrastando = idx;
                 arr_dx = rx; arr_dy = ry;
@@ -297,7 +672,12 @@ static void tratar_mouse(evento_mouse_t *m)
         if (soltou) captura = -1;
         return;
     }
-    /* Movimento sem botão: só para a janela com foco, se o mouse estiver nela. */
+    /* Movimento sem botão: o realce da doca e do menu, e a janela com foco. */
+    int sob = doca_item_em(m->x, m->y);
+    if (sob != doca_sob) { doca_sob = sob; redesenhar_doca(); }
+    int ms = menu_item_em(m->x, m->y);
+    if (ms != menu_sob) { menu_sob = ms; redesenhar_menu(); }
+    if (sob >= 0) return;
     janela_t *j = focada();
     if (j) {
         int cx = m->x - j->x - BORDA, cy = m->y - j->y - BARRA_TITULO;
@@ -324,8 +704,14 @@ static void tarefa_gerenciador(void *arg)
             evento_t e = { .tipo = EV_TECLA, .tecla = (unsigned)t, .modificadores = teclado_modificadores() & 3 };
             entregar(j, &e);
         }
-        if (area_config_mudou() | area_instalados_mudaram())
+        if (area_config_mudou() | area_instalados_mudaram()) {
+            ler_tema();
             gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+        }
+        anim_tique();
+        /* A doca muda quando janelas abrem e fecham. */
+        static int qtd_vista = -1;
+        if (qtd != qtd_vista) { qtd_vista = qtd; montar_doca(); redesenhar_doca(); }
         if (area_relogio_mudou())
             gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR);
         /* Pendrive: avisos do kernel viram notificações; o ícone acompanha. */
@@ -355,7 +741,22 @@ bool gui_iniciar(void)
 {
     if (!video_ativo() || !area_iniciar()) return false;
     sup_iniciar(&tela, video_buffer(), (int)video_largura(), (int)video_altura());
+    vidro_iniciar((int)video_largura());
     ativa = true;
+    /* Efeitos automáticos (H77): mede quanto custa recompor a tela inteira
+     * com o vidro; se passar de 40 ms por quadro, o computador é lento e
+     * fica com os efeitos leves (sem desfoque e sem sombra). */
+    vidro_efeitos = true;
+    uint32_t t0 = relogio_tiques();
+    for (int i = 0; i < 4; i++) {
+        gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+        gui_mostrar();
+    }
+    uint32_t ms = (relogio_tiques() - t0) * (1000 / TIQUES_POR_SEGUNDO) / 4;
+    efeitos_lento = ms > 40;
+    ler_tema();
+    klog("[GUI] quadro inteiro com vidro: %u ms; efeitos %s (%s)\n", ms, vidro_efeitos ? "completos" : "leves",
+         efeitos_automaticos ? "escolha automatica" : "escolha do usuario");
     gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
     gui_mostrar();
     tarefa_kernel("janelas", tarefa_gerenciador, NULL);
@@ -377,6 +778,10 @@ static void destruir(int i)
 {
     janela_t *j = &janelas[i];
     redesenhar_janela(j);
+    if (!j->minimizada && !j->escondida)
+        animar(j->x, j->y, moldura_l(j), moldura_a(j), j->x + moldura_l(j) / 2 - moldura_l(j) / 8,
+               j->y + moldura_a(j) / 2 - moldura_a(j) / 8, moldura_l(j) / 4, moldura_a(j) / 4, -1);
+    for (int k = 0; k < MAX_ANIM; k++) if (anims[k].janela == i) anims[k].janela = -1;
     processo_t *dono = processo_por_pid(j->pid);
     if (dono && dono->usuario && dono->espaco != espaco_kernel())
         for (uint32_t k = 0; k < j->paginas; k++)
@@ -441,6 +846,8 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     if (antes) redesenhar_janela(antes);
     ordem[qtd++] = i;
     redesenhar_janela(j);
+    animar(j->x + moldura_l(j) / 2 - moldura_l(j) / 8, j->y + moldura_a(j) / 2 - moldura_a(j) / 8, moldura_l(j) / 4,
+           moldura_a(j) / 4, j->x, j->y, moldura_l(j), moldura_a(j), i);
     gui_mostrar();
     *(uint32_t *)ppixels = j->virt;
     klog("[GUI] janela %d criada por %d: \"%s\" %dx%d em (%d,%d)\n", j->id, j->pid, j->titulo, l, a, j->x, j->y);

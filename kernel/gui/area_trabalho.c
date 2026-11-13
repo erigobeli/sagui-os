@@ -5,6 +5,7 @@
  * redesenho só a parte necessária é copiada. A barra superior é desenhada
  * por cima, porque o relógio muda. */
 #include "gui.h"
+#include "hda.h"
 #include "arte.h"
 #include "console.h"
 #include "memoria.h"
@@ -23,6 +24,7 @@ static uint32_t *fundo;
 static int larg, alt;
 static int minuto_mostrado = -1;
 static int rede_mostrada = -1;
+static int volume_mostrado = -1;
 
 typedef struct {
     const char *nome;
@@ -226,28 +228,34 @@ void area_fundo(superficie_t *s)
 bool area_relogio_mudou(void)
 {
     if (rede_estado() != rede_mostrada) return true;   /* o ícone de rede também vive na barra */
+    if (sis_som_volume((uint32_t)-1, 0, 0, 0, 0) != volume_mostrado && volume_mostrado != -1) return true;
     data_hora_t d;
     cmos_ler_data(&d);
     return d.minuto != minuto_mostrado;
 }
 
-void area_barra(superficie_t *s)
+/* vidro: o fundo da barra já foi pintado (vidro, H74); claro: tema claro (H76). */
+void area_barra(superficie_t *s, bool vidro, bool claro)
 {
     static const char *semana[] = { "dom", "seg", "ter", "qua", "qui", "sex", "sáb" };
-    sup_retangulo(s, 0, 0, larg, BARRA_SUPERIOR, 0x18202A);
+    uint32_t nome = claro ? 0x0B6A36 : 0xFFDF4A, frase = claro ? 0x4A5560 : 0x9AA8B8, relogio = claro ? 0x1E2328 : 0xFFFFFF;
+    if (!vidro) sup_retangulo(s, 0, 0, larg, BARRA_SUPERIOR, claro ? 0xE8ECEF : 0x18202A);
     sup_retangulo(s, 0, BARRA_SUPERIOR - 1, larg, 1, 0x0B7A3E);
-    /* Cabecinha do sagui (as linhas 2 a 17 do ícone "sobre") e o nome. */
+    /* O botão do menu (H75): cabecinha do sagui (as linhas 2 a 17 do ícone
+     * "sobre"), o nome e uma setinha. */
     desenho_t cabeca = { arte_icone_sobre.linhas + 2, 32, 16 };
     sup_desenho(s, 6, 4, &cabeca, 1);
-    sup_texto(s, 44, 4, "SaguiOS", 0xFFDF4A);
-    sup_texto(s, 112, 4, "um sistema operacional escrito do zero por IA", 0x9AA8B8);
+    sup_texto(s, 44, 4, "SaguiOS", nome);
+    for (int k = 0; k < 4; k++) sup_retangulo(s, 104 - 4 + k, 10 + k, 8 - 2 * k, 1, nome);
+    sup_texto(s, 120, 4, "um sistema operacional escrito do zero por IA", frase);
+    (void)relogio;
     data_hora_t d;
     cmos_ler_data(&d);
     minuto_mostrado = d.minuto;
     char hora[48];
     snformatar(hora, sizeof hora, "%s %02u/%02u/%u  %02u:%02u", semana[dia_da_semana(d.ano, d.mes, d.dia)],
                d.dia, d.mes, d.ano, d.hora, d.minuto);
-    sup_texto(s, larg - texto_largura(hora) - 10, 4, hora, 0xFFFFFF);
+    sup_texto(s, larg - texto_largura(hora) - 10, 4, hora, relogio);
     /* Ícone de rede (H47), à esquerda do botão de energia: verde conectado,
      * amarelo pedindo endereço, cinza sem cabo; some se não há placa. */
     int estado = rede_estado();
@@ -266,6 +274,23 @@ void area_barra(superficie_t *s)
             }
         }
     }
+    /* Som (H75), à esquerda da rede: um alto-falante com ondas pelo volume. */
+    int vol = sis_som_volume((uint32_t)-1, 0, 0, 0, 0);
+    if (vol >= 0) {
+        int sx, sy, sl, sa;
+        area_som_retangulo(&sx, &sy, &sl, &sa);
+        uint32_t c = claro ? 0x2A323A : 0xE8ECEF;
+        sup_retangulo(s, sx + 2, sy + 7, 3, 6, c);
+        for (int k = 0; k < 5; k++) sup_retangulo(s, sx + 5 + k, sy + 7 - k, 1, 6 + 2 * k, c);
+        int ondas = vol == 0 ? 0 : vol < 40 ? 1 : vol < 75 ? 2 : 3;
+        for (int o = 0; o < ondas; o++) {
+            int ox = sx + 12 + o * 3, meio = sy + 10, h = 3 + o * 2;
+            sup_retangulo(s, ox, meio - h, 1, 2 * h, c);
+        }
+        if (vol == 0)
+            for (int k = 0; k < 6; k++) { sup_retangulo(s, sx + 12 + k, sy + 7 + k, 1, 1, 0xE04848); sup_retangulo(s, sx + 17 - k, sy + 7 + k, 1, 1, 0xE04848); }
+        volume_mostrado = vol;
+    }
     /* Botão de energia (H36), à esquerda do relógio. */
     int ex, ey, el, ea;
     area_energia_retangulo(&ex, &ey, &el, &ea);
@@ -279,6 +304,20 @@ void area_energia_retangulo(int *x, int *y, int *l, int *a)
 {
     *l = 20; *a = 20; *y = 2;
     *x = larg - texto_largura("ddd 00/00/0000  00:00") - 10 - 30;
+}
+
+/* O som fica à esquerda do ícone de rede. */
+void area_som_retangulo(int *x, int *y, int *l, int *a)
+{
+    area_energia_retangulo(x, y, l, a);
+    *x -= 56;
+}
+
+bool area_som_em(int x, int y)
+{
+    int sx, sy, sl, sa;
+    area_som_retangulo(&sx, &sy, &sl, &sa);
+    return x >= sx && x < sx + sl && y >= sy && y < sy + sa;
 }
 
 bool area_energia_em(int x, int y)
