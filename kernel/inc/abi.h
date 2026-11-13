@@ -61,7 +61,11 @@
 #define SIS_CONFIG_LER     61   /* (chave, &valor, max) -> tamanho ou ERRO_NAO_EXISTE (H37) */
 #define SIS_CONFIG_GRAVAR  62   /* (chave, valor) -> 1 guardada no pendrive, 0 só até desligar */
 #define SIS_AJUSTAR_DATA   63   /* (&data_t) -> acerta o relógio da placa-mãe (H38) */
-#define SIS_MAX            64
+#define SIS_SOM_ABRIR      64   /* () -> fonte de som, ou ERRO_NAO_EXISTE sem placa (H41) */
+#define SIS_SOM_ENVIAR     65   /* (fonte, &quadros, bytes) -> bytes aceitos; 16 bits estéreo 48 kHz */
+#define SIS_SOM_FECHAR     66   /* (fonte) */
+#define SIS_SOM_VOLUME     67   /* (novo 0-100 ou -1) -> volume atual */
+#define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
 #define ERRO_INVALIDO      -1

@@ -24,6 +24,7 @@
 #include "relogio.h"
 #include "sistema.h"
 #include "texto.h"
+#include "hda.h"
 
 #define PIT_FREQ    1193182u
 #define PIT_CANAL2  0x42
@@ -111,6 +112,12 @@ int32_t sis_bip(uint32_t pnotas, uint32_t n, uint32_t modo, uint32_t d, uint32_t
     if (!usuario_ok((const void *)pnotas, n * sizeof(nota_t), false)) return ERRO_INVALIDO;
     nota_t copia[MAX_NOTAS];
     memcpy(copia, (const void *)pnotas, n * sizeof(nota_t));
+    /* Com placa de som (H42), as notas tocam por ela; o alto-falante do PC
+     * fica de reserva para quando não há placa. */
+    if (misturador_notas(copia, (int)n, modo == BIP_ENFILEIRAR)) {
+        for (uint32_t i = 0; i < n; i++) klog("[SOM] nota %u Hz %u ms\n", copia[i].freq, copia[i].ms);
+        return (int32_t)n;
+    }
     bool i0 = int_salva_desliga();
     if (modo != BIP_ENFILEIRAR) { inicio = 0; quantas = 0; restante_tiques = 0; }
     for (uint32_t i = 0; i < n && quantas < MAX_NOTAS; i++) {

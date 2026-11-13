@@ -1,9 +1,9 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T01:08:35",
-  "situacao": "Trabalhando na H40: Driver Intel HD Audio",
+  "atualizado": "2026-11-13T01:15:43",
+  "situacao": "Trabalhando na H41: Som para os programas",
   "fase_atual": 2,
-  "historia_atual": "H40",
+  "historia_atual": "H41",
   "bloqueio": "",
   "mensagem_fase": "Eli, a fase 1 da versão 2.0 (Base e Configurações) está pronta para testar quando puder: entrega/v2-fase1/ e roteiro em docs/teste-v2-fase1.md. Pedido especial: a foto do comando pci no G470. Sigo para a fase 2 (som).",
   "raiz": "../../",
@@ -31,7 +31,7 @@
       "numero": 2,
       "nome": "Som",
       "estado": "em andamento",
-      "progresso": 0.0
+      "progresso": 33.3
     },
     {
       "numero": 3,
@@ -155,12 +155,12 @@
       "titulo": "Driver Intel HD Audio",
       "objetivo": "Controlador (comandos ao codec pelas filas da especificação), descoberta do codec e do caminho até a saída (alto-falante e fone), reprodução por DMA com lista de buffers.",
       "aceite": "o QEMU grava num `.wav` uma senoide de 440 Hz tocada pelo SaguiOS; o teste mede a frequência gravada.",
-      "estado": "em andamento",
+      "estado": "feito",
       "bonus": false,
       "inicio": "2026-11-13T01:08:35",
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "fim": "2026-11-13T01:15:43",
+      "minutos": 7,
+      "resultado": "Driver Intel HD Audio: CORB/RIRB, descoberta do caminho pino-DAC no codec, fluxo de saída 48 kHz/16 bits por DMA; tom de 440 Hz conferido no .wav do QEMU"
     },
     {
       "id": "H41",
@@ -168,9 +168,9 @@
       "titulo": "Som para os programas",
       "objetivo": "Chamadas de sistema de som, mistura de vários programas tocando ao mesmo tempo, volume. Aba **Som** nas Configurações.",
       "aceite": "dois programas tocando juntos aparecem misturados no `.wav`; volume em 0 grava silêncio.",
-      "estado": "a fazer",
+      "estado": "em andamento",
       "bonus": false,
-      "inicio": null,
+      "inicio": "2026-11-13T01:15:43",
       "fim": null,
       "minutos": null,
       "resultado": ""
@@ -714,6 +714,14 @@
   ],
   "acoes": [
     {
+      "data": "2026-11-13T01:15:43",
+      "texto": "Início da H41: Som para os programas"
+    },
+    {
+      "data": "2026-11-13T01:15:43",
+      "texto": "H40 concluída: Driver Intel HD Audio: CORB/RIRB, descoberta do caminho pino-DAC no codec, fluxo de saída 48 kHz/16 bits por DMA; tom de 440 Hz conferido no .wav do QEMU"
+    },
+    {
       "data": "2026-11-13T01:08:35",
       "texto": "Início da H40: Driver Intel HD Audio"
     },
@@ -773,6 +781,11 @@
   "erros": [],
   "capturas": [
     {
+      "arquivo": "docs/v2/capturas/H40-som-teste.png",
+      "nome": "H40-som-teste.png",
+      "data": "2026-11-13T01:15:29"
+    },
+    {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
       "data": "2026-11-13T01:07:04"
@@ -820,14 +833,14 @@
   ],
   "linhas": {
     "boot": 903,
-    "kernel": 10435,
-    "userland": 6826,
-    "ferramentas": 3915
+    "kernel": 11156,
+    "userland": 6920,
+    "ferramentas": 3982
   },
   "imagem": {
-    "bytes_util": 647680,
+    "bytes_util": 664064,
     "bytes_arquivo": 1048576,
     "meta_bytes": null
   },
-  "progresso_geral": 11.6
+  "progresso_geral": 14.0
 }

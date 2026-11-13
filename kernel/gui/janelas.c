@@ -14,6 +14,7 @@
  * chamadas de sistema mexem nas mesmas listas; por isso a tarefa trabalha
  * com as interrupções desligadas (as chamadas já rodam assim). */
 #include "gui.h"
+#include "hda.h"
 #include "abi.h"
 #include "console.h"
 #include "memoria.h"
@@ -75,6 +76,7 @@ static void aviso_retangulo(int *x, int *y) { *x = (int)video_largura() - AVISO_
 
 void gui_aviso(const char *texto)
 {
+    misturador_som_sistema(SOM_AVISO);
     txt_copia_n(aviso_texto, texto, sizeof aviso_texto);
     aviso_ate = relogio_tiques() + 5 * TIQUES_POR_SEGUNDO;
     int x, y;

@@ -5,6 +5,7 @@
  * interrupções e relógio, memória física e alocador, teclado, sistema de
  * arquivos e, por fim, o terminal. Tudo cabe em poucas linhas na tela: no
  * G470 o mapa de memória grande empurrava a saudação para fora (erro 1). */
+#include "hda.h"
 #include "bootinfo.h"
 #include "console.h"
 #include "texto.h"
@@ -256,6 +257,15 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
             console_cor(COR_CINZA, COR_PRETO);
         }
     }
+    /* H40: som pela placa Intel HD Audio, se houver (o bip continua de reserva). */
+    if (hda_iniciar()) {
+        misturador_iniciar();
+        char linha[128];
+        snformatar(linha, sizeof linha, "Som: Intel HD Audio, %s", hda_descricao());
+        etapa(linha);
+    } else {
+        klog("[SOM] sem placa HD Audio: so o bip\n");
+    }
     klog("[SAGUI] boot ok\n");
 
     bool vai_ter_gui = grafico && !(info_boot.opcoes & 2);
@@ -269,6 +279,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     if (grafico && !(info_boot.opcoes & 2) && gui_iniciar()) {
         console_esconder(true);
         klog("[SAGUI] area de trabalho no ar\n");
+        misturador_som_sistema(SOM_INICIO);
         if (info_boot.teste[0] == '/') {
             rodar_programa_de_teste(info_boot.teste);   /* testes da fase 5: programa gráfico */
         } else {

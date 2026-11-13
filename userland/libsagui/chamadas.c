@@ -39,6 +39,10 @@ void reiniciar(void)                  { chamar(SIS_REINICIAR, 0, 0, 0); }
 int  config_ler(const char *chave, char *valor, int max) { return chamar(SIS_CONFIG_LER, (unsigned)chave, (unsigned)valor, (unsigned)max); }
 int  config_gravar(const char *chave, const char *valor) { return chamar(SIS_CONFIG_GRAVAR, (unsigned)chave, (unsigned)valor, 0); }
 int  ajustar_data(const data_t *d)    { return chamar(SIS_AJUSTAR_DATA, (unsigned)d, 0, 0); }
+int  som_abrir(void)                  { return chamar(SIS_SOM_ABRIR, 0, 0, 0); }
+int  som_enviar(int f, const void *q, unsigned bytes) { return chamar(SIS_SOM_ENVIAR, (unsigned)f, (unsigned)q, bytes); }
+int  som_fechar(int f)                { return chamar(SIS_SOM_FECHAR, (unsigned)f, 0, 0); }
+int  som_volume(int novo)             { return chamar(SIS_SOM_VOLUME, (unsigned)novo, 0, 0); }
 void desligar(void)                   { chamar(SIS_DESLIGAR, 0, 0, 0); }
 int  modo_terminal(int m)             { return chamar(SIS_MODO_TERMINAL, (unsigned)m, 0, 0); }
 int  limpar_tela(void)                { return chamar(SIS_LIMPAR_TELA, 0, 0, 0); }

@@ -61,6 +61,7 @@ static const comando_t comandos[] = {
     { "usb", NULL, false, false, "diagnóstico USB", "usb", "Mostra os controladores USB 2.0, as portas e os dispositivos." },
     { "pci", NULL, false, false, "lista o hardware", "pci", "Lista os dispositivos PCI (rede, som, USB, vídeo) e o que o SaguiOS já usa." },
     { "config", NULL, false, false, "configurações", "config [chave [valor]]", "Lê ou muda uma configuração do sistema (guardada no pendrive)." },
+    { "som", NULL, false, false, "placa de som", "som [teste [Hz [ms]] | volume [0-100]]", "Mostra a placa de som, toca um tom de teste ou muda o volume." },
     { "bip", NULL, false, false, "toca um bip", "bip [Hz [ms]] | bip escala", "Toca uma nota no alto-falante do PC (padrão: 880 Hz por 200 ms)." },
     { "arquivos", NULL, false, true, "abre o Arquivos", "arquivos [pasta]", "Abre o Arquivos numa janela." },
     { "editor", NULL, false, true, "editor de texto", "editor [arquivo]", "Abre o Editor de texto numa janela." },

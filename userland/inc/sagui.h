@@ -69,6 +69,12 @@ void     desligar(void);   /* grava os pendrives e desliga (H36) */
 int      config_ler(const char *chave, char *valor, int max);    /* tamanho, ou ERRO_NAO_EXISTE */
 int      config_gravar(const char *chave, const char *valor);    /* 1 guardada no pendrive, 0 só até desligar */
 int      ajustar_data(const data_t *d);                         /* acerta o relógio da placa-mãe (H38) */
+/* Som pela placa (H41): quadros de 16 bits, estéreo, 48 kHz (4 bytes cada). */
+#define SOM_TAXA 48000
+int      som_abrir(void);                                       /* fonte, ou ERRO_NAO_EXISTE sem placa */
+int      som_enviar(int fonte, const void *quadros, unsigned bytes);   /* bytes aceitos (não espera) */
+int      som_fechar(int fonte);
+int      som_volume(int novo);                                  /* -1 só consulta; devolve 0-100 */
 int      modo_terminal(int modo);
 int      limpar_tela(void);
 
