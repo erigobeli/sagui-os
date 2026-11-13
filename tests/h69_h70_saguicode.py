@@ -88,6 +88,20 @@ def roteiro(corpo):
         if len(resultados) == 0:
             return chamada("escrever_arquivo", {"caminho": "nota.txt", "conteudo": "apagado\n"})
         return texto_em_pedacos("Tudo bem, não mudei o arquivo.")
+    if "programa ola" in usuario:
+        errado = '#include "sagui.h"\n\nint principal(int argc, char **argv)\n{\n    imprimir("oi do sagui code\\n")\n    return 0;\n}\n'
+        if len(resultados) == 0:
+            return chamada("escrever_arquivo", {"caminho": "ola.c", "conteudo": errado}, "Vou escrever o programa.")
+        if len(resultados) == 1:
+            return chamada("compilar", {"arquivo": "ola.c", "saida": "ola"}, idc="c2")
+        if len(resultados) == 2:
+            return chamada("editar_arquivo", {"caminho": "ola.c", "trecho_antigo": 'code\\n")\n', "trecho_novo": 'code\\n");\n'},
+                           "O compilador pediu um ponto e vírgula.", idc="c3")
+        if len(resultados) == 3:
+            return chamada("compilar", {"arquivo": "ola.c", "saida": "ola"}, idc="c4")
+        if len(resultados) == 4:
+            return chamada("rodar", {"programa": "ola"}, idc="c5")
+        return texto_em_pedacos("Pronto: o programa ola roda.")
     if "laço infinito" in usuario:
         return chamada("listar_pasta", {"caminho": "."}, idc=f"call_{len(resultados)}")
     return texto_em_pedacos("Não entendi.")
@@ -137,7 +151,7 @@ def main():
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     pen = criar_pendrive("h69-pen", pastas=(".saguios", "projetos"), arquivos={
         ".saguios/chaves.txt": f"# chaves de API\nopenrouter = {CHAVE}\n",
-        ".saguios/configuracoes.txt": f"ia.servidor = http://10.0.2.2:{porta}/api/v1\nia.modelo = anthropic/claude-teste\nia.max_passos = 4\n",
+        ".saguios/configuracoes.txt": f"ia.servidor = http://10.0.2.2:{porta}/api/v1\nia.modelo = anthropic/claude-teste\nia.max_passos = 6\n",
     })
     try:
         with Maquina("h69", "ide", extras=REDE + ["-device", "usb-ehci,id=ehci"] + pendrive_qemu(pen), memoria="768M") as m:
@@ -188,12 +202,31 @@ def main():
             negado = [x for x in pedidos[-1]["corpo"]["messages"] if x["role"] == "tool"][-1]["content"]
             verificar("não permitiu" in negado and "gravou" not in s, "sobrescrever pede licença; \"n\" impede e o modelo fica sabendo")
             m.captura("H70-2-licenca")
-            # Limite de passos (max_passos = 4).
+            # H70 com o compilador: escrever, compilar com erro, corrigir, compilar, rodar.
+            m.digitar("/limpar\n", 0.05)
+            time.sleep(1)
+            antes = len(m.serial())
+            n0 = len(pedidos)
+            m.digitar("faça o programa ola\n", 0.05)
+            esperar(m, "Editar", 90, antes)
+            m.digitar("s\n", 0.1)
+            esperar(m, "Rodar o programa", 90, antes)
+            m.digitar("s\n", 0.1)
+            s = esperar(m, "saguicode: pedido terminado", 90, antes)
+            tools = [x["content"] for x in pedidos[-1]["corpo"]["messages"] if x["role"] == "tool"]
+            verificar(len(tools) >= 5 and "faltou ';'" in tools[1] and "dica" in tools[1],
+                      "a primeira compilação devolveu o erro com a dica para o modelo")
+            verificar("Compilou sem erros" in tools[3], "depois de editar, compilou")
+            verificar("oi do sagui code" in tools[4], "rodar devolveu a saída do programa")
+            verificar("compilar ola.c -> ola (codigo 1)" in s and "compilar ola.c -> ola (codigo 0)" in s,
+                      "o laço completo (escrever, erro, corrigir, compilar, rodar) passou pelo cc de verdade")
+            m.captura("H70-3-compilar")
+            # Limite de passos (max_passos = 6).
             antes = len(m.serial())
             n0 = len(pedidos)
             m.digitar("laço infinito\n", 0.05)
             s = esperar(m, "saguicode: pedido terminado", 90, antes)
-            verificar(len(pedidos) - n0 == 4 and "Limite de 4 passos" in m.serial()[antes:].replace("\r", ""),
+            verificar(len(pedidos) - n0 == 6 and "Limite de 6 passos" in m.serial()[antes:].replace("\r", ""),
                       f"o limite de passos parou o laço ({len(pedidos) - n0} pedidos)")
             m.digitar("/sair\n", 0.05)
             time.sleep(1)

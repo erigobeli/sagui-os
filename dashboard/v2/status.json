@@ -1,11 +1,11 @@
 {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T18:17:52",
-  "situacao": "Trabalhando na H68: Prova de fogo",
-  "fase_atual": 7,
-  "historia_atual": "H68",
+  "atualizado": "2026-11-13T19:42:41",
+  "situacao": "Aguardando teste do Eli: fase 9",
+  "fase_atual": 8,
+  "historia_atual": null,
   "bloqueio": "H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue",
-  "mensagem_fase": "Eli, a fase 6 (Sagui Navegador) está pronta: entrega/v2-fase6/ e docs/teste-v2-fase6.md. Sigo para a fase 7 (compilador) e 8 (Sagui Code).",
+  "mensagem_fase": "Eli, as fases 7 (compilador) e 9 (visual moderno, com redimensionar e maximizar) estão prontas: entrega/v2-fase7/ e v2-fase9/ (a mesma imagem), roteiros em docs/teste-v2-fase7.md e docs/teste-v2-fase9.md. A fase 8 (Sagui Code) espera a sua chave do OpenRouter para o teste final.",
   "raiz": "../../",
   "links": [
     {
@@ -60,20 +60,20 @@
     {
       "numero": 7,
       "nome": "Compilador C",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "progresso": 100.0
     },
     {
       "numero": 8,
       "nome": "Sagui Code",
       "estado": "em andamento",
-      "progresso": 0.0
+      "progresso": 20.0
     },
     {
       "numero": 9,
       "nome": "Visual moderno",
-      "estado": "em andamento",
-      "progresso": 80.0
+      "estado": "aguardando teste",
+      "progresso": 100.0
     },
     {
       "numero": 10,
@@ -467,7 +467,7 @@
       "titulo": "A linguagem",
       "objetivo": "Definir em `docs/c-do-sagui.md` o C aceito: tipos inteiros, `char`, ponteiros, vetores, `struct`, `union`, `enum`, `typedef`, funções, laços, `switch`, `#include`, `#define` simples, e a `libsagui`. Sem ponto flutuante na primeira versão (como os programas atuais). Esse documento também é o manual que o Sagui Code manda para a IA.",
       "aceite": "manual revisado com exemplos; lista do que fica de fora.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T18:17:51",
       "fim": "2026-11-13T18:17:51",
@@ -480,7 +480,7 @@
       "titulo": "Frente do compilador",
       "objetivo": "Pré-processador, leitura, verificação de tipos e mensagens de erro **em português, com linha, coluna e uma dica** (pensadas para a IA conseguir se corrigir sozinha).",
       "aceite": "50 programas de teste com erros dão as mensagens esperadas; 50 programas válidos passam.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T18:17:51",
       "fim": "2026-11-13T18:17:52",
@@ -493,7 +493,7 @@
       "titulo": "Fundo do compilador",
       "objetivo": "Representação intermediária própria, geração de código x86 de 32 bits, montador e ligador próprios, ELF do SaguiOS ligado à `libsagui`.",
       "aceite": "os 50 programas válidos rodam no SaguiOS com a saída esperada.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T18:17:51",
       "fim": "2026-11-13T18:17:52",
@@ -506,7 +506,7 @@
       "titulo": "Compilar dentro do sistema",
       "objetivo": "Comando `cc arquivo.c -o programa`, botão **Compilar e rodar** no Editor e instalação do resultado em `/usb/programas/`.",
       "aceite": "no QEMU, digitar um programa no Editor, compilar e rodar sem sair do SaguiOS.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T18:17:52",
       "fim": "2026-11-13T18:17:52",
@@ -519,7 +519,7 @@
       "titulo": "Prova de fogo",
       "objetivo": "Compilar **dentro do SaguiOS** programas da 1.0 (pelo menos `wc`, `cat`, `calculadora` e `banana`) e comparar o comportamento com as versões feitas pelo GCC.",
       "aceite": "os programas compilados pelo SaguiOS passam nos mesmos testes da 1.0.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T18:17:52",
       "fim": "2026-11-13T18:17:52",
@@ -545,12 +545,12 @@
       "titulo": "O laço do agente",
       "objetivo": "Ferramentas: `ler_arquivo`, `escrever_arquivo`, `editar_arquivo` (trocar um trecho), `listar_pasta`, `executar_comando`, `compilar` e `rodar`. Confirmação do usuário antes de sobrescrever, apagar ou rodar comandos; limite de passos por pedido.",
       "aceite": "com o servidor falso, o laço completo (escrever, compilar com erro, corrigir, compilar, rodar) funciona e cada pedido de confirmação aparece.",
-      "estado": "a fazer",
+      "estado": "feito",
       "bonus": false,
-      "inicio": null,
-      "fim": null,
-      "minutos": null,
-      "resultado": ""
+      "inicio": "2026-11-13T19:42:41",
+      "fim": "2026-11-13T19:42:41",
+      "minutos": 1,
+      "resultado": "laço completo com servidor falso e o cc de verdade: escrever, erro, corrigir, compilar, rodar; licenças e limite de passos"
     },
     {
       "id": "H71",
@@ -597,7 +597,7 @@
       "titulo": "Vidro",
       "objetivo": "Janelas e barras com transparência e desfoque do que está atrás, e sombras. O desfoque é recalculado só onde a tela mudou.",
       "aceite": "capturas; tempo de quadro medido no QEMU e no G470.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T17:25:32",
       "fim": "2026-11-13T17:25:33",
@@ -610,7 +610,7 @@
       "titulo": "Forma",
       "objetivo": "Cantos arredondados, barra de cima nova (menu, relógio, rede, som, energia) e uma barra de aplicativos com os programas abertos e fixados.",
       "aceite": "capturas; clicar na barra alterna entre os programas.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T17:25:33",
       "fim": "2026-11-13T17:25:33",
@@ -623,7 +623,7 @@
       "titulo": "Movimento e tema",
       "objetivo": "Animações de abrir, fechar e minimizar, ícones redesenhados e tema claro ou escuro nas Configurações.",
       "aceite": "capturas dos dois temas.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T17:25:33",
       "fim": "2026-11-13T17:25:33",
@@ -636,7 +636,7 @@
       "titulo": "Leve no G470",
       "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
       "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-13T17:25:33",
       "fim": "2026-11-13T17:25:33",
@@ -649,9 +649,12 @@
       "titulo": "Redimensionar e maximizar janelas (pedido do Eli)",
       "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
       "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "bonus": false,
-      "inicio": "2026-11-13T17:25:33"
+      "inicio": "2026-11-13T19:42:41",
+      "fim": "2026-11-13T19:42:41",
+      "minutos": 1,
+      "resultado": "borda e canto, maximizar, duplo clique; Terminal, Navegador, Editor, Arquivos; ssh repassa o tamanho"
     }
   ],
   "tanenbaum": [
@@ -723,6 +726,30 @@
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-13T19:42:41",
+      "texto": "Fase 9 entregue. Aguardando teste do Eli."
+    },
+    {
+      "data": "2026-11-13T19:42:41",
+      "texto": "Fase 7 entregue. Aguardando teste do Eli."
+    },
+    {
+      "data": "2026-11-13T19:42:41",
+      "texto": "H70 concluída: laço completo com servidor falso e o cc de verdade: escrever, erro, corrigir, compilar, rodar; licenças e limite de passos"
+    },
+    {
+      "data": "2026-11-13T19:42:41",
+      "texto": "Início da H70: O laço do agente"
+    },
+    {
+      "data": "2026-11-13T19:42:41",
+      "texto": "H78 concluída: borda e canto, maximizar, duplo clique; Terminal, Navegador, Editor, Arquivos; ssh repassa o tamanho"
+    },
+    {
+      "data": "2026-11-13T19:42:41",
+      "texto": "Início da H78: Redimensionar e maximizar janelas (pedido do Eli)"
+    },
     {
       "data": "2026-11-13T18:17:52",
       "texto": "H68 concluída: wc, cat, calculadora e banana feitos pelo cc passam nos testes da 1.0 (h15, h16, h24, h26, h27)"
@@ -938,310 +965,291 @@
     {
       "data": "2026-11-13T02:27:43",
       "texto": "H50 concluída: Gerador do kernel: jitter do RDTSC em cada interrupção e no boot (sem RDRAND), ChaCha20 com troca de chave a cada pedido (D035); SHA-2/HMAC/HKDF na libsagui-cripto"
-    },
-    {
-      "data": "2026-11-13T02:25:47",
-      "texto": "Início da H50: Números aleatórios e resumos"
-    },
-    {
-      "data": "2026-11-13T02:25:47",
-      "texto": "H51 concluída: AES-128/256 (sem tabelas, tempo constante), CTR, GCM, ChaCha20-Poly1305, X25519 e Ed25519; vetores oficiais (escrito pelo subagente Fable 5.2)"
-    },
-    {
-      "data": "2026-11-13T02:25:47",
-      "texto": "Início da H51: Cifras e troca de chaves"
-    },
-    {
-      "data": "2026-11-13T02:25:47",
-      "texto": "H48 concluída: TCP cliente: três passos, anéis de 64 KB, reenvio com espera dobrando, três ACKs repetidos, estacionamento de pedaços fora de ordem (10 MB certos; com 5% de perda, 1 MB em 4,5 s em vez de 84 s); sockets TCP"
-    },
-    {
-      "data": "2026-11-13T01:36:59",
-      "texto": "Bloqueio: H46 (rede no G470) aguarda a foto do comando pci no notebook (D034); o resto da fase segue"
-    },
-    {
-      "data": "2026-11-13T01:36:58",
-      "texto": "H47 concluída: Aba Rede (estado, DHCP ou manual) e ícone de rede na barra (verde, amarelo, cinza com x vermelho)"
     }
   ],
   "erros": [],
   "capturas": [
     {
-      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
-      "nome": "H67-3-instalado.png",
-      "data": "2026-11-13T18:13:02"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
-      "nome": "H67-2-rodou.png",
-      "data": "2026-11-13T18:12:57"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-1-erro.png",
-      "nome": "H67-1-erro.png",
-      "data": "2026-11-13T18:12:54"
-    },
-    {
       "arquivo": "docs/v2/capturas/H78-3-navegador-maximizado.png",
       "nome": "H78-3-navegador-maximizado.png",
-      "data": "2026-11-13T17:56:52"
+      "data": "2026-11-13T18:47:50"
     },
     {
       "arquivo": "docs/v2/capturas/H78-2-terminal-maximizado.png",
       "nome": "H78-2-terminal-maximizado.png",
-      "data": "2026-11-13T17:56:41"
+      "data": "2026-11-13T18:47:39"
     },
     {
       "arquivo": "docs/v2/capturas/H78-1-terminal-menor.png",
       "nome": "H78-1-terminal-menor.png",
-      "data": "2026-11-13T17:56:38"
+      "data": "2026-11-13T18:47:36"
     },
     {
       "arquivo": "docs/v2/capturas/H77-1-efeitos-leves.png",
       "nome": "H77-1-efeitos-leves.png",
-      "data": "2026-11-13T17:56:24"
+      "data": "2026-11-13T18:47:22"
     },
     {
       "arquivo": "docs/v2/capturas/H76-2-tema-claro.png",
       "nome": "H76-2-tema-claro.png",
-      "data": "2026-11-13T17:56:19"
+      "data": "2026-11-13T18:47:17"
     },
     {
       "arquivo": "docs/v2/capturas/H76-1-tema-escuro.png",
       "nome": "H76-1-tema-escuro.png",
-      "data": "2026-11-13T17:56:13"
+      "data": "2026-11-13T18:47:11"
     },
     {
       "arquivo": "docs/v2/capturas/H75-3-menu.png",
       "nome": "H75-3-menu.png",
-      "data": "2026-11-13T17:56:09"
+      "data": "2026-11-13T18:47:08"
     },
     {
       "arquivo": "docs/v2/capturas/H75-2-doca.png",
       "nome": "H75-2-doca.png",
-      "data": "2026-11-13T17:56:07"
+      "data": "2026-11-13T18:47:06"
     },
     {
       "arquivo": "docs/v2/capturas/H75-1-minimizada.png",
       "nome": "H75-1-minimizada.png",
-      "data": "2026-11-13T17:56:04"
+      "data": "2026-11-13T18:47:03"
     },
     {
       "arquivo": "docs/v2/capturas/H74-2-arrastada.png",
       "nome": "H74-2-arrastada.png",
-      "data": "2026-11-13T17:56:01"
+      "data": "2026-11-13T18:47:00"
     },
     {
       "arquivo": "docs/v2/capturas/H74-1-vidro.png",
       "nome": "H74-1-vidro.png",
-      "data": "2026-11-13T17:55:58"
+      "data": "2026-11-13T18:46:57"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H70-3-compilar.png",
+      "nome": "H70-3-compilar.png",
+      "data": "2026-11-13T18:46:18"
     },
     {
       "arquivo": "docs/v2/capturas/H70-2-licenca.png",
       "nome": "H70-2-licenca.png",
-      "data": "2026-11-13T17:55:20"
+      "data": "2026-11-13T18:44:03"
     },
     {
       "arquivo": "docs/v2/capturas/H70-1-laco.png",
       "nome": "H70-1-laco.png",
-      "data": "2026-11-13T17:55:18"
+      "data": "2026-11-13T18:44:00"
     },
     {
       "arquivo": "docs/v2/capturas/H69-1-pergunta.png",
       "nome": "H69-1-pergunta.png",
-      "data": "2026-11-13T17:54:45"
+      "data": "2026-11-13T18:43:27"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
+      "nome": "H67-3-instalado.png",
+      "data": "2026-11-13T18:41:19"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
+      "nome": "H67-2-rodou.png",
+      "data": "2026-11-13T18:41:14"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-1-erro.png",
+      "nome": "H67-1-erro.png",
+      "data": "2026-11-13T18:41:11"
     },
     {
       "arquivo": "docs/v2/capturas/H63-6-readme.png",
       "nome": "H63-6-readme.png",
-      "data": "2026-11-13T17:54:32"
+      "data": "2026-11-13T18:39:11"
     },
     {
       "arquivo": "docs/v2/capturas/H63-5-documentacao.png",
       "nome": "H63-5-documentacao.png",
-      "data": "2026-11-13T17:54:25"
+      "data": "2026-11-13T18:39:05"
     },
     {
       "arquivo": "docs/v2/capturas/H63-4-example.png",
       "nome": "H63-4-example.png",
-      "data": "2026-11-13T17:54:18"
+      "data": "2026-11-13T18:38:57"
     },
     {
       "arquivo": "docs/v2/capturas/H63-3-wikipedia-busca.png",
       "nome": "H63-3-wikipedia-busca.png",
-      "data": "2026-11-13T17:54:13"
+      "data": "2026-11-13T18:38:52"
     },
     {
       "arquivo": "docs/v2/capturas/H63-2-wikipedia-rolada.png",
       "nome": "H63-2-wikipedia-rolada.png",
-      "data": "2026-11-13T17:53:50"
+      "data": "2026-11-13T18:38:33"
     },
     {
       "arquivo": "docs/v2/capturas/H63-1-wikipedia.png",
       "nome": "H63-1-wikipedia.png",
-      "data": "2026-11-13T17:53:48"
+      "data": "2026-11-13T18:38:32"
     },
     {
       "arquivo": "docs/v2/capturas/H62-7-texto-puro.png",
       "nome": "H62-7-texto-puro.png",
-      "data": "2026-11-13T17:53:30"
+      "data": "2026-11-13T18:38:14"
     },
     {
       "arquivo": "docs/v2/capturas/H62-6-favoritos.png",
       "nome": "H62-6-favoritos.png",
-      "data": "2026-11-13T17:53:27"
+      "data": "2026-11-13T18:38:12"
     },
     {
       "arquivo": "docs/v2/capturas/H62-5-busca.png",
       "nome": "H62-5-busca.png",
-      "data": "2026-11-13T17:53:23"
+      "data": "2026-11-13T18:38:08"
     },
     {
       "arquivo": "docs/v2/capturas/H62-4-ancora.png",
       "nome": "H62-4-ancora.png",
-      "data": "2026-11-13T17:53:18"
+      "data": "2026-11-13T18:38:03"
     },
     {
       "arquivo": "docs/v2/capturas/H62-3-pagina2.png",
       "nome": "H62-3-pagina2.png",
-      "data": "2026-11-13T17:53:13"
+      "data": "2026-11-13T18:37:57"
     },
     {
       "arquivo": "docs/v2/capturas/H62-2-rolada.png",
       "nome": "H62-2-rolada.png",
-      "data": "2026-11-13T17:53:07"
+      "data": "2026-11-13T18:37:52"
     },
     {
       "arquivo": "docs/v2/capturas/H62-1-topo.png",
       "nome": "H62-1-topo.png",
-      "data": "2026-11-13T17:53:04"
+      "data": "2026-11-13T18:37:49"
     },
     {
       "arquivo": "docs/v2/capturas/H58-chave-mudou.png",
       "nome": "H58-chave-mudou.png",
-      "data": "2026-11-13T17:52:27"
+      "data": "2026-11-13T18:37:20"
     },
     {
       "arquivo": "docs/v2/capturas/H58-htop.png",
       "nome": "H58-htop.png",
-      "data": "2026-11-13T17:52:20"
+      "data": "2026-11-13T18:37:14"
     },
     {
       "arquivo": "docs/v2/capturas/H58-vim.png",
       "nome": "H58-vim.png",
-      "data": "2026-11-13T17:52:14"
+      "data": "2026-11-13T18:37:07"
     },
     {
       "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
       "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T17:51:32"
+      "data": "2026-11-13T18:35:54"
     },
     {
       "arquivo": "docs/v2/capturas/H53-https.png",
       "nome": "H53-https.png",
-      "data": "2026-11-13T17:51:12"
+      "data": "2026-11-13T18:35:33"
     },
     {
       "arquivo": "docs/v2/capturas/H49-baixar.png",
       "nome": "H49-baixar.png",
-      "data": "2026-11-13T17:49:46"
+      "data": "2026-11-13T18:34:15"
     },
     {
       "arquivo": "docs/v2/capturas/H47-3-aba-rede.png",
       "nome": "H47-3-aba-rede.png",
-      "data": "2026-11-13T17:47:47"
+      "data": "2026-11-13T18:32:16"
     },
     {
       "arquivo": "docs/v2/capturas/H47-2-barra-sem-cabo.png",
       "nome": "H47-2-barra-sem-cabo.png",
-      "data": "2026-11-13T17:47:45"
+      "data": "2026-11-13T18:32:13"
     },
     {
       "arquivo": "docs/v2/capturas/H47-1-barra-conectado.png",
       "nome": "H47-1-barra-conectado.png",
-      "data": "2026-11-13T17:47:43"
+      "data": "2026-11-13T18:32:11"
     },
     {
       "arquivo": "docs/v2/capturas/H45-rede.png",
       "nome": "H45-rede.png",
-      "data": "2026-11-13T17:47:29"
+      "data": "2026-11-13T18:31:56"
     },
     {
       "arquivo": "docs/v2/capturas/H44-ping.png",
       "nome": "H44-ping.png",
-      "data": "2026-11-13T17:47:17"
+      "data": "2026-11-13T18:31:43"
     },
     {
       "arquivo": "docs/v2/capturas/H42-tocar.png",
       "nome": "H42-tocar.png",
-      "data": "2026-11-13T17:46:57"
+      "data": "2026-11-13T18:31:22"
     },
     {
       "arquivo": "docs/v2/capturas/H41-aba-som.png",
       "nome": "H41-aba-som.png",
-      "data": "2026-11-13T17:46:39"
+      "data": "2026-11-13T18:31:08"
     },
     {
       "arquivo": "docs/v2/capturas/H40-som-teste.png",
       "nome": "H40-som-teste.png",
-      "data": "2026-11-13T17:46:16"
+      "data": "2026-11-13T18:30:44"
     },
     {
       "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
       "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T17:46:05"
+      "data": "2026-11-13T18:30:32"
     },
     {
       "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
       "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T17:45:59"
+      "data": "2026-11-13T18:30:26"
     },
     {
       "arquivo": "docs/v2/capturas/H39-1-instalado.png",
       "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T17:45:57"
+      "data": "2026-11-13T18:30:24"
     },
     {
       "arquivo": "docs/v2/capturas/H38-3-sobre.png",
       "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T17:45:39"
+      "data": "2026-11-13T18:30:05"
     },
     {
       "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
       "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T17:45:37"
+      "data": "2026-11-13T18:30:02"
     },
     {
       "arquivo": "docs/v2/capturas/H38-1-relogio.png",
       "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T17:45:20"
+      "data": "2026-11-13T18:29:45"
     },
     {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
-      "data": "2026-11-13T17:45:02"
+      "data": "2026-11-13T18:29:27"
     },
     {
       "arquivo": "docs/v2/capturas/H36-energia.png",
       "nome": "H36-energia.png",
-      "data": "2026-11-13T17:44:47"
+      "data": "2026-11-13T18:29:06"
     },
     {
       "arquivo": "docs/v2/capturas/H35-pci.png",
       "nome": "H35-pci.png",
-      "data": "2026-11-13T17:44:32"
+      "data": "2026-11-13T18:28:52"
     }
   ],
   "linhas": {
     "boot": 903,
     "kernel": 13543,
     "userland": 28698,
-    "ferramentas": 10075
+    "ferramentas": 10111
   },
   "imagem": {
     "bytes_util": 1642496,
     "bytes_arquivo": 1671168,
     "meta_bytes": null
   },
-  "progresso_geral": 84.1
+  "progresso_geral": 88.6
 }

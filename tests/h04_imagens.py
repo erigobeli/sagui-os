@@ -38,7 +38,8 @@ def main():
     verificar(dados_volta[len(dados_img):] == bytes(len(dados_volta) - len(dados_img)), "sobra do .vdi está zerada")
 
     tam = int(open(os.path.join(B, "tamanho.txt")).read())
-    verificar(tam <= 1474560, f"tamanho útil {tam} bytes, dentro da meta de 1,44 MB")
+    # A meta de 1,44 MB era da versão 1.0; na 2.0 o Eli tirou o teto (o tamanho só é medido).
+    verificar(tam > 0, f"tamanho útil {tam} bytes ({100 * tam / 1474560:.0f}% de um disquete de 1,44 MB; sem teto na 2.0)")
 
     for modo in ("ide", "usb"):
         with Maquina("h04", modo) as m:

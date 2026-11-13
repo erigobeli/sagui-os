@@ -25,7 +25,8 @@ def abrir_icone(m, nome):
 
 def main():
     tamanho = int(open(os.path.join(RAIZ, "build", "tamanho.txt")).read())
-    verificar(tamanho <= 1474560, f"imagem com {tamanho} bytes úteis ({100 * tamanho / 1474560:.1f}% da meta de 1,44 MB)")
+    # Na versão 2.0 não há teto de tamanho (decisão do Eli): só a medida.
+    verificar(tamanho > 0, f"imagem com {tamanho} bytes úteis ({100 * tamanho / 1474560:.1f}% de 1,44 MB; sem teto na 2.0)")
     with Maquina("h28", "ide") as m:
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
