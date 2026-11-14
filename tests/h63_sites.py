@@ -73,12 +73,13 @@ def main():
         m.tecla("pgdn", 0.3)
         time.sleep(1)
         m.captura("H63-2-wikipedia-rolada")
-        # Busca pelo formulário da Wikipédia. Desde a H82 o Cipó mostra o artigo
-        # como os outros navegadores: no topo a busca é só uma lupa, e o campo
-        # aparece por JavaScript. A página de busca da Wikipédia tem o campo à vista.
+        # Busca pelo formulário. Desde a H82 o Cipó mostra o artigo como os outros
+        # navegadores: no topo a busca é só uma lupa, e o campo aparece por
+        # JavaScript. A página inicial do Cipó tem o formulário da Wikipédia
+        # (index.php?title=Especial:Pesquisar&search=...) com o campo à vista.
         antes = len(m.serial())
-        digitar_endereco(m, j, "https://pt.wikipedia.org/wiki/Especial:Pesquisar")
-        esperar(m, "navegador: pronto https://pt.wikipedia.org/wiki/Especial:Pesquisar", 400, antes)
+        digitar_endereco(m, j, "sagui:inicio")
+        esperar(m, "navegador: pronto sagui:inicio", 60, antes)
         time.sleep(1)
         from PIL import Image
         bordas = [(0x76, 0x76, 0x76), (0xA2, 0xA9, 0xB1), (0x72, 0x77, 0x7D), (0x7C, 0x80, 0x85), (0x36, 0x66, 0xCC)]
