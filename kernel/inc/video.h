@@ -24,6 +24,11 @@ void video_marcar(int x, int y, int l, int a);   /* região alterada, a copiar n
 void video_mostrar(void);                         /* copia o que mudou para a tela */
 void video_mostrar_tudo(void);
 
+/* H84: troca de resolução depois de ligado (driver da placa Intel). */
+uint32_t *video_reservar(uint32_t l, uint32_t a);   /* buffer de trás novo, antes de mexer na placa */
+void video_adotar(uint8_t *tela, uint32_t *tras, uint32_t l, uint32_t a, uint32_t pitch);
+bool video_nativo_tentar(void);   /* video_nativo.c: resolução nativa do painel, se a configuração pedir */
+
 /* Cursor do mouse: desenhado por cima, na hora de mostrar (H19). */
 void video_cursor(int x, int y, bool visivel);
 

@@ -15,6 +15,7 @@ typedef struct {
 } evento_mouse_t;
 
 bool mouse_iniciar(void);
+void mouse_tela_mudou(void);           /* a resolução mudou (H84) */
 bool mouse_tentar(evento_mouse_t *e);   /* próximo evento, se houver */
 void mouse_posicao(int *x, int *y);
 const void *mouse_canal(void);

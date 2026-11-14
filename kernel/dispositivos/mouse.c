@@ -78,6 +78,17 @@ void mouse_byte(uint8_t b)
     }
 }
 
+/* A resolução mudou (H84): novos limites para o cursor. */
+void mouse_tela_mudou(void)
+{
+    if (!video_ativo()) return;
+    larg = (int)video_largura();
+    alt = (int)video_altura();
+    if (mx >= larg) mx = larg - 1;
+    if (my >= alt) my = alt - 1;
+    video_cursor(mx, my, true);
+}
+
 bool mouse_iniciar(void)
 {
     if (video_ativo()) {

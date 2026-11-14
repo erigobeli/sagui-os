@@ -18,6 +18,7 @@
 #include "memoria.h"
 #include "paginacao.h"
 #include "texto.h"
+#include "cpu.h"
 
 static bool ativo;
 static uint32_t larg, alt, pitch, bpp;
@@ -68,6 +69,46 @@ bool video_iniciar(void)
     klog("[VIDEO] %ux%u, %u bits, pitch %u, framebuffer %x, cores R%u G%u B%u\n",
          larg, alt, bpp, pitch, info_boot.vesa_fb, pos_r, pos_g, pos_b);
     return true;
+}
+
+/* ------------------------------------------------------------ troca de resolução (H84)
+
+ * Um driver de placa (video_nativo.c) pode trocar a resolução depois que o
+ * sistema já está desenhando. Em duas etapas, para nunca deixar a tela sem
+ * dono: antes de mexer na placa ele reserva o buffer de trás novo (se faltar
+ * memória, desiste sem ter tocado em nada); depois que a placa já está no
+ * modo novo, entrega a memória de vídeo e as medidas. O formato do pixel do
+ * modo novo é sempre 32 bits 0x00RRGGBB (o "BGRX 8:8:8" das placas Intel). */
+uint32_t *video_reservar(uint32_t l, uint32_t a)
+{
+    return kmalloc(l * a * 4);
+}
+
+void video_adotar(uint8_t *tela_nova, uint32_t *tras_novo, uint32_t l, uint32_t a, uint32_t pitch_novo)
+{
+    /* O que já estava desenhado vai para o canto de cima à esquerda do
+     * buffer novo; o resto fica preto (quem desenha refaz depois). */
+    memset(tras_novo, 0, l * a * 4);
+    uint32_t cl = l < larg ? l : larg, ca = a < alt ? a : alt;
+    for (uint32_t y = 0; y < ca; y++)
+        memcpy(tras_novo + y * l, tras + y * larg, cl * 4);
+    /* A troca acontece com as interrupções desligadas: o mouse desenha o
+     * cursor de dentro da interrupção, e não pode ver metade da troca. */
+    bool i0 = int_salva_desliga();
+    uint32_t *velho = tras;
+    tras = tras_novo;
+    tela = tela_nova;
+    larg = l; alt = a; pitch = pitch_novo; bpp = 32;
+    pos_r = 16; pos_g = 8; pos_b = 0;
+    formato_direto = true;
+    if (cur_x >= (int)l) cur_x = (int)l - 1;
+    if (cur_y >= (int)a) cur_y = (int)a - 1;
+    cur_ant_visivel = false;
+    suj_x0 = suj_y0 = 0; suj_x1 = (int)l; suj_y1 = (int)a;
+    int_restaura(i0);
+    kfree(velho);
+    klog("[VIDEO] agora %ux%u, 32 bits, pitch %u\n", l, a, pitch_novo);
+    video_mostrar();
 }
 
 void video_marcar(int x, int y, int l, int a)

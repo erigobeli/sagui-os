@@ -1291,3 +1291,57 @@ outra opção, calcula com 80 bits por dentro e só arredonda ao guardar na
 memória, então a mesma conta dá resultados levemente diferentes conforme o
 compilador guarda ou não os valores; o teste da H80 pegou isso, e o
 JavaScript do Cipó exige double exato. O G470, o VirtualBox e o QEMU têm SSE2.
+
+## D044. Resolução nativa no G470: aproveitar o modo da BIOS, não refazer (H84)
+
+**O problema.** O VESA da BIOS do G470 oferece no máximo 1024x768; o painel
+tem 1366x768. A placa (Intel HD Graphics 3000, Sandy Bridge, 8086:0116) estica
+a imagem com o "panel fitter", e o texto fica borrado.
+
+**Decisão.** Um driver pequeno (`kernel/dispositivos/video_nativo.c`), escrito
+só a partir dos manuais públicos da Intel (PRM da Sandy Bridge, volume 1
+parte 1 e volume 3 partes 1 a 3), que **não refaz o modo**: relógios (PLLs),
+tempos, FDI, transcodificador e a porta LVDS ficam como a BIOS deixou. Num
+notebook a BIOS já manda o sinal na resolução nativa para o painel; o driver
+só (1) lê o tamanho nativo nos tempos do pipe ligado (HTOTAL/VTOTAL), (2)
+muda o tamanho de origem do pipe (PIPESRC) para ele, (3) desliga o panel
+fitter (PF_CTL, PF_WIN_POS, PF_WIN_SZ) e (4) muda o passo do plano primário
+(DSPSTRIDE, 1366 x 4 arredondado para múltiplo de 64 = 5504 bytes), com a
+imagem começando no mesmo lugar do framebuffer VESA (DSPSURF/DSPLINOFF não
+mudam; a escrita no DSPSURF só "arma" a mudança). Os ~4 MB da imagem nova
+precisam estar mapeados na GTT pela BIOS (que mapeia toda a memória roubada,
+de no mínimo 32 MB): o driver confere entrada por entrada e, se faltar
+alguma, desiste em vez de preencher a GTT. Preencher a GTT exigiria escolher
+memória para a placa e cuidar de cache; não vale o risco para 4 MB que a BIOS
+já deu.
+
+**Segurança.** Desligado por padrão: só age com `video.nativo = sim` no
+pendrive de dados (sem o pendrive, volta o VESA). Só age se tudo conferir:
+placa 8086 em 00:02.0 com ID 0106, 0116 ou 0126; BARs abaixo de 4 GB; um
+único pipe ligado; porta LVDS e energia do painel ligadas; tempos com cara de
+painel (640 a 1920 por 480 a 1200); origem do pipe igual ao modo VESA; plano
+ligado, linear, 32 bits BGRX, com o passo do VESA e mostrando o endereço do
+VESA. Depois de escrever, relê: pipe ainda ligado, PIPESRC e DSPSTRIDE
+aceitos, panel fitter desligado e o contador de quadros andando; se algo
+falhar, devolve os valores da BIOS. Tudo o que é lido e escrito vai para o
+diário (`registro VIDEO`).
+
+**O que não é certeza.** O manual não deixa claro se o PIPESRC pode mudar com
+o pipe ligado na Sandy Bridge; desligar o pipe exigiria refazer a sequência
+inteira (FDI, transcodificador do PCH), que é justamente o que se quis
+evitar. Se o G470 não aceitar, o diário mostra e o driver desfaz.
+
+**Interface.** O vídeo ganhou a troca de resolução com o sistema já ligado
+(`video_reservar` antes de mexer na placa, `video_adotar` depois), e o
+terminal do kernel e o mouse se ajustam. A interface gráfica já lia
+`video_largura()`/`video_altura()`; com 1366 a janela maximizada cabe nos
+4 MB de memória por janela (1362 x ~680 pixels x 4 < 4 MB).
+
+**Como foi testado sem o G470.** O QEMU não tem a placa Intel. O teste
+`h84_video_nativo.py` prova que nada muda sem a configuração e com ela numa
+placa que não é Intel (o diário diz o motivo), e, com `video.nativo =
+teste-qemu`, troca a placa VGA do QEMU para 1366x768 pela interface "Bochs
+VBE" (documentada pelo Bochs) com o sistema já ligado: é o mesmo caminho do
+lado do SaguiOS, e prova a interface em 1366x768. O estágio 2 também ganhou
+uma opção de build só para testes (`--vesa-largo`) que prefere um modo VESA
+largo de 768 linhas (o QEMU oferece 1280x768).

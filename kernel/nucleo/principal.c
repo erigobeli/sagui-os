@@ -24,6 +24,7 @@
 #include "i8042.h"
 #include "gui.h"
 #include "usb.h"
+#include "video.h"
 
 #define SAGUI_VERSAO "1.0"
 
@@ -276,6 +277,13 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
         char linha[128], r[80];
         rede_relatorio(r, sizeof r);
         snformatar(linha, sizeof linha, "Rede: %s (comandos rede e ping)", r);
+        etapa(linha);
+    }
+    /* H84: resolução nativa do painel pela placa Intel do G470, se a
+     * configuração (lida do pendrive, já montado pelo USB acima) pedir. */
+    if (grafico && video_nativo_tentar()) {
+        char linha[96];
+        snformatar(linha, sizeof linha, "Vídeo: resolução nativa do painel, %ux%u", video_largura(), video_altura());
         etapa(linha);
     }
     klog("[SAGUI] boot ok\n");
