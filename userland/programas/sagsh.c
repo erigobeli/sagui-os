@@ -53,7 +53,7 @@ static const comando_t comandos[] = {
     { "contador", NULL, false, false, "conta segundos", "contador [segundos]", "Conta segundos (padrão: 10). Rode com & para ver a multitarefa." },
     { "falha", NULL, false, false, "provoca um erro", "falha [memoria|kernel|divisao|instrucao]", "Faz um erro de propósito: só este programa é encerrado, o sistema continua." },
     { "reiniciar", NULL, true, false, "reinicia o PC", "reiniciar", "Grava o que falta nos pendrives e reinicia o computador." },
-    { "desligar", NULL, true, false, "desliga o PC", "desligar", "Grava o que falta nos pendrives e desliga o computador." },
+    { "poweroff", "desligar", true, false, "desliga o PC", "desligar", "Grava o que falta nos pendrives e desliga o computador." },
     { "sair", NULL, true, false, "fecha o shell", "sair", "Fecha o shell." },
     { "discos", NULL, false, false, "lista os pendrives", "discos", "Mostra os pendrives conectados, o formato e se estão montados." },
     { "montar", NULL, false, false, "monta o pendrive", "montar [usb0]", "Monta o pendrive FAT32 em /usb." },
@@ -394,7 +394,7 @@ static bool executar_interno(const comando_t *c, int argc, char **argv)
         mostrar("Reiniciando...\n");
         dormir(200);
         reiniciar();
-    } else if (compara_texto(n, "desligar") == 0) {
+    } else if (compara_texto(n, "desligar") == 0 || compara_texto(n, "poweroff") == 0) {   /* poweroff: do #4 */
         mostrar("Desligando...\n");
         dormir(200);
         desligar();

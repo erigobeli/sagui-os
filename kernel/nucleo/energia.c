@@ -19,6 +19,8 @@
  *
  * Antes das duas coisas, os pendrives montados são desmontados, para tudo o
  * que estava pendente ser gravado. */
+#include "desenho.h"
+#include "video.h"
 #include "cpu.h"
 #include "console.h"
 #include "portas.h"
@@ -143,6 +145,31 @@ static void guardar_discos(void)
     }
 }
 
+/* Tela "pode desligar" (H83, ideia do pull request #4 de Clayton): quando o
+ * ACPI não desliga a placa (computadores antigos, alguns emuladores), a
+ * pessoa vê na tela inteira que já pode tirar da tomada, em vez da área de
+ * trabalho parada. */
+static void tela_pode_desligar(void)
+{
+    if (!video_ativo()) return;
+    int vl = (int)video_largura(), va = (int)video_altura();
+    superficie_t s;
+    sup_iniciar(&s, video_buffer(), vl, va);
+    sup_degrade(&s, 0, 0, vl, va, 0x0E1A14, 0x050807);
+    video_cursor(0, 0, false);
+    int esc = 4, mx = (vl - 32 * esc) / 2, my = va / 2 - 32 * esc - 20;
+    sup_desenho(&s, mx, my, &arte_sagui, esc);
+    const char *m1 = "O SaguiOS terminou com segurança.";
+    const char *m2 = "Já pode desligar o computador.";
+    sup_texto_forte(&s, (vl - texto_largura(m1)) / 2, va / 2 + 10, m1, 0xFFDF4A);
+    sup_texto(&s, (vl - texto_largura(m2)) / 2, va / 2 + 40, m2, 0xFFFFFF);
+    sup_retangulo(&s, vl / 2 - 60, va / 2 + 70, 40, 3, 0x0B7A3E);
+    sup_retangulo(&s, vl / 2 - 20, va / 2 + 70, 40, 3, 0xE8BE30);
+    sup_retangulo(&s, vl / 2 + 20, va / 2 + 70, 40, 3, 0x2A6FD8);
+    video_mostrar_tudo();
+    klog("[SAGUI] tela: pode desligar\n");
+}
+
 SEM_RETORNO void maquina_desligar(void)
 {
     guardar_discos();
@@ -159,6 +186,7 @@ SEM_RETORNO void maquina_desligar(void)
         for (volatile int i = 0; i < 10000000; i++) ;
     }
     /* Não desligou: avisa e para (o pendrive já foi gravado). */
+    tela_pode_desligar();
     kprintf("\nO SaguiOS terminou. Pode desligar o computador.\n");
     klog("[SAGUI] desligar pelo ACPI nao funcionou\n");
     parar_maquina();
