@@ -389,6 +389,7 @@ static bool preparar_fluxo(void)
     anel = (uint8_t *)b;
     bdl = (uint32_t *)l;
     memset(anel, 0, HDA_ANEL);
+    hda_descarregar(0, HDA_ANEL);                              /* começa em silêncio, também na memória */
     memset(bdl, 0, PAGINA);
     for (uint32_t i = 0; i < HDA_PEDACOS; i++) {              /* lista de buffers: endereço, tamanho, aviso */
         bdl[i * 4 + 0] = b + i * (HDA_ANEL / HDA_PEDACOS);
@@ -446,6 +447,14 @@ bool hda_iniciar(void)
         uint32_t v = pci_le32(&d, 0x44);
         pci_escreve32(&d, 0x44, v & ~7u);
         klog("[HDA] TCSEL %x -> %x\n", v & 7, 0);
+        /* DEVC (PCI 0x78, 16 bits), bit 11 NSNPEN, "No Snoop Enable": ligado,
+         * o DMA do áudio lê a memória sem consultar o cache do processador e
+         * toca dados velhos. No G470, com o amplificador ligado, o alto-falante
+         * só fazia ruído alto. O datasheet da série 6 manda deixar desligado
+         * para quem não cuida do cache; desligamos. */
+        uint32_t dv = pci_le32(&d, 0x78);
+        pci_escreve32(&d, 0x78, dv & ~(1u << 11));
+        klog("[HDA] DEVC %x: sem snoop %s -> desligado\n", dv & 0xFFFF, (dv & (1u << 11)) ? "ligado" : "desligado");
     }
     regs = (volatile uint8_t *)janela_mapear(bar, 0x4000);
     if (!regs) return false;
@@ -473,6 +482,25 @@ bool hda_iniciar(void)
 bool hda_pronto(void) { return pronto; }
 const char *hda_descricao(void) { return pronto ? descricao : "sem placa de som"; }
 uint8_t *hda_anel(void) { return anel; }
+
+/* Manda para a memória as linhas do cache com [ini, ini + n) do anel
+ * (CLFLUSH, manual da Intel, vol. 2): o DMA do áudio pode não consultar o
+ * cache, e então tocaria o que estava na memória antes. Sem CLFLUSH (CPUID
+ * 1, EDX bit 19), WBINVD descarrega o cache inteiro. */
+static int tem_clflush = -1;
+void hda_descarregar(uint32_t ini, uint32_t n)
+{
+    if (!anel || !n) return;
+    if (tem_clflush < 0) {
+        uint32_t a = 1, b, c, d;
+        __asm__ volatile("cpuid" : "+a"(a), "=b"(b), "=c"(c), "=d"(d));
+        tem_clflush = (d >> 19) & 1;
+    }
+    if (!tem_clflush) { __asm__ volatile("wbinvd" ::: "memory"); return; }
+    for (uint32_t k = ini & ~63u; k < ini + n; k += 64)
+        __asm__ volatile("clflush (%0)" :: "r"(anel + (k % HDA_ANEL)) : "memory");
+    __asm__ volatile("mfence" ::: "memory");
+}
 uint32_t hda_posicao(void) { return pronto ? r32(sd + SD_LPIB) % HDA_ANEL : 0; }
 
 /* Diagnóstico (G470): o fluxo está andando? Chamado pelo misturador alguns
@@ -514,4 +542,17 @@ void hda_gpio(uint32_t mascara)
     uint32_t lido = comando(grupo, 0xF15, 0);
     int_restaura(i0);
     klog("[HDA] GPIO: mascara %x (de %d GPIO), dados lidos %x\n", mascara, gpios, lido);
+}
+
+/* Liga ou desliga o amplificador externo (EAPD em todos os pinos que o têm):
+ * configuração som.amplificador = nao, a chave de emergência se o
+ * alto-falante fizer barulho. */
+void hda_amplificador(bool ligado)
+{
+    if (!pronto || codec < 0) return;
+    bool i0 = int_salva_desliga();
+    for (int n = no_ini; n < no_fim; n++)
+        if (tipo_no(n) == W_PINO && (parametro(n, P_PINO) & (1u << 16))) comando(n, V_EAPD, ligado ? 0x02 : 0);
+    int_restaura(i0);
+    klog("[HDA] amplificador %s\n", ligado ? "ligado" : "desligado");
 }

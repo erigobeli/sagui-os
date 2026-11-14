@@ -71,6 +71,10 @@ static void ler_configuracoes(void)
         mascara = mascara * 16 + d;
     }
     if (g && mascara != gpio_visto) { gpio_visto = mascara; hda_gpio((uint32_t)mascara); }
+    static int amp_visto = -1;
+    const char *a = config_obter("som.amplificador");
+    int amp = !(a && txt_compara(a, "nao") == 0);
+    if (amp != amp_visto) { if (amp_visto >= 0 || !amp) hda_amplificador(amp); amp_visto = amp; }
 }
 
 static void proxima_nota(void)
@@ -169,6 +173,7 @@ void misturador_tique(void)
     for (int f = 0; f < MAX_FONTES; f++)
         if (fontes[f].usada && !processo_vivo(fontes[f].pid)) fontes[f].usada = false;   /* o dono saiu */
     int16_t *anel = (int16_t *)hda_anel();
+    uint32_t inicio = escrito;
     for (uint32_t q = 0; q < faltam; q++) {
         int32_t esq = 0, dir = 0;
         int32_t n = amostra_nota();
@@ -192,6 +197,7 @@ void misturador_tique(void)
         anel[i + 1] = (int16_t)dir;
         escrito = (escrito + HDA_QUADRO) % HDA_ANEL;
     }
+    hda_descarregar(inicio, faltam * HDA_QUADRO);
 }
 
 /* ------------------------------------------------------------ sons do sistema */

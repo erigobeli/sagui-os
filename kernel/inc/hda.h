@@ -12,7 +12,9 @@ bool        hda_iniciar(void);
 bool        hda_pronto(void);
 void        hda_diagnostico(int fase);   /* estado do fluxo e dos pinos, no diário (G470) */
 void        hda_reiniciar_fluxo(void);
-void        hda_gpio(uint32_t mascara);   /* configuração som.gpio (G470) */   /* reset e RUN de novo, se a posição não andar */
+void        hda_gpio(uint32_t mascara);
+void        hda_amplificador(bool ligado);   /* som.amplificador = nao desliga (emergência) */
+void        hda_descarregar(uint32_t ini, uint32_t n);   /* cache -> memória (o DMA pode não ver o cache) */   /* configuração som.gpio (G470) */   /* reset e RUN de novo, se a posição não andar */
 const char *hda_descricao(void);
 uint8_t    *hda_anel(void);
 uint32_t    hda_posicao(void);             /* byte que o DMA está lendo agora */
