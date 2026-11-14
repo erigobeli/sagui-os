@@ -163,6 +163,18 @@ static int candidatos(const char *linha, int n, char lista[][NOME_MAX], int max,
             if (comandos[i].apelido && comeca_com(comandos[i].apelido, palavra) && qtd < max)
                 copia_texto(lista[qtd++], comandos[i].apelido, NOME_MAX);
         }
+        /* Também os programas de /bin e os instalados no pendrive que não
+         * estão na tabela (o registro, por exemplo, não completava). */
+        static const char *const pastas_prog[] = { "/bin", "/usb/programas" };
+        for (int p = 0; p < 2; p++) {
+            entrada_pasta_t e;
+            for (int i = 0; listar(pastas_prog[p], i, &e) == 1 && qtd < max; i++) {
+                if (e.tipo == TIPO_PASTA || e.nome[0] == '.' || !comeca_com(e.nome, palavra)) continue;
+                bool repetido = false;
+                for (int k = 0; k < qtd && !repetido; k++) repetido = compara_texto(lista[k], e.nome) == 0;
+                if (!repetido) copia_texto(lista[qtd++], e.nome, NOME_MAX);
+            }
+        }
         return qtd;
     }
     /* Nome de arquivo: separa a pasta do começo do nome. */
@@ -242,7 +254,10 @@ static int ler_comando(char *linha)
                 bool no_fim = cur == n;
                 memmove(linha + cur - 1, linha + cur, (size_t)(n - cur + 1));
                 n--; cur--;
-                if (no_fim) { mostrar("\b"); continue; }   /* caso comum: só apaga o último */
+                /* Caso comum: só apaga o último. "\b" só volta o cursor (é assim
+                 * nos terminais); o espaço é que apaga a letra, e o segundo "\b"
+                 * volta de novo. Sem o espaço, o Terminal da 2.0 deixava a letra. */
+                if (no_fim) { mostrar("\b \b"); continue; }
                 cursor_esquerda(1);
                 reescrever_de(linha, n, cur, cur);
             }

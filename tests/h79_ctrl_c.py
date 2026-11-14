@@ -5,20 +5,37 @@ No G470, o `tocar` ficou parado em "Tocando..." (a placa de som não andava) e
 o Ctrl+C não fazia nada: só o shell lia a tecla, e só quando esperava uma
 linha. Critério: com o `contador 100` rodando no Terminal, Ctrl+C mostra ^C,
 volta ao prompt e o contador some da lista de processos; no prompt, Ctrl+C
-continua só descartando a linha.
+continua só descartando a linha. Backspace no fim da linha apaga a letra
+na tela (antes só voltava o cursor e a letra ficava).
 """
 import os
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar  # noqa: E402
+from qemu import Maquina, verificar, janela, cor_do_pixel  # noqa: E402
 
 
 def main():
     with Maquina("h79c", "ide") as m:
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
+        # Backspace: "sagui:/$ " ocupa 9 colunas da linha 1 (a 0 é a saudação).
+        j = janela(m.serial(), "Terminal")
+        m.digitar("zzzz", 0.05)
+        m.tecla("backspace")
+        m.tecla("backspace")
+        time.sleep(0.8)
+        png = m.captura("H79-backspace", guardar=False)
+
+        def celula(lin, col):
+            x0, y0 = j["x"] + 4 + col * 8, j["y"] + 24 + 4 + lin * 16
+            return {cor_do_pixel(png, x0 + i, y0 + k) for i in range(8) for k in range(16)}
+        fundo = celula(1, 60)
+        verificar(len(celula(1, 10)) > 1, "as letras que ficaram continuam na tela")
+        verificar(celula(1, 12) == fundo, "Backspace apagou a última letra na tela (não só voltou o cursor)")
+        m.tecla("ctrl-c")
+        time.sleep(0.5)
         antes = m.serial().count("sagui:")
         m.digitar("contador 100", 0.04)
         m.tecla("ret")

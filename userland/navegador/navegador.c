@@ -491,6 +491,13 @@ static void pagina_interna(const char *url, texto_t *r)
              "<li><a href=\"https://example.com/\">example.com</a></li>"
              "<li><a href=\"https://raw.githubusercontent.com/erigobeli/sagui-os/main/README.md\">README do SaguiOS (texto)</a></li>"
              "<li><a href=\"sagui:favoritos\">Favoritos</a></li>"
+             "</ul>"
+             /* Sites leves, sem HTTPS (ideia do pull request #3, de M4R4G0N): abrem
+              * mesmo quando o TLS não consegue (relógio errado, certificado raro). */
+             "<h2>Sites leves (sem HTTPS)</h2><ul>"
+             "<li><a href=\"http://info.cern.ch/\">info.cern.ch</a>: o primeiro site da web, de 1991</li>"
+             "<li><a href=\"http://68k.news/\">68k.news</a>: notícias em páginas simples, para computadores antigos</li>"
+             "<li><a href=\"http://neverssl.com/\">neverssl.com</a>: para testar a conexão sem HTTPS</li>"
              "</ul><h2>Procurar na Wikipédia</h2>"
              "<form action=\"https://pt.wikipedia.org/w/index.php\"><input type=\"hidden\" name=\"title\" value=\"Especial:Pesquisar\">"
              "<input type=\"search\" name=\"search\"> <input type=\"submit\" value=\"Procurar\"></form>"

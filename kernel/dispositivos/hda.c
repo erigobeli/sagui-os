@@ -82,6 +82,10 @@
 #define P_PINO           0x0C
 #define P_CONEXOES       0x0E
 #define P_AMP_SAIDA      0x12
+#define P_GPIO           0x11   /* quantos GPIO o grupo de áudio tem (bits 7:0) */
+#define V_GPIO_DADOS     0x715
+#define V_GPIO_LIGADOS   0x716
+#define V_GPIO_DIRECAO   0x717
 
 #define FORMATO_48K_16_ESTEREO 0x0011
 #define FLUXO_NUMERO 1
@@ -175,6 +179,7 @@ static struct {
 } nos[MAX_NOS];
 static int no_ini, no_fim;   /* faixa de nós do grupo de áudio */
 static int grupo;            /* o grupo de áudio (seus parâmetros valem para os widgets sem os próprios) */
+static int gpios;            /* quantos GPIO o grupo de áudio tem */
 
 static int tipo_no(int n) { return (int)((nos[n].caps >> 20) & 0xF); }
 enum { W_SAIDA = 0, W_ENTRADA = 1, W_MISTURADOR = 2, W_SELETOR = 3, W_PINO = 4 };
@@ -288,6 +293,20 @@ static int configurar_codec(void)
         size_t l = txt_tamanho(lista);
         snformatar(lista + l, sizeof lista - l, "%s%s", l ? ", " : "", nomes[aparelho]);
     }
+    /* EAPD: a especificação liga o amplificador externo pelo bit EAPD de um
+     * pino que tenha essa capacidade (caps do pino, bit 16), mas a linha EAPD
+     * do chip é uma só. No G470 (Conexant 14f1:506e) o pino do alto-falante
+     * não tem EAPD; quem tem são outros pinos (27 e 29), e o som não saía.
+     * Por isso o EAPD é ligado em todos os pinos que o têm. */
+    char com_eapd[40] = "";
+    for (int n = no_ini; n < no_fim; n++)
+        if (tipo_no(n) == W_PINO && (parametro(n, P_PINO) & (1u << 16))) {
+            comando(n, V_EAPD, 0x02);
+            size_t l = txt_tamanho(com_eapd);
+            snformatar(com_eapd + l, sizeof com_eapd - l, "%s%d", l ? "," : "", n);
+        }
+    gpios = parametro(grupo, P_GPIO) & 0xFF;
+    klog("[HDA] EAPD ligado nos pinos: %s; GPIO no grupo de audio: %d\n", com_eapd[0] ? com_eapd : "nenhum", gpios);
     uint32_t fab = parametro(0, P_FABRICANTE);
     snformatar(descricao, sizeof descricao, "codec %04x:%04x, saidas: %s", fab >> 16, fab & 0xFFFF, saidas ? lista : "nenhuma");
     klog("[HDA] codec %d (%04x:%04x): %d saida(s) (%s), DAC %d\n", codec, fab >> 16, fab & 0xFFFF, saidas, lista, dac_usado);
@@ -464,6 +483,7 @@ void hda_diagnostico(int fase)
     if (!pronto) return;
     if (fase == 0) { p1 = r32(sd + SD_LPIB); return; }      /* primeira leitura; a segunda vem meio segundo depois */
     uint32_t p2 = r32(sd + SD_LPIB);
+    klog("[HDA] GPIO: %d, ligados %x direcao %x dados %x\n", gpios, comando(grupo, 0xF16, 0), comando(grupo, 0xF17, 0), comando(grupo, 0xF15, 0));
     klog("[HDA] fluxo: CTL %x STS %x, posicao %u -> %u em 0,5 s (%s), GCTL %x\n", r32(sd + SD_CTL) & 0xFFFFFF, r8(sd + SD_STS),
          p1, p2, p1 != p2 ? "andando" : "PARADO", r32(GCTL));
     for (int n = no_ini; n < no_fim; n++)
@@ -475,4 +495,23 @@ void hda_diagnostico(int fase)
             klog("[HDA] no %d tipo %d%s: pinctl %x eapd %x amp %x presenca %x energia %x\n", n, tipo_no(n),
                  nos[n].usado ? " (usado)" : "", ctl, eapd, amp, sentido, comando(n, 0xF05, 0));
         }
+}
+
+/* GPIO do grupo de áudio (configuração som.gpio, em hexadecimal): em alguns
+ * notebooks o amplificador do alto-falante é ligado por um GPIO do codec, e
+ * qual deles não está escrito em lugar público. Os bits da máscara viram
+ * saídas em nível alto; o resto fica desligado. Dá para testar com
+ * "config som.gpio 1", "2", "3"... e o botão Testar som. */
+void hda_gpio(uint32_t mascara)
+{
+    if (!pronto || codec < 0) return;
+    uint32_t todos = gpios >= 8 ? 0xFF : (1u << gpios) - 1;
+    mascara &= todos;
+    bool i0 = int_salva_desliga();
+    comando(grupo, V_GPIO_LIGADOS, mascara);
+    comando(grupo, V_GPIO_DIRECAO, mascara);
+    comando(grupo, V_GPIO_DADOS, mascara);
+    uint32_t lido = comando(grupo, 0xF15, 0);
+    int_restaura(i0);
+    klog("[HDA] GPIO: mascara %x (de %d GPIO), dados lidos %x\n", mascara, gpios, lido);
 }

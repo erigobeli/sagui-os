@@ -61,6 +61,16 @@ static void ler_configuracoes(void)
         for (const char *p = v; *p >= '0' && *p <= '9'; p++) n = n * 10 + (*p - '0');
         volume = n > 100 ? 100 : n;
     }
+    /* som.gpio (hexadecimal): GPIO do codec que ligam o amplificador (G470). */
+    static int32_t gpio_visto = -1;
+    const char *g = config_obter("som.gpio");
+    int32_t mascara = 0;
+    for (const char *p = g ? g : ""; *p; p++) {
+        int d = *p >= '0' && *p <= '9' ? *p - '0' : *p >= 'a' && *p <= 'f' ? *p - 'a' + 10 : *p >= 'A' && *p <= 'F' ? *p - 'A' + 10 : -1;
+        if (d < 0) break;
+        mascara = mascara * 16 + d;
+    }
+    if (g && mascara != gpio_visto) { gpio_visto = mascara; hda_gpio((uint32_t)mascara); }
 }
 
 static void proxima_nota(void)
