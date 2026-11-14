@@ -109,7 +109,10 @@ int principal(int argc, char **argv)
     if (conferir) opcoes.saida = NULL;
     pilha = aloca(PILHA);
     if (!pilha) { imprimir_em(ERROS, "cc: sem memória\n"); return 1; }
-    trocar_pilha(pilha + PILHA - 16);
+    /* O topo alinhado em 16 bytes: o gcc supõe isso e, com SSE2, guarda
+     * valores de 16 bytes na pilha com instruções que exigem o alinhamento
+     * (H82; o aloca só garante 8). */
+    trocar_pilha((void *)(((unsigned)(pilha + PILHA) & ~15u) - 16));
     libera(pilha);
     return resultado;
 }

@@ -64,9 +64,17 @@ PROGRAMAS := $(patsubst userland/programas/%.c,$(B)/userland/bin/%,$(wildcard us
 # O Sagui 3D (B4) tem vários arquivos, numa pasta própria.
 SAGUI3D_OBJ := $(patsubst userland/sagui3d/%.c,$(B)/userland/sagui3d/%.o,$(wildcard userland/sagui3d/*.c))
 PROGRAMAS += $(B)/userland/bin/sagui3d
-# O Sagui Navegador (fase 6 da versão 2.0) também.
-NAVEGADOR_OBJ := $(patsubst userland/navegador/%.c,$(B)/userland/navegador/%.o,$(wildcard userland/navegador/*.c))
-PROGRAMAS += $(B)/userland/bin/navegador
+# O navegador (fase 6 da 2.0), que na 2.1 é o Cipó (H82): o motor de páginas,
+# as fontes, o JavaScript e os gráficos ficam em subpastas, e o código de
+# terceiros que ele usa fica em terceiros/ (D041, D043).
+NAVEGADOR_C   := $(wildcard userland/navegador/*.c userland/navegador/*/*.c) \
+                 terceiros/font-rs/acumulador.c terceiros/libwebp-vp8/vp8.c terceiros/v8-numeros/numero_base.c
+NAVEGADOR_OBJ := $(patsubst %.c,$(B)/nav/%.o,$(NAVEGADOR_C))
+NAVEGADOR_HDR := $(wildcard userland/navegador/*.h userland/navegador/*/*.h terceiros/*/*.h) $(B)/gerado/js_base.h
+PROGRAMAS += $(B)/userland/bin/navegador $(B)/userland/bin/cipo
+# O tocador de vídeo (H82): MP4 com H.264 e AAC, do pull request #6.
+VIDEO_OBJ := $(patsubst %.c,$(B)/nav/%.o,$(wildcard userland/video/*.c))
+PROGRAMAS += $(B)/userland/bin/video
 # O Sagui Code (fase 8).
 SAGUICODE_OBJ := $(patsubst userland/saguicode/%.c,$(B)/userland/saguicode/%.o,$(wildcard userland/saguicode/*.c))
 PROGRAMAS += $(B)/userland/bin/saguicode
@@ -152,14 +160,37 @@ $(B)/userland/bin/sagui3d: $(SAGUI3D_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
 	$(LD) $(ULDFLAGS) -o $@.elf $(SAGUI3D_OBJ) $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
-$(B)/userland/navegador/%.o: userland/navegador/%.c userland/navegador/navegador.h $(USER_HDR)
+# -mstackrealign: o motor faz contas em double com SSE2, e o gcc pode guardar
+# valores de 16 bytes na pilha; assim cada função alinha a própria pilha.
+# -fno-math-errno: sqrt vira a instrução do SSE2 (não há libm).
+NAV_CFLAGS := $(UCFLAGS) -mstackrealign -fno-math-errno -Iuserland/navegador -I$(B)/gerado
+
+$(B)/nav/%.o: %.c $(NAVEGADOR_HDR) $(USER_HDR)
 	@mkdir -p $(dir $@)
-	$(CC) $(UCFLAGS) -c -o $@ $<
+	$(CC) $(NAV_CFLAGS) -c -o $@ $<
+
+# O JavaScript embutido (Promise, classes do DOM...) vira uma string em C.
+$(B)/gerado/js_base.h: userland/navegador/js/js_base.js tools/mkjsbase.py
+	@mkdir -p $(dir $@)
+	$(PY) tools/mkjsbase.py $< $@
 
 $(B)/userland/bin/navegador: $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)
 	$(LD) $(ULDFLAGS) -o $@.elf $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
+
+$(B)/nav/userland/video/%.o: userland/video/%.c $(wildcard userland/video/*.h terceiros/*/*.h) $(USER_HDR)
+	@mkdir -p $(dir $@)
+	$(CC) $(NAV_CFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/video: $(VIDEO_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $(VIDEO_OBJ) $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
+# /bin/cipo é o mesmo programa com o nome novo (H82).
+$(B)/userland/bin/cipo: $(B)/userland/bin/navegador
+	cp $< $@
 
 $(B)/userland/saguicode/%.o: userland/saguicode/%.c userland/saguicode/ia.h $(USER_HDR)
 	@mkdir -p $(dir $@)

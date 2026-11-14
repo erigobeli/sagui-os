@@ -91,7 +91,7 @@ def main():
         m.comando("navegador", tempo=30)
         esperar(m, "navegador: pronto sagui:inicio", 30, antes)
         time.sleep(1)
-        n = moldura(m, "Sagui Navegador")
+        n = moldura(m, "Cipó")   # o nome do navegador desde a H82
         antes = len(m.serial())
         m.clique(*botao_max(n))
         s = esperar(m, "navegador: tamanho", 20, antes)

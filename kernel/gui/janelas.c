@@ -222,7 +222,7 @@ typedef struct { const char *nome, *programa, *processo; const uint32_t *px; } f
 static const fixo_t fixos[] = {
     { "Arquivos", "/bin/arquivos", "arquivos", arte_px_arquivos_40 },
     { "Terminal", "/bin/terminal", "terminal", arte_px_terminal_40 },
-    { "Navegador", "/bin/navegador", "navegador", arte_px_cipo_40 },
+    { "Cipó", "/bin/navegador", "navegador", arte_px_cipo_40 },
     { "Editor", "/bin/editor", "editor", arte_px_editor_40 },
     { "Configurações", "/bin/configuracoes", "configuracoes", arte_px_configuracoes_40 },
 };
@@ -334,7 +334,7 @@ static void desenhar_doca(void)
 
 static const fixo_t menu_itens[] = {
     { "Arquivos", "/bin/arquivos", "", 0 }, { "Terminal", "/bin/terminal", "", 0 },
-    { "Navegador", "/bin/navegador", "", 0 }, { "Editor", "/bin/editor", "", 0 },
+    { "Cipó", "/bin/navegador", "", 0 }, { "Editor", "/bin/editor", "", 0 },
     { "Calculadora", "/bin/calculadora", "", 0 }, { "Banana", "/bin/banana", "", 0 },
     { "Sagui 3D", "/bin/sagui3d", "", 0 }, { "Configurações", "/bin/configuracoes", "", 0 },
     { "Sobre o SaguiOS", "/bin/sobre-o-sistema", "", 0 }, { "Desligar...", "/bin/energia", "", 0 },

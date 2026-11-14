@@ -11,7 +11,10 @@
 - **Robson de Lima Barbosa** ([@robson-apk](https://github.com/robson-apk)): o visual dos
   pull requests #1 (ícones suavizados e a ferramenta que os gera, letras suavizadas,
   fundos "Com sol" e "Mata Atlântica", menus do botão direito, barra de tarefas, mouse
-  mais rápido; trazido na H81) e #6 (o motor do navegador Cipó; trazido na H82).
+  mais rápido; trazido na H81) e #6 (o navegador Cipó: motor de HTML, CSS e layout, quebra de linha Unicode, fontes
+  TrueType/WOFF/WOFF2 com Brotli, motor de JavaScript com DOM, Canvas 2D, SVG, WebGL e GLSL
+  em software, imagens GIF e WebP, cookies e o tocador de vídeo H.264/AAC; trazido na H82,
+  D043).
 - **Clayton** ([@Clayton8240](https://github.com/Clayton8240)): o `poweroff` e a tela
   "pode desligar" (pull request #4; trazido na H83).
 - **Gabriel** ([@gabriel-rb-devc](https://github.com/gabriel-rb-devc)): o monitor de

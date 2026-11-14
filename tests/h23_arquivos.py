@@ -51,10 +51,10 @@ def main():
         m.esperar_serial("arquivos: pronto", 20)
         time.sleep(0.5)
         a = janela(m.serial(), "Arquivos")
-        verificar("arquivos: pasta / (10 itens)" in m.serial(), "Arquivos abre na raiz: 8 pastas e 2 arquivos")
+        verificar("arquivos: pasta / (11 itens)" in m.serial(), "Arquivos abre na raiz: 9 pastas (com fontes/, H82) e 2 arquivos")
         m.captura("H23-arquivos-raiz")
 
-        m.clique(*item(a, 2), duplo=True)                         # historia/
+        m.clique(*item(a, 3), duplo=True)                         # historia/ (depois de arte, bin e fontes)
         m.esperar_serial("arquivos: pasta /historia (2 itens)", 10)
         verificar(True, "duplo clique na pasta historia entra nela")
         m.clique(*item(a, 0), duplo=True)                         # linux.txt
@@ -67,8 +67,8 @@ def main():
         time.sleep(0.4)
 
         m.clique(a["x"] + 8 + 45, a["y"] + 7 + 13)               # Voltar
-        m.esperar_serial("arquivos: pasta / (10 itens)", 10)
-        m.clique(*item(a, 7), duplo=True)                         # tmp/ (depois de arte, bin, historia, jogos, sistema, sons e testes)
+        m.esperar_serial("arquivos: pasta / (11 itens)", 10)
+        m.clique(*item(a, 8), duplo=True)                         # tmp/ (depois de arte, bin, fontes, historia, jogos, sistema, sons e testes)
         m.esperar_serial("arquivos: pasta /tmp (1 itens)", 10)
         m.clique(*item(a, 0), duplo=True)                         # nota.txt
         m.esperar_serial("editor: aberto /tmp/nota.txt (29 bytes)", 10)

@@ -1,22 +1,37 @@
-/* navegador.c - a janela do Sagui Navegador (H62).
+/* navegador.c - o Cipó, o navegador do SaguiOS (H62; o nome e o motor, H82).
+ *
+ * O nome (sugerido por M4R4G0N no pull request #3, e usado por Robson de
+ * Lima Barbosa no #6): o sagui atravessa a mata pulando de cipó em cipó; o
+ * navegador atravessa a web pulando de link em link.
  *
  *   [<] [>] [R] [ endereço ......................... ] [Ir] [+Fav] [Favoritos]
  *   +------------------------------------------------------------------+-+
- *   |  a página (pagina.c desenha; a rolagem é só um deslocamento)    |#|
+ *   |  a página (o motor pinta; a rolagem é só um deslocamento)        |#|
  *   +------------------------------------------------------------------+-+
  *   status: o endereço do link sob o mouse, "Carregando...", erros
  *
  * Endereços aceitos: http://, https://, um caminho de arquivo do SaguiOS
  * (/usb/pagina.html) e as páginas internas sagui:inicio e sagui:favoritos.
- * Sem "http" na frente, vai https://. A página chega inteira (http_obter),
- * vira árvore (html.c) e layout (pagina.c); depois as imagens são buscadas uma
- * a uma, e a cada imagem o layout é refeito e a tela atualizada. Se o usuário
- * clicar em outro link no meio, o resto das imagens fica para trás.
+ * Sem "http" na frente, vai https://.
+ *
+ * Como uma página abre (2.1): o corpo chega inteiro (rede.c, com cookies),
+ * vira UTF-8, os scripts rodam (js/, que devolve o HTML do DOM depois do
+ * "load"), e o motor (motor/) lê o HTML e o CSS, diagrama e pinta. Depois as
+ * fontes da web e as imagens chegam, umas poucas por vez, e a cada leva o
+ * layout é refeito. Se o usuário fizer alguma coisa no meio, o resto fica
+ * para trás. Com JavaScript, a página continua viva: timers, animações e
+ * cliques mudam o DOM, e a página é relida no mesmo ponto da rolagem.
+ *
+ * A janela, a barra, o histórico e os favoritos são da 2.0; a ligação com o
+ * motor e o JavaScript (ganchos, cache, iframes, página viva, campos) veio
+ * do Cipó do pull request #6 (Robson de Lima Barbosa), adaptada à 2.0.
  *
  * Teclado: setas, PgUp/PgDn, Home/End rolam; Backspace volta; Ctrl+L vai
  * para o endereço. Favoritos ficam em /usb/.saguios/favoritos.txt (ou
  * /tmp/favoritos.txt sem pendrive), uma linha "endereço<TAB>título" cada. */
 #include "navegador.h"
+
+#define NOME_NAVEGADOR "Cipó"
 
 /* O tamanho da janela muda (H78): começa em 960 x 660. */
 static int larg_jan = 960, alt_jan = 660;
@@ -27,20 +42,19 @@ static int larg_jan = 960, alt_jan = 660;
 #define ROLAGEM_L  14
 #define VISTA_L    (LARG - ROLAGEM_L)
 #define VISTA_A    (ALT - BARRA - STATUS)
-#define MAX_URL    1024
+#define MAX_URL    MAX_URL_NAV
 #define MAX_PAGINA (6 * 1024 * 1024)
-#define MAX_IMAGEM (3 * 1024 * 1024)
+#define MAX_RECURSO (6 * 1024 * 1024)
 #define MAX_HIST   64
 
 static jan_t *j;
-static pagina_t *pag;
-static char *conteudo;            /* os bytes da página atual (a árvore aponta para cópias, não para eles) */
+static motor_t *motor;            /* a página atual */
+static int altura;                /* altura da página diagramada */
 static char url_atual[MAX_URL];
-static char base[MAX_URL];         /* para resolver os links (a url final ou o <base>) */
 static int rolagem;
-static int campo_foco = -1;
 static char status[200];
-static int link_sob_mouse = -1;
+static char link_sob_mouse[MAX_URL];
+static char titulo_js[128];       /* document.title = (vale mais que o <title>) */
 
 static struct { char url[MAX_URL]; int rolagem; } hist[MAX_HIST];
 static int hist_qtd, hist_pos = -1;
@@ -61,13 +75,13 @@ static struct { int x, l; const char *texto; } botoes[] = {
 #define ENDE_X 94
 #define ENDE_L (LARG - ENDE_X - 6 - 34 - 50 - 88 - 18)
 
-/* ------------------------------------------------------------ desenho */
+static void carregar(const char *pedido, bool novo_no_historico, int rolagem_inicial);
 
-static int altura_total(void) { return pag ? pag->altura : 0; }
+/* ------------------------------------------------------------ desenho */
 
 static void limitar_rolagem(void)
 {
-    int max = altura_total() - VISTA_A;
+    int max = altura - VISTA_A;
     if (rolagem > max) rolagem = max;
     if (rolagem < 0) rolagem = 0;
 }
@@ -103,12 +117,23 @@ static void desenhar_barra(void)
     desenhar_endereco();
 }
 
+/* A interface do SaguiOS desenha em Latin-1; a página é UTF-8. */
+static void utf8_para_sistema(char *s)
+{
+    int k = 0, n = (int)tam_texto(s);
+    for (int i = 0; i < n;) {
+        uint32_t cp;
+        i += utf8_ler(s + i, n - i, &cp);
+        s[k++] = cp < 0x100 ? (char)cp : cp == 0x2013 || cp == 0x2014 ? '-' : cp == 0x2019 || cp == 0x2018 ? '\'' : '?';
+    }
+    s[k] = 0;
+}
+
 static void desenhar_status(void)
 {
     g_retangulo(j, 0, ALT - STATUS, LARG, STATUS, COR_FUNDO);
     g_retangulo(j, 0, ALT - STATUS, LARG, 1, COR_BORDA);
-    const char *t = status;
-    if (link_sob_mouse >= 0 && pag && link_sob_mouse < pag->nlinks) t = pag->links[link_sob_mouse];
+    const char *t = link_sob_mouse[0] ? link_sob_mouse : status;
     int cabe = (LARG - 12) / LETRA_L;
     g_texto_n(j, 6, ALT - STATUS + 2, t, cabe, COR_TEXTO_FRACO);
 }
@@ -117,19 +142,24 @@ static void desenhar_rolagem(void)
 {
     int x = VISTA_L, y = BARRA;
     g_retangulo(j, x, y, ROLAGEM_L, VISTA_A, 0xE6E8EA);
-    int total = altura_total();
-    if (total <= VISTA_A) return;
-    int a = VISTA_A * VISTA_A / total;
+    if (altura <= VISTA_A) return;
+    int a = VISTA_A * VISTA_A / altura;
     if (a < 20) a = 20;
-    int ya = y + (int)((int)rolagem * (VISTA_A - a) / (total - VISTA_A));
+    int ya = y + (int)((int)rolagem * (VISTA_A - a) / (altura - VISTA_A));
     g_retangulo(j, x + 2, ya, ROLAGEM_L - 4, a, 0xA2A9B1);
+}
+
+/* Só a página e a barra de rolagem. */
+static void desenhar_pagina(void)
+{
+    if (motor) motor_pintar(motor, j->px + BARRA * j->larg, VISTA_L, j->larg, rolagem, VISTA_A);
+    else g_retangulo(j, 0, BARRA, VISTA_L, VISTA_A, COR_BRANCO);
+    desenhar_rolagem();
 }
 
 static void desenhar_tudo(void)
 {
-    if (pag) pagina_desenhar(pag, j, 0, BARRA, VISTA_L, VISTA_A, rolagem, campo_foco);
-    else g_retangulo(j, 0, BARRA, VISTA_L, VISTA_A, COR_BRANCO);
-    desenhar_rolagem();
+    desenhar_pagina();
     desenhar_barra();
     desenhar_status();
     jan_mostrar(j);
@@ -149,72 +179,262 @@ static void definir_endereco(const char *u)
     ende.inicio = 0;
 }
 
-/* ------------------------------------------------------------ busca na rede */
+/* ------------------------------------------------------------ texto da página */
 
-typedef struct { char *d; uint32_t n, cap, max; } recebido_t;
-
-static int receber(void *ctx, const char *dados, unsigned n)
+/* O motor trabalha em UTF-8. charset: 1 UTF-8, 0 Latin-1/Windows-1252, -1 não
+ * sabe (UTF-8 válido fica como está; senão é Windows-1252). Do #6, com o
+ * charset declarado da 2.0. Devolve o bloco novo (o antigo é liberado). */
+static char *para_utf8(char *s, uint32_t *tam, int charset)
 {
-    recebido_t *r = ctx;
-    if (r->n + n > r->max) return -1;
-    if (r->n + n + 1 > r->cap) {
-        uint32_t cap = r->cap ? r->cap * 2 : 65536;
-        while (cap < r->n + n + 1) cap *= 2;
-        if (cap > r->max + 1) cap = r->max + 1;
-        char *novo = realoca(r->d, cap);
-        if (!novo) return -1;
-        r->d = novo;
-        r->cap = cap;
+    int n = (int)*tam;
+    if (charset == 1) return s;
+    if (charset < 0) {
+        bool valido = true;
+        for (int i = 0; i < n;) {
+            uint32_t cp; int k = utf8_ler(s + i, n - i, &cp);
+            if (k == 1 && (uint8_t)s[i] >= 0x80) { valido = false; break; }
+            i += k;
+        }
+        if (valido) return s;
     }
-    memcpy(r->d + r->n, dados, n);
-    r->n += n;
-    r->d[r->n] = 0;
-    return 0;
+    int cresce = 0;
+    for (int i = 0; i < n; i++) if ((uint8_t)s[i] >= 0x80) cresce += (uint8_t)s[i] < 0xA0 ? 2 : 1;
+    if (!cresce) return s;
+    char *d = aloca((size_t)n + (size_t)cresce + 1);
+    if (!d) return s;
+    static const uint16_t cp1252[32] = { 0x20AC, 0x81, 0x201A, 0x192, 0x201E, 0x2026, 0x2020, 0x2021, 0x2C6, 0x2030, 0x160, 0x2039, 0x152, 0x8D, 0x17D, 0x8F,
+                                         0x90, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x2DC, 0x2122, 0x161, 0x203A, 0x153, 0x9D, 0x17E, 0x178 };
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        uint8_t c = (uint8_t)s[i];
+        k += utf8_por(d + k, c >= 0x80 && c < 0xA0 ? cp1252[c - 0x80] : c);
+    }
+    d[k] = 0;
+    libera(s);
+    *tam = (uint32_t)k;
+    return d;
 }
 
-/* Lê um arquivo do SaguiOS inteiro. */
-static int ler_arquivo(const char *caminho, recebido_t *r)
+static bool sem_caixa(const char *a, const char *b, int n)
 {
-    int fd = abrir(caminho, ABRIR_LER);
-    if (fd < 0) return fd;
-    char bloco[4096];
-    int n;
-    while ((n = ler(fd, bloco, sizeof bloco)) > 0)
-        if (receber(r, bloco, (unsigned)n) < 0) { fechar(fd); return ERRO_SEM_MEMORIA; }
-    fechar(fd);
-    return 0;
+    for (int i = 0; i < n; i++) {
+        char x = a[i] >= 'A' && a[i] <= 'Z' ? (char)(a[i] + 32) : a[i];
+        if (x != b[i]) return false;
+    }
+    return true;
 }
 
-/* Busca um endereço (rede ou arquivo). tipo recebe o Content-Type. */
-static int buscar(const char *url, recebido_t *r, char *tipo, int max_tipo, char *final, int max_final, char *erro, int max_erro)
+/* "charset=" num texto (Content-Type ou o começo do HTML): 1 UTF-8, 0 outro, -1 nada. */
+static int charset_em(const char *t, int n)
 {
-    memset(r, 0, sizeof *r);
-    r->max = MAX_PAGINA;
-    tipo[0] = 0;
-    if (url[0] == '/') {
-        int e = ler_arquivo(url, r);
-        if (e < 0) { formatar_texto(erro, (size_t)max_erro, "não consegui abrir %s (%s)", url, nome_erro(e)); return -1; }
-        const char *ponto = acha_ultimo_char(url, '.');
-        copia_texto(tipo, ponto && (compara_texto(ponto, ".html") == 0 || compara_texto(ponto, ".htm") == 0) ? "text/html" :
-                          ponto && (compara_texto(ponto, ".png") == 0) ? "image/png" :
-                          ponto && (compara_texto(ponto, ".jpg") == 0 || compara_texto(ponto, ".jpeg") == 0) ? "image/jpeg" : "text/plain",
-                    (size_t)max_tipo);
-        copia_texto(final, url, (size_t)max_final);
-        return 0;
+    for (int i = 0; i + 8 < n; i++)
+        if (sem_caixa(t + i, "charset=", 8)) {
+            const char *v = t + i + 8;
+            while (*v == '"' || *v == '\'' || *v == ' ') v++;
+            return sem_caixa(v, "utf-8", 5) || sem_caixa(v, "utf8", 4) ? 1 : 0;
+        }
+    return -1;
+}
+
+/* ------------------------------------------------------------ ganchos do motor e do JavaScript */
+
+/* Cache dos recursos da página (CSS, imagens, scripts): a página viva é
+ * relida a cada mudança do DOM e não deve baixar tudo de novo. Limpo ao
+ * navegar. (#6) */
+#define CACHE_N 48
+#define CACHE_MAX (6u << 20)
+static struct { char *url; uint8_t *d; unsigned n; } cache[CACHE_N];
+static int qtd_cache; static unsigned cache_total;
+
+static void cache_limpar(void)
+{
+    for (int i = 0; i < qtd_cache; i++) { libera(cache[i].url); libera(cache[i].d); }
+    qtd_cache = 0; cache_total = 0;
+}
+
+static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
+{
+    uint8_t *c = aloca(n + 1);
+    if (c) { memcpy(c, d, n); c[n] = 0; }
+    return c;
+}
+
+/* Evento que chegou enquanto a página carregava (tratado depois, no laço). */
+static evento_t evento_guardado;
+static bool tem_evento_guardado;
+
+static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *cab, int cmax, char *final, int fmax)
+{
+    char end[MAX_URL];
+    endereco_resolver(url_atual, u, end, sizeof end);
+    if (comeca_com(end, "sagui:") || comeca_com(end, "javascript:")) return NULL;
+    char msg[200];
+    formatar_texto(msg, sizeof msg, "Baixando %s", end);
+    definir_status(msg);
+    rede_resposta_t r;
+    int s = rede_buscar(end, &r, MAX_RECURSO, cab, cmax);
+    if (codigo) *codigo = s < 0 ? 0 : s;
+    if (final) copia_texto(final, r.final, (size_t)fmax);
+    if (s < 0 || !r.d) { registrar("navegador: recurso %s: %s", end, r.erro[0] ? r.erro : "veio vazio"); libera(r.d); return NULL; }
+    *n = r.n;
+    return r.d;
+}
+
+/* Recurso da página (CSS, imagem, fonte, script): só os que deram certo. */
+static uint8_t *baixar_recurso(const char *u, unsigned *n)
+{
+    char end[MAX_URL];
+    endereco_resolver(url_atual, u, end, sizeof end);
+    for (int i = 0; i < qtd_cache; i++)
+        if (compara_texto(cache[i].url, end) == 0) { *n = cache[i].n; return copia_bloco(cache[i].d, cache[i].n); }
+    int codigo = 0;
+    uint8_t *d = baixar_sem_cache(end, n, &codigo, NULL, 0, NULL, 0);
+    if (d && codigo >= 400) { libera(d); return NULL; }
+    if (d && qtd_cache < CACHE_N && cache_total + *n <= CACHE_MAX) {
+        int k = (int)tam_texto(end);
+        char *cu = aloca((unsigned)k + 1);
+        uint8_t *cd = copia_bloco(d, *n);
+        if (cu && cd) { memcpy(cu, end, (unsigned)k + 1); cache[qtd_cache].url = cu; cache[qtd_cache].d = cd; cache[qtd_cache].n = *n; qtd_cache++; cache_total += *n; }
+        else { libera(cu); libera(cd); }
     }
-    char rede[MAX_URL];
-    endereco_para_rede(url, rede, sizeof rede);
-    http_resposta_t resp;
-    int ok = http_obter(rede, receber, r, &resp);
-    copia_texto(tipo, resp.tipo, (size_t)max_tipo);
-    copia_texto(final, resp.url_final[0] ? resp.url_final : rede, (size_t)max_final);
-    if (ok < 0) { copia_texto(erro, resp.erro[0] ? resp.erro : "a conexão falhou", (size_t)max_erro); return -1; }
-    if (resp.situacao >= 400) formatar_texto(erro, (size_t)max_erro, "o servidor respondeu %d", resp.situacao);
-    else erro[0] = 0;
-    return resp.situacao;
+    return d;
+}
+
+/* fetch/XHR: corpo de qualquer código, com código, cabeçalhos e URL final. */
+static uint8_t *js_resposta(const char *u, unsigned *n, int *codigo, char *cab, int cmax, char *final, int fmax)
+{
+    *codigo = 0; cab[0] = 0; final[0] = 0;
+    return baixar_sem_cache(u, n, codigo, cab, cmax, final, fmax);
+}
+
+static void js_titulo(const char *t) { copia_texto(titulo_js, t, sizeof titulo_js); }
+static void js_alerta(const char *t)
+{
+    registrar("navegador: alert %s", t);
+    char msg[200];
+    formatar_texto(msg, sizeof msg, "Alerta da página: %s", t);
+    utf8_para_sistema(msg);
+    copia_texto(status, msg, sizeof status);
+}
+
+static bool decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a)
+{
+    bool ok = imagem_decodificar(d, n, px, l, a);
+    if (ok) registrar("navegador: imagem %dx%d", *l, *a);
+    else registrar("navegador: imagem nao decodificou (%u bytes)", n);
+    return ok;
+}
+
+static const motor_ganchos_t ganchos_motor = { baixar_recurso, decodificar, tela2d_pixels };
+
+/* Layout pedido por um script (medidas): um motor à parte diagrama o DOM
+ * atual com o CSS em cache e devolve as caixas. Fica vivo para o
+ * getComputedStyle até o próximo pedido ou a próxima página. (#6) */
+static motor_t *medidor;
+static int js_layout(const char *html, int n, int *caixas, int qtd)
+{
+    if (medidor) motor_fim(medidor);
+    medidor = motor_novo(&ganchos_motor);
+    if (!medidor) return 0;
+    motor_ler(medidor, html, n, url_atual);
+    motor_layout(medidor, VISTA_L, VISTA_A);
+    motor_caixas(medidor, caixas, qtd);
+    return 1;
+}
+static bool js_estilo(int k, const char *prop, char *o, int max) { return medidor && motor_estilo_de(medidor, k, prop, o, max); }
+static struct fonte *js_fonte(const char *fam, int peso, int ital, int larg) { return medidor ? motor_fonte_nomeada(medidor, fam, peso, ital, larg) : NULL; }
+
+/* iframes: cada quadro tem o seu motor (para pintar e para achar o clique). (#6) */
+#define MAX_QM 16
+static struct { int tela; motor_t *m; } qm[MAX_QM];
+static int js_quadro_pintar(int tela, const char *html, int n, const char *url, int l, int a)
+{
+    int k = 0;
+    while (k < MAX_QM && !(qm[k].m && qm[k].tela == tela)) k++;
+    if (k == MAX_QM) { k = 0; while (k < MAX_QM && qm[k].m) k++; }
+    if (k == MAX_QM) return 0;
+    if (qm[k].m) motor_fim(qm[k].m);
+    motor_t *m = motor_novo(&ganchos_motor);
+    qm[k].m = m; qm[k].tela = tela;
+    if (!m) return 0;
+    motor_ler(m, html, n, url);
+    motor_layout(m, l, a);
+    while (motor_imagens(m, 8)) motor_layout(m, l, a);
+    int tl, ta;
+    uint32_t *px = tela2d_px_escrita(tela, &tl, &ta);
+    if (!px) return 0;
+    int w = l < tl ? l : tl, h = a < ta ? a : ta;
+    motor_pintar(m, px, w, tl, 0, h);
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) px[y * tl + x] |= 0xFF000000u;
+    return 1;
+}
+static int js_quadro_alvo(int tela, int x, int y)
+{
+    for (int k = 0; k < MAX_QM; k++) {
+        if (!qm[k].m || qm[k].tela != tela) continue;
+        const motor_alvo_t *a = motor_alvo(qm[k].m, x, y);
+        if (!a) return -1;
+        if (a->js >= 0) return a->js;
+        if (a->href && comeca_com(a->href, "sagui-js:")) return texto_para_int(a->href + 9);
+        return -1;
+    }
+    return -1;
+}
+static void quadros_esquecer(void) { for (int k = 0; k < MAX_QM; k++) { if (qm[k].m) motor_fim(qm[k].m); qm[k].m = NULL; } }
+
+static bool tem_script(const char *h, uint32_t n)
+{
+    for (uint32_t i = 0; i + 7 < n; i++) if (h[i] == '<' && sem_caixa(h + i + 1, "script", 6)) return true;
+    return false;
+}
+
+/* Roda os scripts: devolve o HTML do DOM depois do load (ou o mesmo). */
+static char *rodar_scripts(char *h, uint32_t *n)
+{
+    static const js_hooks_t ganchos = { baixar_recurso, js_titulo, js_alerta, js_resposta, js_layout, js_estilo, js_fonte,
+                                        js_quadro_pintar, js_quadro_alvo };
+    quadros_esquecer();
+    if (!tem_script(h, *n)) return h;
+    definir_status("Rodando os scripts da página...");
+    unsigned t0 = tempo_ms();
+    int t = 0;
+    js_janela(VISTA_L, VISTA_A, 0, 0);
+    char *novo = js_pagina(h, (int)*n, url_atual, &ganchos, &t);
+    registrar("navegador: scripts em %u ms (%s)", tempo_ms() - t0, novo ? "o DOM mudou" : "nada mudou");
+    if (!novo) return h;
+    libera(h);
+    *n = (uint32_t)t;
+    return novo;
 }
 
 /* ------------------------------------------------------------ páginas internas */
+
+typedef struct { char *d; uint32_t n, cap; } texto_t;
+
+static void acrescentar(texto_t *r, const char *s, unsigned n)
+{
+    if (r->n + n + 1 > r->cap) {
+        uint32_t cap = r->cap ? r->cap * 2 : 4096;
+        while (cap < r->n + n + 1) cap *= 2;
+        char *novo = realoca(r->d, cap);
+        if (!novo) return;
+        r->d = novo; r->cap = cap;
+    }
+    memcpy(r->d + r->n, s, n);
+    r->n += n;
+    r->d[r->n] = 0;
+}
+#define T(r, s) acrescentar(r, s, (unsigned)tam_texto(s))
+
+static void html_escapar(texto_t *r, const char *s, int n)
+{
+    for (int i = 0; i < n && s[i]; i++) {
+        if (s[i] == '<') T(r, "&lt;");
+        else if (s[i] == '&') T(r, "&amp;");
+        else if (s[i] == '"') T(r, "&quot;");
+        else acrescentar(r, s + i, 1);
+    }
+}
 
 static void pasta_config(char *out, int max)
 {
@@ -222,74 +442,72 @@ static void pasta_config(char *out, int max)
     copia_texto(out, info_arquivo("/usb/.saguios", &i) >= 0 ? "/usb/.saguios" : "/tmp", (size_t)max);
 }
 
-static void html_escapar(recebido_t *r, const char *s)
+static void pagina_interna(const char *url, texto_t *r)
 {
-    for (; *s; s++) {
-        if (*s == '<') receber(r, "&lt;", 4);
-        else if (*s == '&') receber(r, "&amp;", 5);
-        else if (*s == '"') receber(r, "&quot;", 6);
-        else receber(r, s, 1);
-    }
-}
-
-static void pagina_interna(const char *url, recebido_t *r)
-{
-    memset(r, 0, sizeof *r);
-    r->max = 256 * 1024;
-    #define T(s) receber(r, s, (unsigned)tam_texto(s))
-    T("<html><head><meta charset=\"iso-8859-1\">");
+    T(r, "<html><head><meta charset=\"iso-8859-1\">");
     if (compara_texto(url, "sagui:favoritos") == 0) {
-        T("<title>Favoritos</title></head><body><h1>Favoritos</h1>");
+        T(r, "<title>Favoritos</title></head><body><h1>Favoritos</h1>");
         char caminho[64];
         pasta_config(caminho, sizeof caminho);
         junta_texto(caminho, "/favoritos.txt", sizeof caminho);
-        recebido_t f;
-        memset(&f, 0, sizeof f);
-        f.max = 128 * 1024;
+        rede_resposta_t f;
         int n = 0;
-        if (ler_arquivo(caminho, &f) == 0 && f.d) {
-            T("<ul>");
-            for (char *p = f.d; *p;) {
+        if (rede_buscar(caminho, &f, 128 * 1024, NULL, 0) == 200 && f.d) {
+            T(r, "<ul>");
+            for (char *p = (char *)f.d; *p;) {
                 char *fim = acha_char(p, '\n');
                 if (fim) *fim = 0;
                 char *tab = acha_char(p, '\t');
                 if (tab) *tab = 0;
                 if (*p) {
-                    T("<li><a href=\"");
-                    html_escapar(r, p);
-                    T("\">");
-                    html_escapar(r, tab && tab[1] ? tab + 1 : p);
-                    T("</a></li>");
+                    T(r, "<li><a href=\"");
+                    html_escapar(r, p, MAX_URL);
+                    T(r, "\">");
+                    html_escapar(r, tab && tab[1] ? tab + 1 : p, MAX_URL);
+                    T(r, "</a></li>");
                     n++;
                 }
                 if (!fim) break;
                 p = fim + 1;
             }
-            T("</ul>");
+            T(r, "</ul>");
         }
         libera(f.d);
-        if (!n) T("<p>Nenhum favorito ainda. Abra uma página e clique em <b>+Fav</b>.</p>");
-        T("<p><small>Guardados em ");
-        html_escapar(r, caminho);
-        T("</small></p>");
+        if (!n) T(r, "<p>Nenhum favorito ainda. Abra uma página e clique em <b>+Fav</b>.</p>");
+        T(r, "<p><small>Guardados em ");
+        html_escapar(r, caminho, 64);
+        T(r, "</small></p>");
     } else {
-        T("<title>Sagui Navegador</title></head><body><h1>Sagui Navegador</h1>"
-          "<p>Um navegador escrito do zero para o SaguiOS: HTML, imagens PNG e JPEG, HTTPS com TLS 1.3 próprio.</p>"
-          "<h2>Para começar</h2><ul>"
-          "<li><a href=\"https://pt.wikipedia.org/wiki/Sagui\">Wikipédia: Sagui</a></li>"
-          "<li><a href=\"https://pt.wikipedia.org/wiki/Wikip%C3%A9dia:P%C3%A1gina_principal\">Wikipédia em português</a></li>"
-          "<li><a href=\"https://example.com/\">example.com</a></li>"
-          "<li><a href=\"https://raw.githubusercontent.com/erigobeli/sagui-os/main/README.md\">README do SaguiOS (texto)</a></li>"
-          "<li><a href=\"sagui:favoritos\">Favoritos</a></li>"
-          "</ul><h2>Procurar na Wikipédia</h2>"
-          "<form action=\"https://pt.wikipedia.org/w/index.php\"><input type=\"hidden\" name=\"title\" value=\"Especial:Pesquisar\">"
-          "<input type=\"search\" name=\"search\"> <input type=\"submit\" value=\"Procurar\"></form>"
-          "<h2>Dicas</h2><ul><li>Setas, PgUp, PgDn, Home e End rolam a página.</li>"
-          "<li>Backspace volta para a página anterior; Ctrl+L vai para o endereço.</li>"
-          "<li>Também abre arquivos do SaguiOS, como <a href=\"/leia-me.txt\">/leia-me.txt</a>.</li></ul>");
+        T(r, "<title>" NOME_NAVEGADOR "</title>"
+             "<style>body{font-family:sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1e2328}"
+             "h1{color:#0b7a3e}a{color:#1a4fb0}.dica{background:#eef6f0;border-left:4px solid #0b7a3e;padding:8px 12px}</style>"
+             "</head><body><h1>" NOME_NAVEGADOR "</h1>"
+             "<p><i>O sagui atravessa a mata pulando de cipó em cipó; o Cipó atravessa a web pulando de link em link.</i></p>"
+             "<p>O navegador do SaguiOS: HTML e CSS (flex, grid, tabelas), JavaScript, fontes TrueType, "
+             "imagens PNG, JPEG, GIF e WebP, Canvas e SVG, e HTTPS com o TLS 1.3 do próprio sistema.</p>"
+             "<h2>Para começar</h2><ul>"
+             "<li><a href=\"https://pt.wikipedia.org/wiki/Sagui\">Wikipédia: Sagui</a></li>"
+             "<li><a href=\"https://pt.wikipedia.org/wiki/Wikip%C3%A9dia:P%C3%A1gina_principal\">Wikipédia em português</a></li>"
+             "<li><a href=\"https://example.com/\">example.com</a></li>"
+             "<li><a href=\"https://raw.githubusercontent.com/erigobeli/sagui-os/main/README.md\">README do SaguiOS (texto)</a></li>"
+             "<li><a href=\"sagui:favoritos\">Favoritos</a></li>"
+             "</ul><h2>Procurar na Wikipédia</h2>"
+             "<form action=\"https://pt.wikipedia.org/w/index.php\"><input type=\"hidden\" name=\"title\" value=\"Especial:Pesquisar\">"
+             "<input type=\"search\" name=\"search\"> <input type=\"submit\" value=\"Procurar\"></form>"
+             "<h2>Dicas</h2><div class=\"dica\"><ul><li>Setas, PgUp, PgDn, Home e End rolam a página.</li>"
+             "<li>Backspace volta para a página anterior; Ctrl+L vai para o endereço.</li>"
+             "<li>Também abre arquivos do SaguiOS, como <a href=\"/leia-me.txt\">/leia-me.txt</a>.</li></ul></div>");
     }
-    T("</body></html>");
-    #undef T
+    T(r, "</body></html>");
+}
+
+static void pagina_erro(texto_t *r, const char *url, const char *erro)
+{
+    T(r, "<html><head><meta charset=\"iso-8859-1\"><title>Não deu para abrir</title></head><body><h1>Não deu para abrir a página</h1><p>");
+    html_escapar(r, url, MAX_URL);
+    T(r, "</p><p><b>Motivo:</b> ");
+    html_escapar(r, erro, 200);
+    T(r, "</p><p><a href=\"sagui:inicio\">Página inicial</a></p></body></html>");
 }
 
 /* ------------------------------------------------------------ carregar */
@@ -299,66 +517,60 @@ static void guardar_rolagem(void)
     if (hist_pos >= 0) hist[hist_pos].rolagem = rolagem;
 }
 
-static void pagina_erro(recebido_t *r, const char *url, const char *erro)
+static void diagramar(void)
 {
-    memset(r, 0, sizeof *r);
-    r->max = 64 * 1024;
-    const char *t = "<html><head><meta charset=\"iso-8859-1\"><title>Não deu para abrir</title></head><body><h1>Não deu para abrir a página</h1><p>";
-    receber(r, t, (unsigned)tam_texto(t));
-    html_escapar(r, url);
-    t = "</p><p><b>Motivo:</b> ";
-    receber(r, t, (unsigned)tam_texto(t));
-    html_escapar(r, erro);
-    t = "</p><p><a href=\"sagui:inicio\">Página inicial</a></p></body></html>";
-    receber(r, t, (unsigned)tam_texto(t));
+    if (!motor) { altura = 0; return; }
+    altura = motor_layout(motor, VISTA_L, VISTA_A);
+    limitar_rolagem();
 }
 
-/* Um evento que chegou enquanto as imagens carregavam (tratado depois). */
-static evento_t evento_guardado;
-static bool tem_evento_guardado;
+/* Lê o HTML (UTF-8) num motor novo e diagrama. */
+static void ler_pagina(const char *h, int n)
+{
+    if (motor) motor_fim(motor);
+    motor = motor_novo(&ganchos_motor);
+    if (!motor) { altura = 0; return; }
+    motor_ler(motor, h, n, url_atual);
+    diagramar();
+}
 
-/* Busca as imagens da página, uma por vez. Para se chegar um clique. */
+/* Fontes da web e imagens, umas poucas por vez. Para se chegar um evento. */
 static void carregar_imagens(void)
 {
-    int prontas = 0, tentadas = 0;
-    for (int i = 0; pag && i < pag->nimgs && tentadas < 80; i++) {
-        img_pagina_t *im = &pag->imgs[i];
-        if (im->estado != 0) continue;
+    while (motor) {
         evento_t e;
-        if (proximo_evento(j->id, &e, false) == 1) {
-            /* Qualquer ação do usuário interrompe; o evento é tratado depois (devolvido na fila do kernel não dá,
-             * então guardamos para o laço principal). */
-            evento_guardado = e;
-            tem_evento_guardado = true;
-            registrar("navegador: imagens interrompidas (%d de %d)", prontas, pag->nimgs);
-            return;
+        if (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
+            if (e.tipo != EV_MOVER) {
+                /* Uma ação do usuário interrompe; o evento é tratado depois, no laço principal. */
+                evento_guardado = e;
+                tem_evento_guardado = true;
+                break;
+            }
         }
-        char url[MAX_URL], tipo[64], final[MAX_URL], erro[128];
-        endereco_resolver(base, im->src, url, sizeof url);
-        im->estado = 2;
-        if (comeca_com(url, "data:") || comeca_com(url, "javascript:")) continue;
-        const char *nome = acha_ultimo_char(url, '.');
-        if (nome && (compara_texto_n(nome, ".svg", 4) == 0 || compara_texto_n(nome, ".gif", 4) == 0)) continue;
-        tentadas++;
-        char msg[200];
-        formatar_texto(msg, sizeof msg, "Imagem %d de %d: %s", i + 1, pag->nimgs, url);
-        definir_status(msg);
-        recebido_t r;
-        int s = buscar(url, &r, tipo, sizeof tipo, final, sizeof final, erro, sizeof erro);
-        if (s >= 200 && s < 300 && r.d) {
-            im->img = imagem_ler((const uint8_t *)r.d, r.n, erro, sizeof erro);
-            if (im->img) {
-                im->estado = 1;
-                prontas++;
-                registrar("navegador: imagem %s %ux%u", url, im->img->larg, im->img->alt);
-                pagina_layout(pag, VISTA_L);
-                limitar_rolagem();
-                desenhar_tudo();
-            } else registrar("navegador: imagem %s: %s", url, erro);
-        } else registrar("navegador: imagem %s: %s", url, erro[0] ? erro : "falhou");
-        libera(r.d);
+        if (tem_evento_guardado) break;
+        if (!motor_imagens(motor, 2)) break;
+        diagramar();
+        desenhar_pagina();
+        jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
     }
-    if (pag) registrar("navegador: imagens prontas (%d de %d)", prontas, pag->nimgs);
+    if (motor) {
+        int nos, cmds, imgs;
+        motor_numeros(motor, &nos, &cmds, &imgs);
+        registrar("navegador: imagens %s (%d de %d)", tem_evento_guardado ? "interrompidas" : "prontas", imgs, motor_imagens_total(motor));
+    }
+}
+
+static void mostrar_titulo(void)
+{
+    char t[128];
+    copia_texto(t, titulo_js[0] ? titulo_js : motor && motor_titulo(motor)[0] ? motor_titulo(motor) : url_atual, sizeof t);
+    utf8_para_sistema(t);
+    /* O kernel guarda títulos curtos: o da página é cortado com "...". */
+    char curto[28], titulo[64];
+    copia_texto(curto, t, sizeof curto);
+    if (tam_texto(t) >= sizeof curto) copia_texto(curto + sizeof curto - 4, "...", 4);
+    formatar_texto(titulo, sizeof titulo, "%s - " NOME_NAVEGADOR, curto);
+    titulo_janela(j->id, titulo);
 }
 
 static void carregar(const char *pedido, bool novo_no_historico, int rolagem_inicial)
@@ -368,9 +580,9 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     else copia_texto(url, pedido, sizeof url);
     /* Só o fragmento mudou: rola até a âncora, sem buscar de novo. */
     const char *frag = acha_char(url, '#');
-    if (frag && pag && compara_texto_n(url, url_atual, (size_t)(frag - url)) == 0 &&
+    if (frag && motor && compara_texto_n(url, url_atual, (size_t)(frag - url)) == 0 &&
         (url_atual[frag - url] == 0 || url_atual[frag - url] == '#')) {
-        int y = pagina_ancora(pag, frag + 1);
+        int y = motor_ancora(motor, frag + 1);
         if (y >= 0) {
             guardar_rolagem();
             rolagem = y - 4;
@@ -384,8 +596,8 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     }
     guardar_rolagem();
     ende.foco = false;
-    campo_foco = -1;
-    link_sob_mouse = -1;
+    link_sob_mouse[0] = 0;
+    titulo_js[0] = 0;
     definir_endereco(url);
     char msg[220];
     formatar_texto(msg, sizeof msg, "Carregando %s ...", url);
@@ -394,50 +606,81 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     desenhar_status();
     jan_mostrar(j);
     unsigned inicio = tempo_ms();
-    recebido_t r;
+    /* a página anterior: motores, scripts, fontes da web, cache */
+    if (medidor) { motor_fim(medidor); medidor = NULL; }
+    if (motor) { motor_fim(motor); motor = NULL; }
+    quadros_esquecer();
+    motor_fontes_limpar();
+    js_fim();
+    cache_limpar();
+    copia_texto(url_atual, url, sizeof url_atual);
+
+    texto_t pag = { 0, 0, 0 };
     char tipo[64] = "text/html", final[MAX_URL], erro[160] = "";
     int situacao = 200;
-    if (comeca_com(url, "sagui:")) { pagina_interna(url, &r); copia_texto(final, url, sizeof final); }
-    else situacao = buscar(url, &r, tipo, sizeof tipo, final, sizeof final, erro, sizeof erro);
-    if (situacao < 0 || !r.d) {
-        libera(r.d);
-        pagina_erro(&r, url, erro[0] ? erro : "a página veio vazia");
-        copia_texto(tipo, "text/html", sizeof tipo);
-        registrar("navegador: erro em %s: %s", url, erro);
-    }
-    /* Conjunto de caracteres do Content-Type. */
-    int charset = -1;
-    for (const char *p = tipo; *p; p++)
-        if (compara_texto_n(p, "charset=", 8) == 0) { charset = (p[8] | 32) == 'u' ? 1 : 0; break; }
-    documento_t *doc;
-    bool imagem = comeca_com(tipo, "image/");
-    if (imagem) {
-        /* Uma imagem sozinha: página com um <img> que aponta para ela. */
-        char h[MAX_URL + 160];
-        int n = formatar_texto(h, sizeof h, "<html><head><title>Imagem</title></head><body><img src=\"%s\"></body></html>", final);
-        doc = html_ler(h, (uint32_t)n, 0);
-    } else if (comeca_com(tipo, "text/html") || comeca_com(tipo, "application/xhtml")) {
-        doc = html_ler(r.d, r.n, charset);
-    } else {
-        doc = html_texto_puro(r.d, r.n, charset);
-        if (doc) {
-            /* O título é o último pedaço do endereço. */
+    uint32_t bytes = 0;
+    if (comeca_com(url, "sagui:")) { pagina_interna(url, &pag); copia_texto(final, url, sizeof final); }
+    else {
+        rede_resposta_t r;
+        situacao = rede_buscar(url, &r, MAX_PAGINA, NULL, 0);
+        copia_texto(tipo, r.tipo[0] ? r.tipo : "text/html", sizeof tipo);
+        copia_texto(final, r.final[0] ? r.final : url, sizeof final);
+        copia_texto(erro, r.erro, sizeof erro);
+        bytes = r.n;
+        if (situacao < 0 || !r.d) {
+            libera(r.d);
+            pagina_erro(&pag, url, erro[0] ? erro : "a página veio vazia");
+            copia_texto(tipo, "text/html", sizeof tipo);
+            registrar("navegador: erro em %s: %s", url, erro);
+        } else if (comeca_com(tipo, "image/")) {
+            /* Uma imagem sozinha: página com um <img> que aponta para ela. */
+            libera(r.d);
+            T(&pag, "<html><head><title>Imagem</title></head><body><img src=\"");
+            html_escapar(&pag, final, MAX_URL);
+            T(&pag, "\"></body></html>");
+        } else if (comeca_com(tipo, "video/mp4") || comeca_com(tipo, "audio/mp4")) {
+            /* O vídeo toca num programa próprio, enquanto baixa (H82). */
+            libera(r.d);
+            char *args[] = { "video", final, NULL };
+            int pid = executar("/bin/video", args);
+            registrar("navegador: video %s pid %d", final, pid);
+            pagina_erro(&pag, url, pid > 0 ? "o vídeo abriu no tocador de vídeo" : "não consegui abrir o tocador de vídeo");
+        } else if (comeca_com(tipo, "text/html") || comeca_com(tipo, "application/xhtml")) {
+            int cs = charset_em(tipo, (int)tam_texto(tipo));
+            if (cs < 0) cs = charset_em((const char *)r.d, r.n < 2048 ? (int)r.n : 2048);
+            uint32_t n = r.n;
+            char *u8 = para_utf8((char *)r.d, &n, cs);
+            pag.d = u8; pag.n = n; pag.cap = n + 1;
+        } else {
+            /* Texto puro: cada linha como veio, em letra de máquina de escrever. */
+            int cs = charset_em(tipo, (int)tam_texto(tipo));
+            uint32_t n = r.n;
+            char *u8 = para_utf8((char *)r.d, &n, cs);
             const char *ult = acha_ultimo_char(final, '/');
-            copia_texto(doc->titulo, ult && ult[1] ? ult + 1 : final, sizeof doc->titulo);
+            T(&pag, "<html><head><meta charset=\"utf-8\"><title>");
+            html_escapar(&pag, ult && ult[1] ? ult + 1 : final, 120);
+            T(&pag, "</title></head><body><pre style=\"white-space:pre-wrap\">");
+            for (uint32_t i = 0; i < n; i++) {
+                if (u8[i] == '\r') continue;   /* fim de linha do Windows: o \n basta */
+                if (u8[i] == '<') T(&pag, "&lt;");
+                else if (u8[i] == '&') T(&pag, "&amp;");
+                else acrescentar(&pag, u8 + i, 1);
+            }
+            T(&pag, "</pre></body></html>");
+            libera(u8);
         }
     }
-    if (!doc) { libera(r.d); definir_status("memória insuficiente"); return; }
-    if (pag) pagina_liberar(pag);
-    libera(conteudo);
-    conteudo = r.d;
-    pag = pagina_criar(doc);
-    if (!pag) { html_liberar(doc); definir_status("memória insuficiente"); return; }
+    if (!pag.d) { definir_status("memória insuficiente"); return; }
+    /* As páginas internas e de erro são escritas aqui, em Latin-1. */
+    if (comeca_com(pag.d, "<html><head><meta charset=\"iso-8859-1\">")) pag.d = para_utf8(pag.d, &pag.n, 0);
+    copia_texto(url_atual, final[0] && !comeca_com(url, "sagui:") ? final : url, sizeof url_atual);
+    if (acha_char(url, '#') && !acha_char(url_atual, '#')) junta_texto(url_atual, acha_char(url, '#'), sizeof url_atual);
+    pag.d = rodar_scripts(pag.d, &pag.n);
+    ler_pagina(pag.d, (int)pag.n);
+    libera(pag.d);
     copia_texto(url_atual, url, sizeof url_atual);
-    copia_texto(base, final, sizeof base);
-    if (doc->base[0]) { char b[MAX_URL]; endereco_resolver(final, doc->base, b, sizeof b); copia_texto(base, b, sizeof base); }
-    pagina_layout(pag, VISTA_L);
     rolagem = rolagem_inicial;
-    if (frag) { int y = pagina_ancora(pag, frag + 1); if (y >= 0) rolagem = y - 4; }
+    if (frag && motor) { int y = motor_ancora(motor, frag + 1); if (y >= 0) rolagem = y - 4; }
     limitar_rolagem();
     if (novo_no_historico) {
         if (hist_pos < MAX_HIST - 1) hist_pos++;
@@ -446,87 +689,138 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
         hist[hist_pos].rolagem = 0;
         hist_qtd = hist_pos + 1;
     }
-    char titulo[160];
-    /* O kernel guarda títulos curtos: o da página é cortado com "...". */
-    char curto[28];
-    copia_texto(curto, doc->titulo[0] ? doc->titulo : url, sizeof curto);
-    if (tam_texto(doc->titulo[0] ? doc->titulo : url) >= sizeof curto) copia_texto(curto + sizeof curto - 4, "...", 4);
-    formatar_texto(titulo, sizeof titulo, "%s - Sagui Navegador", curto);
-    titulo_janela(j->id, titulo);
-    formatar_texto(status, sizeof status, "%s%s%u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", r.n / 1024, tempo_ms() - inicio);
+    mostrar_titulo();
+    formatar_texto(status, sizeof status, "%s%s%u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", bytes / 1024, tempo_ms() - inicio);
+    int nos = 0, cmds = 0, imgs = 0;
+    if (motor) motor_numeros(motor, &nos, &cmds, &imgs);
     registrar("navegador: carregada %s (%u bytes, %s, situacao %d) em %u ms: %d nos, %d pecas, %d links, %d imagens, altura %d",
-              url, r.n, tipo[0] ? tipo : "?", situacao, tempo_ms() - inicio, doc->qtd_nos, pag->qtd, pag->nlinks, pag->nimgs,
-              pag->altura);
-    registrar("navegador: titulo %s", doc->titulo);
+              url, bytes, tipo[0] ? tipo : "?", situacao, tempo_ms() - inicio, nos, cmds, motor ? motor_links(motor) : 0,
+              motor ? motor_imagens_total(motor) : 0, altura);
+    char tit[128];
+    copia_texto(tit, titulo_js[0] ? titulo_js : motor ? motor_titulo(motor) : "", sizeof tit);
+    utf8_para_sistema(tit);
+    registrar("navegador: titulo %s", tit);
     desenhar_tudo();
     carregar_imagens();
-    formatar_texto(status, sizeof status, "%s%sPronto: %u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", r.n / 1024, tempo_ms() - inicio);
+    /* Imagens novas podem ter mudado a altura: a âncora pode ter descido. */
+    if (frag && motor) { int y = motor_ancora(motor, frag + 1); if (y >= 0) { rolagem = y - 4; limitar_rolagem(); } }
+    formatar_texto(status, sizeof status, "%s%sPronto: %u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", bytes / 1024, tempo_ms() - inicio);
     desenhar_tudo();
     registrar("navegador: pronto %s", url);
 }
 
+/* ------------------------------------------------------------ página viva (JavaScript) */
+
+/* O DOM mudou: relê a página no mesmo ponto da rolagem, com o foco no campo. (#6) */
+static void reler(char *h, int n)
+{
+    int campo = motor && motor_tem_foco(motor) ? motor_foco_campo(motor) : -1;
+    int r = rolagem;
+    ler_pagina(h, n);
+    libera(h);
+    if (motor && campo >= 0) motor_focar_campo(motor, campo);
+    while (motor && motor_imagens(motor, 8)) diagramar();
+    rolagem = r;
+    limitar_rolagem();
+    desenhar_pagina();
+    jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
+}
+
+static void clique_js(int id)
+{
+    int n = 0;
+    char *h = js_clicar(id, &n);
+    registrar("navegador: clique js %d (%s)", id, h ? "o DOM mudou" : "nada mudou");
+    if (h) reler(h, n);
+}
+
+static unsigned ult_tique, hash_viva;
+static int js_rol;
+
+static unsigned hash_texto(const char *h, int n) { unsigned x = 2166136261u; for (int i = 0; i < n; i++) x = (x ^ (uint8_t)h[i]) * 16777619u; return x; }
+
+static void pagina_viva(void)
+{
+    int n = 0, nr = 0;
+    unsigned agora = tempo_ms(), v0 = tela2d_versao();
+    char *hr = NULL, *h;
+    if (rolagem != js_rol) { js_rol = rolagem; hr = js_rolar(0, js_rol, &nr); }   /* scroll e observadores antes dos timers */
+    h = js_tique((int)(agora - ult_tique > 1000 ? 1000 : agora - ult_tique), &n);
+    if (h) libera(hr); else { h = hr; n = nr; }   /* vale o estado mais novo */
+    ult_tique = agora;
+    int px, py;
+    if (js_rolagem_pedida(&px, &py)) { rolagem = py; limitar_rolagem(); }
+    if (!h) {
+        /* só um <canvas> mudou: pinta de novo, sem layout */
+        if (tela2d_versao() != v0 && motor) { desenhar_pagina(); jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A); }
+        return;
+    }
+    unsigned x = hash_texto(h, n);
+    if (x == hash_viva) { libera(h); return; }
+    hash_viva = x;
+    reler(h, n);
+    registrar("navegador: pagina viva redesenhada");
+}
+
 /* ------------------------------------------------------------ formulários */
 
-static void enviar_formulario(int campo)
+static void enviar(const motor_alvo_t *quem, int campo)
 {
-    if (!pag || campo < 0 || campo >= pag->ncampos) return;
-    int f = pag->campos[campo].form;
-    if (f < 0 || f >= pag->nforms) return;
-    const no_t *form = pag->forms[f];
-    const char *acao = html_atributo(form, "action");
     char url[MAX_URL];
-    endereco_resolver(base, acao && *acao ? acao : url_atual, url, sizeof url);
-    char *q = acha_char(url, '?');
-    if (q) *q = 0;
-    q = acha_char(url, '#');
-    if (q) *q = 0;
-    char consulta[MAX_URL] = "";
-    /* Todos os <input> do formulário, na ordem da página. */
-    const no_t *x = form->filho;
-    while (x && x != form) {
-        if (x->tipo == NO_ELEMENTO && x->tag == TAG_INPUT) {
-            const char *nome = html_atributo(x, "name"), *tipo = html_atributo(x, "type");
-            const char *valor = html_atributo(x, "value");
-            bool enviar = nome && *nome;
-            if (tipo && (compara_texto(tipo, "submit") == 0 || compara_texto(tipo, "button") == 0 ||
-                         compara_texto(tipo, "checkbox") == 0 || compara_texto(tipo, "radio") == 0 ||
-                         compara_texto(tipo, "image") == 0 || compara_texto(tipo, "file") == 0)) enviar = false;
-            for (int c = 0; c < pag->ncampos; c++) if (pag->campos[c].no == x) valor = pag->campos[c].valor;
-            if (enviar) {
-                char a[256], b[512];
-                endereco_codificar(nome, a, sizeof a);
-                endereco_codificar(valor ? valor : "", b, sizeof b);
-                if (consulta[0]) junta_texto(consulta, "&", sizeof consulta);
-                junta_texto(consulta, a, sizeof consulta);
-                junta_texto(consulta, "=", sizeof consulta);
-                junta_texto(consulta, b, sizeof consulta);
-            }
-        }
-        /* Próximo nó em profundidade, sem sair do formulário. */
-        if (x->filho) x = x->filho;
-        else {
-            while (x && x != form && !x->prox) x = x->pai;
-            if (x && x != form) x = x->prox;
-        }
+    if (campo >= 0) {
+        char *h; int n;
+        int cancelou = js_enviar(campo, &h, &n);
+        if (cancelou) { if (h) reler(h, n); return; }
+        libera(h);
+        if (motor_envio_campo(motor, campo, url, sizeof url)) { registrar("navegador: formulario -> %s", url); carregar(url, true, 0); }
+        return;
     }
-    char final[MAX_URL];
-    formatar_texto(final, sizeof final, "%s?%s", url, consulta);
-    registrar("navegador: formulario -> %s", final);
-    carregar(final, true, 0);
+    if (motor_envio(motor, quem, url, sizeof url)) { registrar("navegador: formulario -> %s", url); carregar(url, true, 0); }
+}
+
+/* Tecla num campo com foco (UTF-8 por dentro; o teclado manda Latin-1). (#6) */
+static void tecla_no_campo(unsigned t)
+{
+    if (t == TECLA_ESC) { motor_foco(motor, NULL); diagramar(); desenhar_tudo(); return; }
+    if (t == '\n' || t == '\r') { enviar(NULL, motor_foco_campo(motor)); return; }
+    char v[1024];
+    copia_texto(v, motor_foco_valor(motor), sizeof v);
+    int k = (int)tam_texto(v);
+    if (t == 8) {
+        if (!k) return;
+        do k--; while (k > 0 && ((uint8_t)v[k] & 0xC0) == 0x80);
+        v[k] = 0;
+    } else if (t >= 32 && t < 256 && t != 127) {
+        if (k + 4 >= (int)sizeof v) return;
+        k += utf8_por(v + k, t);
+        v[k] = 0;
+    } else return;
+    motor_foco_definir(motor, v);
+    int campo = motor_foco_campo(motor);
+    if (campo >= 0) {
+        int n = 0;
+        char *h = js_campo(campo, v, t == 8 ? 8 : (int)t, &n);
+        if (h) { reler(h, n); return; }
+    }
+    diagramar();
+    desenhar_pagina();
+    jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
 }
 
 /* ------------------------------------------------------------ favoritos */
 
 static void favoritar(void)
 {
-    if (!pag || comeca_com(url_atual, "sagui:")) return;
+    if (!motor || comeca_com(url_atual, "sagui:")) return;
     char caminho[64];
     pasta_config(caminho, sizeof caminho);
     junta_texto(caminho, "/favoritos.txt", sizeof caminho);
     int fd = abrir(caminho, ABRIR_ESCREVER | ABRIR_CRIAR | ABRIR_ACRESCENTAR);
     if (fd < 0) { definir_status("não consegui gravar os favoritos"); return; }
-    char linha[MAX_URL + 160];
-    int n = formatar_texto(linha, sizeof linha, "%s\t%s\n", url_atual, pag->doc->titulo);
+    char t[128], linha[MAX_URL + 160];
+    copia_texto(t, titulo_js[0] ? titulo_js : motor_titulo(motor), sizeof t);
+    utf8_para_sistema(t);
+    int n = formatar_texto(linha, sizeof linha, "%s\t%s\n", url_atual, t);
     escrever_tudo(fd, linha, (unsigned)n);
     fechar(fd);
     char msg[200];
@@ -577,13 +871,18 @@ static void editar_texto(char *t, int max, int *cursor, unsigned tecla)
     }
 }
 
-static int cursor_campo;
+static void focar_endereco(void)
+{
+    ende.foco = true; ende.tudo = true;
+    ende.cursor = (int)tam_texto(ende.t);
+    if (motor && motor_tem_foco(motor)) { motor_foco(motor, NULL); diagramar(); }
+    desenhar_tudo();
+}
 
 static void tratar_tecla(const evento_t *e)
 {
     unsigned t = e->tecla;
-    if (t == 12 && (e->modificadores & 2)) { ende.foco = true; ende.tudo = true; campo_foco = -1; ende.cursor = (int)tam_texto(ende.t); desenhar_tudo(); return; }
-    if (t == 'l' && (e->modificadores & 2)) { ende.foco = true; ende.tudo = true; campo_foco = -1; ende.cursor = (int)tam_texto(ende.t); desenhar_tudo(); return; }
+    if ((t == 12 || t == 'l') && (e->modificadores & 2)) { focar_endereco(); return; }
     if (ende.foco) {
         if (t == '\n' || t == '\r') {
             char u[MAX_URL];
@@ -603,21 +902,14 @@ static void tratar_tecla(const evento_t *e)
         jan_mostrar_area(j, 0, 0, LARG, BARRA);
         return;
     }
-    if (campo_foco >= 0 && pag && campo_foco < pag->ncampos) {
-        if (t == '\n' || t == '\r') { enviar_formulario(campo_foco); return; }
-        if (t == TECLA_ESC) { campo_foco = -1; desenhar_tudo(); return; }
-        campo_t *c = &pag->campos[campo_foco];
-        editar_texto(c->valor, sizeof c->valor, &cursor_campo, t);
-        desenhar_tudo();
-        return;
-    }
+    if (motor && motor_tem_foco(motor)) { tecla_no_campo(t); return; }
     switch (t) {
     case TECLA_CIMA: rolar(-48); break;
     case TECLA_BAIXO: rolar(48); break;
     case TECLA_PGUP: rolar(-(VISTA_A - 40)); break;
     case TECLA_PGDN: case ' ': rolar(VISTA_A - 40); break;
-    case TECLA_HOME: rolar(-altura_total()); break;
-    case TECLA_END: rolar(altura_total()); break;
+    case TECLA_HOME: rolar(-altura); break;
+    case TECLA_END: rolar(altura); break;
     case 8: voltar(-1); break;
     default: break;
     }
@@ -625,6 +917,16 @@ static void tratar_tecla(const evento_t *e)
 
 static bool arrastando_rolagem;
 static int arrasto_y0, arrasto_rol0;
+
+static void abrir_link(const char *href)
+{
+    char u[MAX_URL];
+    copia_texto(u, href, sizeof u);
+    registrar("navegador: link %s", u);
+    if (comeca_com(u, "sagui-js:")) { clique_js(texto_para_int(u + 9)); return; }
+    if (comeca_com(u, "javascript:") || comeca_com(u, "mailto:")) { definir_status("Esse tipo de link não funciona aqui."); return; }
+    carregar(u, true, 0);
+}
 
 static void tratar_clique(const evento_t *e)
 {
@@ -647,7 +949,7 @@ static void tratar_clique(const evento_t *e)
         if (e->x >= ENDE_X && e->x < ENDE_X + ENDE_L) {
             ende.tudo = !ende.foco;              /* o primeiro clique seleciona tudo; o segundo põe o cursor */
             ende.foco = true;
-            campo_foco = -1;
+            if (motor && motor_tem_foco(motor)) { motor_foco(motor, NULL); diagramar(); }
             int c = ende.inicio + (e->x - ENDE_X - 5 + LETRA_L / 2) / LETRA_L;
             int n = (int)tam_texto(ende.t);
             ende.cursor = c < 0 ? 0 : c > n ? n : c;
@@ -657,36 +959,45 @@ static void tratar_clique(const evento_t *e)
     }
     if (e->y >= ALT - STATUS) return;
     if (e->x >= VISTA_L) {                       /* barra de rolagem */
-        int total = altura_total();
-        if (total <= VISTA_A) return;
-        int a = VISTA_A * VISTA_A / total;
+        if (altura <= VISTA_A) return;
+        int a = VISTA_A * VISTA_A / altura;
         if (a < 20) a = 20;
-        int ya = BARRA + (int)((int)rolagem * (VISTA_A - a) / (total - VISTA_A));
+        int ya = BARRA + (int)((int)rolagem * (VISTA_A - a) / (altura - VISTA_A));
         if (e->y >= ya && e->y < ya + a) { arrastando_rolagem = true; arrasto_y0 = e->y; arrasto_rol0 = rolagem; }
         else rolar(e->y < ya ? -(VISTA_A - 40) : VISTA_A - 40);
         return;
     }
-    if (!pag) return;
-    bool tinha_foco = ende.foco || campo_foco >= 0;
+    if (!motor) return;
+    bool tinha_foco = ende.foco;
     ende.foco = false;
-    int i = pagina_peca_em(pag, e->x, e->y - BARRA + rolagem);
-    const peca_t *pc = i >= 0 ? &pag->pecas[i] : NULL;
-    if (pc && pc->tipo == PECA_CAMPO) {
-        campo_foco = pc->campo;
-        cursor_campo = (int)tam_texto(pag->campos[campo_foco].valor);
+    int py = e->y - BARRA + rolagem;
+    const motor_alvo_t *ma = motor_alvo(motor, e->x, py);
+    if (ma && ma->tipo == MA_LINK && ma->href) { abrir_link(ma->href); return; }
+    if (ma && ma->tipo == MA_QUADRO) {
+        /* dentro de um iframe: o quadro acha o elemento e roda o clique na janela dele */
+        js_clicar_quadro(ma->js, e->x - ma->rx, py - ma->ry);
         desenhar_tudo();
         return;
     }
-    if (pc && pc->tipo == PECA_BOTAO) { enviar_formulario(pc->campo); return; }
-    campo_foco = -1;
-    if (pc && pc->link >= 0 && pc->link < pag->nlinks) {
-        char u[MAX_URL];
-        endereco_resolver(base, pag->links[pc->link], u, sizeof u);
-        registrar("navegador: link %s", u);
-        if (comeca_com(u, "javascript:") || comeca_com(u, "mailto:")) { definir_status("Esse tipo de link não funciona aqui."); return; }
-        carregar(u, true, 0);
+    if (ma && ma->tipo == MA_CAMPO) {
+        /* foco no campo: a digitação vai para dentro da caixa */
+        motor_foco(motor, ma);
+        registrar("navegador: foco no campo %d", motor_foco_campo(motor));
+        diagramar();
+        desenhar_tudo();
         return;
     }
+    if (ma && ma->tipo == MA_BOTAO) {
+        /* o clique vai ao script; depois, se o botão é de envio, o formulário
+         * vai (a não ser que o script cancele). ma deixa de valer se o clique
+         * reler a página: guarda o que precisa. */
+        int js = ma->js, campo = ma->campo;
+        bool envia = ma->envia, cancelou = false;
+        if (js >= 0) { clique_js(js); cancelou = js_clique_cancelado(); }
+        if (envia && !cancelou) enviar(js >= 0 ? NULL : ma, campo);
+        return;
+    }
+    if (motor_tem_foco(motor)) { motor_foco(motor, NULL); diagramar(); desenhar_tudo(); return; }
     if (tinha_foco) desenhar_tudo();
 }
 
@@ -694,22 +1005,24 @@ static void tratar_movimento(const evento_t *e)
 {
     if (arrastando_rolagem) {
         if (!(e->botoes & 1)) { arrastando_rolagem = false; return; }
-        int total = altura_total();
-        int a = VISTA_A * VISTA_A / (total ? total : 1);
+        int a = VISTA_A * VISTA_A / (altura ? altura : 1);
         if (a < 20) a = 20;
         if (VISTA_A - a <= 0) return;
-        rolagem = arrasto_rol0 + (int)((int)(e->y - arrasto_y0) * (total - VISTA_A) / (VISTA_A - a));
+        rolagem = arrasto_rol0 + (int)((int)(e->y - arrasto_y0) * (altura - VISTA_A) / (VISTA_A - a));
         limitar_rolagem();
         desenhar_tudo();
         return;
     }
-    int novo = -1;
-    if (pag && e->y >= BARRA && e->y < ALT - STATUS && e->x < VISTA_L) {
-        int i = pagina_peca_em(pag, e->x, e->y - BARRA + rolagem);
-        if (i >= 0) novo = pag->pecas[i].link;
+    char novo[MAX_URL] = "";
+    if (motor && e->y >= BARRA && e->y < ALT - STATUS && e->x < VISTA_L) {
+        const motor_alvo_t *ma = motor_alvo(motor, e->x, e->y - BARRA + rolagem);
+        if (ma && ma->tipo == MA_LINK && ma->href && !comeca_com(ma->href, "sagui-js:")) {
+            copia_texto(novo, ma->href, sizeof novo);
+            utf8_para_sistema(novo);
+        }
     }
-    if (novo != link_sob_mouse) {
-        link_sob_mouse = novo;
+    if (compara_texto(novo, link_sob_mouse) != 0) {
+        copia_texto(link_sob_mouse, novo, sizeof link_sob_mouse);
         desenhar_status();
         jan_mostrar_area(j, 0, ALT - STATUS, LARG, STATUS);
     }
@@ -722,36 +1035,56 @@ static void posicionar_botoes(void)
     botoes[BT_FAVORITOS].x = botoes[BT_FAV].x + botoes[BT_FAV].l + 6;
 }
 
-/* A janela mudou de tamanho (H78): o texto corre de novo na largura nova. */
+/* A janela mudou de tamanho (H78): só o layout muda, nada é baixado de novo;
+ * o script recebe resize (e pode mudar a página). */
 static void mudar_tamanho(const evento_t *e)
 {
     jan_novo_tamanho(j, e);
     larg_jan = j->larg;
     alt_jan = j->alt;
     posicionar_botoes();
-    if (pag) {
+    if (motor) {
+        int alt_antes = altura;
+        int nn = 0;
+        char *hh = js_ativo() ? js_redimensionar(VISTA_L, VISTA_A, &nn) : NULL;
+        if (hh) reler(hh, nn);
+        else diagramar();
         /* Mantém o começo da parte visível mais ou menos no mesmo lugar. */
-        int alt_antes = pag->altura;
-        pagina_layout(pag, VISTA_L);
-        if (alt_antes > 0) rolagem = (int)((long)rolagem * pag->altura / alt_antes);
+        if (alt_antes > 0) rolagem = (int)((long)rolagem * altura / alt_antes);
         limitar_rolagem();
     }
     desenhar_tudo();
-    registrar("navegador: tamanho %dx%d, pagina com altura %d", LARG, ALT, pag ? pag->altura : 0);
+    registrar("navegador: tamanho %dx%d, pagina com altura %d", LARG, ALT, altura);
 }
 
 int principal(int argc, char **argv)
 {
-    j = jan_abrir("Sagui Navegador", LARG, ALT);
+    j = jan_abrir(NOME_NAVEGADOR, LARG, ALT);
     if (!j) { imprimir_em(ERROS, "navegador: não consegui abrir a janela\n"); return 1; }
     jan_redimensionavel(j, 520, 300);
     posicionar_botoes();
     registrar("navegador: janela %d", j->id);
     carregar(argc > 1 ? argv[1] : "sagui:inicio", true, 0);
     for (;;) {
+        /* o script pediu outra página (location.href, assign, replace, reload) */
+        char u[MAX_URL]; int subst = 0;
+        if (js_navegacao(u, sizeof u, &subst)) {
+            registrar("navegador: o script navegou para %s", u);
+            if (subst && hist_pos >= 0) { hist_pos--; hist_qtd = hist_pos + 1; }
+            carregar(u, true, 0);
+            continue;
+        }
         evento_t e;
         if (tem_evento_guardado) { e = evento_guardado; tem_evento_guardado = false; }
-        else if (proximo_evento(j->id, &e, true) != 1) continue;
+        else if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
+            /* página viva: timers e animações no ritmo deles, sem travar os eventos */
+            if (proximo_evento(j->id, &e, false) != 1) {
+                unsigned passo = js_animando() ? 16 : 100;
+                if (tempo_ms() - ult_tique >= passo || rolagem != js_rol) pagina_viva();
+                else dormir(10);
+                continue;
+            }
+        } else if (proximo_evento(j->id, &e, true) != 1) continue;
         switch (e.tipo) {
         case EV_FECHAR:
             jan_fechar(j);

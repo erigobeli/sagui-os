@@ -118,7 +118,9 @@ make run        # idem, com 768 MB, rede (e1000), som (intel-hda) e USB 2.0; SOM
 ```
 boot/        estágio 1 (MBR) e estágio 2 do carregador, em NASM
 kernel/      kernel em C freestanding + NASM: núcleo, memória, drivers, USB, arquivos, janelas
-userland/    libsagui e os programas; userland/sagui3d/ é o jogo do bônus B4
+userland/    libsagui e os programas; userland/sagui3d/ é o jogo do bônus B4;
+             userland/navegador/ é o Cipó, o navegador; userland/video/ o tocador de vídeo
+terceiros/   o pouco código de terceiros dos aplicativos, cada um com licença e ORIGEM.md
 rootfs/      arquivos que vão para o disco na RAM (textos, fases do Sagui 3D)
 tools/       build (mksgfs.py, mkimagem.py), painel (status.py), verificador de fases
 tests/       testes automáticos no QEMU, um por história
@@ -145,6 +147,22 @@ Do [`prd.md`](prd.md): nada de código de outros sistemas operacionais, nada de 
 carregador pronto, nada de libc ou bibliotecas prontas dentro do sistema, fontes e imagens
 criadas no projeto, nomes e comentários em português explicando o porquê, um teste automático
 por história e cada fase validada pelo Eli no hardware real antes da próxima.
+
+## O que não foi escrito aqui
+
+O núcleo do SaguiOS (kernel, drivers, rede, TLS, janelas, libsagui, shell,
+compilador) é todo escrito no projeto. Nos aplicativos, alguns trechos vieram
+de projetos livres (D041, D043), cada um numa pasta de [`terceiros/`](terceiros/)
+com a licença original e um `ORIGEM.md`; a lista completa, com os dados e as
+fontes de letra, está em [`CREDITOS.md`](CREDITOS.md):
+
+| Pasta | De onde | Licença | Quem usa |
+| --- | --- | --- | --- |
+| `terceiros/font-rs/` | rasterizador do font-rs (Raph Levien, Google) | Apache 2.0 | fontes e Canvas do Cipó |
+| `terceiros/libwebp-vp8/` | decodificador VP8 e tabelas do libwebp (Google) | BSD 3 cláusulas + patentes WebM | imagens WebP do Cipó |
+| `terceiros/v8-numeros/` | `DoubleToRadixCString` do V8 | BSD 3 cláusulas | JavaScript do Cipó |
+| `terceiros/ffmpeg-h264-tabelas/` | tabelas CABAC/CAVLC do FFmpeg | LGPL 2.1 ou posterior | tocador de vídeo |
+| `terceiros/faad2-aac-huffman/` | livros de Huffman do FAAD2 (Code from FAAD2 is copyright (c) Nero AG, www.nero.com) | GPL 2 ou posterior | tocador de vídeo |
 
 ## Licença
 

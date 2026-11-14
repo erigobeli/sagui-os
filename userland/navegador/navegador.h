@@ -1,16 +1,19 @@
-/* navegador.h - o Sagui Navegador (fase 6 da versão 2.0).
+/* navegador.h - o Cipó, navegador do SaguiOS (fase 6 da 2.0; H82 da 2.1).
  *
  * Arquivos:
  *   descompactar.c  DEFLATE, zlib, gzip
- *   png.c, jpeg.c   imagens
- *   html.c          leitura do HTML em uma árvore de elementos
- *   pagina.c        layout: a árvore vira caixas de texto e imagens na tela
+ *   png.c, jpeg.c   imagens da 2.0; imagens.c junta GIF e WebP
+ *   html.c          leitura do HTML em árvore (2.0)
+ *   motor/, fontes/, js/, graficos/   o motor do Cipó (pull request #6), cipo.h
+ *   rede.c          pedidos com cookies, por cima do HTTP da libsagui
  *   navegador.c     janela, barra de endereço, histórico, favoritos */
 #ifndef SAGUI_NAVEGADOR_H
 #define SAGUI_NAVEGADOR_H
 #include "sagui.h"
 #include "gui.h"
 #include "http.h"
+#include "cipo.h"
+#include "motor/motor.h"
 
 typedef struct {
     uint32_t  larg, alt;
@@ -66,80 +69,18 @@ const char  *html_atributo(const no_t *x, const char *nome);
 const char  *html_nome_tag(int tag);
 void        *arena_aloca(documento_t *doc, uint32_t n);
 
-/* ---- página: layout e desenho (pagina.c) ---- */
-#define PECA_TEXTO   1
-#define PECA_IMAGEM  2
-#define PECA_LINHA   3
-#define PECA_FUNDO   4
-#define PECA_BORDA   5
-#define PECA_CAMPO   6
-#define PECA_BOTAO   7
-/* marcas */
-#define PECA_NEGRITO    1
-#define PECA_SUBLINHADO 2
-#define PECA_DOBRO      4
-#define PECA_RISCADO    8
-#define PECA_FIXA       16     /* já tem posição (marcador de lista) */
-
-#define MARGEM_PAGINA 12
-#define MAX_LINKS     4000
-#define MAX_IMAGENS   300
-#define MAX_CAMPOS    32
-#define MAX_FORMS     16
-#define MAX_ANCORAS   2000
-
+/* ---- pedidos (rede.c) ---- */
 typedef struct {
-    uint8_t     tipo, marcas;
-    int16_t     link, img, campo;
-    int         x, y, l, a;
-    uint32_t    cor, fundo;
-    const char *texto;
-    int         n;
-} peca_t;
-
-typedef struct {
-    const no_t *no;
-    int16_t     form;
-    bool        botao;
-    char        valor[128];
-    int         peca;
-} campo_t;
-
-typedef struct {
-    const no_t *no;
-    const char *src;
-    imagem_t   *img;
-    int         estado;           /* 0 a buscar, 1 pronta, 2 falhou */
-} img_pagina_t;
-
-typedef struct {
-    documento_t  *doc;
-    peca_t       *pecas;
-    int           qtd, cap;
-    int           largura, altura;
-    uint32_t      fundo;
-    const char   *links[MAX_LINKS];
-    int           nlinks;
-    img_pagina_t  imgs[MAX_IMAGENS];
-    int           nimgs;
-    campo_t       campos[MAX_CAMPOS];
-    int           ncampos;
-    const no_t   *forms[MAX_FORMS];
-    int           nforms;
-    struct { const char *nome; int y; } ancoras[MAX_ANCORAS];
-    int           nancoras;
-    struct {
-        uint8_t tag; const char *classe, *id, *decl; int ndecl;
-    }             regras[400];
-    int           nregras;
-} pagina_t;
-
-pagina_t *pagina_criar(documento_t *doc);
-void      pagina_layout(pagina_t *p, int largura);
-void      pagina_desenhar(pagina_t *p, jan_t *j, int x, int y, int l, int a, int rolagem, int campo_foco);
-int       pagina_peca_em(pagina_t *p, int x, int y);
-int       pagina_ancora(pagina_t *p, const char *nome);
-void      pagina_liberar(pagina_t *p);
+    uint8_t *d;                   /* o corpo (aloca), com um zero depois */
+    uint32_t n, cap, max;
+    int      situacao;            /* 200, 404... */
+    char     tipo[64];            /* Content-Type */
+    char     final[512];          /* endereço depois dos redirecionamentos */
+    char     erro[160];
+} rede_resposta_t;
+/* Busca um endereço (http, https ou arquivo do SaguiOS). cab recebe os
+ * cabeçalhos da resposta (pode ser NULL). Devolve a situação HTTP ou -1. */
+int rede_buscar(const char *url, rede_resposta_t *r, unsigned max, char *cab, int max_cab);
 
 /* ---- endereços (enderecos.c) ---- */
 #define MAX_URL_NAV 1024

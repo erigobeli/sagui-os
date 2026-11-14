@@ -1292,6 +1292,114 @@ memória, então a mesma conta dá resultados levemente diferentes conforme o
 compilador guarda ou não os valores; o teste da H80 pegou isso, e o
 JavaScript do Cipó exige double exato. O G470, o VirtualBox e o QEMU têm SSE2.
 
+## D043. O Cipó: o navegador da 2.0 com o motor do pull request #6 (H82)
+
+**Contexto.** O pull request #6, de Robson de Lima Barbosa, trouxe o "Cipó":
+um navegador muito mais completo que o da 2.0 (CSS moderno, JavaScript,
+fontes, Canvas, SVG, WebGL, vídeo), mas escrito sobre a versão 1.0 — com
+outra pilha de rede, outro TLS, som pela AC97, mudanças nas chamadas de
+sistema e tudo dentro da `libsagui`. A revisão achou também trechos
+reproduzidos de memória de projetos conhecidos (D041). O nome Cipó veio do
+#3 (M4R4G0N).
+
+**Decisão: o motor entra, por cima da 2.0.**
+- **Onde mora:** o motor é aplicativo, então fica em `userland/navegador/`
+  (`motor/`, `fontes/`, `js/`, `graficos/`) e não na `libsagui`, que é
+  núcleo e é ligada em todos os programas. As declarações que o #6 punha no
+  `sagui.h` estão em `userland/navegador/cipo.h`. O programa continua sendo
+  `/bin/navegador`; `/bin/cipo` é uma cópia com o nome novo. O tocador de
+  vídeo do #6 mora em `userland/video/` e vira `/bin/video`.
+- **O que entrou do #6:** o motor de páginas (HTML em árvore, cascata CSS com
+  seletores compostos, `var()`, `@media`, `!important`; bloco, inline,
+  float, flex, grid, tabela, `position`, `transform`, `z-index`, gradientes,
+  bordas arredondadas), a quebra de linha do Unicode (UAX #14), as fontes
+  TrueType, CFF, WOFF e WOFF2 (com Brotli, RFC 7932) e as DejaVu do sistema
+  em `/fontes`, o motor de JavaScript com DOM (classes, async, geradores,
+  Proxy, BigInt, typed arrays, eventos, timers, fetch/XHR, cookies,
+  iframes), o Canvas 2D, o SVG, o WebGL e o GLSL em software, as imagens GIF
+  e WebP, os cookies do HTTP e o tocador de MP4 (H.264 e AAC).
+- **O que é da 2.0 por baixo:** a rede, o HTTP e o TLS 1.3 (`http_pedir`;
+  a libsagui ganhou só `http_pedir_completo`, que mostra os cabeçalhos de
+  cada resposta, para o Set-Cookie e o fetch), a janela redimensionável, a
+  barra, o histórico e os favoritos do navegador da 2.0, o PNG, o JPEG
+  (também progressivo) e o DEFLATE da 2.0, e o som HD Audio (`som_abrir` e
+  `som_enviar`; o tocador converte o áudio para 48 kHz).
+- **Como o JavaScript conversa com o motor:** como no #6, os scripts rodam
+  sobre o HTML e devolvem o HTML do DOM depois do "load"; o motor lê esse
+  HTML. Cliques, teclas, timers e rolagem rodam no JavaScript, e se o DOM
+  mudou a página é relida no mesmo ponto da rolagem ("página viva").
+
+**O que ficou de fora do #6, e por quê.** O TLS, a rede, a AC97 e o
+`desligar` do #6 (a 2.0 já tem os seus, escritos aqui, e são núcleo); as
+mudanças na ABI e na GUI do kernel; a compactação LZMA do ramdisk e o filtro
+BCJ (`kernel/lib/lzma.c`, derivado do xz: é kernel, e a 2.0 não tem teto de
+tamanho — a imagem foi de 1,7 MB para cerca de 5 MB, com 1,3 MB de fontes);
+`entrega/`, o `tools/video/yt_base.py`, o gerador `tools/video/h264gen/` e
+as regras especiais para YouTube, Bing e reCAPTCHA. O leitor de HTML da 2.0
+(`html.c`) continua no repositório e na H61, mas a janela agora usa o motor;
+o `pagina.c` (layout da 2.0) saiu.
+
+**Os trechos de terceiros.** Cada um foi separado do código do Cipó numa
+pasta de `terceiros/`, com a licença original conferida e um `ORIGEM.md`:
+`font-rs` (o rasterizador por área acumulada; Apache 2.0), `libwebp-vp8` (o
+WebP com perdas e as suas tabelas; BSD + patentes WebM), `v8-numeros` (o
+`toString` em outras bases; BSD), `ffmpeg-h264-tabelas` (CABAC e CAVLC; LGPL
+2.1 ou posterior) e `faad2-aac-huffman` (os livros de Huffman do AAC; GPL 2
+**ou posterior**, conferido no COPYING e no copyright do Debian, com o
+preâmbulo do FAAD2 e a frase de crédito que ele exige). Todas são
+compatíveis com a GPL 3, então nada precisou ser reescrito. Dados: as fontes
+DejaVu (licença Bitstream Vera), as tabelas do Unicode (Unicode License v3)
+e o dicionário da RFC 7932 (BSD do IETF Trust), em `CREDITOS.md`. Uma
+função de datas do #6 que seguia um algoritmo conhecido (dias desde 1970)
+foi trocada por um laço simples escrito aqui.
+
+**Mudanças no código do #6.** Além de mudar de lugar: o PNG/JPEG passam pelos
+decodificadores da 2.0 e as imagens chegam com alfa (PNG transparente sobre
+o fundo da página); o WOFF usa o DEFLATE da 2.0; dois erros do layout
+corrigidos (linha vazia dentro de `pre` e `<br><br>` contava a altura em
+dobro; um float no começo do texto não era contornado pela primeira linha);
+`motor_ancora` e `motor_imagens_total` para os links `#âncora` e o registro.
+
+**Ponto flutuante e pilha.** O motor usa double pelo SSE2 (D042). Nos
+testes da H82 o `baixar https://...` (H53) passou a cair com "proteção
+geral" num `movdqa` da curva 25519: o `inicio.asm` deixava a pilha 8 bytes
+fora do alinhamento de 16 que o gcc supõe na entrada de `principal`, e com
+SSE2 o gcc guarda valores de 16 bytes na pilha com instruções que exigem o
+alinhamento; um quadro maior no HTTP mudou o caminho e o erro apareceu. O
+`inicio.asm` agora desce mais 8 bytes antes de empilhar os argumentos (vale
+para todos os programas). Com isso apareceu o mesmo erro do outro lado no
+`cc`, que troca para uma pilha própria de 1 MB com o topo vindo do `aloca`
+(alinhado só em 8): o topo agora é alinhado em 16. Os objetos do Cipó e do
+tocador são compilados também com `-mstackrealign`, por segurança. Outros
+testes mudaram por causa da imagem maior e da pasta `/fontes` na raiz: a H23
+conta 11 itens na raiz, e a H34 cria a FAT32 depois do fim da imagem (antes
+começava em 2 MB, e a imagem passou de 5 MB).
+
+**Testes.** A H62 continua comparando a janela, pixel a pixel, com o mesmo
+código compilado no computador — agora o motor do Cipó com as fontes DejaVu
+(as cores procuradas na captura mudaram: links `#0B57D0`, borda dos campos
+`#767676`). A H82 (`tests/h82_cipo.py`) confere uma página de CSS moderno
+(flex, grid, gradiente, float, tabela, transform, CSS externo, `@font-face`,
+SVG, GIF, WebP e PNG transparente) pixel a pixel, o GIF contra o Pillow, o
+WebP perto do Pillow, 120 páginas estragadas no motor com verificação de
+memória, e uma página de JavaScript (as verificações do teste do #6, mais
+`toString` em outras bases, cookies, fetch com POST, Canvas 2D, WebGL, timer
+e clique). `tests/h82_video.py` só testa a decodificação de vídeo e o som
+quando a máquina dos testes tem ffmpeg para gerar o MP4. A H63 (internet)
+mudou num ponto: o artigo da Wikipédia agora aparece como nos outros
+navegadores, com a busca do topo escondida atrás de uma lupa (o campo surge
+por JavaScript), então a busca é feita na página Especial:Pesquisar, que
+tem o campo à vista. A Wikipédia responde 429 ("respeite a política de
+robôs") quando muitos pedidos chegam seguidos com o User-Agent
+"SaguiOS/2.0" (um artigo pede dezenas de imagens); um User-Agent com
+contato, como a política pede, fica para depois.
+
+**Pendências.** O vídeo baixa o MP4 inteiro antes de tocar (o HTTP da 2.0
+entrega o corpo de uma vez); o `<video>` dentro da página só abre o tocador
+quando o endereço é o próprio MP4; WebGL, GLSL, iframes e fontes WOFF2 entram
+compilados mas só têm o teste básico (o WebGL limpando a tela); um float
+dentro de um bloco com borda pinta o fundo uns pixels abaixo do texto dele.
+
 ## D044. Resolução nativa no G470: aproveitar o modo da BIOS, não refazer (H84)
 
 **O problema.** O VESA da BIOS do G470 oferece no máximo 1024x768; o painel
