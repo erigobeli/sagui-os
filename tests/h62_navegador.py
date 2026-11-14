@@ -310,23 +310,25 @@ def achar_texto_azul(png, j):
     return links[0] if links else None
 
 
-def achar_campo(png, j):
+def achar_campo(png, j, bordas=None):
     """O campo de texto: retângulo com borda cinza (BORDA_CAMPO) de 100 a 400 de
     largura e 14 a 40 de altura, branco por dentro. Devolve o centro."""
     px = png.load()
+    bordas = bordas or (BORDA_CAMPO,)
     x0, x1 = j["x"], j["x"] + VISTA_L
     for y in range(j["y"] + BARRA, j["y"] + BARRA + VISTA_A - 14):
         x = x0
         while x < x1 - 100:
-            if px[x, y] != BORDA_CAMPO:
+            cor = px[x, y]
+            if cor not in bordas:
                 x += 1
                 continue
             fim = x
-            while fim < x1 and px[fim, y] == BORDA_CAMPO:
+            while fim < x1 and px[fim, y] == cor:
                 fim += 1
             if fim - x >= 100 and px[x + 50, y + 4] == (255, 255, 255):
                 for a in range(14, 40):
-                    if y + a < j["y"] + BARRA + VISTA_A and all(px[x + k, y + a] == BORDA_CAMPO for k in range(10, 60)):
+                    if y + a < j["y"] + BARRA + VISTA_A and all(px[x + k, y + a] == cor for k in range(10, 60)):
                         return (x + fim) // 2, y + a // 2
             x = fim
     return None

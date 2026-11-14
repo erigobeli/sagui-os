@@ -137,11 +137,14 @@ def main():
     # começo (partição 0xDA) e uma partição FAT32 criada no espaço livre.
     unico = os.path.join(os.path.dirname(pen), "h34-unico.img")
     subprocess.run(["cp", os.path.join(RAIZ, "build", "saguios.img"), unico], check=True)
+    # A FAT32 começa no primeiro MB inteiro depois da imagem (desde a H82 a
+    # imagem passa de 2 MB: as fontes e o motor do Cipó).
+    mb = os.path.getsize(unico) // (1024 * 1024) + 1
     with open(unico, "r+b") as f:
         f.truncate(64 * 1024 * 1024)
-    subprocess.run(["sfdisk", "-q", "--append", unico], input="start=4096, type=c\n", text=True, check=True)
-    subprocess.run(["mkfs.vfat", "-F", "32", "-n", "DADOS", "--offset", "4096", unico], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["mcopy", "-i", unico + "@@2M", os.path.join(RAIZ, "rootfs", "sobre.txt"), "::/do-pc.txt"], check=True)
+    subprocess.run(["sfdisk", "-q", "--append", unico], input=f"start={mb * 2048}, type=c\n", text=True, check=True)
+    subprocess.run(["mkfs.vfat", "-F", "32", "-n", "DADOS", "--offset", str(mb * 2048), unico], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["mcopy", "-i", unico + f"@@{mb}M", os.path.join(RAIZ, "rootfs", "sobre.txt"), "::/do-pc.txt"], check=True)
     with Maquina("h34-unico", "usb", imagem=unico) as m:
         m.esperar_serial("sagui:/$", 120)
         m.esperar_serial("notificacao: Pendrive conectado: DADOS", 20)

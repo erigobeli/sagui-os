@@ -73,11 +73,16 @@ def main():
         m.tecla("pgdn", 0.3)
         time.sleep(1)
         m.captura("H63-2-wikipedia-rolada")
-        # Busca pelo formulário da Wikipédia (o campo fica no topo).
-        m.tecla("home", 0.3)
+        # Busca pelo formulário da Wikipédia. Desde a H82 o Cipó mostra o artigo
+        # como os outros navegadores: no topo a busca é só uma lupa, e o campo
+        # aparece por JavaScript. A página de busca da Wikipédia tem o campo à vista.
+        antes = len(m.serial())
+        digitar_endereco(m, j, "https://pt.wikipedia.org/wiki/Especial:Pesquisar")
+        esperar(m, "navegador: pronto https://pt.wikipedia.org/wiki/Especial:Pesquisar", 400, antes)
         time.sleep(1)
         from PIL import Image
-        campo = achar_campo(Image.open(m.captura("H63-tmp", guardar=False)).convert("RGB"), j)
+        bordas = [(0x76, 0x76, 0x76), (0xA2, 0xA9, 0xB1), (0x72, 0x77, 0x7D), (0x7C, 0x80, 0x85), (0x36, 0x66, 0xCC)]
+        campo = achar_campo(Image.open(m.captura("H63-tmp", guardar=False)).convert("RGB"), j, bordas)
         verificar(campo is not None, "Wikipédia: o campo de busca aparece")
         m.clique(*campo)
         m.digitar("Mata Atlântica", 0.06)
