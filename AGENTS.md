@@ -81,8 +81,10 @@ deixe misturado como se fosse original.
   conhecimento (qual especificação).
 - **Sem libc** dentro do sistema: os programas usam a `libsagui`
   (`userland/inc/sagui.h`, `gui.h`); o kernel usa as próprias rotinas.
-- **Sem ponto flutuante** no kernel e nos programas (`-mgeneral-regs-only`), e
-  sem divisão de 64 bits que precise da libgcc.
+- **Sem ponto flutuante no kernel** (`-mgeneral-regs-only`). Os programas podem
+  usar `float` e `double` desde a versão 2.1 (SSE2, D042); a pilha deles fica
+  alinhada em 16 bytes, e quem trocar de pilha precisa manter isso. Nada de
+  divisão de 64 bits que precise da libgcc.
 - Siga o estilo do arquivo que você está mudando.
 - Decisões de projeto importantes vão em `docs/decisoes.md` (uma seção nova,
   numerada); problemas encontrados e como foram resolvidos, em `docs/erros.md`.

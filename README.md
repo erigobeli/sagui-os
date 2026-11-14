@@ -16,11 +16,24 @@ Feito por Claude (Anthropic) para o projeto do **Eli Rigobeli**.
 
 ---
 
-## Próximo passo: SaguiOS 2.0
+## SaguiOS 2.1
 
-A versão 2.0 está planejada em [`prd2.md`](prd2.md): som, rede, HTTPS próprio, terminal com SSH,
-navegador, um compilador de C rodando dentro do sistema e o **Sagui Code**, um agente de programação
-com IA que cria programas para o próprio SaguiOS. Acompanhe pelo painel [`dashboard/v2/`](dashboard/v2/index.html).
+A versão 2.0 ([`prd2.md`](prd2.md)) trouxe som, rede, HTTPS próprio, terminal com SSH,
+navegador, um compilador de C rodando dentro do sistema e o **Sagui Code**, um agente de
+programação com IA. A **2.1** é a primeira com contribuições da comunidade, trazidas para o
+código atual com os autores nos commits (veja [`CONTRIBUIDORES.md`](CONTRIBUIDORES.md)):
+
+- **Cipó**, o navegador, com CSS moderno, JavaScript, fontes TrueType, Canvas, SVG, WebGL e
+  vídeo (motor de Robson de Lima Barbosa, nome de M4R4G0N);
+- o **visual novo**: ícones suavizados, temas "Mata" e "Azul", fundos novos, menus do botão
+  direito e barra de tarefas (Robson e Gabriel);
+- `poweroff` e a tela "pode desligar" (Clayton); `top`, `grep`, `fetch`, `uname`, `df` e duas
+  demonstrações (Gabriel);
+- ponto flutuante nos programas, Ctrl+C no Terminal e, para o G470, um driver de vídeo na
+  resolução nativa do painel (opcional) e um driver de adaptador USB de rede.
+
+Acompanhe pelo painel [`dashboard/v2/`](dashboard/v2/index.html). Quer contribuir? Leia
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## O que é
 
@@ -153,8 +166,9 @@ por história e cada fase validada pelo Eli no hardware real antes da próxima.
 O núcleo do SaguiOS (kernel, drivers, rede, TLS, janelas, libsagui, shell,
 compilador) é todo escrito no projeto. Nos aplicativos, alguns trechos vieram
 de projetos livres (D041, D043), cada um numa pasta de [`terceiros/`](terceiros/)
-com a licença original e um `ORIGEM.md`; a lista completa, com os dados e as
-fontes de letra, está em [`CREDITOS.md`](CREDITOS.md):
+com a licença original e um `ORIGEM.md`. A imagem de fundo "Mata Atlântica" foi gerada por
+IA (trazida no pull request #1). A lista completa, com os dados e as fontes de letra, está em
+[`CREDITOS.md`](CREDITOS.md):
 
 | Pasta | De onde | Licença | Quem usa |
 | --- | --- | --- | --- |
