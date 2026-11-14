@@ -1,8 +1,17 @@
 # Créditos: o que vem de fora dentro do SaguiOS
 
-Todo o **código** do SaguiOS foi escrito neste projeto. Dentro da imagem, a única coisa feita
-por terceiros são **dados públicos**: os certificados raiz abaixo, usados pelo HTTPS (H53) para
-conferir que um site é quem diz ser.
+O **núcleo** do SaguiOS (kernel, drivers, sistema de arquivos, rede, TLS, SSH, janelas,
+`libsagui`, shell, compilador e programas básicos) foi todo escrito neste projeto (D041).
+Dentro da imagem, o que veio de fora está listado aqui: **dados públicos** (os certificados
+raiz, usados pelo HTTPS para conferir que um site é quem diz ser), a **imagem de fundo** da
+Mata Atlântica e, nos aplicativos, o código livre de terceiros da pasta `terceiros/`.
+
+## Fundo "Mata Atlântica" (`/arte/mata-atlantica.sgi`)
+
+- **Origem:** imagem gerada por inteligência artificial (modelo Z-Image Turbo) e trazida por
+  Robson de Lima Barbosa no pull request #1; convertida para o formato `.sgi` por
+  `tools/mkfundo.py`. Aprovada pelo Eli (H81).
+- **Licença:** distribuída com o SaguiOS sob a GPL 3, como o resto da arte do projeto.
 
 ## Certificados raiz (`/sistema/certificados/`)
 
