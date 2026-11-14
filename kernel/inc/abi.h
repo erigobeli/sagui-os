@@ -167,6 +167,9 @@ typedef struct {
 #define ELF_SAGUI_JANELA 0x4A475301u
 #define ELF_SAGUI_TEXTO  0x54475301u   /* feito pelo cc e sem janela: programa de texto */
 #define INFO_REGISTRO  6   /* o diário do kernel (as últimas linhas do klog), para diagnóstico no hardware */
+/* Espaço dos discos (H83, comando df): um info_espaco_t para "/" e outro para
+ * "/usb", se houver pendrive montado. n = quantos cabem; devolve quantos vieram. */
+#define INFO_DISCOS_ESPACO 7
 
 typedef struct {
     unsigned int ram_total_kb;
@@ -191,6 +194,15 @@ typedef struct {
     unsigned int segundos_ligado;
     unsigned int largura, altura;
 } info_versao_t;
+
+typedef struct {
+    char         ponto[8];         /* "/" ou "/usb" */
+    char         tipo[24];         /* "ramdisk + RAM" ou "FAT32" */
+    char         rotulo[12];       /* rótulo do pendrive (vazio para "/") */
+    unsigned int total_kb;
+    unsigned int usado_kb;
+    unsigned int livre_kb;
+} info_espaco_t;
 
 typedef struct {
     char         nome[8];          /* "usb0" */

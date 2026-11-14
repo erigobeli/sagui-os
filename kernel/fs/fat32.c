@@ -38,6 +38,7 @@ typedef struct {
     uint32_t total_clusters;
     uint32_t setor_fsinfo;
     uint32_t livres, dica;
+    bool     livres_contados;   /* "livres" já foi conferido contando a FAT (H83) */
     bool     montado;
 } volume_t;
 
@@ -606,6 +607,59 @@ static int ler_volume(disco_t *d, bool oficial)
     return 0;
 }
 
+/* Conta os clusters livres lendo a FAT inteira (H83). Uma entrada zerada
+ * (nos 28 bits usados) é um cluster livre. A FAT é lida em blocos de 64
+ * setores direto do pendrive (ler_direto já põe por cima o que está mais
+ * novo na cache), em vez de setor a setor: num pendrive de 16 GB a FAT tem
+ * dezenas de milhares de setores. Devolve 0xFFFFFFFF se a leitura falhar. */
+static uint32_t contar_livres(void)
+{
+    const uint32_t bloco = 64;
+    uint8_t *buf = kmalloc(bloco * 512);
+    if (!buf) return 0xFFFFFFFFu;
+    uint32_t fim = v.total_clusters + 2, n = 0;   /* clusters válidos: 2 .. fim-1 */
+    uint32_t setores = (fim * 4 + 511) / 512;
+    for (uint32_t s0 = 0; s0 < setores; s0 += bloco) {
+        uint32_t q = setores - s0 < bloco ? setores - s0 : bloco;
+        if (ler_direto(v.inicio_fat + s0, q, buf) < 0) { kfree(buf); return 0xFFFFFFFFu; }
+        uint32_t c0 = s0 * 128;   /* 128 entradas de 4 bytes por setor */
+        for (uint32_t k = 0; k < q * 128; k++) {
+            uint32_t c = c0 + k;
+            if (c < 2) continue;
+            if (c >= fim) break;
+            if ((((uint32_t *)buf)[k] & 0x0FFFFFFFu) == 0) n++;
+        }
+    }
+    kfree(buf);
+    return n;
+}
+
+/* Tamanho e espaço livre do volume montado, em KB (H83, comando df).
+ * O FSInfo traz uma contagem de livres, mas a especificação diz que ela é
+ * só uma dica: outro sistema pode ter gravado no pendrive sem atualizá-la.
+ * Por isso, na primeira vez que alguém pergunta, a FAT é contada de
+ * verdade (uma vez por montagem: contar ao montar atrasaria toda montagem
+ * de pendrive grande, mesmo sem ninguém querer saber). Depois, alocar e
+ * liberar clusters já mantêm "livres" em dia. */
+int fat_espaco(uint32_t *total_kb, uint32_t *livre_kb)
+{
+    if (!v.montado) return ERRO_NAO_EXISTE;
+    if (!v.livres_contados) {
+        uint32_t n = contar_livres();
+        if (n == 0xFFFFFFFFu) return ERRO_ACESSO;
+        if (n != v.livres)
+            klog("[FAT32] livres: o FSInfo dizia %u, a FAT tem %u\n", v.livres, n);
+        v.livres = n;
+        v.livres_contados = true;
+    }
+    /* Em KB (dois setores de 512 bytes): cabe em 32 bits até 4 TB. O
+     * número de setores por cluster é sempre uma potência de 2. */
+    uint32_t meio = v.setores_cluster / 2;
+    *total_kb = meio ? v.total_clusters * meio : v.total_clusters / 2;
+    *livre_kb = meio ? v.livres * meio : v.livres / 2;
+    return 0;
+}
+
 int fat_desmontar(bool gravar)
 {
     if (!v.montado) return 0;
@@ -614,11 +668,8 @@ int fat_desmontar(bool gravar)
         r = descarregar();
         uint8_t *s = kmalloc(512);
         if (s && v.disco->ler(v.disco, v.setor_fsinfo, 1, s) == 0 && *(uint32_t *)s == 0x41615252u) {
-            if (v.livres == 0xFFFFFFFFu) {   /* não sabíamos: conta agora */
-                uint32_t n = 0;
-                for (uint32_t c = 2; c < v.total_clusters + 2; c++) if (fat_ler_entrada(c) == 0) n++;
-                v.livres = n;
-            }
+            if (v.livres == 0xFFFFFFFFu)   /* não sabíamos: conta agora */
+                v.livres = contar_livres();
             *(uint32_t *)(s + 488) = v.livres;
             *(uint32_t *)(s + 492) = v.dica;
             if (v.disco->escrever(v.disco, v.setor_fsinfo, 1, s) < 0) r = ERRO_ACESSO;

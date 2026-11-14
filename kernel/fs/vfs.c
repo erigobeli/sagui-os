@@ -278,6 +278,23 @@ void vfs_soltar(no_t *x)
 
 static bool usb_montado;
 
+/* Soma o tamanho de todos os arquivos da árvore (H83, comando df). Anda
+ * pela árvore sem recursão: desce no primeiro filho, passa ao irmão, e
+ * sobe pelo "pai" quando acaba uma pasta. Os arquivos que ainda apontam
+ * para o ramdisk contam também: eles ocupam memória do mesmo jeito. */
+uint32_t vfs_bytes_usados(void)
+{
+    uint32_t soma = 0;
+    no_t *x = raiz.filho;
+    while (x) {
+        if (x->tipo != TIPO_PASTA && !x->removido) soma += x->tamanho;
+        if (x->filho) { x = x->filho; continue; }
+        while (x && !x->irmao) { x = x->pai; if (x == &raiz) x = NULL; }
+        if (x) x = x->irmao;
+    }
+    return soma;
+}
+
 void vfs_ponto_montagem(bool existe)
 {
     usb_montado = existe;

@@ -21,6 +21,7 @@ extern uint32_t fat_geracao;   /* muda a cada montar/desmontar */
 int  fat_montar(disco_t *d);
 int  fat_desmontar(bool gravar);
 bool fat_rotulo_raiz(disco_t *d, char *rotulo);   /* rótulo da entrada especial da raiz */
+int  fat_espaco(uint32_t *total_kb, uint32_t *livre_kb);   /* do volume montado (H83) */
 
 /* Caminhos relativos ao volume, sem barra inicial ("" = raiz). */
 int  fat_info(const char *rel, info_arquivo_t *inf);

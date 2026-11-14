@@ -7,6 +7,8 @@
 #include "relogio.h"
 #include "texto.h"
 #include "bootinfo.h"
+#include "vfs.h"
+#include "fat32.h"
 
 SEM_RETORNO void maquina_reiniciar(void);
 
@@ -154,6 +156,35 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
     if (tipo == INFO_PCI) {
         if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
         return pci_relatorio((char *)ptr, (int)n);
+    }
+    if (tipo == INFO_DISCOS_ESPACO) {
+        /* "/" é a árvore na memória (ramdisk + o que foi gravado na RAM): o
+         * usado é a soma dos arquivos, e o livre é a memória livre, que é
+         * onde um arquivo novo vai parar. "/usb" vem da FAT do pendrive. */
+        info_espaco_t *v = (info_espaco_t *)ptr;
+        if (n > 2) n = 2;
+        if (n == 0 || !usuario_ok(v, n * sizeof *v, true)) return ERRO_ENDERECO;
+        memset(v, 0, n * sizeof *v);
+        estat_memoria_t est;
+        memoria_estatisticas(&est);
+        txt_copia_n(v[0].ponto, "/", sizeof v[0].ponto);
+        txt_copia_n(v[0].tipo, "ramdisk + RAM", sizeof v[0].tipo);
+        v[0].usado_kb = (vfs_bytes_usados() + 1023) / 1024;
+        v[0].livre_kb = est.paginas_livres * 4;
+        v[0].total_kb = v[0].usado_kb + v[0].livre_kb;
+        uint32_t k = 1;
+        disco_t *d = disco_montado();
+        uint32_t total, livre;
+        if (k < n && d && fat_espaco(&total, &livre) == 0) {
+            txt_copia_n(v[k].ponto, "/usb", sizeof v[k].ponto);
+            txt_copia_n(v[k].tipo, "FAT32", sizeof v[k].tipo);
+            txt_copia_n(v[k].rotulo, d->rotulo, sizeof v[k].rotulo);
+            v[k].total_kb = total;
+            v[k].livre_kb = livre;
+            v[k].usado_kb = total - livre;
+            k++;
+        }
+        return (int32_t)k;
     }
     if (tipo == INFO_VERSAO) {
         info_versao_t *v = (info_versao_t *)ptr;

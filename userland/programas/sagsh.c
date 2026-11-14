@@ -56,6 +56,7 @@ static const comando_t comandos[] = {
     { "poweroff", "desligar", true, false, "desliga o PC", "desligar", "Grava o que falta nos pendrives e desliga o computador." },
     { "sair", NULL, true, false, "fecha o shell", "sair", "Fecha o shell." },
     { "discos", NULL, false, false, "lista os pendrives", "discos", "Mostra os pendrives conectados, o formato e se estão montados." },
+    { "df", "espaco", false, false, "espaço dos discos", "df [-k]", "Mostra o espaço total, usado e livre de / (a memória) e de /usb (o pendrive). -k: tudo em KB." },
     { "montar", NULL, false, false, "monta o pendrive", "montar [usb0]", "Monta o pendrive FAT32 em /usb." },
     { "desmontar", NULL, false, false, "libera o pendrive", "desmontar [usb0]", "Grava tudo o que falta e libera o pendrive para ser removido." },
     { "usb", NULL, false, false, "diagnóstico USB", "usb", "Mostra os controladores USB 2.0, as portas e os dispositivos." },
