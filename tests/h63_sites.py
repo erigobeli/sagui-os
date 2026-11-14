@@ -60,7 +60,7 @@ def main():
         antes = len(m.serial())
         m.digitar("navegador https://pt.wikipedia.org/wiki/Sagui\n", 0.04)
         s = esperar(m, "navegador: pronto https://pt.wikipedia.org/wiki/Sagui", 400, antes)
-        j = janela(m.serial(), "Sagui Navegador")
+        j = janela(m.serial(), "Cipó")   # o nome desde a H82
         n = carregada(s, "https://pt.wikipedia.org/wiki/Sagui")
         verificar(n and n[0] == 200 and n[2] > 1000 and n[4] > 100,
                   f"Wikipédia: artigo com {n[2] if n else 0} nós e {n[4] if n else 0} links")

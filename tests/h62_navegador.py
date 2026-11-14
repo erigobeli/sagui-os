@@ -199,7 +199,7 @@ def main():
             s = m.serial()
             verificar("navegador: imagens prontas (3 de 3)" in s, "as três imagens (PNG, JPEG e JPEG progressivo) chegaram")
             time.sleep(1)
-            j = janela(s, "Sagui Navegador")
+            j = janela(s, "Cipó")   # o nome desde a H82
             comparar(m, ref, j, 0, "H62-1-topo")
             # Rolar uma página (PgDn rola a vista menos 40 pixels).
             m.tecla("pgdn", 0.3)

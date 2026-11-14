@@ -1,4 +1,8 @@
-/* navegador.c - a janela do navegador (H62; na 2.1, o Cipó, H82).
+/* navegador.c - o Cipó, o navegador do SaguiOS (H62; o nome e o motor, H82).
+ *
+ * O nome (sugerido por M4R4G0N no pull request #3, e usado por Robson de
+ * Lima Barbosa no #6): o sagui atravessa a mata pulando de cipó em cipó; o
+ * navegador atravessa a web pulando de link em link.
  *
  *   [<] [>] [R] [ endereço ......................... ] [Ir] [+Fav] [Favoritos]
  *   +------------------------------------------------------------------+-+
@@ -27,7 +31,7 @@
  * /tmp/favoritos.txt sem pendrive), uma linha "endereço<TAB>título" cada. */
 #include "navegador.h"
 
-#define NOME_NAVEGADOR "Sagui Navegador"
+#define NOME_NAVEGADOR "Cipó"
 
 /* O tamanho da janela muda (H78): começa em 960 x 660. */
 static int larg_jan = 960, alt_jan = 660;
@@ -478,6 +482,7 @@ static void pagina_interna(const char *url, texto_t *r)
              "<style>body{font-family:sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1e2328}"
              "h1{color:#0b7a3e}a{color:#1a4fb0}.dica{background:#eef6f0;border-left:4px solid #0b7a3e;padding:8px 12px}</style>"
              "</head><body><h1>" NOME_NAVEGADOR "</h1>"
+             "<p><i>O sagui atravessa a mata pulando de cipó em cipó; o Cipó atravessa a web pulando de link em link.</i></p>"
              "<p>O navegador do SaguiOS: HTML e CSS (flex, grid, tabelas), JavaScript, fontes TrueType, "
              "imagens PNG, JPEG, GIF e WebP, Canvas e SVG, e HTTPS com o TLS 1.3 do próprio sistema.</p>"
              "<h2>Para começar</h2><ul>"

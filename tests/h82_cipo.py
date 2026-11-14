@@ -37,7 +37,7 @@ from PIL import Image, ImageChops  # noqa: E402
 REDE = ["-netdev", "user,id=n0", "-device", "e1000,netdev=n0,mac=52:54:00:12:34:56"]
 PASTA = os.path.join(SAIDA, "h82-paginas")
 RENDER = os.path.join(SAIDA, "h82-teste_pagina")
-TITULO = "Sagui Navegador"
+TITULO = "Cipó"
 pedidos = []
 
 
