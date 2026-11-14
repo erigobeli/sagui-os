@@ -518,7 +518,23 @@ procurar_vesa:
 .bpp_ok:
         mov ax, [VBE_MODO + 0x12]               ; largura
         mov dx, [VBE_MODO + 0x14]               ; altura
-        mov bh, 30
+        ; Só nos testes da H84 (bit OPC_VESA_LARGO): uma tela larga de 768
+        ; linhas, como a do G470, vale mais que 1024x768. Serve para provar
+        ; no QEMU que a interface funciona com 1366 pixels de largura.
+        test word [CAB_ENDERECO + CAB_OPCOES], OPC_VESA_LARGO
+        jz .r1024
+        cmp dx, 768
+        jne .r1024
+        mov bh, 40
+        cmp ax, 1366
+        je .pontua
+        mov bh, 38
+        cmp ax, 1360
+        je .pontua
+        mov bh, 36
+        cmp ax, 1280
+        je .pontua
+.r1024: mov bh, 30
         cmp ax, 1024
         jne .r800
         cmp dx, 768
