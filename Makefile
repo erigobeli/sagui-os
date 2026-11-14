@@ -5,6 +5,9 @@
 #   make vdi        -> gera também build/saguios.vdi (VirtualBox)
 #   make test       -> roda todos os testes automáticos no QEMU
 #   make rodar      -> abre o sistema no QEMU (precisa de janela; na VPS use os testes)
+#   make run        -> abre no QEMU como um PC completo: 768 MB, rede e1000,
+#                      som intel-hda e USB 2.0 (EHCI). O som sai pelo
+#                      PulseAudio; troque com SOM=alsa (ou SOM=none)
 #   make entrega FASE=N -> copia .img, .vdi e SHA-256 para entrega/faseN/
 #   make vazio      -> alvo vazio (critério da H01)
 #   make limpar     -> apaga build/
@@ -75,7 +78,7 @@ CC_LIB := $(B)/userland/libsagui.o
 CC_INC := userland/inc/sagui.h userland/inc/gui.h userland/inc/http.h kernel/inc/abi.h
 PROG_TESTE := $(patsubst userland/testes/%.c,$(B)/userland/testes/%,$(wildcard userland/testes/*.c))
 
-.PHONY: all vazio vdi test rodar entrega limpar dashboard
+.PHONY: all vazio vdi test rodar run entrega limpar dashboard
 
 all: $(B)/saguios.img
 
@@ -226,6 +229,16 @@ test: $(B)/saguios.img
 
 rodar: $(B)/saguios.img
 	qemu-system-i386 -m 512M -drive format=raw,file=$< -serial stdio
+
+# Do pull request #7: o sistema com as placas que ele sabe usar, como no
+# G470. "snapshot=on": o que for gravado no disco some ao fechar o QEMU (o
+# SaguiOS roda na memória; a imagem fica como saiu do make).
+SOM ?= pa
+run: $(B)/saguios.img
+	qemu-system-i386 -m 768M -drive format=raw,file=$<,snapshot=on -serial stdio \
+	    -nic user,model=e1000 \
+	    -audiodev $(SOM),id=som -device intel-hda -device hda-duplex,audiodev=som \
+	    -device usb-ehci,id=ehci
 
 entrega: $(B)/saguios.img $(B)/saguios.vdi
 	@test -n "$(FASE)" || (echo "use: make entrega FASE=N" && false)

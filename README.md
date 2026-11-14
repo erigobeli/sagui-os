@@ -110,6 +110,7 @@ make            # build/saguios.img
 make vdi        # build/saguios.vdi (VirtualBox)
 make test       # todos os testes no QEMU (sem janela)
 make rodar      # abre no QEMU com janela
+make run        # idem, com 768 MB, rede (e1000), som (intel-hda) e USB 2.0; SOM=alsa troca o áudio
 ```
 
 ## Estrutura

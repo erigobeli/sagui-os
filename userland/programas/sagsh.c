@@ -43,12 +43,16 @@ static const comando_t comandos[] = {
     { "rmdir", "remover-pasta", false, false, "apaga pasta vazia", "rmdir <pasta>", "Remove uma pasta, se estiver vazia." },
     { "wc", "conta", false, false, "conta linhas", "wc [arquivo]", "Conta linhas, palavras e letras de um arquivo ou da entrada (ex.: ls bin | conta)." },
     { "ps", "processos", false, false, "lista processos", "ps", "Mostra os processos em execução: PID, pai, estado, memória e tempo de CPU." },
+    { "top", "monitor", false, false, "processos ao vivo", "top [-n vezes]", "Mostra os processos, a memória e a %CPU de cada um, atualizando a cada segundo. q sai." },
+    { "grep", "procurar", false, false, "procura texto", "grep [-i] [-n] [-v] [-c] <texto> [arquivo...]", "Mostra as linhas que contêm o texto (ex.: ls bin | grep a). -i ignora maiúsculas, -n numera, -v inverte, -c conta." },
     { "kill", "matar", false, false, "encerra processo", "kill <pid>", "Encerra um processo pelo número (veja os números com ps)." },
     { "clear", "limpar", true, false, "limpa a tela", "clear", "Limpa a tela." },
     { "ajuda", NULL, true, false, "esta ajuda", "ajuda [comando]", "Lista os comandos, ou explica um comando." },
     { "mem", NULL, false, false, "memória", "mem", "Mostra a memória total, usada e livre." },
     { "data", NULL, false, false, "data e hora", "data", "Mostra a data e a hora do relógio da placa-mãe." },
     { "sobre", NULL, false, false, "sobre o SaguiOS", "sobre", "Versão e créditos do SaguiOS." },
+    { "uname", "sistema", false, false, "nome do sistema", "uname [-a | -r | -m]", "Diz o nome do sistema; -a mostra também a versão, a arquitetura e há quanto tempo está ligado." },
+    { "fetch", "ficha", false, false, "ficha do sistema", "fetch", "O sagui desenhado com letras e um resumo do sistema: versão, processador, memória, tela." },
     { "ola", NULL, false, false, "mostra argumentos", "ola [argumentos]", "Imprime os argumentos recebidos (teste do carregador de programas)." },
     { "contador", NULL, false, false, "conta segundos", "contador [segundos]", "Conta segundos (padrão: 10). Rode com & para ver a multitarefa." },
     { "falha", NULL, false, false, "provoca um erro", "falha [memoria|kernel|divisao|instrucao]", "Faz um erro de propósito: só este programa é encerrado, o sistema continua." },
@@ -76,6 +80,8 @@ static const comando_t comandos[] = {
     { "banana", NULL, false, true, "jogo do sagui", "banana", "Abre o jogo Sagui Pega Banana." },
     { "configuracoes", NULL, false, true, "abre as Configurações", "configuracoes [aba]", "Abre as Configurações (relógio, aparência, sobre o computador)." },
     { "sagui3d", NULL, false, true, "jogo em 3D", "sagui3d [fase]", "Abre o jogo Sagui 3D (ou só uma fase, dando o arquivo)." },
+    { "triangulos", NULL, false, true, "teste de desenho", "triangulos", "Triângulos girando em 3D, com os quadros por segundo: mede a velocidade do desenho. +/- muda a quantidade." },
+    { "chuva", NULL, false, true, "chuva de letras", "chuva", "Abre uma janela com letras verdes caindo. Espaço pausa; Esc fecha." },
 };
 #define QTD_COMANDOS (int)(sizeof comandos / sizeof comandos[0])
 
