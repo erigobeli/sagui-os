@@ -26,7 +26,7 @@
 #include "usb.h"
 #include "video.h"
 
-#define SAGUI_VERSAO "1.0"
+#define SAGUI_VERSAO "2.1"
 
 info_boot_t info_boot;
 const char *sagui_versao = SAGUI_VERSAO;
