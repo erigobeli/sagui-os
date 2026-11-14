@@ -288,7 +288,19 @@ int principal(int argc, char **argv)
         if (botao_tratar(j, &bt[2], &e)) apagar_item();
         if (e.tipo == EV_TECLA && e.tecla == '\b') { voltar(); continue; }
         if (e.tipo == EV_TECLA && e.tecla == TECLA_DELETE) { apagar_item(); continue; }
+        if (e.tipo == EV_MENU) {                            /* menu do botão direito (H81) */
+            registrar("arquivos: menu %u", e.tecla);
+            if (e.tecla == 0 && lista.sel >= 0) abrir_item(lista.sel);
+            else if (e.tecla == 1) apagar_item();
+            else if (e.tecla == 2) nova_pasta();
+            else if (e.tecla == 3) voltar();
+            continue;
+        }
         int r = lista_tratar(j, &lista, &e);
+        if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {
+            jan_menu(j, e.x, e.y, "Abrir|Apagar...|Nova pasta...|Voltar");
+            continue;
+        }
         if (r == LISTA_ATIVOU) abrir_item(lista.sel);
         else if (r == LISTA_SELECIONOU && lista.sel >= 0) {
             char msg[100];

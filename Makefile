@@ -30,7 +30,7 @@ B       := build
 KERNEL_C   := $(shell find kernel -name '*.c' | sort)
 KERNEL_ASM := $(shell find kernel -name '*.asm' | sort)
 KERNEL_OBJ := $(patsubst %.c,$(B)/%.o,$(KERNEL_C)) $(patsubst %.asm,$(B)/%.asm.o,$(KERNEL_ASM)) \
-              $(B)/gerado/fonte8x16.o
+              $(B)/gerado/fonte8x16.o $(B)/gerado/arte_icones.o
 KERNEL_HDR := $(shell find kernel -name '*.h')
 ROOTFS     := $(shell find rootfs -type f | sort)
 
@@ -106,6 +106,14 @@ $(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/mkfonte.py
 	$(PY) tools/mkfonte.py $< $@
 
 $(B)/gerado/fonte8x16.o: $(B)/gerado/fonte8x16.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Os ícones (H81, do Robson) são descritos em tools/mkarte.py e viram C no build.
+$(B)/gerado/arte_icones.c: tools/mkarte.py
+	@mkdir -p $(dir $@)
+	$(PY) tools/mkarte.py $@
+
+$(B)/gerado/arte_icones.o: $(B)/gerado/arte_icones.c kernel/inc/arte.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(B)/kernel.elf: $(KERNEL_OBJ) kernel/ligacao.ld

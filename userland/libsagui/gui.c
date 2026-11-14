@@ -77,6 +77,33 @@ void g_linha(jan_t *j, int x0, int y0, int x1, int y1, uint32_t cor)
     }
 }
 
+/* Mistura de duas cores, canal a canal: num/den de b. */
+static uint32_t mistura(uint32_t a, uint32_t b, int num, int den)
+{
+    uint32_t r = 0;
+    for (int s = 0; s <= 16; s += 8) {
+        int ca = (int)((a >> s) & 255), cb = (int)((b >> s) & 255);
+        r |= (uint32_t)(ca + (cb - ca) * num / den) << s;
+    }
+    return r;
+}
+
+/* Suaviza a escada das diagonais, como o kernel (H81, do pull request #1 do
+ * Robson): um pixel apagado com vizinhos acesos em "L" recebe 1/3 da cor. */
+static inline bool aceso(const unsigned char *g, int i, int l)
+{
+    return i >= 0 && i < 8 && l >= 0 && l < 16 && (g[l] & (0x80 >> i));
+}
+
+static inline void quina(jan_t *j, const unsigned char *g, int x, int y, int i, int l, uint32_t cor)
+{
+    bool e = aceso(g, i - 1, l), d = aceso(g, i + 1, l), c = aceso(g, i, l - 1), b = aceso(g, i, l + 1);
+    if (e != d && c != b && (unsigned)x < (unsigned)j->larg && (unsigned)y < (unsigned)j->alt) {
+        uint32_t *p = &j->px[y * j->larg + x];
+        *p = mistura(*p, cor, 1, 3);
+    }
+}
+
 void g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor)
 {
     for (int k = 0; k < n && t[k]; k++, x += LETRA_L) {
@@ -85,6 +112,7 @@ void g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor)
         for (int lin = 0; lin < 16; lin++)
             for (int col = 0; col < 8; col++)
                 if (g[lin] & (0x80 >> col)) ponto(j, x + col, y + lin, cor);
+                else quina(j, g, x + col, y + lin, col, lin, cor);
     }
 }
 
@@ -134,9 +162,19 @@ void rotulo(jan_t *j, int x, int y, const char *texto, uint32_t cor)
 
 void botao_desenhar(jan_t *j, botao_t *b)
 {
-    g_retangulo(j, b->x, b->y, b->l, b->a, b->apertado ? COR_BOTAO_APERTADO : COR_BOTAO);
-    g_relevo(j, b->x, b->y, b->l, b->a, b->apertado);
-    g_moldura(j, b->x - 1, b->y - 1, b->l + 2, b->a + 2, 0x5A6470);
+    /* Degradê com cantos cortados (H81, do Robson). Os pixels dos cantos
+     * ficam como estavam, então o botão serve sobre qualquer fundo. */
+    uint32_t topo = b->apertado ? COR_BOTAO_APERTADO : 0xFBFCFD, base = b->apertado ? 0xD6DBE0 : 0xD8DDE2;
+    for (int k = 0; k < b->a; k++)
+        g_retangulo(j, b->x, b->y + k, b->l, 1, mistura(topo, base, k, b->a > 1 ? b->a - 1 : 1));
+    g_retangulo(j, b->x + 1, b->y - 1, b->l - 2, 1, 0x5A6470);
+    g_retangulo(j, b->x + 1, b->y + b->a, b->l - 2, 1, 0x4A535C);
+    g_retangulo(j, b->x - 1, b->y + 1, 1, b->a - 2, 0x5A6470);
+    g_retangulo(j, b->x + b->l, b->y + 1, 1, b->a - 2, 0x5A6470);
+    ponto(j, b->x, b->y, 0x5A6470);
+    ponto(j, b->x + b->l - 1, b->y, 0x5A6470);
+    ponto(j, b->x, b->y + b->a - 1, 0x5A6470);
+    ponto(j, b->x + b->l - 1, b->y + b->a - 1, 0x5A6470);
     int tx = b->x + (b->l - g_largura_texto(b->texto)) / 2 + (b->apertado ? 1 : 0);
     int ty = b->y + (b->a - LETRA_A) / 2 + (b->apertado ? 1 : 0);
     g_texto(j, tx, ty, b->texto, COR_TEXTO);
@@ -547,3 +585,7 @@ void jan_novo_tamanho(jan_t *j, const evento_t *e)
     j->larg = e->x;
     j->alt = e->y;
 }
+
+/* Menu do próprio programa no ponto (x, y) da janela (H81): itens separados
+ * por "|"; a escolha chega como EV_MENU com o índice em e.tecla. */
+void jan_menu(jan_t *j, int x, int y, const char *itens) { menu_janela(j->id, x, y, itens); }

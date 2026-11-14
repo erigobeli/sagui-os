@@ -143,6 +143,10 @@ bool i8042_iniciar(bool com_mouse)
             if (diag.resposta_reset == 0xFA) { ler_resposta(); ler_resposta(); }
             diag.resposta_padrao = para_mouse(0xF6);
         }
+        /* 200 pacotes por segundo (comando 0xF3 "taxa de amostragem" do
+         * protocolo PS/2): o padrão de 100 deixa o cursor aos saltos. Quem não
+         * aceitar segue no padrão (H81, do Robson). */
+        if (diag.resposta_padrao == 0xFA && para_mouse(0xF3) == 0xFA) para_mouse(200);
         diag.resposta_ligar = para_mouse(0xF4);    /* começar a enviar */
         ok = diag.resposta_padrao == 0xFA && diag.resposta_ligar == 0xFA;
         if (ok) {

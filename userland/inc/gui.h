@@ -34,6 +34,7 @@ void   jan_mostrar(jan_t *j);                                   /* a janela toda
 bool   jan_redimensionavel(jan_t *j, int larg_min, int alt_min);
 void   jan_novo_tamanho(jan_t *j, const evento_t *e);
 void   jan_mostrar_area(jan_t *j, int x, int y, int l, int a);
+void   jan_menu(jan_t *j, int x, int y, const char *itens);       /* menu próprio; escolha em EV_MENU (H81) */
 void   g_retangulo(jan_t *j, int x, int y, int l, int a, uint32_t cor);
 void   g_moldura(jan_t *j, int x, int y, int l, int a, uint32_t cor);
 void   g_linha(jan_t *j, int x0, int y0, int x1, int y1, uint32_t cor);

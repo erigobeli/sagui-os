@@ -1345,3 +1345,40 @@ VBE" (documentada pelo Bochs) com o sistema já ligado: é o mesmo caminho do
 lado do SaguiOS, e prova a interface em 1366x768. O estágio 2 também ganhou
 uma opção de build só para testes (`--vesa-largo`) que prefere um modo VESA
 largo de 768 linhas (o QEMU oferece 1280x768).
+
+## D045. O visual do Robson (#1) como opção, junto do vidro da 2.0 (H81)
+
+O pull request #1 (Robson de Lima Barbosa) foi escrito sobre a 1.0, antes do
+vidro, da doca e do redimensionar da 2.0. Juntar como estava apagaria a 2.0;
+por isso as ideias e o código dele foram trazidos para o código atual, com
+ele como autor do commit:
+
+- **Ícones**: `tools/mkarte.py` (dele) descreve cada ícone com formas e gera
+  ARGB no build. Ganhou um segundo tamanho (40x40, para a doca) e os ícones
+  que só existem na 2.0 (Configurações, Cipó, programa instalado). O padrão
+  para um ícone novo está no começo do arquivo.
+- **Letras suavizadas** em todo o sistema (kernel e libsagui): um pixel
+  apagado com dois vizinhos acesos em "L" recebe 1/3 da cor da letra.
+  Os botões dos programas ganharam o degradê com cantos cortados dele.
+- **Fundos**: "Com sol" (desenhado por código, dele) e "M. Atlântica" (a
+  imagem feita por IA que ele trouxe, `rootfs/arte/mata-atlantica.sgi`, no
+  formato de `tools/mkfundo.py`). O padrão continua o degradê "Brasil" pedido
+  na H20; a imagem é uma escolha. Se o arquivo faltar, o "Com sol" entra no
+  lugar.
+- **Temas**: além de escuro e claro (H76), "Mata", com a cara do #1 (barra
+  verde quase opaca, filete amarelo, botões redondos vermelho, amarelo e
+  verde, título forte), e "Azul", com as cores do #7. Os dois somam campos ao
+  `tema_t` em vez de outro caminho de desenho: o vidro, as sombras e os
+  efeitos leves continuam valendo para todos.
+- **Menus do botão direito**: um único menu de contexto serve a ícones, à
+  área vazia, à barra de título e aos programas. A chamada `SIS_MENU_JANELA`
+  (77) e o evento `EV_MENU` (7) são as do #1, com números novos (os dele
+  colidiam com a 2.0). Terminal, Editor e Arquivos têm menus próprios; no
+  Terminal, "Colar" é o primeiro item, para não perder o costume do botão
+  direito que colava.
+- **Barra de tarefas** como opção à doca (`aparencia.barra = tarefas`).
+- **Mouse a 200 pacotes por segundo** e o relógio CMOS lido uma vez por
+  segundo, com as interrupções desligadas por menos tempo.
+
+Ficou de fora o maximizar do #1: a 2.0 já tinha o seu (H78), com a memória
+das janelas certa para 1366x768.

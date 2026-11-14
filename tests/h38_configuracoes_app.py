@@ -49,7 +49,7 @@ def main():
         m.clique(x0 + 10 + 65, y0 + 16 + 40 + 15)              # aba Aparência
         m.esperar_serial("configuracoes: aba Aparência", 10)
         time.sleep(0.4)
-        m.clique(x0 + X0 + 60, y0 + 174 + 60 + 12)            # Noite
+        m.clique(x0 + X0 + 100 + 45, y0 + 76 + 84 + 48 + 12)   # Noite (H81: 4 colunas de 100, linhas de 84)
         m.esperar_serial("configuracoes: fundo noite", 10)
         time.sleep(1.5)
         png = m.captura("H38-2-aparencia-noite")

@@ -31,19 +31,19 @@ static int volume_mostrado = -1;
 typedef struct {
     const char *nome;
     const char *programa;
-    const desenho_t *desenho;
+    const uint32_t *px;        /* ícone 64x64 em ARGB (tools/mkarte.py, H81) */
 } icone_t;
 
 static const icone_t icones[] = {
-    { "Arquivos",    "/bin/arquivos",    &arte_icone_arquivos },
-    { "Terminal",    "/bin/terminal",    &arte_icone_terminal },
-    { "Editor",      "/bin/editor",      &arte_icone_editor },
-    { "Calculadora", "/bin/calculadora", &arte_icone_calculadora },
-    { "Banana",      "/bin/banana",      &arte_icone_banana },
-    { "Sagui 3D",    "/bin/sagui3d",     &arte_icone_sagui3d },   /* bônus B4 */
-    { "Configurações", "/bin/configuracoes", &arte_icone_configuracoes },   /* H38 */
-    { "Sobre",       "/bin/sobre-o-sistema",   &arte_icone_sobre },
-    { "Pendrive",    "/bin/arquivos",    &arte_icone_pendrive },   /* só aparece com um pendrive conectado (H34) */
+    { "Arquivos",    "/bin/arquivos",    arte_px_arquivos },
+    { "Terminal",    "/bin/terminal",    arte_px_terminal },
+    { "Editor",      "/bin/editor",      arte_px_editor },
+    { "Calculadora", "/bin/calculadora", arte_px_calculadora },
+    { "Banana",      "/bin/banana",      arte_px_banana },
+    { "Sagui 3D",    "/bin/sagui3d",     arte_px_sagui3d },   /* bônus B4 */
+    { "Configurações", "/bin/configuracoes", arte_px_configuracoes },   /* H38 */
+    { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre },
+    { "Pendrive",    "/bin/arquivos",    arte_px_pendrive },   /* só aparece com um pendrive conectado (H34) */
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
 #define ICONE_PENDRIVE (QTD_ICONES - 1)
@@ -127,9 +127,9 @@ void area_icone_acao(int i, int acao)
     klog("[GUI] icone %s: %s %s (pid %d)\n", nome, verbo, caminho, pid);
 }
 
-static const desenho_t *desenho_icone(int i)
+static const uint32_t *px_icone(int i)
 {
-    return i >= QTD_ICONES ? &arte_icone_instalado : icones[i].desenho;
+    return i >= QTD_ICONES ? arte_px_instalado : icones[i].px;
 }
 #define ICONE_X 20
 #define ICONE_Y0 (BARRA_SUPERIOR + 16)
@@ -155,20 +155,106 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
     *l = ICONE_L; *a = ICONE_A;
 }
 
-/* Interpolação de um canal em inteiros. */
-static uint32_t mistura(uint32_t a, uint32_t b, int num, int den)
+/* ------------------------------------------------------------ fundos (H81)
+ *
+ * "Brasil com sol" e "Mata Atlântica" vieram do pull request #1 do Robson
+ * de Lima Barbosa. O primeiro é desenhado por código; o segundo é uma imagem
+ * (gerada por IA, com o modelo Z-Image Turbo, a pedido do Robson) no formato
+ * .sgi descrito em tools/mkfundo.py. */
+
+/* Seno de um ângulo de 0 a 1023 (volta inteira), de -256 a 256, por
+ * parábolas: o kernel não usa ponto flutuante. */
+static int seno(int a)
 {
-    uint32_t r = 0;
-    for (int s = 0; s <= 16; s += 8) {
-        int ca = (int)((a >> s) & 255), cb = (int)((b >> s) & 255);
-        r |= (uint32_t)(ca + (cb - ca) * num / den) << s;
+    a &= 1023;
+    int t = a & 511, v = t * (512 - t) / 256;
+    return a < 512 ? v : -v;
+}
+
+/* Altura de uma onda (copa da mata ou rio) na coluna x: duas senoides somadas. */
+static int onda(int x, int base, int amplitude, int passo, int fase)
+{
+    return base + (seno(x * passo / 16 + fase) * amplitude + seno(x * passo / 7 + fase * 3) * amplitude / 3) / 256;
+}
+
+/* Degradê verde-amarelo-azul com a luz de um sol no meio, a copa da mata no
+ * alto e ondas de rio embaixo. Uma trama 4x4 disfarça as faixas do degradê. */
+static void fundo_brasil_com_sol(void)
+{
+    static const uint8_t trama[4][4] = { {0,8,2,10}, {12,4,14,6}, {3,11,1,9}, {15,7,13,5} };
+    const uint32_t verde = 0x0B7A3E, amarelo = 0xE8BE30, azul = 0x14337E, sol = 0xFFF0A0;
+    int sx = larg * 3 / 5, sy = alt / 2, raio = alt / 2 + 40;
+    for (int x = 0; x < larg; x++) {
+        int mata1 = onda(x, alt / 7, 26, 5, 100), mata2 = onda(x, alt / 11, 20, 7, 420);
+        int rio1 = onda(x, alt * 3 / 4, 24, 4, 0), rio2 = onda(x, alt * 5 / 6, 20, 6, 300), rio3 = onda(x, alt * 11 / 12, 12, 9, 640);
+        for (int y = 0; y < alt; y++) {
+            int m = alt / 2, num = (y < m ? y : y - m) * 16 + trama[y & 3][x & 3], den = (y < m ? m : alt - m) * 16;
+            uint32_t c = y < m ? cor_mistura(verde, amarelo, num, den) : cor_mistura(amarelo, azul, num, den);
+            int dx = x - sx, dy = y - sy, d = (dx * dx + dy * dy) / raio;
+            if (d < raio) {
+                int f = raio - d;
+                c = cor_mistura(c, sol, f * f / raio * 3 / 5, raio);
+            }
+            if (y < mata1) c = cor_mistura(c, 0x075C2E, 1, 2);
+            if (y < mata2) c = cor_mistura(c, 0x044422, 3, 5);
+            if (y == mata1) c = cor_mistura(c, 0xFFFFFF, 1, 5);
+            if (y > rio1) c = cor_mistura(c, 0x1C5AA8, 2, 5);
+            if (y > rio2) c = cor_mistura(c, 0x123C86, 1, 2);
+            if (y > rio3) c = cor_mistura(c, 0x0C2860, 1, 2);
+            if (y == rio1 || y == rio2) c = cor_mistura(c, 0xFFFFFF, 1, 4);
+            fundo[y * larg + x] = c;
+        }
     }
-    return r;
+}
+
+/* Imagem .sgi (tools/mkfundo.py): "SGI1", largura, altura, paleta de 256
+ * cores e os índices em RLE. Em outra resolução, pega o pixel mais próximo.
+ * Devolve false se o arquivo faltar ou estiver errado. */
+#define SGI_CAB 776
+static bool fundo_imagem(const char *caminho)
+{
+    uint8_t *d;
+    uint32_t tam;
+    if (vfs_ler_inteiro(caminho, &d, &tam) < 0) return false;
+    bool ok = false;
+    int il = tam > SGI_CAB ? d[4] | d[5] << 8 : 0, ia = tam > SGI_CAB ? d[6] | d[7] << 8 : 0;
+    uint8_t *idx = il > 0 && ia > 0 && d[0] == 'S' && d[1] == 'G' && d[2] == 'I' && d[3] == '1'
+                 ? kmalloc((uint32_t)(il * ia)) : NULL;
+    if (idx) {
+        uint32_t i = SGI_CAB, o = 0, total = (uint32_t)(il * ia);
+        while (i < tam && o < total) {
+            uint32_t n = d[i++];
+            if (n < 128) {
+                for (n++; n && i < tam && o < total; n--) idx[o++] = d[i++];
+            } else if (i < tam) {
+                uint8_t v = d[i++];
+                for (n -= 125; n && o < total; n--) idx[o++] = v;
+            }
+        }
+        if (o == total) {
+            for (int y = 0; y < alt; y++) {
+                const uint8_t *linha = idx + (y * ia / alt) * il;
+                for (int x = 0; x < larg; x++) {
+                    const uint8_t *c = d + 8 + linha[x * il / larg] * 3;
+                    fundo[y * larg + x] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
+                }
+            }
+            ok = true;
+            klog("[GUI] fundo: %s %dx%d\n", caminho, il, ia);
+        }
+        kfree(idx);
+    }
+    kfree(d);
+    return ok;
 }
 
 static void texto_com_sombra(superficie_t *s, int x, int y, const char *t, uint32_t cor)
 {
+    /* Contorno escuro embaixo e à direita: o nome continua legível em cima
+     * da imagem da Mata Atlântica (H81, do Robson). */
     sup_texto(s, x + 1, y + 1, t, 0x101010);
+    sup_texto(s, x + 1, y, t, 0x101010);
+    sup_texto(s, x, y + 1, t, 0x101010);
     sup_texto(s, x, y, t, cor);
 }
 
@@ -182,13 +268,19 @@ static void desenhar_fundo(void)
      * legíveis. */
     uint32_t c0 = 0x0B7A3E, c1 = 0xE0B92A, c2 = 0x14337E;
     const char *tema = config_obter("aparencia.fundo");
+    bool pronto = false;
+    if (tema && txt_compara(tema, "mata-atlantica") == 0) pronto = fundo_imagem("/arte/mata-atlantica.sgi");
+    if (!pronto && tema && (txt_compara(tema, "sol") == 0 || txt_compara(tema, "mata-atlantica") == 0)) {
+        fundo_brasil_com_sol();   /* (também a reserva, se a imagem faltar) */
+        pronto = true;
+    }
     if (tema && txt_compara(tema, "mata") == 0)       { c0 = 0x0E3B22; c1 = 0x2E7D32; c2 = 0x0A2416; }
     else if (tema && txt_compara(tema, "ceu") == 0)   { c0 = 0x1E5AA8; c1 = 0x6FB3E8; c2 = 0xD8EEF8; }
     else if (tema && txt_compara(tema, "noite") == 0) { c0 = 0x0B1026; c1 = 0x2B1E5A; c2 = 0x060814; }
     else if (tema && txt_compara(tema, "terra") == 0) { c0 = 0x7A3E14; c1 = 0xD98A3A; c2 = 0x3A1E0C; }
-    for (int y = 0; y < alt; y++) {
-        uint32_t c = y < alt / 2 ? mistura(c0, c1, y, alt / 2)
-                                 : mistura(c1, c2, y - alt / 2, alt - alt / 2);
+    for (int y = 0; y < alt && !pronto; y++) {
+        uint32_t c = y < alt / 2 ? cor_mistura(c0, c1, y, alt / 2)
+                                 : cor_mistura(c1, c2, y - alt / 2, alt - alt / 2);
         uint32_t *p = fundo + y * larg;
         for (int x = 0; x < larg; x++) p[x] = c;
     }
@@ -206,7 +298,7 @@ static void desenhar_fundo(void)
         if (!icone_visivel(i)) continue;
         int x, y, l, a;
         area_icone_retangulo(i, &x, &y, &l, &a);
-        sup_desenho(&s, x + (l - 64) / 2, y, desenho_icone(i), 2);
+        sup_icone(&s, x + (l - ICONE_LADO) / 2, y, px_icone(i), ICONE_LADO);
         const char *nome = nome_icone(i);
         texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 68, nome, 0xFFFFFF);
     }
@@ -263,13 +355,19 @@ bool area_relogio_mudou(void)
 {
     if (rede_estado() != rede_mostrada) return true;   /* o ícone de rede também vive na barra */
     if (sis_som_volume((uint32_t)-1, 0, 0, 0, 0) != volume_mostrado && volume_mostrado != -1) return true;
+    /* Ler o CMOS é lento e acontece com as interrupções desligadas: uma vez
+     * por segundo basta, e o mouse não engasga (H81, do Robson). */
+    static uint32_t proxima;
+    uint32_t agora = relogio_tiques();
+    if ((int32_t)(agora - proxima) < 0) return false;
+    proxima = agora + TIQUES_POR_SEGUNDO;
     data_hora_t d;
     cmos_ler_data(&d);
     return d.minuto != minuto_mostrado;
 }
 
 /* vidro: o fundo da barra já foi pintado (vidro, H74); claro: tema claro (H76). */
-void area_barra(superficie_t *s, bool vidro, bool claro)
+void area_barra(superficie_t *s, bool vidro, bool claro, bool frase_visivel)
 {
     static const char *semana[] = { "dom", "seg", "ter", "qua", "qui", "sex", "sáb" };
     uint32_t nome = claro ? 0x0B6A36 : 0xFFDF4A, frase = claro ? 0x4A5560 : 0x9AA8B8, relogio = claro ? 0x1E2328 : 0xFFFFFF;
@@ -281,7 +379,7 @@ void area_barra(superficie_t *s, bool vidro, bool claro)
     sup_desenho(s, 6, 4, &cabeca, 1);
     sup_texto(s, 44, 4, "SaguiOS", nome);
     for (int k = 0; k < 4; k++) sup_retangulo(s, 104 - 4 + k, 10 + k, 8 - 2 * k, 1, nome);
-    sup_texto(s, 120, 4, "um sistema operacional escrito do zero por IA", frase);
+    if (frase_visivel) sup_texto(s, 120, 4, "um sistema operacional escrito do zero por IA", frase);
     (void)relogio;
     data_hora_t d;
     cmos_ler_data(&d);

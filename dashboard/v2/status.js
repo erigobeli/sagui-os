@@ -1,7 +1,7 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 2.0: o sagui sai da mata",
-  "atualizado": "2026-11-13T23:22:18",
+  "atualizado": "2026-11-14T01:37:55",
   "situacao": "Trabalhando na H80: Ponto flutuante nos programas",
   "fase_atual": 11,
   "historia_atual": "H80",
@@ -87,7 +87,7 @@ window.SAGUI_STATUS = {
       "numero": 11,
       "nome": "Versão 2.1: comunidade, Cipó e vídeo",
       "estado": "em andamento",
-      "progresso": 16.7
+      "progresso": 50.0
     }
   ],
   "historias": [
@@ -693,8 +693,10 @@ window.SAGUI_STATUS = {
       "titulo": "Visual do Robson somado ao da 2.0",
       "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
       "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "fim": "2026-11-14T01:37:55",
+      "resultado": "visual do Robson: ícones, letras, fundos, temas Mata e Azul, menus, barra de tarefas"
     },
     {
       "id": "H82",
@@ -720,8 +722,10 @@ window.SAGUI_STATUS = {
       "titulo": "Driver de vídeo Intel HD 3000 (G470)",
       "objetivo": "Opção **Efeitos leves** (sem desfoque) e escolha automática se o computador for lento.",
       "aceite": "no G470, abrir e arrastar janelas fica fluido (o Eli confirma no teste).",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "fim": "2026-11-14T01:37:55",
+      "resultado": "vídeo nativo do G470 (desligado por padrão), esperando o teste do Eli"
     },
     {
       "id": "H85",
@@ -802,6 +806,14 @@ window.SAGUI_STATUS = {
     }
   ],
   "acoes": [
+    {
+      "data": "2026-11-14T01:37:55",
+      "texto": "H84 concluída: vídeo nativo do G470 (desligado por padrão), esperando o teste do Eli"
+    },
+    {
+      "data": "2026-11-14T01:37:55",
+      "texto": "H81 concluída: visual do Robson: ícones, letras, fundos, temas Mata e Azul, menus, barra de tarefas"
+    },
     {
       "data": "2026-11-13T23:22:18",
       "texto": "H80 concluída: FXSAVE/FXRSTOR por processo; programas com SSE2; três processos fazendo contas juntos sem se estragar"
@@ -1033,117 +1045,244 @@ window.SAGUI_STATUS = {
     {
       "data": "2026-11-13T07:49:09",
       "texto": "H61 concluída: árvores esperadas em 4 páginas mal formadas e 300 estragadas sem erro de memória"
-    },
-    {
-      "data": "2026-11-13T07:49:03",
-      "texto": "Início da H62: Janela do navegador"
-    },
-    {
-      "data": "2026-11-13T07:49:03",
-      "texto": "H60 concluída: JPEG sequencial e progressivo, com reinício: 17 casos, erro médio <= 0,21"
     }
   ],
   "erros": [],
   "capturas": [
     {
-      "arquivo": "docs/v2/capturas/H45-rede.png",
-      "nome": "H45-rede.png",
-      "data": "2026-11-13T22:18:24"
+      "arquivo": "docs/v2/capturas/H81-9-barra-de-tarefas.png",
+      "nome": "H81-9-barra-de-tarefas.png",
+      "data": "2026-11-14T01:37:22"
     },
     {
-      "arquivo": "docs/v2/capturas/H35-pci.png",
-      "nome": "H35-pci.png",
-      "data": "2026-11-13T21:33:46"
+      "arquivo": "docs/v2/capturas/H81-8-menu-terminal.png",
+      "nome": "H81-8-menu-terminal.png",
+      "data": "2026-11-14T01:37:15"
     },
     {
-      "arquivo": "docs/v2/capturas/H77-1-efeitos-leves.png",
-      "nome": "H77-1-efeitos-leves.png",
-      "data": "2026-11-13T21:32:49"
+      "arquivo": "docs/v2/capturas/H81-7-menu-titulo.png",
+      "nome": "H81-7-menu-titulo.png",
+      "data": "2026-11-14T01:37:09"
     },
     {
-      "arquivo": "docs/v2/capturas/H76-2-tema-claro.png",
-      "nome": "H76-2-tema-claro.png",
-      "data": "2026-11-13T21:32:44"
+      "arquivo": "docs/v2/capturas/H81-6-menu-area.png",
+      "nome": "H81-6-menu-area.png",
+      "data": "2026-11-14T01:37:06"
     },
     {
-      "arquivo": "docs/v2/capturas/H76-1-tema-escuro.png",
-      "nome": "H76-1-tema-escuro.png",
-      "data": "2026-11-13T21:32:38"
+      "arquivo": "docs/v2/capturas/H81-5-tema-azul.png",
+      "nome": "H81-5-tema-azul.png",
+      "data": "2026-11-14T01:36:58"
     },
     {
-      "arquivo": "docs/v2/capturas/H75-3-menu.png",
-      "nome": "H75-3-menu.png",
-      "data": "2026-11-13T21:32:35"
+      "arquivo": "docs/v2/capturas/H81-4-tema-mata.png",
+      "nome": "H81-4-tema-mata.png",
+      "data": "2026-11-14T01:36:55"
     },
     {
-      "arquivo": "docs/v2/capturas/H75-2-doca.png",
-      "nome": "H75-2-doca.png",
-      "data": "2026-11-13T21:32:33"
+      "arquivo": "docs/v2/capturas/H81-3-fundo-brasil-com-sol.png",
+      "nome": "H81-3-fundo-brasil-com-sol.png",
+      "data": "2026-11-14T01:36:52"
     },
     {
-      "arquivo": "docs/v2/capturas/H75-1-minimizada.png",
-      "nome": "H75-1-minimizada.png",
-      "data": "2026-11-13T21:32:30"
+      "arquivo": "docs/v2/capturas/H81-2-fundo-mata-atlantica.png",
+      "nome": "H81-2-fundo-mata-atlantica.png",
+      "data": "2026-11-14T01:36:49"
     },
     {
-      "arquivo": "docs/v2/capturas/H74-2-arrastada.png",
-      "nome": "H74-2-arrastada.png",
-      "data": "2026-11-13T21:32:27"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H74-1-vidro.png",
-      "nome": "H74-1-vidro.png",
-      "data": "2026-11-13T21:32:24"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H42-tocar.png",
-      "nome": "H42-tocar.png",
-      "data": "2026-11-13T21:32:12"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H41-aba-som.png",
-      "nome": "H41-aba-som.png",
-      "data": "2026-11-13T21:31:53"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H40-som-teste.png",
-      "nome": "H40-som-teste.png",
-      "data": "2026-11-13T21:31:31"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
-      "nome": "H67-3-instalado.png",
-      "data": "2026-11-13T21:30:13"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
-      "nome": "H67-2-rodou.png",
-      "data": "2026-11-13T21:30:07"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H67-1-erro.png",
-      "nome": "H67-1-erro.png",
-      "data": "2026-11-13T21:30:05"
+      "arquivo": "docs/v2/capturas/H81-1-icones.png",
+      "nome": "H81-1-icones.png",
+      "data": "2026-11-14T01:36:45"
     },
     {
       "arquivo": "docs/v2/capturas/H79-4-renomeado.png",
       "nome": "H79-4-renomeado.png",
-      "data": "2026-11-13T21:29:32"
+      "data": "2026-11-14T01:32:41"
     },
     {
       "arquivo": "docs/v2/capturas/H79-3-menu-do-icone.png",
       "nome": "H79-3-menu-do-icone.png",
-      "data": "2026-11-13T21:29:26"
+      "data": "2026-11-14T01:32:35"
     },
     {
       "arquivo": "docs/v2/capturas/H79-2-programa-no-terminal.png",
       "nome": "H79-2-programa-no-terminal.png",
-      "data": "2026-11-13T21:29:23"
+      "data": "2026-11-14T01:32:31"
     },
     {
       "arquivo": "docs/v2/capturas/H79-1-icone-instalado.png",
       "nome": "H79-1-icone-instalado.png",
-      "data": "2026-11-13T21:29:20"
+      "data": "2026-11-14T01:32:29"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H78-3-navegador-maximizado.png",
+      "nome": "H78-3-navegador-maximizado.png",
+      "data": "2026-11-14T01:31:47"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H78-2-terminal-maximizado.png",
+      "nome": "H78-2-terminal-maximizado.png",
+      "data": "2026-11-14T01:31:37"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H78-1-terminal-menor.png",
+      "nome": "H78-1-terminal-menor.png",
+      "data": "2026-11-14T01:31:33"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H77-1-efeitos-leves.png",
+      "nome": "H77-1-efeitos-leves.png",
+      "data": "2026-11-14T01:31:18"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H76-2-tema-claro.png",
+      "nome": "H76-2-tema-claro.png",
+      "data": "2026-11-14T01:31:13"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H76-1-tema-escuro.png",
+      "nome": "H76-1-tema-escuro.png",
+      "data": "2026-11-14T01:31:08"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H75-3-menu.png",
+      "nome": "H75-3-menu.png",
+      "data": "2026-11-14T01:31:04"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H75-2-doca.png",
+      "nome": "H75-2-doca.png",
+      "data": "2026-11-14T01:31:02"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H75-1-minimizada.png",
+      "nome": "H75-1-minimizada.png",
+      "data": "2026-11-14T01:30:59"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H74-2-arrastada.png",
+      "nome": "H74-2-arrastada.png",
+      "data": "2026-11-14T01:30:56"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H74-1-vidro.png",
+      "nome": "H74-1-vidro.png",
+      "data": "2026-11-14T01:30:52"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
+      "nome": "H39-3-banana-escondida.png",
+      "data": "2026-11-14T01:30:40"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
+      "nome": "H39-2-aba-programas.png",
+      "data": "2026-11-14T01:30:32"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
+      "nome": "H39-1-instalado.png",
+      "data": "2026-11-14T01:30:30"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
+      "nome": "H38-3-sobre.png",
+      "data": "2026-11-14T01:30:09"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
+      "nome": "H38-2-aparencia-noite.png",
+      "data": "2026-11-14T01:30:06"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
+      "nome": "H38-1-relogio.png",
+      "data": "2026-11-14T01:29:49"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-3-instalado.png",
+      "nome": "H67-3-instalado.png",
+      "data": "2026-11-14T01:19:28"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-2-rodou.png",
+      "nome": "H67-2-rodou.png",
+      "data": "2026-11-14T01:19:25"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H67-1-erro.png",
+      "nome": "H67-1-erro.png",
+      "data": "2026-11-14T01:19:22"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H79-ctrl-c.png",
+      "nome": "H79-ctrl-c.png",
+      "data": "2026-11-14T01:10:05"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H84-5-vesa-largo.png",
+      "nome": "H84-5-vesa-largo.png",
+      "data": "2026-11-14T01:09:39"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H84-4-1366-maximizado.png",
+      "nome": "H84-4-1366-maximizado.png",
+      "data": "2026-11-14T01:09:28"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H84-3-1366x768.png",
+      "nome": "H84-3-1366x768.png",
+      "data": "2026-11-14T01:09:24"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H84-2-sim-sem-intel.png",
+      "nome": "H84-2-sim-sem-intel.png",
+      "data": "2026-11-14T01:02:56"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H84-1-desligado.png",
+      "nome": "H84-1-desligado.png",
+      "data": "2026-11-14T01:02:46"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H35-pci.png",
+      "nome": "H35-pci.png",
+      "data": "2026-11-14T00:42:11"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H72-1-sessao.png",
+      "nome": "H72-1-sessao.png",
+      "data": "2026-11-14T00:41:55"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H71-1-conversa-longa.png",
+      "nome": "H71-1-conversa-longa.png",
+      "data": "2026-11-14T00:41:47"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H42-tocar.png",
+      "nome": "H42-tocar.png",
+      "data": "2026-11-13T23:30:13"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H40-som-teste.png",
+      "nome": "H40-som-teste.png",
+      "data": "2026-11-13T23:29:52"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
+      "nome": "H55-terminal-vt.png",
+      "data": "2026-11-13T23:28:53"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H41-aba-som.png",
+      "nome": "H41-aba-som.png",
+      "data": "2026-11-13T23:27:32"
+    },
+    {
+      "arquivo": "docs/v2/capturas/H45-rede.png",
+      "nome": "H45-rede.png",
+      "data": "2026-11-13T22:18:24"
     },
     {
       "arquivo": "docs/v2/capturas/H70-3-compilar.png",
@@ -1164,31 +1303,6 @@ window.SAGUI_STATUS = {
       "arquivo": "docs/v2/capturas/H69-1-pergunta.png",
       "nome": "H69-1-pergunta.png",
       "data": "2026-11-13T19:53:30"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H72-1-sessao.png",
-      "nome": "H72-1-sessao.png",
-      "data": "2026-11-13T19:53:10"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H71-1-conversa-longa.png",
-      "nome": "H71-1-conversa-longa.png",
-      "data": "2026-11-13T19:53:00"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H78-3-navegador-maximizado.png",
-      "nome": "H78-3-navegador-maximizado.png",
-      "data": "2026-11-13T18:47:50"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H78-2-terminal-maximizado.png",
-      "nome": "H78-2-terminal-maximizado.png",
-      "data": "2026-11-13T18:47:39"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H78-1-terminal-menor.png",
-      "nome": "H78-1-terminal-menor.png",
-      "data": "2026-11-13T18:47:36"
     },
     {
       "arquivo": "docs/v2/capturas/H63-6-readme.png",
@@ -1271,11 +1385,6 @@ window.SAGUI_STATUS = {
       "data": "2026-11-13T18:37:07"
     },
     {
-      "arquivo": "docs/v2/capturas/H55-terminal-vt.png",
-      "nome": "H55-terminal-vt.png",
-      "data": "2026-11-13T18:35:54"
-    },
-    {
       "arquivo": "docs/v2/capturas/H53-https.png",
       "nome": "H53-https.png",
       "data": "2026-11-13T18:35:33"
@@ -1306,36 +1415,6 @@ window.SAGUI_STATUS = {
       "data": "2026-11-13T18:31:43"
     },
     {
-      "arquivo": "docs/v2/capturas/H39-3-banana-escondida.png",
-      "nome": "H39-3-banana-escondida.png",
-      "data": "2026-11-13T18:30:32"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-2-aba-programas.png",
-      "nome": "H39-2-aba-programas.png",
-      "data": "2026-11-13T18:30:26"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H39-1-instalado.png",
-      "nome": "H39-1-instalado.png",
-      "data": "2026-11-13T18:30:24"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-3-sobre.png",
-      "nome": "H38-3-sobre.png",
-      "data": "2026-11-13T18:30:05"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-2-aparencia-noite.png",
-      "nome": "H38-2-aparencia-noite.png",
-      "data": "2026-11-13T18:30:02"
-    },
-    {
-      "arquivo": "docs/v2/capturas/H38-1-relogio.png",
-      "nome": "H38-1-relogio.png",
-      "data": "2026-11-13T18:29:45"
-    },
-    {
       "arquivo": "docs/v2/capturas/H37-config.png",
       "nome": "H37-config.png",
       "data": "2026-11-13T18:29:27"
@@ -1347,15 +1426,15 @@ window.SAGUI_STATUS = {
     }
   ],
   "linhas": {
-    "boot": 903,
-    "kernel": 14163,
-    "userland": 28901,
-    "ferramentas": 10415
+    "boot": 920,
+    "kernel": 15061,
+    "userland": 29066,
+    "ferramentas": 11051
   },
   "imagem": {
-    "bytes_util": 1701888,
-    "bytes_arquivo": 1703936,
+    "bytes_util": 2427904,
+    "bytes_arquivo": 2457600,
     "meta_bytes": null
   },
-  "progresso_geral": 86.3
+  "progresso_geral": 90.2
 };

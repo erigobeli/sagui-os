@@ -147,16 +147,28 @@ static void relogio_tratar(const evento_t *e)
 
 /* ------------------------------------------------------------ Aparência */
 
-#define QTD_FUNDOS 5
-static const char *const fundos[QTD_FUNDOS] = { "brasil", "mata", "ceu", "noite", "terra" };
-static const char *const nomes_fundos[QTD_FUNDOS] = { "Brasil", "Mata", "Céu", "Noite", "Terra" };
+#define QTD_FUNDOS 7
+/* "sol" e "mata-atlantica" vieram do pull request #1 (Robson): o Brasil com
+ * sol é desenhado pelo kernel; a Mata Atlântica é uma imagem feita por IA. */
+static const char *const fundos[QTD_FUNDOS] = { "brasil", "sol", "mata-atlantica", "mata", "ceu", "noite", "terra" };
+static const char *const nomes_fundos[QTD_FUNDOS] = { "Brasil", "Com sol", "M. Atlântica", "Mata", "Céu", "Noite", "Terra" };
 static const uint32_t amostras[QTD_FUNDOS][3] = {
-    { 0x0B7A3E, 0xE0B92A, 0x14337E }, { 0x0E3B22, 0x2E7D32, 0x0A2416 }, { 0x1E5AA8, 0x6FB3E8, 0xD8EEF8 },
+    { 0x0B7A3E, 0xE0B92A, 0x14337E }, { 0x2E8A4A, 0xFFE89A, 0x1C5AA8 }, { 0xE8D49A, 0x5E8A4A, 0x3A7AB8 },
+    { 0x0E3B22, 0x2E7D32, 0x0A2416 }, { 0x1E5AA8, 0x6FB3E8, 0xD8EEF8 },
     { 0x0B1026, 0x2B1E5A, 0x060814 }, { 0x7A3E14, 0xD98A3A, 0x3A1E0C },
 };
-static botao_t b_fundos[QTD_FUNDOS], b_sagui;
+#define QTD_TEMAS 4
+static const char *const temas[QTD_TEMAS] = { "escuro", "claro", "mata", "azul" };
+static const char *const nomes_temas[QTD_TEMAS] = { "Escuro", "Claro", "Mata", "Azul" };
+static botao_t b_fundos[QTD_FUNDOS], b_sagui, b_tema, b_barra, b_efeitos;
 
-static botao_t b_tema, b_efeitos;
+static int tema_atual(void)
+{
+    char t[12];
+    if (config_ler("aparencia.tema", t, sizeof t) < 0) return 0;
+    for (int i = 0; i < QTD_TEMAS; i++) if (compara_texto(t, temas[i]) == 0) return i;
+    return 0;
+}
 
 static void aparencia_desenhar(void)
 {
@@ -165,63 +177,77 @@ static void aparencia_desenhar(void)
     if (config_ler("aparencia.fundo", atual, sizeof atual) < 0) copia_texto(atual, "brasil", sizeof atual);
     g_texto(j, X0, 52, "Fundo da área de trabalho:", COR_TEXTO);
     for (int i = 0; i < QTD_FUNDOS; i++) {
-        int x = X0 + (i % 3) * 136, y = 78 + (i / 3) * 96;
-        for (int k = 0; k < 3; k++) g_retangulo(j, x, y + k * 18, 120, 18, amostras[i][k]);
+        int x = X0 + (i % 4) * 100, y = 76 + (i / 4) * 84;
+        for (int k = 0; k < 3; k++) g_retangulo(j, x, y + k * 14, 90, 14, amostras[i][k]);
         bool escolhido = compara_texto(atual, fundos[i]) == 0;
-        g_moldura(j, x - 2, y - 2, 124, 58, escolhido ? COR_SELECAO : COR_BORDA);
-        if (escolhido) g_moldura(j, x - 3, y - 3, 126, 60, COR_SELECAO);
-        b_fundos[i] = (botao_t){ x, y + 60, 120, 24, nomes_fundos[i], false };
+        g_moldura(j, x - 2, y - 2, 94, 46, escolhido ? COR_SELECAO : COR_BORDA);
+        if (escolhido) g_moldura(j, x - 3, y - 3, 96, 48, COR_SELECAO);
+        b_fundos[i] = (botao_t){ x, y + 48, 90, 24, nomes_fundos[i], false };
         botao_desenhar(j, &b_fundos[i]);
     }
-    char sagui[8];
-    bool mostra = config_ler("aparencia.sagui", sagui, sizeof sagui) < 0 || compara_texto(sagui, "nao") != 0;
-    g_texto(j, X0, 286, "O sagui no canto da área de trabalho:", COR_TEXTO);
-    b_sagui = (botao_t){ X0, 308, 160, 28, mostra ? "Mostrando: esconder" : "Escondido: mostrar", false };
+    /* O sagui, o tema e a doca ou a barra de tarefas, lado a lado. */
+    char v[12];
+    bool mostra = config_ler("aparencia.sagui", v, sizeof v) < 0 || compara_texto(v, "nao") != 0;
+    bool tarefas = config_ler("aparencia.barra", v, sizeof v) >= 0 && compara_texto(v, "tarefas") == 0;
+    static char rot_tema[24];
+    formatar_texto(rot_tema, sizeof rot_tema, "%s (trocar)", nomes_temas[tema_atual()]);
+    g_texto(j, X0, 252, "O sagui:", COR_TEXTO);
+    g_texto(j, X0 + 135, 252, "Tema:", COR_TEXTO);
+    g_texto(j, X0 + 270, 252, "Embaixo:", COR_TEXTO);
+    b_sagui = (botao_t){ X0, 274, 125, 28, mostra ? "Mostrando" : "Escondido", false };
+    b_tema = (botao_t){ X0 + 135, 274, 125, 28, rot_tema, false };
+    b_barra = (botao_t){ X0 + 270, 274, 125, 28, tarefas ? "Barra em cima" : "Doca", false };
     botao_desenhar(j, &b_sagui);
-    /* Tema (H76) e efeitos (H77). */
-    char tema[12], efeitos[12];
-    bool claro = config_ler("aparencia.tema", tema, sizeof tema) >= 0 && compara_texto(tema, "claro") == 0;
-    if (config_ler("aparencia.efeitos", efeitos, sizeof efeitos) < 0) copia_texto(efeitos, "auto", sizeof efeitos);
-    g_texto(j, X0 + 190, 286, "Tema:", COR_TEXTO);
-    b_tema = (botao_t){ X0 + 190, 308, 170, 28, claro ? "Claro: usar escuro" : "Escuro: usar claro", false };
     botao_desenhar(j, &b_tema);
-    g_texto(j, X0, 346, "Efeitos (vidro, sombras, animações):", COR_TEXTO);
-    b_efeitos = (botao_t){ X0, 366, 360, 28,
+    botao_desenhar(j, &b_barra);
+    char efeitos[12];
+    if (config_ler("aparencia.efeitos", efeitos, sizeof efeitos) < 0) copia_texto(efeitos, "auto", sizeof efeitos);
+    g_texto(j, X0, 318, "Efeitos (vidro, sombras, animações):", COR_TEXTO);
+    b_efeitos = (botao_t){ X0, 340, 395, 28,
                            compara_texto(efeitos, "leves") == 0 ? "Leves (rápido): trocar para automático" :
                            compara_texto(efeitos, "completos") == 0 ? "Completos: trocar para leves" :
                            "Automático (pela velocidade): trocar para completos", false };
     botao_desenhar(j, &b_efeitos);
 }
 
+static void aparencia_redesenhar(const char *msg, int r)
+{
+    g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
+    aparencia_desenhar();
+    jan_mostrar(j);
+    mostrar_mensagem(msg, r);
+}
+
 static void aparencia_tratar(const evento_t *e)
 {
-    if (botao_tratar(j, &b_tema, e) || botao_tratar(j, &b_efeitos, e)) {
-        int r;
-        char v[12];
-        if (b_tema.texto[0] && e->tipo == EV_SOLTOU && e->x >= b_tema.x && e->x < b_tema.x + b_tema.l && e->y >= b_tema.y && e->y < b_tema.y + b_tema.a) {
-            bool claro = config_ler("aparencia.tema", v, sizeof v) >= 0 && compara_texto(v, "claro") == 0;
-            r = config_gravar("aparencia.tema", claro ? "escuro" : "claro");
-            registrar("configuracoes: tema %s", claro ? "escuro" : "claro");
-        } else {
-            if (config_ler("aparencia.efeitos", v, sizeof v) < 0) copia_texto(v, "auto", sizeof v);
-            const char *novo = compara_texto(v, "auto") == 0 ? "completos" : compara_texto(v, "completos") == 0 ? "leves" : "auto";
-            r = config_gravar("aparencia.efeitos", novo);
-            registrar("configuracoes: efeitos %s", novo);
-        }
-        g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
-        aparencia_desenhar();
-        jan_mostrar(j);
-        mostrar_mensagem("Aparência trocada.", r);
+    char v[12];
+    if (botao_tratar(j, &b_tema, e)) {
+        const char *novo = temas[(tema_atual() + 1) % QTD_TEMAS];
+        int r = config_gravar("aparencia.tema", novo);
+        registrar("configuracoes: tema %s", novo);
+        aparencia_redesenhar("Tema trocado.", r);
+        return;
+    }
+    if (botao_tratar(j, &b_barra, e)) {
+        bool tarefas = config_ler("aparencia.barra", v, sizeof v) >= 0 && compara_texto(v, "tarefas") == 0;
+        int r = config_gravar("aparencia.barra", tarefas ? "doca" : "tarefas");
+        registrar("configuracoes: barra %s", tarefas ? "doca" : "tarefas");
+        aparencia_redesenhar(tarefas ? "A doca voltou." : "Janelas na barra de cima.", r);
+        return;
+    }
+    if (botao_tratar(j, &b_efeitos, e)) {
+        if (config_ler("aparencia.efeitos", v, sizeof v) < 0) copia_texto(v, "auto", sizeof v);
+        const char *novo = compara_texto(v, "auto") == 0 ? "completos" : compara_texto(v, "completos") == 0 ? "leves" : "auto";
+        int r = config_gravar("aparencia.efeitos", novo);
+        registrar("configuracoes: efeitos %s", novo);
+        aparencia_redesenhar("Aparência trocada.", r);
         return;
     }
     for (int i = 0; i < QTD_FUNDOS; i++)
         if (botao_tratar(j, &b_fundos[i], e)) {
             int r = config_gravar("aparencia.fundo", fundos[i]);
             registrar("configuracoes: fundo %s -> %d", fundos[i], r);
-            g_retangulo(j, LATERAL + 1, 0, L - LATERAL - 1, A - 40, COR_FUNDO);
-            aparencia_desenhar();
-            jan_mostrar(j);
-            mostrar_mensagem("Fundo trocado.", r);
+            aparencia_redesenhar("Fundo trocado.", r);
             return;
         }
     if (botao_tratar(j, &b_sagui, e)) {

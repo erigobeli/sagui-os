@@ -22,8 +22,8 @@
  * molduras e blocos usam desenhos próprios da fonte (posições 0x80 a 0x9F).
  *
  * Mais: rolagem para trás (Shift + PgUp/PgDn), copiar arrastando o mouse
- * (o que foi marcado vai para a área de cópia do Terminal) e colar com o
- * botão direito. */
+ * (o que foi marcado vai para a área de cópia do Terminal) e o menu do
+ * botão direito (H81): colar, interromper, limpar, abas. */
 #include "sagui.h"
 #include "gui.h"
 
@@ -835,8 +835,15 @@ int principal(int argc, char **argv)
                     int nova = abrir_aba();
                     if (nova >= 0) { atual_aba = nova; abas_sujas = true; sujar_tudo(); }
                 }
-            } else if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {   /* botão direito: colar */
-                if (area_copia[0]) escrever_tudo(a->entrada, area_copia, (unsigned)tam_texto(area_copia));
+            } else if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {   /* botão direito: menu (H81); "Colar" é o primeiro */
+                jan_menu(j, e.x, e.y, "Colar|Interromper (Ctrl+C)|Limpar a tela (Ctrl+L)|Nova aba|Fechar esta aba");
+            } else if (e.tipo == EV_MENU) {
+                registrar("terminal: menu %u", e.tecla);
+                if (e.tecla == 0 && area_copia[0]) escrever_tudo(a->entrada, area_copia, (unsigned)tam_texto(area_copia));
+                else if (e.tecla == 1) { if (!interromper(a)) enviar_tecla(a, 3); sujar_tudo(); }
+                else if (e.tecla == 2) enviar_tecla(a, 12);
+                else if (e.tecla == 3) { int nova = abrir_aba(); if (nova >= 0) { atual_aba = nova; abas_sujas = true; sujar_tudo(); } }
+                else if (e.tecla == 4 && abas_abertas() > 1) fechar_aba(atual_aba);
             } else if (e.tipo == EV_CLIQUE) {
                 if (sel_ini_l >= 0) { sel_ini_l = -1; sujar_tudo(); }
                 posicao(e.x, e.y, &sel_ini_l, &sel_ini_c);

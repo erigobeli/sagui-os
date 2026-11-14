@@ -26,7 +26,8 @@ def main():
             verificar(base[2] > base[0] and base[2] > base[1], f"[{modo}] base azul {base}")
             verificar(sum(cor_do_pixel(png, 300, 2)) < 200, f"[{modo}] barra superior escura (vidro escuro, H74)")
             verificar(cor_do_pixel(png, 975, 600) == (245, 245, 240), f"[{modo}] tufo branco do sagui no canto (o da direita, longe da sombra do Terminal)")
-            verificar(cor_do_pixel(png, 47, 65) == (255, 213, 46), f"[{modo}] ícone da pasta (Arquivos)")
+            pasta = cor_do_pixel(png, 47, 65)   # ícone 64x64 suavizado (H81): faixa de amarelo
+            verificar(pasta[0] > 200 and pasta[1] > 140 and pasta[2] < 130, f"[{modo}] ícone da pasta (Arquivos) {pasta}")
             hora = re.findall(r"\[GUI\] relogio: (\S+) (\d\d/\d\d/\d{4})\s+(\d\d):(\d\d)", m.serial())[-1]
             agora = datetime.datetime.now(datetime.timezone.utc)
             verificar(hora[1] == agora.strftime("%d/%m/%Y"), f"[{modo}] relógio da barra com a data do CMOS: {' '.join(hora)}")

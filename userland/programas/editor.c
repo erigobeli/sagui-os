@@ -281,6 +281,18 @@ int principal(int argc, char **argv)
         if (botao_tratar(j, &bt[4], &e)) { compilar(false); area.foco = true; area_desenhar(j, &area); continue; }
         if (botao_tratar(j, &bt[5], &e)) { compilar(true); area.foco = true; area_desenhar(j, &area); continue; }
         if (e.tipo == EV_TECLA && e.tecla == 18 && (e.modificadores & 2)) { compilar(false); continue; }   /* Ctrl+R */
+        /* Botão direito: menu do Editor (H81). */
+        if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {
+            jan_menu(j, e.x, e.y, "Salvar (Ctrl+S)|Salvar como...|Compilar e rodar (Ctrl+R)|Instalar no pendrive");
+            continue;
+        }
+        if (e.tipo == EV_MENU) {
+            registrar("editor: menu %u", e.tecla);
+            if (e.tecla == 0) salvar();
+            else if (e.tecla == 1) salvar_como();
+            else if (e.tecla == 2 || e.tecla == 3) { compilar(e.tecla == 3); area.foco = true; area_desenhar(j, &area); }
+            continue;
+        }
         area_tratar(j, &area, &e);
         atualizar_titulo();
     }

@@ -62,5 +62,6 @@ int32_t sis_desligar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_ajustar_data(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_aleatorio(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_janela_opcoes(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+int32_t sis_menu_janela(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 
 #endif

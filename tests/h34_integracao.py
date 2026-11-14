@@ -56,7 +56,10 @@ def main():
         time.sleep(0.6)
         png = m.captura("H34-1-pendrive-conectado")
         verificar(True, "ao espetar: notificação 'Pendrive conectado: MEUPEN (64 MB)'")
-        verificar(cor_do_pixel(png, canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 10 + 1) == (42, 111, 216), "ícone do pendrive apareceu na área de trabalho")
+        # Ícone 64x64 suavizado (H81): o corpo azul do pendrive.
+        ponto_icone = (canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 12 + 1)
+        cor_icone = cor_do_pixel(png, *ponto_icone)
+        verificar(cor_icone[2] > 150 and cor_icone[0] < 110, f"ícone do pendrive apareceu na área de trabalho {cor_icone}")
 
         m.clique(*icone(PENDRIVE), duplo=True)
         m.esperar_serial("arquivos: pasta /usb", 15)
@@ -94,7 +97,7 @@ def main():
         m.esperar_serial("notificacao: Pendrive removido.", 15)
         time.sleep(0.6)
         png = m.captura("H34-5-pendrive-removido")
-        verificar(cor_do_pixel(png, canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 10 + 1) != (42, 111, 216), "removido: o ícone some")
+        verificar(cor_do_pixel(png, *ponto_icone) != cor_icone, "removido: o ícone some")
 
         # Espeta de novo, monta pelo ícone e arranca sem desmontar.
         espetar(m, pen, "p2")
@@ -139,9 +142,10 @@ def main():
     subprocess.run(["cp", os.path.join(RAIZ, "build", "saguios.img"), unico], check=True)
     with open(unico, "r+b") as f:
         f.truncate(64 * 1024 * 1024)
-    subprocess.run(["sfdisk", "-q", "--append", unico], input="start=4096, type=c\n", text=True, check=True)
-    subprocess.run(["mkfs.vfat", "-F", "32", "-n", "DADOS", "--offset", "4096", unico], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["mcopy", "-i", unico + "@@2M", os.path.join(RAIZ, "rootfs", "sobre.txt"), "::/do-pc.txt"], check=True)
+    # A FAT32 começa em 4 MB: a imagem passou de 2 MB na 2.1 (ícones e o fundo da Mata Atlântica).
+    subprocess.run(["sfdisk", "-q", "--append", unico], input="start=8192, type=c\n", text=True, check=True)
+    subprocess.run(["mkfs.vfat", "-F", "32", "-n", "DADOS", "--offset", "8192", unico], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["mcopy", "-i", unico + "@@4M", os.path.join(RAIZ, "rootfs", "sobre.txt"), "::/do-pc.txt"], check=True)
     with Maquina("h34-unico", "usb", imagem=unico) as m:
         m.esperar_serial("sagui:/$", 120)
         m.esperar_serial("notificacao: Pendrive conectado: DADOS", 20)

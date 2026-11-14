@@ -162,25 +162,54 @@ typedef struct {
     uint32_t doca, doca_destaque, doca_ponto, doca_texto;
     int      k_doca;
     bool     claro;
+    /* H81: o visual do Robson (#1) como opção de tema. */
+    uint32_t destaque;      /* item sob o mouse nos menus */
+    uint32_t filete;        /* linha embaixo da barra de título com foco (0 = sem) */
+    bool     botoes_cores;  /* botões redondos: vermelho, amarelo e verde */
+    bool     titulo_forte;  /* título em negrito com sombra */
 } tema_t;
 
 static const tema_t tema_escuro = {
     0x0B7A3E, 0x3A4450, 0xFFFFFF, 0xD0D4D8, 190,
     0x101820, 0xFFDF4A, 0xA8B4C2, 0xFFFFFF, 175,
     0x101820, 0xFFFFFF, 0xFFDF4A, 0xFFFFFF, 160, false,
+    0x0B7A3E, 0, false, false,
 };
 static const tema_t tema_claro = {
     0x2E9E5B, 0xC4CCD4, 0xFFFFFF, 0x2A323A, 205,
     0xF2F4F6, 0x0B6A36, 0x4A5560, 0x1E2328, 200,
     0xF2F4F6, 0x1E2328, 0x0B7A3E, 0x1E2328, 185, true,
+    0x0B7A3E, 0, false, false,
+};
+/* "Mata": as cores do pull request #1 (Robson de Lima Barbosa): barra verde
+ * quase opaca, filete amarelo, botões redondos coloridos, título forte. */
+static const tema_t tema_mata = {
+    0x149A50, 0x5A6470, 0xFFFFFF, 0xE0E4E8, 238,
+    0x14201A, 0xFFDF4A, 0x9AA8B8, 0xFFFFFF, 215,
+    0x0E2A1A, 0xFFFFFF, 0xE8BE30, 0xFFFFFF, 200, false,
+    0x149A50, 0xE8BE30, true, true,
+};
+/* "Azul": as cores do pull request #7 (Gabriel), em azul-marinho. */
+static const tema_t tema_azul = {
+    0x1E3A8A, 0x1E293B, 0xFFFFFF, 0xCBD5E1, 200,
+    0x0F172A, 0x60A5FA, 0x94A3B8, 0xFFFFFF, 185,
+    0x0F172A, 0x3B82F6, 0x60A5FA, 0xFFFFFF, 170, false,
+    0x2563EB, 0x60A5FA, true, false,
 };
 static const tema_t *tema = &tema_escuro;
+static bool doca_ligada = true;
+static void desenhar_tarefas(void);
 static bool efeitos_automaticos = true, efeitos_lento;
 
 static void ler_tema(void)
 {
     const char *t = config_obter("aparencia.tema");
-    tema = t && txt_compara(t, "claro") == 0 ? &tema_claro : &tema_escuro;
+    tema = !t ? &tema_escuro : txt_compara(t, "claro") == 0 ? &tema_claro : txt_compara(t, "mata") == 0 ? &tema_mata
+         : txt_compara(t, "azul") == 0 ? &tema_azul : &tema_escuro;
+    /* Barra de tarefas no lugar da doca (H81, ideia do Robson). */
+    const char *b = config_obter("aparencia.barra");
+    bool doca = !b || txt_compara(b, "tarefas") != 0;
+    if (doca != doca_ligada) { doca_ligada = doca; gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura()); }
     const char *e = config_obter("aparencia.efeitos");
     efeitos_automaticos = !e || txt_compara(e, "auto") == 0;
     if (efeitos_automaticos) vidro_efeitos = !efeitos_lento;
@@ -189,13 +218,13 @@ static void ler_tema(void)
 
 /* ------------------------------------------------------------ doca (H75) */
 
-typedef struct { const char *nome, *programa, *processo; const desenho_t *desenho; } fixo_t;
+typedef struct { const char *nome, *programa, *processo; const uint32_t *px; } fixo_t;   /* px: ícone 40x40 (H81) */
 static const fixo_t fixos[] = {
-    { "Arquivos", "/bin/arquivos", "arquivos", &arte_icone_arquivos },
-    { "Terminal", "/bin/terminal", "terminal", &arte_icone_terminal },
-    { "Navegador", "/bin/navegador", "navegador", &arte_icone_navegador },
-    { "Editor", "/bin/editor", "editor", &arte_icone_editor },
-    { "Configurações", "/bin/configuracoes", "configuracoes", &arte_icone_configuracoes },
+    { "Arquivos", "/bin/arquivos", "arquivos", arte_px_arquivos_40 },
+    { "Terminal", "/bin/terminal", "terminal", arte_px_terminal_40 },
+    { "Navegador", "/bin/navegador", "navegador", arte_px_cipo_40 },
+    { "Editor", "/bin/editor", "editor", arte_px_editor_40 },
+    { "Configurações", "/bin/configuracoes", "configuracoes", arte_px_configuracoes_40 },
 };
 #define QTD_FIXOS (int)(sizeof fixos / sizeof fixos[0])
 #define DOCA_CELULA 52
@@ -204,13 +233,12 @@ static const fixo_t fixos[] = {
 
 typedef struct {
     const char       *nome;
-    const desenho_t  *desenho;
+    const uint32_t   *px;
     const char       *programa;   /* NULL: só uma janela aberta */
     int               janela;     /* índice em janelas[] de uma janela desse programa, ou -1 */
 } item_doca_t;
 static item_doca_t doca[MAX_DOCA];
 static int qtd_doca, doca_x, doca_y, doca_l, doca_sob = -1;
-static bool doca_ligada = true;
 
 static const char *nome_processo(janela_t *j)
 {
@@ -218,14 +246,14 @@ static const char *nome_processo(janela_t *j)
     return p ? p->nome : "";
 }
 
-static const desenho_t *desenho_de(const char *processo)
+static const uint32_t *px_de(const char *processo)
 {
-    static const struct { const char *p; const desenho_t *d; } t[] = {
-        { "calculadora", &arte_icone_calculadora }, { "banana", &arte_icone_banana }, { "sagui3d", &arte_icone_sagui3d },
-        { "sobre-o-sistema", &arte_icone_sobre }, { "energia", &arte_icone_sobre },
+    static const struct { const char *p; const uint32_t *px; } t[] = {
+        { "calculadora", arte_px_calculadora_40 }, { "banana", arte_px_banana_40 }, { "sagui3d", arte_px_sagui3d_40 },
+        { "sobre-o-sistema", arte_px_sobre_40 }, { "energia", arte_px_sobre_40 }, { "cipo", arte_px_cipo_40 },
     };
-    for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++) if (txt_compara(t[i].p, processo) == 0) return t[i].d;
-    return &arte_icone_instalado;
+    for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++) if (txt_compara(t[i].p, processo) == 0) return t[i].px;
+    return arte_px_instalado_40;
 }
 
 /* Monta a lista: os fixos e, depois, os programas abertos que não são fixos. */
@@ -234,7 +262,7 @@ static void montar_doca(void)
     qtd_doca = 0;
     for (int f = 0; f < QTD_FIXOS; f++) {
         item_doca_t *it = &doca[qtd_doca++];
-        it->nome = fixos[f].nome; it->desenho = fixos[f].desenho; it->programa = fixos[f].programa; it->janela = -1;
+        it->nome = fixos[f].nome; it->px = fixos[f].px; it->programa = fixos[f].programa; it->janela = -1;
         for (int k = qtd - 1; k >= 0; k--)
             if (txt_compara(nome_processo(&janelas[ordem[k]]), fixos[f].processo) == 0) { it->janela = ordem[k]; break; }
     }
@@ -246,7 +274,7 @@ static void montar_doca(void)
         for (int d = QTD_FIXOS; d < qtd_doca; d++) if (doca[d].janela >= 0 && janelas[doca[d].janela].pid == j->pid) repetido = true;
         if (fixo || repetido) continue;
         item_doca_t *it = &doca[qtd_doca++];
-        it->nome = j->titulo; it->desenho = desenho_de(np); it->programa = NULL; it->janela = ordem[k];
+        it->nome = j->titulo; it->px = px_de(np); it->programa = NULL; it->janela = ordem[k];
     }
     int antes_x = doca_x, antes_l = doca_l;
     doca_l = qtd_doca * DOCA_CELULA + 16;
@@ -262,6 +290,8 @@ static void montar_doca(void)
 
 static void redesenhar_doca(void)
 {
+    /* Com a barra de tarefas no lugar da doca, quem muda é a barra de cima. */
+    if (!doca_ligada) { gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR); return; }
     int m = VIDRO_SOMBRA + VIDRO_RAIO;
     gui_redesenhar(doca_x - m - DOCA_CELULA, doca_y - 30, doca_l + 2 * m + 2 * DOCA_CELULA, DOCA_A + 36);
 }
@@ -284,7 +314,7 @@ static void desenhar_doca(void)
         bool aberto = doca[i].janela >= 0;
         if (aberto && f && &janelas[doca[i].janela] == f)
             vidro_pintar(&tela, cx + 2, doca_y + 4, DOCA_CELULA - 4, DOCA_A - 8, tema->doca_destaque, 50, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
-        sup_desenho(&tela, cx + (DOCA_CELULA - 32) / 2, doca_y + 8, doca[i].desenho, 1);
+        sup_icone(&tela, cx + (DOCA_CELULA - ICONE_PEQUENO) / 2, doca_y + 4, doca[i].px, ICONE_PEQUENO);
         if (aberto) sup_retangulo(&tela, cx + DOCA_CELULA / 2 - 3, doca_y + DOCA_A - 10, 6, 3, tema->doca_ponto);
         if (i == QTD_FIXOS - 1 && qtd_doca > QTD_FIXOS)
             sup_retangulo(&tela, cx + DOCA_CELULA + 1, doca_y + 12, 1, DOCA_A - 24, tema->doca_texto);
@@ -332,7 +362,10 @@ static void desenhar_menu(void)
     vidro_pintar(&tela, MENU_X, MENU_Y, MENU_L, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
     for (int i = 0; i < QTD_MENU; i++) {
         int y = MENU_Y + 4 + i * MENU_ITEM;
-        if (i == menu_sob) sup_retangulo(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, 0x0B7A3E);
+        if (i == menu_sob) {
+            sup_retangulo(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, tema->destaque);
+            if (tema->filete) sup_retangulo(&tela, MENU_X + 4, y, 3, MENU_ITEM, tema->filete);
+        }
         sup_texto(&tela, MENU_X + 14, y + 5, menu_itens[i].nome, i == menu_sob ? 0xFFFFFF : tema->topo_relogio);
     }
 }
@@ -344,41 +377,74 @@ static int menu_item_em(int x, int y)
     return i < QTD_MENU ? i : -1;
 }
 
-/* Menu do botão direito num ícone (pedido do Eli: renomear). */
-static struct { const char *nome; int acao; } ctx[4];
-static int ctx_qtd, ctx_x, ctx_y, ctx_icone, ctx_sob = -1;
+/* Menus do botão direito (H81, menus de contexto do pull request #1 do
+ * Robson): num ícone (Abrir, Renomear...), na área vazia, na barra de título
+ * de uma janela e os menus próprios dos programas (SIS_MENU_JANELA, cuja
+ * escolha volta ao programa em EV_MENU). Um menu só fica aberto por vez. */
+enum { CTX_ICONE, CTX_AREA, CTX_JANELA, CTX_PROGRAMA };
+enum { J_MINIMIZAR = 100, J_MAXIMIZAR, J_FECHAR, A_TERMINAL, A_ARQUIVOS, A_FUNDO, A_MOSTRAR_AREA };
+#define CTX_MAX 10
+static struct { char nome[32]; int acao; } ctx[CTX_MAX];
+static int ctx_qtd, ctx_x, ctx_y, ctx_l = 190, ctx_tipo, ctx_alvo, ctx_sob = -1;
 static bool ctx_aberto;
-#define CTX_L 190
 
 static void redesenhar_ctx(void)
 {
     int m = VIDRO_SOMBRA + VIDRO_RAIO;
-    gui_redesenhar(ctx_x - m, ctx_y - m, CTX_L + 2 * m, ctx_qtd * MENU_ITEM + 8 + 2 * m + 4);
+    gui_redesenhar(ctx_x - m, ctx_y - m, ctx_l + 2 * m, ctx_qtd * MENU_ITEM + 8 + 2 * m + 4);
+}
+
+static void ctx_novo(int tipo, int alvo) { ctx_qtd = 0; ctx_tipo = tipo; ctx_alvo = alvo; }
+
+static void ctx_item(const char *nome, int acao)
+{
+    if (ctx_qtd == CTX_MAX) return;
+    txt_copia_n(ctx[ctx_qtd].nome, nome, sizeof ctx[ctx_qtd].nome);
+    ctx[ctx_qtd++].acao = acao;
+}
+
+static void ctx_mostrar(int x, int y)
+{
+    ctx_l = 150;
+    for (int i = 0; i < ctx_qtd; i++) if (texto_largura(ctx[i].nome) + 32 > ctx_l) ctx_l = texto_largura(ctx[i].nome) + 32;
+    int a = ctx_qtd * MENU_ITEM + 8, vl = (int)video_largura(), va = (int)video_altura();
+    ctx_x = x + ctx_l > vl - 4 ? vl - 4 - ctx_l : x;
+    ctx_y = y + a > va - 4 ? va - 4 - a : y;
+    if (ctx_y < BARRA_SUPERIOR) ctx_y = BARRA_SUPERIOR;
+    ctx_aberto = true;
+    ctx_sob = -1;
+    redesenhar_ctx();
+    klog("[GUI] menu aberto (tipo %d, %d itens) em (%d,%d)\n", ctx_tipo, ctx_qtd, ctx_x, ctx_y);
 }
 
 static void abrir_ctx(int icone, int x, int y)
 {
-    ctx_qtd = 0;
+    ctx_novo(CTX_ICONE, icone);
     int tipo = area_icone_tipo(icone);
-    ctx[ctx_qtd].nome = "Abrir"; ctx[ctx_qtd++].acao = ACAO_ABRIR;
-    if (tipo == 2) { ctx[ctx_qtd].nome = "Remover com segurança"; ctx[ctx_qtd++].acao = ACAO_DESMONTAR; }
+    ctx_item("Abrir", ACAO_ABRIR);
+    if (tipo == 2) ctx_item("Remover com segurança", ACAO_DESMONTAR);
     else {
-        ctx[ctx_qtd].nome = "Renomear..."; ctx[ctx_qtd++].acao = ACAO_RENOMEAR;
-        if (tipo == 1) { ctx[ctx_qtd].nome = "Remover do pendrive..."; ctx[ctx_qtd++].acao = ACAO_REMOVER; }
-        else { ctx[ctx_qtd].nome = "Esconder o ícone"; ctx[ctx_qtd++].acao = ACAO_ESCONDER; }
+        ctx_item("Renomear...", ACAO_RENOMEAR);
+        if (tipo == 1) ctx_item("Remover do pendrive...", ACAO_REMOVER);
+        else ctx_item("Esconder o ícone", ACAO_ESCONDER);
     }
-    ctx_icone = icone;
-    ctx_x = x; ctx_y = y;
-    if (ctx_x + CTX_L > (int)video_largura()) ctx_x = (int)video_largura() - CTX_L;
-    ctx_aberto = true;
-    ctx_sob = -1;
-    redesenhar_ctx();
+    ctx_mostrar(x, y);
     klog("[GUI] menu do icone %d aberto\n", icone);
+}
+
+static void abrir_ctx_area(int x, int y)
+{
+    ctx_novo(CTX_AREA, 0);
+    ctx_item("Novo Terminal", A_TERMINAL);
+    ctx_item("Arquivos", A_ARQUIVOS);
+    ctx_item("Trocar o fundo...", A_FUNDO);
+    ctx_item("Mostrar a área de trabalho", A_MOSTRAR_AREA);
+    ctx_mostrar(x, y);
 }
 
 static int ctx_item_em(int x, int y)
 {
-    if (!ctx_aberto || x < ctx_x || x >= ctx_x + CTX_L || y < ctx_y + 4) return -1;
+    if (!ctx_aberto || x < ctx_x || x >= ctx_x + ctx_l || y < ctx_y + 4) return -1;
     int i = (y - ctx_y - 4) / MENU_ITEM;
     return i < ctx_qtd ? i : -1;
 }
@@ -387,11 +453,14 @@ static void desenhar_ctx(void)
 {
     if (!ctx_aberto) return;
     int a = ctx_qtd * MENU_ITEM + 8;
-    vidro_sombra(&tela, ctx_x, ctx_y, CTX_L, a);
-    vidro_pintar(&tela, ctx_x, ctx_y, CTX_L, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    vidro_sombra(&tela, ctx_x, ctx_y, ctx_l, a);
+    vidro_pintar(&tela, ctx_x, ctx_y, ctx_l, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
     for (int i = 0; i < ctx_qtd; i++) {
         int y = ctx_y + 4 + i * MENU_ITEM;
-        if (i == ctx_sob) sup_retangulo(&tela, ctx_x + 4, y, CTX_L - 8, MENU_ITEM, 0x0B7A3E);
+        if (i == ctx_sob) {
+            sup_retangulo(&tela, ctx_x + 4, y, ctx_l - 8, MENU_ITEM, tema->destaque);
+            if (tema->filete) sup_retangulo(&tela, ctx_x + 4, y, 3, MENU_ITEM, tema->filete);
+        }
         sup_texto(&tela, ctx_x + 14, y + 5, ctx[i].nome, i == ctx_sob ? 0xFFFFFF : tema->topo_relogio);
     }
 }
@@ -470,6 +539,17 @@ static void desenhar_anims(void)
 
 /* ------------------------------------------------------------ composição */
 
+/* Disco de 16 pixels com degradê (botões redondos do pull request #1 do
+ * Robson): "meia" é metade da largura de cada linha. */
+static void desenhar_disco(int bx, int by, uint32_t topo, uint32_t base)
+{
+    static const uint8_t meia[8] = { 3, 5, 6, 7, 7, 8, 8, 8 };
+    for (int k = 0; k < 16; k++) {
+        int m = meia[k < 8 ? k : 15 - k];
+        sup_retangulo(&tela, bx + 8 - m, by + k, 2 * m, 1, cor_mistura(topo, base, k, 15));
+    }
+}
+
 static void desenhar_moldura(janela_t *j, bool foco)
 {
     int x = j->x, y = j->y, l = moldura_l(j), a = moldura_a(j);
@@ -480,9 +560,31 @@ static void desenhar_moldura(janela_t *j, bool foco)
     sup_retangulo(&tela, x + l - BORDA, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
     sup_retangulo(&tela, x, y + a - BORDA, l, BORDA, cor);
     if (!vidro_efeitos) sup_moldura(&tela, x - 1, y - 1, l + 2, a + 2, 0x101010);
-    sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
+    if (foco && tema->filete) sup_retangulo(&tela, x, y + BARRA_TITULO - 1, l, 1, tema->filete);
+    if (tema->titulo_forte) {
+        sup_texto_forte(&tela, x + 11, y + 5, j->titulo, cor_mistura(cor, 0x000000, 3, 5));
+        sup_texto_forte(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
+    } else sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
+    int bx = x + l - BORDA - 20, by = y + 4, mx = bx - 24, qx = bx - 48;
+    uint32_t tc = foco ? tema->texto_foco : tema->texto;
+    if (tema->botoes_cores) {
+        /* Fechar vermelho, minimizar amarelo, maximizar verde (cinza se a
+         * janela não muda de tamanho); sem foco, tons apagados. */
+        desenhar_disco(bx, by, foco ? 0xEC5A4E : 0x9A6A66, foco ? 0xC02E26 : 0x7A524E);
+        for (int k = 4; k < 12; k++) {
+            sup_retangulo(&tela, bx + k, by + k, 2, 1, 0xFFFFFF);
+            sup_retangulo(&tela, bx + 14 - k, by + k, 2, 1, 0xFFFFFF);
+        }
+        desenhar_disco(mx, by, foco ? 0xF6CE50 : 0xA89A6A, foco ? 0xD09A18 : 0x887A4E);
+        sup_retangulo(&tela, mx + 4, by + 10, 8, 2, 0xFFFFFF);
+        if (j->redimensionavel) {
+            desenhar_disco(qx, by, foco ? 0x4CC47C : 0x7C9A88, foco ? 0x1E8A4C : 0x5C7A68);
+            sup_moldura(&tela, qx + 4, by + 4, 8, 8, 0xFFFFFF);
+            sup_retangulo(&tela, qx + 4, by + 5, 8, 1, 0xFFFFFF);
+        }
+        return;
+    }
     /* Fechar: um círculo vermelho com um X; minimizar: um traço. */
-    int bx = x + l - BORDA - 20, by = y + 4;
     uint32_t vermelho = foco ? 0xE0483E : 0x9A6A66;
     for (int r = 0; r < 16; r++) {
         int pula = r < 4 ? (int[]){ 5, 3, 2, 1 }[r] : (r > 11 ? (int[]){ 1, 2, 3, 5 }[r - 12] : 0);
@@ -492,11 +594,8 @@ static void desenhar_moldura(janela_t *j, bool foco)
         sup_retangulo(&tela, bx + k, by + k, 1, 1, 0xFFFFFF);
         sup_retangulo(&tela, bx + 15 - k, by + k, 1, 1, 0xFFFFFF);
     }
-    int mx = bx - 24;
-    uint32_t tc = foco ? tema->texto_foco : tema->texto;
     sup_retangulo(&tela, mx + 3, by + 11, 10, 2, tc);
     if (j->redimensionavel) {                    /* maximizar (H78): um quadrado; maximizada: dois */
-        int qx = bx - 48;
         if (j->maximizada) { sup_moldura(&tela, qx + 5, by + 2, 9, 9, tc); sup_retangulo(&tela, qx + 2, by + 5, 9, 9, foco ? tema->titulo_foco : tema->titulo); sup_moldura(&tela, qx + 2, by + 5, 9, 9, tc); }
         else { sup_moldura(&tela, qx + 2, by + 2, 12, 12, tc); sup_retangulo(&tela, qx + 2, by + 3, 12, 1, tc); }
     }
@@ -596,7 +695,7 @@ static void expandir_vidro(void)
         if (doca_ligada && cruza(doca_x - R, doca_y - 30 - R, doca_l + 2 * R, DOCA_A + 30 + 2 * R))
             gui_redesenhar(doca_x - R - DOCA_CELULA, doca_y - 30 - R, doca_l + 2 * R + 2 * DOCA_CELULA, DOCA_A + 30 + 2 * R);
         if (menu_aberto && cruza(0, 0, MENU_X + MENU_L + R, MENU_Y + QTD_MENU * MENU_ITEM + 8 + R)) redesenhar_menu();
-        if (ctx_aberto && cruza(ctx_x - R, ctx_y - R, CTX_L + 2 * R, ctx_qtd * MENU_ITEM + 8 + 2 * R)) redesenhar_ctx();
+        if (ctx_aberto && cruza(ctx_x - R, ctx_y - R, ctx_l + 2 * R, ctx_qtd * MENU_ITEM + 8 + 2 * R)) redesenhar_ctx();
         for (int k = 0; k < qtd; k++) {
             janela_t *j = &janelas[ordem[k]];
             if (j->minimizada || j->escondida) continue;
@@ -630,7 +729,8 @@ void gui_mostrar(void)
     desenhar_doca();
     if (tela.cy0 < BARRA_SUPERIOR) {
         if (vidro_efeitos) vidro_pintar(&tela, 0, 0, (int)video_largura(), BARRA_SUPERIOR, tema->topo, tema->k_topo, 0);
-        area_barra(&tela, vidro_efeitos, tema->claro);
+        area_barra(&tela, vidro_efeitos, tema->claro, doca_ligada || qtd == 0);
+        desenhar_tarefas();
     }
     desenhar_menu();
     desenhar_ctx();
@@ -680,6 +780,7 @@ static void trazer_para_cima(int k)
         redesenhar_doca();
     }
     if (k == qtd - 1) return;
+    if (!doca_ligada) redesenhar_doca();   /* o botão da janela da frente muda de cor */
     janela_t *antes = focada();
     for (; k < qtd - 1; k++) ordem[k] = ordem[k + 1];
     ordem[qtd - 1] = i;
@@ -712,6 +813,79 @@ static void doca_clique(int i)
         return;
     }
     if (it->programa) abrir_programa(it->programa);
+}
+
+static janela_t *janela_por_id(int id)
+{
+    for (int i = 0; i < MAX_JANELAS; i++)
+        if (janelas[i].usada && janelas[i].id == id) return &janelas[i];
+    return NULL;
+}
+
+/* Um item do menu do botão direito foi escolhido. */
+static void ctx_escolher(int i)
+{
+    int acao = ctx[i].acao;
+    klog("[GUI] menu: %s\n", ctx[i].nome);
+    if (ctx_tipo == CTX_ICONE) { area_icone_acao(ctx_alvo, acao); return; }
+    if (ctx_tipo == CTX_PROGRAMA) {
+        janela_t *j = janela_por_id(ctx_alvo);
+        if (j) { evento_t e = { .tipo = EV_MENU, .tecla = (unsigned)acao }; entregar(j, &e); }
+        return;
+    }
+    if (ctx_tipo == CTX_JANELA) {
+        janela_t *j = janela_por_id(ctx_alvo);
+        if (!j) return;
+        if (acao == J_MINIMIZAR) minimizar(j);
+        else if (acao == J_MAXIMIZAR) alternar_maximizar(j);
+        else if (acao == J_FECHAR) { evento_t e = { .tipo = EV_FECHAR }; entregar(j, &e); }
+        return;
+    }
+    if (acao == A_TERMINAL) abrir_programa("/bin/terminal");
+    else if (acao == A_ARQUIVOS) abrir_programa("/bin/arquivos");
+    else if (acao == A_FUNDO) {
+        char *argv[] = { "configuracoes", "aparencia", NULL };
+        processo_executar("/bin/configuracoes", 2, argv, NULL);
+    } else if (acao == A_MOSTRAR_AREA) {
+        for (int k = 0; k < MAX_JANELAS; k++) if (janelas[k].usada && !janelas[k].minimizada) minimizar(&janelas[k]);
+    }
+}
+
+/* ------------------------------------------------------------ barra de tarefas (H81)
+ *
+ * Opção à doca (Configurações > Aparência, aparencia.barra = tarefas), como
+ * no pull request #1 do Robson: um botão por janela na barra de cima, entre
+ * o menu do sagui e os ícones da direita. Clicar traz a janela (ou a
+ * minimiza, se já estava na frente). */
+#define TAREFA_X0    120
+#define TAREFA_L     124
+#define TAREFA_PASSO (TAREFA_L + 4)
+
+static int tarefas_max(void) { return ((int)video_largura() - 300 - TAREFA_X0) / TAREFA_PASSO; }
+
+static void desenhar_tarefas(void)
+{
+    if (doca_ligada || tela.cy0 >= BARRA_SUPERIOR) return;
+    janela_t *f = focada();
+    int n = 0, max = tarefas_max();
+    for (int k = 0; k < qtd && n < max; k++) {
+        janela_t *j = &janelas[ordem[k]];
+        int x = TAREFA_X0 + n++ * TAREFA_PASSO;
+        bool frente = j == f;
+        vidro_pintar(&tela, x, 3, TAREFA_L, BARRA_SUPERIOR - 6, frente ? tema->destaque : tema->titulo, 220, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+        if (!j->minimizada) sup_retangulo(&tela, x + 8, BARRA_SUPERIOR - 5, TAREFA_L - 16, 1, tema->filete ? tema->filete : 0xFFDF4A);
+        char t[15];
+        txt_copia_n(t, j->titulo, sizeof t);
+        sup_texto(&tela, x + 6, 3, t, j->minimizada ? 0x9AA8B8 : 0xFFFFFF);
+    }
+}
+
+static janela_t *tarefa_em(int x, int y)
+{
+    if (doca_ligada || y >= BARRA_SUPERIOR || x < TAREFA_X0) return NULL;
+    int n = (x - TAREFA_X0) / TAREFA_PASSO;
+    if ((x - TAREFA_X0) % TAREFA_PASSO >= TAREFA_L || n >= tarefas_max() || n >= qtd) return NULL;
+    return &janelas[ordem[n]];
 }
 
 static void tratar_mouse(evento_mouse_t *m)
@@ -767,7 +941,7 @@ static void tratar_mouse(evento_mouse_t *m)
             int ci = ctx_item_em(m->x, m->y);
             ctx_aberto = false;
             redesenhar_ctx();
-            if (ci >= 0) area_icone_acao(ctx_icone, ctx[ci].acao);
+            if (ci >= 0) ctx_escolher(ci);
             return;
         }
         /* O menu aberto pega o clique: num item, abre; fora, só fecha. */
@@ -801,6 +975,20 @@ static void tratar_mouse(evento_mouse_t *m)
         if (k < 0 && m->y < BARRA_SUPERIOR) {
             /* Na barra de cima: o menu do sagui, o som e o botão de energia (H36, H75). */
             if (!(m->mudaram & BOTAO_ESQUERDO)) return;
+            janela_t *tj = tarefa_em(m->x, m->y);
+            if (tj) {
+                if (tj == focada()) minimizar(tj);
+                else {
+                    tj->minimizada = false;
+                    int pos = -1;
+                    for (int q = 0; q < qtd; q++) if (&janelas[ordem[q]] == tj) pos = q;
+                    if (pos >= 0) trazer_para_cima(pos);
+                    redesenhar_janela(tj);
+                }
+                gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR);
+                klog("[GUI] barra de tarefas: %s\n", tj->titulo);
+                return;
+            }
             if (m->x < 110) { menu_aberto = true; redesenhar_menu(); klog("[GUI] menu aberto\n"); }
             else if (area_som_em(m->x, m->y)) {
                 char *argv[] = { "configuracoes", "som", NULL };
@@ -817,6 +1005,7 @@ static void tratar_mouse(evento_mouse_t *m)
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
             if (ic >= 0 && (m->mudaram & BOTAO_DIREITO)) abrir_ctx(ic, m->x, m->y);
+            else if (m->mudaram & BOTAO_DIREITO) abrir_ctx_area(m->x, m->y);
             captura = -1;
             return;
         }
@@ -824,6 +1013,15 @@ static void tratar_mouse(evento_mouse_t *m)
         janela_t *j = focada();
         int idx = ordem[qtd - 1];
         int rx = m->x - j->x, ry = m->y - j->y;
+        if (ry < BARRA_TITULO && (m->mudaram & BOTAO_DIREITO)) {
+            ctx_novo(CTX_JANELA, j->id);
+            ctx_item("Minimizar", J_MINIMIZAR);
+            if (j->redimensionavel) ctx_item(j->maximizada ? "Voltar ao tamanho" : "Maximizar", J_MAXIMIZAR);
+            ctx_item("Fechar", J_FECHAR);
+            ctx_mostrar(m->x, m->y);
+            captura = -1;
+            return;
+        }
         if (ry < BARRA_TITULO) {
             int bx = moldura_l(j) - BORDA - 20;
             if ((m->mudaram & BOTAO_ESQUERDO) && rx >= bx && rx < bx + 16 && ry >= 4 && ry < 20) {
@@ -1171,5 +1369,36 @@ int32_t sis_janela_opcoes(uint32_t id, uint32_t opcoes, uint32_t minimos, uint32
     redesenhar_janela(j);
     gui_mostrar();
     klog("[GUI] janela %d redimensionavel (ate %u pixels)\n", j->id, max_px);
+    return 0;
+}
+
+/* SIS_MENU_JANELA (id, x | y << 16, "Item|Item|Item") -> 0. Abre um menu do
+ * próprio programa no ponto (x, y) da janela (H81, do pull request #1 do
+ * Robson); a escolha volta em EV_MENU com o índice do item em "tecla".
+ * Clicar fora fecha o menu sem evento. */
+int32_t sis_menu_janela(uint32_t id, uint32_t xy, uint32_t pitens, uint32_t d, uint32_t e)
+{
+    (void)d; (void)e;
+    janela_t *j = janela_do_processo((int)id);
+    if (!j) return ERRO_INVALIDO;
+    char itens[CTX_MAX * 32];
+    int r = usuario_texto((const char *)pitens, itens, sizeof itens);
+    if (r < 0) return r;
+    bool i0 = int_salva_desliga();
+    if (ctx_aberto) redesenhar_ctx();
+    ctx_novo(CTX_PROGRAMA, j->id);
+    char *p = itens;
+    for (int n = 0; *p && n < CTX_MAX; n++) {
+        char *fim = p;
+        while (*fim && *fim != '|') fim++;
+        char guarda = *fim;
+        *fim = 0;
+        ctx_item(p, n);
+        p = guarda ? fim + 1 : fim;
+    }
+    int x = j->x + BORDA + (int)(xy & 0xFFFF), y = j->y + BARRA_TITULO + (int)(xy >> 16);
+    if (ctx_qtd) ctx_mostrar(x, y);
+    int_restaura(i0);
+    gui_mostrar();
     return 0;
 }

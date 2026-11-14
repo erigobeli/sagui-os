@@ -4,15 +4,15 @@ Eli, a fase 8 (Sagui Code) está pronta: entrega/v2-fase8/ e docs/teste-v2-fase8
 
 # Status do SaguiOS 2.0
 
-_Atualizado em 2026-11-13T23:22:18_
+_Atualizado em 2026-11-14T01:37:55_
 
 - **Situação:** Trabalhando na H80: Ponto flutuante nos programas
 - **Fase atual:** 11
 - **História atual:** H80
-- **Progresso geral:** 86.3%
+- **Progresso geral:** 90.2%
 - **Bloqueio:** H46 (rede no G470): a placa interna é Atheros AR8152 (sem manual público); o Eli está comprando o TP-Link UE300 (RTL8153, USB-A). H73 espera a chave do OpenRouter. Som do G470: esperando o 'registro HDA'.
-- **Imagem:** 1701888 bytes úteis (sem teto: só medida)
-- **Linhas de código:** boot 903, kernel 14163, userland 28901
+- **Imagem:** 2427904 bytes úteis (sem teto: só medida)
+- **Linhas de código:** boot 920, kernel 15061, userland 29066
 
 ## Fases
 
@@ -28,7 +28,7 @@ _Atualizado em 2026-11-13T23:22:18_
 | 8 | Sagui Code | 80.0% | aguardando teste |
 | 9 | Visual moderno | 100.0% | aguardando teste |
 | 10 | Instalação no HD (opcional, a decidir) | 0% | a fazer |
-| 11 | Versão 2.1: comunidade, Cipó e vídeo | 16.7% | em andamento |
+| 11 | Versão 2.1: comunidade, Cipó e vídeo | 50.0% | em andamento |
 
 ## Histórias
 
@@ -80,14 +80,16 @@ _Atualizado em 2026-11-13T23:22:18_
 | H78 | Redimensionar e maximizar janelas (pedido do Eli) | aguardando teste | 1 |
 | H79 | Correções do teste no G470 | feito |  |
 | H80 | Ponto flutuante nos programas | feito | 1 |
-| H81 | Visual do Robson somado ao da 2.0 | a fazer |  |
+| H81 | Visual do Robson somado ao da 2.0 | feito |  |
 | H82 | Cipó, o navegador (motor do #6) | a fazer |  |
 | H83 | Pequenos da comunidade (#3, #4, #7) | a fazer |  |
-| H84 | Driver de vídeo Intel HD 3000 (G470) | a fazer |  |
+| H84 | Driver de vídeo Intel HD 3000 (G470) | feito |  |
 | H85 | Créditos e versão 2.1 | a fazer |  |
 
 ## Últimas ações
 
+- 2026-11-14T01:37:55: H84 concluída: vídeo nativo do G470 (desligado por padrão), esperando o teste do Eli
+- 2026-11-14T01:37:55: H81 concluída: visual do Robson: ícones, letras, fundos, temas Mata e Azul, menus, barra de tarefas
 - 2026-11-13T23:22:18: H80 concluída: FXSAVE/FXRSTOR por processo; programas com SSE2; três processos fazendo contas juntos sem se estragar
 - 2026-11-13T23:22:18: Início da H80: Ponto flutuante nos programas
 - 2026-11-13T23:17:06: Versão 2.1 planejada (H80 a H85): aproveitar os PRs da comunidade com crédito e o driver de vídeo do G470
@@ -101,5 +103,3 @@ _Atualizado em 2026-11-13T23:22:18_
 - 2026-11-13T19:56:57: H71 concluída: instruções + manual + cabeçalhos com cache; conversa longa cortada abaixo do limite; gasto por pedido
 - 2026-11-13T19:56:57: H69 concluída: JSON, POST, cliente do OpenRouter com stream e ferramentas, aba IA; servidor falso ok (conversa real espera a chave do Eli)
 - 2026-11-13T19:56:57: Início da H72: Interface
-- 2026-11-13T19:56:57: Início da H71: Instruções e contexto
-- 2026-11-13T19:56:57: Início da H69: JSON e cliente do OpenRouter
