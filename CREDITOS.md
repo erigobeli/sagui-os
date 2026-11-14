@@ -1,8 +1,40 @@
 # Créditos: o que vem de fora dentro do SaguiOS
 
-Todo o **código** do SaguiOS foi escrito neste projeto. Dentro da imagem, a única coisa feita
-por terceiros são **dados públicos**: os certificados raiz abaixo, usados pelo HTTPS (H53) para
-conferir que um site é quem diz ser.
+O **núcleo** do SaguiOS (kernel, drivers, rede, TLS, janelas, libsagui, shell, compilador) foi
+todo escrito neste projeto. De fora vêm **dados públicos** (os certificados raiz, as fontes
+DejaVu, tabelas do Unicode e da RFC 7932) e, desde a versão 2.1, alguns trechos de **código
+livre nos aplicativos** (D041, D043), cada um na sua pasta em `terceiros/`.
+
+## O que não foi escrito aqui
+
+### Código de terceiros nos aplicativos (`terceiros/`)
+
+Todos chegaram pelo pull request #6 (o navegador Cipó, de Robson de Lima Barbosa): a IA que
+ajudou o Robson reproduziu esses trechos de memória, e a revisão os reconheceu. Em vez de
+ficarem misturados no meio do Cipó, foram separados, com a licença original e um `ORIGEM.md`
+(de onde vieram e o que mudou). Licenças conferidas nos arquivos de licença dos projetos.
+
+| Pasta | O quê | De onde | Licença |
+| --- | --- | --- | --- |
+| `terceiros/font-rs/` | rasterizador por área acumulada (glifos, Canvas, SVG) | font-rs, Raph Levien, Copyright 2015 Google Inc. | Apache License 2.0 |
+| `terceiros/libwebp-vp8/` | WebP com perdas (VP8) e as tabelas de probabilidades | libwebp 1.4.0, Copyright (c) 2010 Google Inc. | BSD 3 cláusulas + concessão de patentes do WebM (`PATENTS`) |
+| `terceiros/v8-numeros/` | `Number.prototype.toString(base)` | V8, Copyright 2006-2011 the V8 project authors | BSD 3 cláusulas |
+| `terceiros/ffmpeg-h264-tabelas/` | tabelas do CABAC e do CAVLC do H.264 | FFmpeg (libavcodec) | LGPL 2.1 ou posterior |
+| `terceiros/faad2-aac-huffman/` | livros de Huffman do AAC | FAAD2 — **Code from FAAD2 is copyright (c) Nero AG, www.nero.com** | GPL 2 ou posterior (com o preâmbulo do FAAD2: uso só sob a GPL) |
+
+### Dados e fontes do Cipó
+
+- **Fontes DejaVu** (`/fontes/`, em `rootfs/fontes/`): DejaVu Sans, Serif e Sans Mono, recortadas
+  e sem hinting por `tools/mkfontes.py` (do #6). Licença Bitstream Vera / Arev (livre; as mudanças
+  da DejaVu são de domínio público; fontes modificadas não podem usar os nomes "Bitstream" ou
+  "Vera"). Texto completo em `rootfs/fontes/LICENCA-DejaVu.txt`.
+- **Classes de quebra de linha do Unicode** (`userland/navegador/motor/quebra_tab.h`): geradas de
+  LineBreak.txt, EastAsianWidth.txt, DerivedGeneralCategory.txt e emoji-data.txt do Unicode 16.0.0.
+  Unicode License v3 (`userland/navegador/motor/LICENCA-Unicode.txt`).
+- **Dicionário do Brotli** (`userland/navegador/fontes/brotli_tab.h`): o dicionário estático e as
+  transformações da RFC 7932 (apêndices A e B). Componentes de código das RFCs: licença BSD
+  simplificada do IETF Trust ("Copyright (c) 2016 IETF Trust and the persons identified as the
+  document authors").
 
 ## Certificados raiz (`/sistema/certificados/`)
 

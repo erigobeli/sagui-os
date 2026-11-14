@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>CSS do Cipó</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+@font-face { font-family: "Letra da Web"; src: url("letra.ttf") format("truetype"); }
+:root { --verde: #0b7a3e; --raio: 10px; }
+body { font-family: sans-serif; margin: 12px; color: #1e2328; }
+h1 { font-family: "Letra da Web", monospace; color: var(--verde); border-bottom: 3px solid var(--verde); }
+.flex { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #eef6f0; padding: 8px; }
+.flex > div { flex: 1; padding: 10px; border-radius: var(--raio); color: #fff; text-align: center; }
+.a { background: #c0392b; } .b { background: #2980b9; flex: 2 !important; } .c { background: #8e44ad; }
+.grade { display: grid; grid-template-columns: 100px 1fr 2fr; gap: 6px; margin-top: 12px; }
+.grade div { background: #f1c40f; padding: 6px; border: 2px solid #b7950b; }
+.grade .largo { grid-column: span 2; background: #e67e22; }
+.degrade { height: 30px; margin-top: 12px; background: linear-gradient(to right, #0b7a3e, #f1c40f); border-radius: 15px; }
+.caixa { position: relative; height: 60px; margin-top: 12px; border: 1px dashed #888; }
+.caixa .canto { position: absolute; right: 8px; bottom: 8px; width: 40px; height: 20px; background: #16a085; }
+.flutua { float: right; width: 120px; height: 50px; background: #34495e; color: #fff; margin: 0 0 6px 6px; }
+table { border-collapse: collapse; margin-top: 12px; }
+td, th { border: 1px solid #555; padding: 4px 10px; }
+th { background: #ddd; }
+ul.sem { list-style: none; padding: 0; display: flex; gap: 4px; }
+ul.sem li { background: #333; color: #eee; padding: 2px 8px; border-radius: 4px; }
+.girado { display: inline-block; transform: rotate(-8deg); background: #ffeaa7; padding: 4px 12px; margin: 14px; }
+@media (max-width: 300px) { .flex { display: none; } }
+</style></head><body>
+<h1>Cipó: CSS moderno</h1>
+<div class="flex"><div class="a">um</div><div class="b">dois (flex 2)</div><div class="c">três</div></div>
+<div class="grade"><div>1</div><div class="largo">2 e 3 (span 2)</div><div>4</div><div>5</div><div>6</div></div>
+<div class="degrade"></div>
+<div class="caixa"><span class="flutua">flutua</span>Posição relativa, com um filho absoluto no canto e um float à direita. Quebra de linha com palavras compridas: Pneumoultramicroscopicossilicovulcanoconiótico.</div>
+<p class="externo">Este parágrafo usa uma regra do CSS externo (estilo.css).</p>
+<table><tr><th>Formato</th><th>Imagem</th></tr>
+<tr><td>GIF</td><td><img src="imagens/gif.gif"></td></tr>
+<tr><td>WebP</td><td><img src="imagens/foto.webp"></td></tr>
+<tr><td>PNG transparente</td><td style="background:#9fd3ff"><img src="imagens/transparente.png"></td></tr></table>
+<ul class="sem"><li>HTML</li><li>CSS</li><li>JavaScript</li><li>Fontes</li></ul>
+<span class="girado">transform: rotate</span>
+<svg width="120" height="60" viewBox="0 0 120 60"><circle cx="30" cy="30" r="25" fill="#e74c3c"/><rect x="65" y="10" width="45" height="40" rx="6" fill="#27ae60"/></svg>
+</body></html>

@@ -34,6 +34,15 @@ int memcmp(const void *x, const void *y, size_t n)
     return 0;
 }
 
+/* O gcc pode trocar um laço que conta letras por uma chamada a strlen (o
+ * JavaScript do Cipó tem um assim, H82): ela precisa existir. */
+size_t strlen(const char *s)
+{
+    size_t n = 0;
+    while (s[n]) n++;
+    return n;
+}
+
 size_t tam_texto(const char *s)
 {
     size_t n = 0;

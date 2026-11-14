@@ -139,6 +139,16 @@ int http_obter(const char *url_inicial, http_receptor_t receptor, void *ctx, htt
 int http_pedir(const char *metodo, const char *url_inicial, const char *extra, const void *corpo, unsigned n_corpo,
                http_receptor_t receptor, void *ctx, http_resposta_t *resp)
 {
+    return http_pedir_completo(metodo, url_inicial, extra, corpo, n_corpo, receptor, ctx, resp, NULL);
+}
+
+/* O mesmo, mostrando os cabeçalhos de cada resposta (H82: os cookies e o
+ * fetch do Cipó precisam deles). "cabecalhos" recebe primeiro a linha de
+ * situação ("HTTP/1.1 200 OK") e depois cada linha "Nome: valor", com o
+ * endereço que respondeu; também nas respostas de redirecionamento. */
+int http_pedir_completo(const char *metodo, const char *url_inicial, const char *extra, const void *corpo, unsigned n_corpo,
+                        http_receptor_t receptor, void *ctx, http_resposta_t *resp, http_cabecalhos_t cabecalhos)
+{
     char url[512];
     copia_texto(url, url_inicial, sizeof url);
     memset(resp, 0, sizeof *resp);
@@ -147,7 +157,7 @@ int http_pedir(const char *metodo, const char *url_inicial, const char *extra, c
         if (url_separar(url, &u) < 0) { copia_texto(resp->erro, "endereço inválido (use http:// ou https://)", sizeof resp->erro); return ERRO_INVALIDO; }
         canal_t c;
         if (canal_abrir(&c, &u, resp->erro, sizeof resp->erro) < 0) return ERRO_REDE;
-        char pedido[1536];
+        char pedido[6144];   /* com os cookies do Cipó (H82) */
         bool porta_padrao = u.porta == (u.seguro ? 443 : 80);
         char host[80];
         if (porta_padrao) copia_texto(host, u.servidor, sizeof host);
@@ -160,19 +170,21 @@ int http_pedir(const char *metodo, const char *url_inicial, const char *extra, c
                                extra ? extra : "", tamanho_corpo);
         if (n >= (int)sizeof pedido - 1) { canal_fechar(&c); copia_texto(resp->erro, "cabeçalhos grandes demais", sizeof resp->erro); return ERRO_INVALIDO; }
         if (canal_escrever(&c, pedido, (unsigned)n) < 0 || (corpo && n_corpo && canal_escrever(&c, corpo, n_corpo) < 0)) { canal_fechar(&c); copia_texto(resp->erro, "a conexão caiu ao mandar o pedido", sizeof resp->erro); return ERRO_REDE; }
-        char linha[512];
+        char linha[2048];   /* Set-Cookie e Content-Security-Policy passam fácil de 512 */
         if (linha_http(&c, linha, sizeof linha) < 0 || compara_texto_n(linha, "HTTP/1.", 7) != 0) {
             canal_fechar(&c);
             copia_texto(resp->erro, "resposta inválida do servidor", sizeof resp->erro);
             return ERRO_REDE;
         }
         resp->situacao = texto_para_int(linha + 9);
+        if (cabecalhos) cabecalhos(ctx, url, linha);
         long tamanho = -1;
         bool pedacos = false;
         char destino[512] = "";
         resp->tipo[0] = 0;
         while (linha_http(&c, linha, sizeof linha) > 0) {
             const char *v;
+            if (cabecalhos) cabecalhos(ctx, url, linha);
             if (cabecalho(linha, "Content-Length", &v)) tamanho = texto_para_int(v);
             else if (cabecalho(linha, "Transfer-Encoding", &v) && compara_texto_n(v, "chunked", 7) == 0) pedacos = true;
             else if (cabecalho(linha, "Location", &v)) copia_texto(destino, v, sizeof destino);

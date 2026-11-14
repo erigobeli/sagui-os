@@ -7,7 +7,9 @@ SECTIONS
     .text : { *(.text.inicio) *(.text .text.*) }
     .rodata : { *(.rodata .rodata.*) }
     . = ALIGN(4096);
+    _dados_ini = .;     /* o coletor de lixo do JavaScript do Cipó varre os dados (H82) */
     .data : { *(.data .data.*) }
     .bss : { *(.bss .bss.*) *(COMMON) }
+    _dados_fim = .;
     /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) }
 }

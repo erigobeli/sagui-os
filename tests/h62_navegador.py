@@ -16,7 +16,10 @@ Critérios:
     digitado em UTF-8 (com acentos);
   - +Fav guarda a página e "Favoritos" a lista;
   - um .md vem como texto puro.
-CSS suportado (registrado em docs/decisoes.md, D038): ver pagina.c.
+Desde a 2.1 (H82, D043) quem diagrama e pinta é o motor do Cipó
+(userland/navegador/motor), com as fontes DejaVu: a referência é o motor
+compilado aqui. Os critérios são os mesmos; mudaram só as cores que o teste
+procura na captura (links #0B57D0 e a borda #767676 dos campos do motor).
 """
 import http.server
 import os
@@ -38,6 +41,8 @@ PASTA = os.path.join(SAIDA, "h62-paginas")
 PAGINAS = os.path.join(RAIZ, "tests", "navegador", "paginas")
 RENDER = os.path.join(SAIDA, "h62-teste_pagina")
 VISTA_L, VISTA_A, BARRA = 946, 606, 34
+LINK = (0x0B, 0x57, 0xD0)          # a:link do motor do Cipó (H82)
+BORDA_CAMPO = (0x76, 0x76, 0x76)   # borda dos <input> do motor
 pedidos = []
 
 
@@ -95,16 +100,29 @@ def preparar():
             q[x, y] = (x * 255 // 159, 120 + (y * 100 // 99), 255 - x * 255 // 159)
     foto.save(os.path.join(PASTA, "imagens", "foto.jpg"), quality=85)
     foto.transpose(Image.FLIP_LEFT_RIGHT).save(os.path.join(PASTA, "imagens", "progressiva.jpg"), quality=80, progressive=True)
-    # O desenho de referência: o mesmo código, compilado aqui.
-    fontes = [os.path.join(RAIZ, "tests", "navegador", "teste_pagina.c")] + \
-        [os.path.join(RAIZ, "userland", "navegador", f) for f in ("html.c", "pagina.c", "png.c", "jpeg.c", "descompactar.c")] + \
-        [os.path.join(RAIZ, "build", "gerado", "fonte8x16.c")]
-    r = subprocess.run(["gcc", "-m32", "-O2", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
-                        "-finput-charset=UTF-8", "-fexec-charset=ISO-8859-1",
-                        "-I", os.path.join(RAIZ, "tests", "navegador", "simulado"), "-o", RENDER] + fontes,
-                       capture_output=True, text=True)
+    # O desenho de referência: o mesmo código (o motor do Cipó, H82), compilado aqui.
+    r = compilar_referencia(RENDER)
     if r.returncode != 0:
         raise FalhaTeste("o desenho de referência não compilou: " + r.stderr[-1500:])
+
+
+def compilar_referencia(saida, opcoes=("-O2",)):
+    """Compila tests/navegador/teste_pagina.c com o motor do navegador (o mesmo
+    código que roda no SaguiOS) e o sagui.h simulado. As contas em double vão
+    pelo SSE2, como no SaguiOS (D042), para darem os mesmos pixels."""
+    nav = os.path.join(RAIZ, "userland", "navegador")
+    fontes = [os.path.join(RAIZ, "tests", "navegador", "teste_pagina.c")] + \
+        [os.path.join(nav, f) for f in ("motor/motor.c", "motor/quebra.c", "fontes/fonte.c", "fontes/brotli.c",
+                                        "graficos/svg.c", "graficos/canvas2d.c", "imagens.c", "png.c", "jpeg.c",
+                                        "descompactar.c")] + \
+        [os.path.join(RAIZ, "terceiros", f) for f in ("font-rs/acumulador.c", "libwebp-vp8/vp8.c")] + \
+        [os.path.join(RAIZ, "build", "gerado", "fonte8x16.c")]
+    return subprocess.run(["gcc", "-m32", *opcoes, "-msse2", "-mfpmath=sse", "-Wall", "-Wextra", "-Werror",
+                           "-Wno-unused-function", "-Wno-misleading-indentation", "-Wno-unused-parameter", "-Wno-stringop-truncation",
+                           "-finput-charset=UTF-8", "-fexec-charset=ISO-8859-1", "-DMOTOR_HOST",
+                           "-DPASTA_FONTES_HOST=\"" + os.path.join(RAIZ, "rootfs") + "\"",
+                           "-I", os.path.join(RAIZ, "tests", "navegador", "simulado"), "-I", nav, "-o", saida] + fontes,
+                          capture_output=True, text=True)
 
 
 def testar_enderecos():
@@ -274,9 +292,9 @@ def achar_links(png, j):
         x = j["x"]
         while x < j["x"] + VISTA_L - 20:
             # sublinhado: 12 pixels seguidos da cor do link
-            if all(px[x + k, y] == (0x1A, 0x4F, 0xB0) for k in range(12)):
+            if all(px[x + k, y] == LINK for k in range(12)):
                 fim = x
-                while fim < j["x"] + VISTA_L and px[fim, y] == (0x1A, 0x4F, 0xB0):
+                while fim < j["x"] + VISTA_L and px[fim, y] == LINK:
                     fim += 1
                 # Um sublinhado inteiro é um link (as letras azuis logo acima não contam: só linhas com 12+ seguidos).
                 if not any(abs(a[1] - (y - 8)) < 4 and a[0] - 6 <= x <= a[2] for a in achados):
@@ -293,14 +311,24 @@ def achar_texto_azul(png, j):
 
 
 def achar_campo(png, j):
-    """O campo de texto: retângulo branco de 200 x 22 com borda cinza (COR_BORDA)."""
+    """O campo de texto: retângulo com borda cinza (BORDA_CAMPO) de 100 a 400 de
+    largura e 14 a 40 de altura, branco por dentro. Devolve o centro."""
     px = png.load()
-    borda = (0x8A, 0x93, 0x9C)
-    for y in range(j["y"] + BARRA, j["y"] + BARRA + VISTA_A - 22):
-        for x in range(j["x"], j["x"] + VISTA_L - 200):
-            if px[x, y] == borda and px[x + 199, y] == borda and px[x + 100, y] == borda and px[x + 100, y + 21] == borda \
-                    and px[x + 100, y + 10] == (255, 255, 255):
-                return x + 100, y + 11
+    x0, x1 = j["x"], j["x"] + VISTA_L
+    for y in range(j["y"] + BARRA, j["y"] + BARRA + VISTA_A - 14):
+        x = x0
+        while x < x1 - 100:
+            if px[x, y] != BORDA_CAMPO:
+                x += 1
+                continue
+            fim = x
+            while fim < x1 and px[fim, y] == BORDA_CAMPO:
+                fim += 1
+            if fim - x >= 100 and px[x + 50, y + 4] == (255, 255, 255):
+                for a in range(14, 40):
+                    if y + a < j["y"] + BARRA + VISTA_A and all(px[x + k, y + a] == BORDA_CAMPO for k in range(10, 60)):
+                        return (x + fim) // 2, y + a // 2
+            x = fim
     return None
 
 

@@ -12,8 +12,10 @@ _inicio:
         xor ebp, ebp                    ; fim da cadeia de quadros
         mov eax, [esp]
         mov ecx, [esp + 4]
-        and esp, ~15                    ; pilha alinhada para o C
-        push ecx
+        and esp, ~15                    ; pilha alinhada para o C:
+        sub esp, 8                      ; no "call" ela tem de estar em múltiplo de 16
+        push ecx                        ; (depois dos 2 argumentos); com SSE2 o gcc
+                                        ; guarda valores de 16 bytes na pilha (movdqa) (H82)
         push eax
         call principal
         push eax

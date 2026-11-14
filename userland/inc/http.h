@@ -42,4 +42,9 @@ int  http_obter(const char *url, http_receptor_t receptor, void *ctx, http_respo
 int  http_pedir(const char *metodo, const char *url, const char *extra_cabecalhos, const void *corpo, unsigned n_corpo,
                 http_receptor_t receptor, void *ctx, http_resposta_t *resp);
 
+/* Com os cabeçalhos de cada resposta (linha de situação primeiro). */
+typedef void (*http_cabecalhos_t)(void *ctx, const char *url, const char *linha);
+int  http_pedir_completo(const char *metodo, const char *url, const char *extra_cabecalhos, const void *corpo, unsigned n_corpo,
+                         http_receptor_t receptor, void *ctx, http_resposta_t *resp, http_cabecalhos_t cabecalhos);
+
 #endif

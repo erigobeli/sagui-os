@@ -1,0 +1,72 @@
+<html><head><meta charset="utf-8"><title>Antes</title></head><body>
+<button id="b" style="width:220px;height:40px">clique</button>
+<p id="alvo">velho</p>
+<div id="caixa" style="width:300px;height:40px;background:#cc0000"></div>
+<canvas id="tela" width="200" height="40"></canvas> <canvas id="gl" width="120" height="40"></canvas>
+<script>
+function fat(n) { if (n <= 1) { return 1; } return n * fat(n - 1); }
+var total = 0;
+for (var i = 1; i <= 10; i++) { if (i == 5) { continue; } total += i; }
+var s = "fat=" + fat(5) + " soma=" + total;
+document.write("<p>" + s + "</p>");
+document.getElementById("alvo").textContent = "novo " + s.length;
+document.title = "Depois";
+console.log("resultado " + s);
+</script>
+<script>var y = desconhecido.coisa(1); document.write("NAO");</script>
+<script>console.log("global " + total);</script>
+<div id="app"></div>
+<script src="/ext.js"></script>
+<script>
+class A { constructor(x) { this.x = x; } dobro() { return this.x * 2; } static s() { return "st"; } }
+class B extends A { constructor() { super(21); } dobro() { return super.dobro() + 0; } get g() { return "get"; } }
+const fs = [1, 2, 3].map(n => () => n * n);
+let [p, ...r] = [1, 2, 3], {q, w = 7} = {q: 5};
+let m = new Map([["a", 1]]);
+var e1 = "";
+try { null.x; } catch (e) { e1 = e.name; } finally { e1 += "!"; }
+var o = JSON.parse('{"a":[1,{"b":"c"}],"d":null}');
+console.log("t1 " + new B().dobro() + " " + new B().g + " " + A.s() + " " + fs[2]() + " " + r.join("") + " " + q + w + " " + m.get("a") + " " + e1);
+console.log("t2 " + JSON.stringify(o) + " " + `x${1 + 1}y` + " " + "a-b_c".replace(/[-_](.)/g, (t, c) => c.toUpperCase()) + " " + /(\d+)-(\d+)/.exec("ab 12-34")[2] + " " + "a,b;c".split(/[,;]/).length);
+console.log("t3 " + (0.1 + 0.2).toFixed(2) + " " + 7 / 2 + " " + (5 >>> 1) + " " + Math.floor(-1.5) + " " + [3, 1, 2].sort().join("") + " " + typeof undefinedVar + " " + (o?.z?.y ?? "nn") + " " + [..."ab"].length);
+async function af() { const v = await Promise.resolve(4); return v + 1; }
+af().then(v => console.log("t4 " + v));
+setTimeout(() => { document.getElementById("app").innerHTML += "<p class=t>timer ok</p>"; console.log("t12 timer"); }, 50);
+document.addEventListener("DOMContentLoaded", () => {
+  const el = document.createElement("p"); el.textContent = "criado <ok>"; el.className = "c1"; el.classList.add("c2");
+  document.querySelector("#app").appendChild(el);
+  console.log("t5 " + document.querySelectorAll("p.c1.c2").length + " " + el.parentNode.id + " " + document.body.tagName);
+  function* conta(n) { for (var i = 0; i < n; i++) { var x = yield i; if (x) i += x; } return "fim"; }
+  var g = conta(5), r = [g.next().value, g.next().value, g.next(2).value, g.next().done, g.next().value];
+  var o = { *pares() { yield 2; yield* [4, 6]; } }, sp = [...o.pares()];
+  var gx = conta(3); gx.next(); var pego = 0; try { gx.throw(new Error("x")); } catch (e) { pego = 1; }
+  var gr = conta(9); gr.next(); var rt = gr.return(7);
+  console.log("t7 " + r.join(",") + " " + sp.join("+") + " " + pego + " " + rt.value + rt.done);
+  var bf = new ArrayBuffer(8), u8 = new Uint8Array(bf), u32 = new Uint32Array(bf); u8[0] = 1; u8[1] = 1; u8[4] = 300;
+  var dv = new DataView(bf); dv.setUint16(6, 513); var te = new TextEncoder().encode("aç");
+  console.log("t8 " + u32[0] + " " + u8[4] + " " + u8.length + " " + dv.getUint8(6) + " " + te.length + " " + new TextDecoder().decode(te).length + " " + u8.subarray(4, 6).length + " " + new Int8Array([200])[0]);
+  /* Number.prototype.toString(base): o algoritmo do V8 (terceiros/v8-numeros) */
+  console.log("t9 " + (255).toString(16) + " " + (0.5).toString(2) + " " + (-10.25).toString(8) + " " + (0.1).toString(3).slice(0, 8) + " " + (1e21).toString(36));
+  /* cookies (RFC 6265): o servidor mandou sabor=caju; o script grava outro */
+  document.cookie = "cor=verde; path=/";
+  console.log("t11 " + document.cookie.split("; ").sort().join(","));
+  /* fetch com POST: o servidor devolve o método, o corpo e os cookies que recebeu */
+  fetch("/eco", { method: "POST", body: "oi do cipo", headers: { "X-Teste": "sim" } })
+    .then(r => r.text()).then(t => console.log("t10 " + t));
+  /* Canvas 2D e WebGL (em software) */
+  var c2 = document.getElementById("tela").getContext("2d");
+  c2.fillStyle = "#ff8800"; c2.fillRect(0, 0, 200, 40);
+  c2.fillStyle = "#000000"; c2.beginPath(); c2.arc(20, 20, 12, 0, Math.PI * 2); c2.fill();
+  var gl = document.getElementById("gl").getContext("webgl");
+  console.log("t13 " + (gl ? "webgl" : "sem webgl"));
+  if (gl) { gl.clearColor(0.0, 0.5, 1.0, 1.0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  /* o JavaScript pinta: a caixa vermelha fica verde */
+  document.getElementById("caixa").style.background = "#00aa44";
+});
+var cl = 0;
+document.getElementById("b").addEventListener("click", () => {
+  cl++; document.getElementById("b").textContent = "clicou " + cl; console.log("t6 " + cl);
+  document.getElementById("caixa").style.background = "#2244cc";
+});
+</script>
+</body></html>
