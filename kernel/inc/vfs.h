@@ -35,6 +35,7 @@ void     vfs_segurar(no_t *x);
 void     vfs_soltar(no_t *x);
 /* Lê um arquivo inteiro para um buffer novo do kernel (liberar com kfree). */
 int      vfs_ler_inteiro(const char *caminho, uint8_t **dados, uint32_t *tam);
+uint32_t vfs_bytes_usados(void);                 /* soma dos arquivos da árvore (H83) */
 
 /* /usb: existe enquanto há um pendrive montado (fase 6). */
 void vfs_ponto_montagem(bool existe);

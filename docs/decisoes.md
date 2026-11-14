@@ -1382,3 +1382,24 @@ ele como autor do commit:
 
 Ficou de fora o maximizar do #1: a 2.0 já tinha o seu (H78), com a memória
 das janelas certa para 1366x768.
+
+## D046. Espaço dos discos: uma pergunta a mais no info_sistema, e a FAT contada (H83)
+
+O comando `df` (apelido `espaco`) precisa de total, usado e livre de cada
+lugar onde se grava. Em vez de uma chamada de sistema nova, entrou mais um
+tipo no `info_sistema`, que já serve memória, processos e versão:
+`INFO_DISCOS_ESPACO` (7) devolve um `info_espaco_t` para "/" e outro para
+"/usb", se houver pendrive montado.
+
+- **"/"** não é um disco: é a árvore de arquivos na memória (o ramdisk mais
+  o que foi gravado depois, na RAM). O "usado" é a soma dos tamanhos dos
+  arquivos da árvore; o "livre" é a memória livre, porque é lá que um
+  arquivo novo vai parar; o total é a soma dos dois.
+- **"/usb"** vem da FAT32. O setor FSInfo guarda uma contagem de clusters
+  livres, mas a especificação da Microsoft diz que ela é só uma dica: outro
+  sistema pode ter gravado no pendrive sem atualizá-la. Então o kernel conta
+  os clusters livres na FAT de verdade, uma vez por montagem, na primeira
+  vez que alguém pergunta (contar ao montar atrasaria toda montagem de
+  pendrive grande, mesmo sem ninguém querer saber); depois, alocar e liberar
+  clusters já mantêm a conta em dia. A FAT é lida em blocos de 64 setores.
+  Se a conta difere do FSInfo, uma linha no log diz quanto era e quanto é.
