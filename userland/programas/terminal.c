@@ -634,6 +634,52 @@ static void enviar_tecla(aba_t *a, unsigned t)
     escrever_tudo(a->entrada, b, (unsigned)n);
 }
 
+/* Ctrl+C: encerra o programa que está rodando na aba (o "primeiro plano").
+ * O shell só lê a tecla quando está esperando uma linha; com um programa
+ * rodando, ninguém lia o Ctrl+C e um programa travado (o tocar no G470, com a
+ * placa de som parada) não tinha como ser parado. Aqui o terminal procura os
+ * descendentes do shell da aba e os encerra; o shell volta ao prompt sozinho.
+ * Programas que tratam o Ctrl+C eles mesmos (o ssh manda para a outra
+ * máquina; o Sagui Code apaga a pergunta) recebem a tecla normalmente.
+ * Devolve true se encerrou alguém. */
+static bool interromper(aba_t *a)
+{
+    static info_processo_t v[64];
+    int n = info_sistema(INFO_PROCESSOS, v, 64);
+    if (n <= 0 || a->shell <= 0) return false;
+    if (n > 64) n = 64;
+    /* Marca os descendentes: repete até não aparecer ninguém novo. */
+    static bool alvo[64];
+    for (int i = 0; i < n; i++) alvo[i] = false;
+    bool mudou = true;
+    while (mudou) {
+        mudou = false;
+        for (int i = 0; i < n; i++) {
+            if (alvo[i] || v[i].estado == 4) continue;
+            bool filho = v[i].pai == a->shell;
+            for (int k = 0; k < n && !filho; k++) if (alvo[k] && v[i].pai == v[k].pid) filho = true;
+            if (filho) { alvo[i] = mudou = true; }
+        }
+    }
+    /* Aba aberta com "-e programa": o próprio programa é o "shell" da aba. */
+    bool so_o_programa = true;
+    for (int i = 0; i < n; i++) if (alvo[i]) so_o_programa = false;
+    for (int i = 0; i < n; i++) {
+        bool eh = alvo[i] || (so_o_programa && v[i].pid == a->shell && compara_texto(v[i].nome, "sagsh") != 0);
+        if (!eh) continue;
+        if (compara_texto(v[i].nome, "ssh") == 0 || compara_texto(v[i].nome, "saguicode") == 0) return false;
+        alvo[i] = true;
+    }
+    bool algum = false;
+    for (int i = 0; i < n; i++)
+        if (alvo[i]) { matar(v[i].pid); registrar("terminal: Ctrl+C encerrou %s (%d)", v[i].nome, v[i].pid); algum = true; }
+    if (algum) {
+        const char *t = "^C\r\n";
+        for (int i = 0; t[i]; i++) receber_byte(a, (uint8_t)t[i]);
+    }
+    return algum;
+}
+
 /* ------------------------------------------------------------ copiar e colar */
 
 static void posicao(int x, int y, int *l, int *c)
@@ -777,6 +823,7 @@ int principal(int argc, char **argv)
                 }
                 if (a->olhando) { a->olhando = 0; sujar_tudo(); }
                 if (a->terminou) { fechar_aba(atual_aba); continue; }   /* qualquer tecla fecha */
+                if (e.tecla == 3 && interromper(a)) { sujar_tudo(); continue; }
                 enviar_tecla(a, e.tecla);
             } else if (e.tipo == EV_CLIQUE && e.y < ABAS_A) {
                 int i = e.x / 154, x_mais = 4 + abas_abertas() * 154;

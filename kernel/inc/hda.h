@@ -11,6 +11,7 @@
 bool        hda_iniciar(void);
 bool        hda_pronto(void);
 void        hda_diagnostico(int fase);   /* estado do fluxo e dos pinos, no diário (G470) */
+void        hda_reiniciar_fluxo(void);   /* reset e RUN de novo, se a posição não andar */
 const char *hda_descricao(void);
 uint8_t    *hda_anel(void);
 uint32_t    hda_posicao(void);             /* byte que o DMA está lendo agora */

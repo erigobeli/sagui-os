@@ -359,6 +359,8 @@ static bool preparar_filas(void)
     return true;
 }
 
+static void programar_fluxo(void);
+
 static bool preparar_fluxo(void)
 {
     uint32_t paginas = HDA_ANEL / PAGINA;
@@ -377,6 +379,15 @@ static bool preparar_fluxo(void)
     }
     uint32_t iss = (r16(GCAP) >> 8) & 0xF;
     sd = 0x80 + 0x20 * iss;                                   /* primeiro fluxo de saída */
+    programar_fluxo();
+    return true;
+}
+
+/* Reset do descritor de fluxo e partida (especificação HD Audio, 3.3.35 e
+ * 4.5.3): parar, SRST em 1 e esperar ler 1, SRST em 0 e esperar ler 0;
+ * depois tamanho, último índice, formato, lista de buffers, número e RUN. */
+static void programar_fluxo(void)
+{
     w8(sd + SD_CTL, 0);
     esperar_us(100);
     w8(sd + SD_CTL, 1);                                       /* reset do fluxo */
@@ -391,7 +402,16 @@ static bool preparar_fluxo(void)
     w8(sd + SD_CTL + 2, (uint8_t)(FLUXO_NUMERO << 4));        /* número do fluxo */
     w8(sd + SD_STS, 0x1C);                                    /* limpa avisos */
     w8(sd + SD_CTL, 0x02);                                    /* RUN */
-    return true;
+}
+
+/* O misturador viu a posição parada: tenta partir o fluxo de novo, uma vez. */
+void hda_reiniciar_fluxo(void)
+{
+    if (!pronto) return;
+    bool i0 = int_salva_desliga();
+    programar_fluxo();
+    int_restaura(i0);
+    klog("[HDA] fluxo reprogramado: CTL %x STS %x\n", r32(sd + SD_CTL) & 0xFFFFFF, r8(sd + SD_STS));
 }
 
 bool hda_iniciar(void)

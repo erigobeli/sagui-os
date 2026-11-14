@@ -129,6 +129,26 @@ void misturador_tique(void)
     if (tiques == 3 * TIQUES_POR_SEGUNDO + TIQUES_POR_SEGUNDO / 2) hda_diagnostico(1);
     ler_configuracoes();
     uint32_t pos = hda_posicao() & ~3u;
+    /* Um programa mandando som e a posição da placa sem andar por 2 s: o
+     * fluxo está parado (aconteceu no G470). Anota uma vez, com o estado. */
+    static uint32_t pos_antes, parado;
+    static bool avisou;
+    bool tem_som = false;
+    for (int f = 0; f < MAX_FONTES; f++) if (fontes[f].usada && fontes[f].qtd) tem_som = true;
+    parado = pos == pos_antes && tem_som ? parado + 1 : 0;
+    pos_antes = pos;
+    if (parado == 2 * TIQUES_POR_SEGUNDO && !avisou) {
+        avisou = true;
+        klog("[HDA] a posicao do fluxo nao anda (%u) com som na fila: reprogramando o fluxo\n", pos);
+        hda_diagnostico(0);
+        hda_diagnostico(1);
+        hda_reiniciar_fluxo();
+        escrito = 0;
+    }
+    if (avisou && tem_som && parado == 0) {   /* com som na fila, parado 0 = a posição mudou */
+        static bool andou;
+        if (!andou) { andou = true; klog("[HDA] o fluxo voltou a andar (posicao %u)\n", pos); }
+    }
     uint32_t frente = (escrito - pos + HDA_ANEL) % HDA_ANEL;
     if (frente > HDA_ANEL / 2) {          /* o DMA passou de nós (pausa longa): recomeça logo à frente */
         escrito = (pos + 1920) % HDA_ANEL;

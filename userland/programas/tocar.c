@@ -69,11 +69,21 @@ int principal(int argc, char **argv)
             pos += passo;
         }
         if (q == 0) break;
-        int enviados = 0;
+        int enviados = 0, parado = 0;
         while (enviados < q * 4) {
             int r = som_enviar(f, (char *)bloco + enviados, (unsigned)(q * 4 - enviados));
             if (r < 0) { som_fechar(f); return 1; }
             enviados += r;
+            parado = r > 0 ? 0 : parado + 1;
+            /* 3 segundos sem a placa aceitar nada: ela não está tocando (no G470
+             * isso aconteceu). Desiste em vez de ficar parado para sempre. */
+            if (parado > 300) {
+                imprimir_em(ERROS, "tocar: a placa de som não está tocando (o áudio não anda). "
+                                   "Para ajudar: registro HDA > /usb/som.txt\n");
+                registrar("tocar: placa de som parada, desistindo");
+                som_fechar(f);
+                return 1;
+            }
             if (enviados < q * 4) dormir(10);
         }
     }

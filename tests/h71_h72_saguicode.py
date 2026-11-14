@@ -51,6 +51,8 @@ def main():
                 antes = len(m.serial())
                 m.digitar(f"leia o manual {k}\n", 0.05)
                 s = h69.esperar(m, "saguicode: pedido terminado", 90, antes)
+                # O gasto aparece na tela logo depois da linha do diário: espera por ele.
+                h69.esperar(m, "US$", 10, antes)
                 verificar("custo" in s and "US$" in m.serial()[antes:], f"pedido {k + 1}: terminou e mostrou o gasto")
             sistema = h69.pedidos[n0]["corpo"]["messages"][0]["content"][0]["text"]
             verificar("Sagui Code" in sistema and "c-do-sagui.md" in sistema and "sagui.h" in sistema and "gui.h" in sistema,
