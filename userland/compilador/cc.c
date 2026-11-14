@@ -71,6 +71,7 @@ __asm__(".text\n"
         "    push %ebp\n"
         "    mov %esp, %ebp\n"
         "    mov 8(%ebp), %esp\n"
+        "    and $-16, %esp\n"          /* alinhada em 16: o SSE (H80) exige */
         "    call cc_na_pilha_grande\n"
         "    mov %ebp, %esp\n"
         "    pop %ebp\n"

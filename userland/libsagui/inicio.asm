@@ -12,7 +12,12 @@ _inicio:
         xor ebp, ebp                    ; fim da cadeia de quadros
         mov eax, [esp]
         mov ecx, [esp + 4]
-        and esp, ~15                    ; pilha alinhada para o C
+        ; A convenção do i386 (com SSE, H80) quer a pilha alinhada em 16 bytes
+        ; no momento do "call": alinha, desconta 8 e empilha os 2 argumentos
+        ; (mais 8). Sem o desconto, o principal começava desalinhado em 8 e
+        ; o movaps do GCC dava proteção geral (o cc caía no G470 e nos testes).
+        and esp, ~15
+        sub esp, 8
         push ecx
         push eax
         call principal
