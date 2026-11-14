@@ -74,6 +74,32 @@ bool termgraf_iniciar(void)
     return true;
 }
 
+/* A resolução mudou (H84, resolução nativa do painel): a grade passa a ter
+ * o tamanho da tela nova, o texto que já estava fica onde estava, e tudo é
+ * redesenhado. Sem memória, a grade antiga continua (num canto da tela). */
+void termgraf_tela_mudou(void)
+{
+    int nc = (int)video_largura() / CEL_L, nl = (int)video_altura() / CEL_A;
+    celula_t *nova = kmalloc((uint32_t)(nc * nl) * sizeof(celula_t));
+    if (!nova) return;
+    for (int i = 0; i < nc * nl; i++) { nova[i].c = ' '; nova[i].cor = cor_atual; }
+    for (int y = 0; y < linhas && y < nl; y++)
+        for (int x = 0; x < colunas && x < nc; x++)
+            nova[y * nc + x] = grade[y * colunas + x];
+    kfree(grade);
+    grade = nova;
+    colunas = nc;
+    linhas = nl;
+    if (col >= colunas) col = colunas - 1;
+    if (lin >= linhas) lin = linhas - 1;
+    video_retangulo(0, 0, (int)video_largura(), (int)video_altura(), paleta[COR_PRETO]);
+    for (int y = 0; y < linhas; y++)
+        for (int x = 0; x < colunas; x++)
+            desenhar_celula(x, y, false);
+    mostrar_cursor(true);
+    video_mostrar();
+}
+
 int termgraf_colunas(void) { return colunas; }
 int termgraf_coluna(void)  { return col; }
 
