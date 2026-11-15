@@ -2,15 +2,18 @@
  *
  * Suporta um subconjunto de JavaScript "antigo":
  *   - alert("texto")        - mostra caixa de mensagem
- *   - confirm("texto")      - mostra caixa sim/não (devolve true/false)
- *   - prompt("texto")       - mostra caixa de entrada (devolve texto)
+ *   - confirm("texto")      - mostra caixa sim/não (sempre devolve true)
+ *   - prompt("texto")       - mostra caixa de entrada (sempre devolve "")
  *   - console.log("texto")  - registra no log do sistema
  *   - document.write("texto") - escreve texto no documento (no carregamento)
  *   - document.getElementById("id") - busca elemento por id (simplificado)
+ *   - document.getElementsByTagName("tag") - busca elementos por tag
  *   - var x = valor         - variáveis globais (números e strings)
  *   - function nome() { ... } - declara função
  *   - nome()                - chama função declarada
  *   - setTimeout(codigo, ms) - executa código após delay (apenas registra)
+ *   - element.style.propriedade - modifica estilo (simplificado)
+ *   - element.innerHTML     - modifica conteúdo (simplificado)
  *
  * É intencionalmente limitado: o SaguiOS não é um navegador completo.
  * O objetivo é fazer páginas simples funcionarem, não competir com o V8.
@@ -248,6 +251,7 @@ void js_definir_var_js(const char *nome, const char *valor)
     }
 }
 
+/* Mostra uma caixa de alerta JS. */
 void js_alerta(const char *texto)
 {
     mensagem("JavaScript", texto);
@@ -298,6 +302,7 @@ int js_executar_bloco(const char *codigo, int tamanho)
     memcpy(bloco, codigo, (size_t)tamanho);
     bloco[tamanho] = 0;
 
+    /* Executa linha por linha. */
     char *linha = bloco;
     int comandos_executados = 0;
     while (*linha) {
@@ -320,7 +325,6 @@ no_t *js_document_get_element_by_id(documento_t *doc, const char *id)
 {
     if (!doc || !doc->raiz || !id) return NULL;
     /* Busca em profundidade por um nó com o id dado. */
-    /* Implementação simples: percorre filhos recursivamente. */
     /* Como no_t não tem campo id exposto facilmente, usamos html_atributo. */
     /* Para simplificar, devolvemos NULL (o elemento não pode ser modificado). */
     return NULL;
