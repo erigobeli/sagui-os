@@ -1,0 +1,11 @@
+NAME="SaguiOS"
+VERSION="1.0"
+ID=saguios
+VERSION_ID=1.0
+PRETTY_NAME="SaguiOS 1.0"
+ANSI_COLOR="1;34"
+HOME_URL="https://github.com/gabriel-rb-devc/sagui-fork"
+SUPPORT_URL="https://github.com/gabriel-rb-devc/sagui-fork/issues"
+BUG_REPORT_URL="https://github.com/gabriel-rb-devc/sagui-fork/issues"
+VERSION_CODENAME=sagui
+BUILD_ID="2026-11-15"
