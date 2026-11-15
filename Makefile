@@ -96,9 +96,9 @@ $(B)/kernel/%.asm.o: kernel/%.asm
 	$(AS) -f elf32 -I kernel/arch/ -o $@ $<
 
 # A fonte é desenhada em texto (tools/fonte/) e vira C no build.
-$(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/gerar_fonte.py
+$(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/mkfonte.py
 	@mkdir -p $(dir $@)
-	$(PY) tools/gerar_fonte.py
+	$(PY) tools/mkfonte.py $< $@
 
 $(B)/gerado/fonte8x16.o: $(B)/gerado/fonte8x16.c
 	$(CC) $(CFLAGS) -c -o $@ $<
