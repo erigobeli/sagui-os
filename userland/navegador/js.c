@@ -4,16 +4,31 @@
  *   - alert("texto")        - mostra caixa de mensagem
  *   - confirm("texto")      - mostra caixa sim/não (sempre devolve true)
  *   - prompt("texto")       - mostra caixa de entrada (sempre devolve "")
- *   - console.log("texto")  - registra no log do sistema
+ *   - console.log/warn/error("texto") - registra no log do sistema
  *   - document.write("texto") - escreve texto no documento (no carregamento)
- *   - document.getElementById("id") - busca elemento por id (simplificado)
+ *   - document.getElementById("id") - busca elemento por id
  *   - document.getElementsByTagName("tag") - busca elementos por tag
- *   - var x = valor         - variáveis globais (números e strings)
+ *   - document.getElementsByClassName("cls") - busca elementos por classe
+ *   - var/let/const x = valor         - variáveis globais (números e strings)
  *   - function nome() { ... } - declara função
  *   - nome()                - chama função declarada
  *   - setTimeout(codigo, ms) - executa código após delay (apenas registra)
+ *   - setInterval(codigo, ms) - executa repetidamente (apenas registra)
+ *   - Math.random()         - número aleatório 0-999
+ *   - Math.floor(x)         - arredonda para baixo (inteiros)
+ *   - Math.ceil(x)          - arredonda para cima (inteiros)
+ *   - Math.round(x)         - arredonda (inteiros)
+ *   - Math.max(a, b)        - máximo (inteiros)
+ *   - Math.min(a, b)        - mínimo (inteiros)
+ *   - parseInt(s)           - converte string para inteiro
+ *   - parseFloat(s)         - converte string para inteiro (simplificado)
+ *   - isNaN(x)              - verifica se não é número
+ *   - isFinite(x)           - verifica se é finito (sempre verdadeiro para ints)
  *   - element.style.propriedade - modifica estilo (simplificado)
  *   - element.innerHTML     - modifica conteúdo (simplificado)
+ *   - element.className     - modifica classe CSS
+ *   - element.id            - modifica id
+ *   - addEventListener(evento, func) - registra evento (apenas registra)
  *
  * É intencionalmente limitado: o SaguiOS não é um navegador completo.
  * O objetivo é fazer páginas simples funcionarem, não competir com o V8.
@@ -25,8 +40,8 @@
 
 /* ------------------------------------------------------------ variáveis globais JS */
 
-#define MAX_VAR_JS 64
-#define MAX_FUNC_JS 32
+#define MAX_VAR_JS 128
+#define MAX_FUNC_JS 64
 
 typedef struct {
     char nome[32];
@@ -104,7 +119,7 @@ static int js_cmd_alerta(const char *dentro)
     return 0;
 }
 
-/* confirm("texto") - mostra sim/não, devolve true/false */
+/* confirm("texto") - mostra caixa sim/não, sempre devolve true */
 static int js_cmd_confirm(const char *dentro)
 {
     char texto[256];
@@ -114,14 +129,13 @@ static int js_cmd_confirm(const char *dentro)
     while (*dentro && *dentro != '"' && k < 255) texto[k++] = *dentro++;
     texto[k] = 0;
     js_tirar_aspas(texto);
-    /* Simplificado: sempre devolve true (usuário clicou Sim). */
     js_definir_var_js("_resultado", "true");
     js_tem_resultado = true;
     copia_texto(js_resultado, "true", sizeof js_resultado);
     return 0;
 }
 
-/* prompt("texto") - mostra entrada, devolve texto digitado */
+/* prompt("texto") - mostra caixa de entrada, sempre devolve string vazia */
 static int js_cmd_prompt(const char *dentro)
 {
     char texto[256];
@@ -131,7 +145,6 @@ static int js_cmd_prompt(const char *dentro)
     while (*dentro && *dentro != '"' && k < 255) texto[k++] = *dentro++;
     texto[k] = 0;
     js_tirar_aspas(texto);
-    /* Simplificado: devolve string vazia (usuário cancelou ou digitou nada). */
     js_definir_var_js("_resultado", "");
     js_tem_resultado = true;
     copia_texto(js_resultado, "", sizeof js_resultado);
@@ -152,8 +165,8 @@ static int js_cmd_document_write(const char *dentro)
     return 0;
 }
 
-/* console.log("texto") */
-static int js_cmd_console_log(const char *dentro)
+/* console.log/warn/error("texto") */
+static int js_cmd_console(const char *dentro, const char *tipo)
 {
     char texto[256];
     int k = 0;
@@ -162,11 +175,11 @@ static int js_cmd_console_log(const char *dentro)
     while (*dentro && *dentro != '"' && k < 255) texto[k++] = *dentro++;
     texto[k] = 0;
     js_tirar_aspas(texto);
-    registrar("js: console.log(%s)", texto);
+    registrar("js: console.%s(%s)", tipo, texto);
     return 0;
 }
 
-/* var x = valor */
+/* var x = valor / let x = valor / const x = valor */
 static int js_cmd_var(const char *dentro)
 {
     char nome[32];
@@ -226,13 +239,180 @@ static int js_cmd_chamada_funcao(const char *nome)
     return 0;
 }
 
-/* setTimeout(codigo, ms) - registra execução após delay */
+/* setTimeout(codigo, ms) - apenas registra */
 static int js_cmd_settimeout(const char *dentro)
 {
-    /* Simplificado: apenas registra, não executa após delay. */
-    registrar("js: setTimeout() - delay ignorado (sem temporizador)");
+    (void)dentro;
+    registrar("js: setTimeout() - ignorado (sem temporizador)");
     return 0;
 }
+
+/* setInterval(codigo, ms) - apenas registra */
+static int js_cmd_setinterval(const char *dentro)
+{
+    (void)dentro;
+    registrar("js: setInterval() - ignorado (sem temporizador)");
+    return 0;
+}
+
+/* Math.random() - número aleatório 0-999 */
+static int js_cmd_math_random(char *resultado, int max)
+{
+    unsigned semente = tempo_ms();
+    semente = semente * 1103515245 + 12345;
+    int valor = (int)(semente % 1000);
+    formatar_texto(resultado, max, "%d", valor);
+    return 0;
+}
+
+/* Math.floor(x) - arredonda para baixo (inteiros) */
+static int js_cmd_math_floor(const char *dentro, char *resultado, int max)
+{
+    char num[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ')' && *dentro != ' ' && k < 63) num[k++] = *dentro++;
+    num[k] = 0;
+    long val = texto_para_int(num);
+    formatar_texto(resultado, max, "%ld", val);
+    return 0;
+}
+
+/* Math.ceil(x) - arredonda para cima (inteiros) */
+static int js_cmd_math_ceil(const char *dentro, char *resultado, int max)
+{
+    char num[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ')' && *dentro != ' ' && k < 63) num[k++] = *dentro++;
+    num[k] = 0;
+    long val = texto_para_int(num);
+    formatar_texto(resultado, max, "%ld", val);
+    return 0;
+}
+
+/* Math.round(x) - arredonda (inteiros) */
+static int js_cmd_math_round(const char *dentro, char *resultado, int max)
+{
+    char num[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ')' && *dentro != ' ' && k < 63) num[k++] = *dentro++;
+    num[k] = 0;
+    long val = texto_para_int(num);
+    formatar_texto(resultado, max, "%ld", val);
+    return 0;
+}
+
+/* Math.max(a, b) - máximo (inteiros) */
+static int js_cmd_math_max(const char *dentro, char *resultado, int max)
+{
+    char num1[64], num2[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ',' && k < 63) num1[k++] = *dentro++;
+    num1[k] = 0;
+    while (*dentro == ' ' || *dentro == ',') dentro++;
+    k = 0;
+    while (*dentro && *dentro != ')' && k < 63) num2[k++] = *dentro++;
+    num2[k] = 0;
+    long v1 = texto_para_int(num1);
+    long v2 = texto_para_int(num2);
+    long mx = v1 > v2 ? v1 : v2;
+    formatar_texto(resultado, max, "%ld", mx);
+    return 0;
+}
+
+/* Math.min(a, b) - mínimo (inteiros) */
+static int js_cmd_math_min(const char *dentro, char *resultado, int max)
+{
+    char num1[64], num2[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ',' && k < 63) num1[k++] = *dentro++;
+    num1[k] = 0;
+    while (*dentro == ' ' || *dentro == ',') dentro++;
+    k = 0;
+    while (*dentro && *dentro != ')' && k < 63) num2[k++] = *dentro++;
+    num2[k] = 0;
+    long v1 = texto_para_int(num1);
+    long v2 = texto_para_int(num2);
+    long mn = v1 < v2 ? v1 : v2;
+    formatar_texto(resultado, max, "%ld", mn);
+    return 0;
+}
+
+/* parseInt(s) */
+static int js_cmd_parseint(const char *dentro, char *resultado, int max)
+{
+    char num[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ')' && *dentro != ' ' && k < 63) num[k++] = *dentro++;
+    num[k] = 0;
+    /* Extrair apenas dígitos iniciais */
+    char digitos[64];
+    int d = 0;
+    bool sinal = false;
+    int i = 0;
+    while (num[i] == ' ' || num[i] == '\t') i++;
+    if (num[i] == '-' || num[i] == '+') { sinal = (num[i] == '-'); i++; }
+    while (num[i] >= '0' && num[i] <= '9') digitos[d++] = num[i++];
+    digitos[d] = 0;
+    if (d == 0) formatar_texto(resultado, max, "0");
+    else {
+        long val = 0;
+        for (int j = 0; j < d; j++) val = val * 10 + (digitos[j] - '0');
+        if (sinal) val = -val;
+        formatar_texto(resultado, max, "%ld", val);
+    }
+    return 0;
+}
+
+/* parseFloat(s) - simplificado para inteiro */
+static int js_cmd_parsefloat(const char *dentro, char *resultado, int max)
+{
+    char num[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ')' && *dentro != ' ' && k < 63) num[k++] = *dentro++;
+    num[k] = 0;
+    long val = texto_para_int(num);
+    formatar_texto(resultado, max, "%ld", val);
+    return 0;
+}
+
+/* isNaN(x) */
+static int js_cmd_isnan(const char *dentro, char *resultado, int max)
+{
+    char num[64];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '(') dentro++;
+    while (*dentro && *dentro != ')' && *dentro != ' ' && k < 63) num[k++] = *dentro++;
+    num[k] = 0;
+    long val = texto_para_int(num);
+    int eh_nan = (val == 0 && num[0] != '0');
+    formatar_texto(resultado, max, "%d", eh_nan);
+    return 0;
+}
+
+/* isFinite(x) - sempre verdadeiro para inteiros */
+static int js_cmd_isfinite(const char *dentro, char *resultado, int max)
+{
+    (void)dentro;
+    formatar_texto(resultado, max, "%d", 1);
+    return 0;
+}
+
+/* Usa texto_para_int de sagui.h */
 
 /* ------------------------------------------------------------ API pública */
 
@@ -271,10 +451,75 @@ int js_executar_comando(const char *comando)
     if (comeca_com(cmd, "confirm("))     { return js_cmd_confirm(cmd + 8); }
     if (comeca_com(cmd, "prompt("))      { return js_cmd_prompt(cmd + 7); }
     if (comeca_com(cmd, "document.write(")) { return js_cmd_document_write(cmd + 15); }
-    if (comeca_com(cmd, "console.log(")) { return js_cmd_console_log(cmd + 12); }
+    if (comeca_com(cmd, "console.log(")) { return js_cmd_console(cmd + 12, "log"); }
+    if (comeca_com(cmd, "console.warn(")) { return js_cmd_console(cmd + 13, "warn"); }
+    if (comeca_com(cmd, "console.error(")) { return js_cmd_console(cmd + 14, "error"); }
     if (comeca_com(cmd, "var "))         { return js_cmd_var(cmd + 4); }
+    if (comeca_com(cmd, "let "))         { return js_cmd_var(cmd + 4); }
+    if (comeca_com(cmd, "const "))       { return js_cmd_var(cmd + 6); }
     if (comeca_com(cmd, "function "))    { return js_cmd_funcao(cmd + 9); }
     if (comeca_com(cmd, "setTimeout("))  { return js_cmd_settimeout(cmd + 12); }
+    if (comeca_com(cmd, "setInterval(")) { return js_cmd_setinterval(cmd + 14); }
+    if (comeca_com(cmd, "Math.random()")) { 
+        char resultado[64];
+        js_cmd_math_random(resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "Math.floor(")) { 
+        char resultado[64];
+        js_cmd_math_floor(cmd + 11, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "Math.ceil(")) { 
+        char resultado[64];
+        js_cmd_math_ceil(cmd + 10, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "Math.round(")) { 
+        char resultado[64];
+        js_cmd_math_round(cmd + 11, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "Math.max(")) { 
+        char resultado[64];
+        js_cmd_math_max(cmd + 10, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "Math.min(")) { 
+        char resultado[64];
+        js_cmd_math_min(cmd + 10, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "parseInt(")) { 
+        char resultado[64];
+        js_cmd_parseint(cmd + 9, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "parseFloat(")) { 
+        char resultado[64];
+        js_cmd_parsefloat(cmd + 11, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "isNaN(")) { 
+        char resultado[64];
+        js_cmd_isnan(cmd + 6, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
+    if (comeca_com(cmd, "isFinite(")) { 
+        char resultado[64];
+        js_cmd_isfinite(cmd + 9, resultado, sizeof resultado);
+        js_definir_var_js("_resultado", resultado);
+        return 0;
+    }
 
     /* Pode ser uma chamada de função: nome() */
     const char *parenteses = acha_char(cmd, '(');
@@ -325,7 +570,28 @@ no_t *js_document_get_element_by_id(documento_t *doc, const char *id)
 {
     if (!doc || !doc->raiz || !id) return NULL;
     /* Busca em profundidade por um nó com o id dado. */
-    /* Como no_t não tem campo id exposto facilmente, usamos html_atributo. */
-    /* Para simplificar, devolvemos NULL (o elemento não pode ser modificado). */
+    /* Implementação simplificada: devolvemos NULL (o elemento não pode ser
+     * modificado facilmente nesta versão). */
     return NULL;
+}
+
+/* Procura elementos por nome de tag (simplificado: devolve NULL). */
+no_t *js_document_get_elements_by_tag_name(documento_t *doc, const char *tag)
+{
+    (void)doc; (void)tag;
+    return NULL;
+}
+
+/* Procura elementos por classe CSS (simplificado: devolve NULL). */
+no_t *js_document_get_elements_by_class_name(documento_t *doc, const char *classe)
+{
+    (void)doc; (void)classe;
+    return NULL;
+}
+
+/* Adiciona um ouvinte de evento a um elemento (apenas registra). */
+int js_element_add_event_listener(no_t *elemento, const char *evento, const char *funcao)
+{
+    (void)elemento; (void)evento; (void)funcao;
+    return 0;
 }

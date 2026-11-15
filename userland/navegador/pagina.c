@@ -113,6 +113,22 @@ typedef struct {
     int      borda_top, borda_dir, borda_baixo, borda_esq;        /* pixels */
     int      largura, altura;   /* pixels, -1 = automático */
     int      tamanho_fonte;     /* pixels, -1 = padrão (16) */
+    uint32_t cor_borda;         /* cor da borda */
+    bool     borda_solida;      /* borda desenhada */
+    int      opacidade;         /* 0-100 */
+    bool     lista_bolas;       /* list-style: disc */
+    bool     texto_maiusculo;   /* text-transform: uppercase */
+    bool     texto_menusculo;   /* text-transform: lowercase */
+    int      espacamento_letras;/* letter-spacing */
+    int      espacamento_palavras;/* word-spacing */
+    int      linha_altura;      /* line-height */
+    uint8_t  estilo_borda;      /* 0=sólida, 1=tracejada, 2=pontilhada */
+    int      largura_max, altura_max; /* max-width, max-height */
+    int      largura_min, altura_min; /* min-width, min-height */
+    bool     overflow_esconder; /* overflow: hidden */
+    bool     fluxo_esquerda;    /* float: left */
+    bool     fluxo_direita;     /* float: right */
+    bool     branco_nao_quebra; /* white-space: nowrap */
 } estilo_t;
 
 #define COR_NENHUMA 0xFF000000u
@@ -142,12 +158,11 @@ static void aplicar_css(estilo_t *e, const char *s, int n)
         int np = fim_p - ini_p, nv = fim_v - ini_v;
         /* Tira o "!important". */
         for (int k = 0; k < nv; k++) if (v[k] == '!') { nv = k; while (nv > 0 && eh_espaco(v[nv - 1])) nv--; break; }
-        #define PROP(x) (np == (int)sizeof(x) - 1 && igual_sem_caixa(p, x, np))
-        #define VAL(x) (nv >= (int)sizeof(x) - 1 && igual_sem_caixa(v, x, (int)sizeof(x) - 1))
-        if (PROP("display") && VAL("none")) e->escondido = true;
-        else if (PROP("visibility") && (VAL("hidden") || VAL("collapse"))) e->escondido = true;
-        else if (PROP("color")) ler_cor(v, nv, &e->cor);
-        else if (PROP("background-color") || PROP("background")) {
+        if (np == 7 && igual_sem_caixa(p, "display", 7) && nv == 4 && igual_sem_caixa(v, "none", 4)) e->escondido = true;
+        else if (np == 10 && igual_sem_caixa(p, "visibility", 10) && nv >= 6 && igual_sem_caixa(v, "hidden", 6)) e->escondido = true;
+        else if (np == 10 && igual_sem_caixa(p, "visibility", 10) && nv >= 9 && igual_sem_caixa(v, "collapse", 9)) e->escondido = true;
+        else if (np == 5 && igual_sem_caixa(p, "color", 5)) ler_cor(v, nv, &e->cor);
+        else if ((np == 13 && igual_sem_caixa(p, "background-color", 13)) || (np == 9 && igual_sem_caixa(p, "background", 9))) {
             uint32_t c;
             if (ler_cor(v, nv, &c)) e->fundo = c;
             else if (nv > 0) {          /* "background: #fff url(...)" : a primeira palavra */
@@ -155,62 +170,118 @@ static void aplicar_css(estilo_t *e, const char *s, int n)
                 while (k < nv && !eh_espaco(v[k])) k++;
                 if (ler_cor(v, k, &c)) e->fundo = c;
             }
-        } else if (PROP("text-align")) e->alinhar = VAL("center") ? 1 : VAL("right") ? 2 : 0;
-        else if (PROP("font-weight")) {
-            if (VAL("bold") || VAL("bolder") || VAL("6") || VAL("7") || VAL("8") || VAL("9")) e->marcas |= PECA_NEGRITO;
-            else if (VAL("normal") || VAL("4") || VAL("lighter")) e->marcas &= (uint8_t)~PECA_NEGRITO;
-        } else if (PROP("text-decoration") || PROP("text-decoration-line")) {
-            if (VAL("none")) e->marcas &= (uint8_t)~(PECA_SUBLINHADO | PECA_RISCADO);
-            else if (VAL("underline")) e->marcas |= PECA_SUBLINHADO;
-            else if (VAL("line-through")) e->marcas |= PECA_RISCADO;
-        } else if (PROP("margin-top") || PROP("margin")) {
+        } else if (np == 10 && igual_sem_caixa(p, "text-align", 10)) e->alinhar = (nv >= 6 && igual_sem_caixa(v, "center", 6)) ? 1 : (nv >= 5 && igual_sem_caixa(v, "right", 5)) ? 2 : 0;
+        else if (np == 10 && igual_sem_caixa(p, "font-weight", 10)) {
+            if (nv >= 4 && igual_sem_caixa(v, "bold", 4)) e->marcas |= PECA_NEGRITO;
+            else if (nv >= 7 && igual_sem_caixa(v, "bolder", 7)) e->marcas |= PECA_NEGRITO;
+            else if (nv >= 1 && igual_sem_caixa(v, "6", 1)) e->marcas |= PECA_NEGRITO;
+            else if (nv >= 1 && igual_sem_caixa(v, "7", 1)) e->marcas |= PECA_NEGRITO;
+            else if (nv >= 1 && igual_sem_caixa(v, "8", 1)) e->marcas |= PECA_NEGRITO;
+            else if (nv >= 1 && igual_sem_caixa(v, "9", 1)) e->marcas |= PECA_NEGRITO;
+            else if (nv >= 6 && igual_sem_caixa(v, "normal", 6)) e->marcas &= (uint8_t)~PECA_NEGRITO;
+            else if (nv >= 1 && igual_sem_caixa(v, "4", 1)) e->marcas &= (uint8_t)~PECA_NEGRITO;
+            else if (nv >= 7 && igual_sem_caixa(v, "lighter", 7)) e->marcas &= (uint8_t)~PECA_NEGRITO;
+        } else if ((np == 14 && igual_sem_caixa(p, "text-decoration", 14)) || (np == 20 && igual_sem_caixa(p, "text-decoration-line", 20))) {
+            if (nv >= 4 && igual_sem_caixa(v, "none", 4)) e->marcas &= (uint8_t)~(PECA_SUBLINHADO | PECA_RISCADO);
+            else if (nv >= 9 && igual_sem_caixa(v, "underline", 9)) e->marcas |= PECA_SUBLINHADO;
+            else if (nv >= 11 && igual_sem_caixa(v, "line-through", 11)) e->marcas |= PECA_RISCADO;
+        } else if ((np == 11 && igual_sem_caixa(p, "margin-top", 11)) || (np == 6 && igual_sem_caixa(p, "margin", 6))) {
             int val = numero_css(v, nv);
             if (val >= 0) e->margem_top = val;
-        } else if (PROP("margin-right")) {
+        } else if (np == 12 && igual_sem_caixa(p, "margin-right", 12)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->margem_dir = val;
-        } else if (PROP("margin-bottom")) {
+        } else if (np == 13 && igual_sem_caixa(p, "margin-bottom", 13)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->margem_baixo = val;
-        } else if (PROP("margin-left")) {
+        } else if (np == 11 && igual_sem_caixa(p, "margin-left", 11)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->margem_esq = val;
-        } else if (PROP("padding-top")) {
+        } else if (np == 12 && igual_sem_caixa(p, "padding-top", 12)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->padding_top = val;
-        } else if (PROP("padding-right")) {
+        } else if (np == 13 && igual_sem_caixa(p, "padding-right", 13)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->padding_dir = val;
-        } else if (PROP("padding-bottom")) {
+        } else if (np == 14 && igual_sem_caixa(p, "padding-bottom", 14)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->padding_baixo = val;
-        } else if (PROP("padding-left")) {
+        } else if (np == 12 && igual_sem_caixa(p, "padding-left", 12)) {
             int val = numero_css(v, nv);
             if (val >= 0) e->padding_esq = val;
-        } else if (PROP("border-top")) {
+        } else if (np == 10 && igual_sem_caixa(p, "border-top", 10)) {
             int val = numero_css(v, nv);
-            if (val >= 0) e->borda_top = val;
-        } else if (PROP("border-right")) {
+            if (val >= 0) { e->borda_top = val; e->borda_solida = true; }
+        } else if (np == 11 && igual_sem_caixa(p, "border-right", 11)) {
             int val = numero_css(v, nv);
-            if (val >= 0) e->borda_dir = val;
-        } else if (PROP("border-bottom")) {
+            if (val >= 0) { e->borda_dir = val; e->borda_solida = true; }
+        } else if (np == 12 && igual_sem_caixa(p, "border-bottom", 12)) {
             int val = numero_css(v, nv);
-            if (val >= 0) e->borda_baixo = val;
-        } else if (PROP("border-left")) {
+            if (val >= 0) { e->borda_baixo = val; e->borda_solida = true; }
+        } else if (np == 11 && igual_sem_caixa(p, "border-left", 11)) {
             int val = numero_css(v, nv);
-            if (val >= 0) e->borda_esq = val;
-        } else if (PROP("width")) {
+            if (val >= 0) { e->borda_esq = val; e->borda_solida = true; }
+        } else if (np == 12 && igual_sem_caixa(p, "border-color", 12)) ler_cor(v, nv, &e->cor_borda);
+        else if (np == 12 && igual_sem_caixa(p, "border-style", 12)) {
+            if (nv >= 6 && igual_sem_caixa(v, "solid", 6)) e->estilo_borda = 0;
+            else if (nv >= 7 && igual_sem_caixa(v, "dashed", 7)) e->estilo_borda = 1;
+            else if (nv >= 7 && igual_sem_caixa(v, "dotted", 7)) e->estilo_borda = 2;
+        } else if (np == 12 && igual_sem_caixa(p, "border-width", 12)) {
             int val = numero_css(v, nv);
-            if (val >= 0) e->largura = val;
-        } else if (PROP("height")) {
-            int val = numero_css(v, nv);
-            if (val >= 0) e->altura = val;
-        } else if (PROP("font-size")) {
+            if (val >= 0) {
+                e->borda_top = val; e->borda_dir = val;
+                e->borda_baixo = val; e->borda_esq = val;
+                e->borda_solida = true;
+            }
+        } else if (np == 9 && igual_sem_caixa(p, "font-size", 9)) {
             int val = numero_css(v, nv);
             if (val > 0) e->tamanho_fonte = val;
+        } else if (np == 7 && igual_sem_caixa(p, "opacity", 7)) {
+            int val = numero_css(v, nv);
+            if (val < 0) val = 0;
+            if (val > 100) val = 100;
+            e->opacidade = val;
+        } else if (np == 15 && igual_sem_caixa(p, "list-style-type", 15)) {
+            if (nv >= 4 && igual_sem_caixa(v, "disc", 4)) e->lista_bolas = true;
+            else if (nv >= 4 && igual_sem_caixa(v, "none", 4)) e->lista_bolas = false;
+        } else if (np == 14 && igual_sem_caixa(p, "text-transform", 14)) {
+            if (nv >= 9 && igual_sem_caixa(v, "uppercase", 9)) { e->texto_maiusculo = true; e->texto_menusculo = false; }
+            else if (nv >= 9 && igual_sem_caixa(v, "lowercase", 9)) { e->texto_menusculo = true; e->texto_maiusculo = false; }
+            else if (nv >= 4 && igual_sem_caixa(v, "none", 4)) { e->texto_maiusculo = false; e->texto_menusculo = false; }
+        } else if (np == 15 && igual_sem_caixa(p, "letter-spacing", 15)) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->espacamento_letras = val;
+        } else if (np == 13 && igual_sem_caixa(p, "word-spacing", 13)) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->espacamento_palavras = val;
+        } else if (np == 11 && igual_sem_caixa(p, "line-height", 11)) {
+            int val = numero_css(v, nv);
+            if (val > 0) e->linha_altura = val;
+        } else if (np == 10 && igual_sem_caixa(p, "max-width", 10)) {
+            int val = numero_css(v, nv);
+            if (val > 0) e->largura_max = val;
+        } else if (np == 10 && igual_sem_caixa(p, "max-height", 10)) {
+            int val = numero_css(v, nv);
+            if (val > 0) e->altura_max = val;
+        } else if (np == 9 && igual_sem_caixa(p, "min-width", 9)) {
+            int val = numero_css(v, nv);
+            if (val > 0) e->largura_min = val;
+        } else if (np == 9 && igual_sem_caixa(p, "min-height", 9)) {
+            int val = numero_css(v, nv);
+            if (val > 0) e->altura_min = val;
+        } else if (np == 5 && igual_sem_caixa(p, "float", 5)) {
+            if (nv >= 4 && igual_sem_caixa(v, "left", 4)) { e->fluxo_esquerda = true; e->fluxo_direita = false; }
+            else if (nv >= 5 && igual_sem_caixa(v, "right", 5)) { e->fluxo_direita = true; e->fluxo_esquerda = false; }
+            else { e->fluxo_esquerda = false; e->fluxo_direita = false; }
+        } else if (np == 7 && igual_sem_caixa(p, "overflow", 7)) {
+            if (nv >= 6 && igual_sem_caixa(v, "hidden", 6)) e->overflow_esconder = true;
+            else e->overflow_esconder = false;
+        } else if (np == 10 && igual_sem_caixa(p, "white-space", 10)) {
+            if (nv >= 6 && igual_sem_caixa(v, "nowrap", 6)) e->branco_nao_quebra = true;
+            else e->branco_nao_quebra = false;
+        } else if (np == 11 && igual_sem_caixa(p, "font-family", 11)) {
+            /* Fonte: ignoramos, usamos a do sistema */
         }
-        #undef PROP
-        #undef VAL
     }
 }
 
