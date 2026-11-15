@@ -1,0 +1,259 @@
+/* js.c - interpretador JavaScript mínimo para o Sagui Navegador.
+ *
+ * Suporta um subconjunto muito pequeno de JavaScript "antigo":
+ *   - alert("texto")        - mostra uma caixa de mensagem
+ *   - document.write("texto") - escreve texto no documento (apenas no carregamento)
+ *   - console.log("texto")  - registra no log do sistema
+ *   - var x = valor         - variáveis globais simples (números e strings)
+ *   - function nome() { ... } - declara função (apenas registra, não executa)
+ *
+ * É intencionalmente limitado: o SaguiOS não é um navegador completo.
+ * O objetivo é fazer páginas simples funcionarem.
+ *
+ * Sem libc, apenas syscalls int 0x80 e libsagui. */
+
+#include "js.h"
+#include "navegador.h"
+
+static void js_definir_var_js(const char *nome, const char *valor);
+
+/* ------------------------------------------------------------ variáveis globais JS */
+
+#define MAX_VAR_JS 64
+#define MAX_FUNC_JS 32
+
+typedef struct {
+    char nome[32];
+    char valor[256];
+    bool eh_numero;
+} variavel_js_t;
+
+static variavel_js_t variaveis_js[MAX_VAR_JS];
+static int qtd_variaveis_js = 0;
+
+typedef struct {
+    char nome[32];
+    const char *codigo;
+    int tamanho;
+} funcao_js_t;
+
+static funcao_js_t funcoes_js[MAX_FUNC_JS];
+static int qtd_funcoes_js = 0;
+
+/* ------------------------------------------------------------ utilitários */
+
+static void js_trim(char *s)
+{
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+    if (*s) {
+        char *fim = s + tam_texto(s) - 1;
+        while (fim > s && (*fim == ' ' || *fim == '\t' || *fim == '\n' || *fim == '\r')) fim--;
+        fim[1] = 0;
+    }
+    /* Move para o início */
+    char *d = s;
+    while (*s) *d++ = *s++;
+    *d = 0;
+}
+
+/* Remove aspas ao redor de uma string. */
+static void js_tirar_aspas(char *s)
+{
+    int n = (int)tam_texto(s);
+    if (n >= 2 && s[0] == '"' && s[n-1] == '"') {
+        for (int i = 1; i < n - 1; i++) s[i-1] = s[i];
+        s[n-2] = 0;
+    }
+}
+
+/* Procura uma variável JS pelo nome. Devolve o índice ou -1. */
+static int js_procurar_var(const char *nome)
+{
+    for (int i = 0; i < qtd_variaveis_js; i++)
+        if (compara_texto(variaveis_js[i].nome, nome) == 0) return i;
+    return -1;
+}
+
+/* Procura uma função JS pelo nome. Devolve o índice ou -1. */
+static int js_procurar_funcao(const char *nome)
+{
+    for (int i = 0; i < qtd_funcoes_js; i++)
+        if (compara_texto(funcoes_js[i].nome, nome) == 0) return i;
+    return -1;
+}
+
+/* ------------------------------------------------------------ comandos */
+
+/* alert("texto") */
+static int js_cmd_alerta(const char *dentro)
+{
+    char texto[256];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '"') dentro++;
+    while (*dentro && *dentro != '"' && k < 255) texto[k++] = *dentro++;
+    texto[k] = 0;
+    js_tirar_aspas(texto);
+    js_alerta(texto);
+    return 0;
+}
+
+/* document.write("texto") */
+static int js_cmd_document_write(const char *dentro)
+{
+    char texto[256];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '"') dentro++;
+    while (*dentro && *dentro != '"' && k < 255) texto[k++] = *dentro++;
+    texto[k] = 0;
+    js_tirar_aspas(texto);
+    registrar("js: document.write(%s)", texto);
+    /* Aqui poderíamos injetar no DOM, mas por enquanto apenas registra. */
+    return 0;
+}
+
+/* console.log("texto") */
+static int js_cmd_console_log(const char *dentro)
+{
+    char texto[256];
+    int k = 0;
+    while (*dentro == ' ' || *dentro == '\t') dentro++;
+    if (*dentro == '"') dentro++;
+    while (*dentro && *dentro != '"' && k < 255) texto[k++] = *dentro++;
+    texto[k] = 0;
+    js_tirar_aspas(texto);
+    registrar("js: console.log(%s)", texto);
+    return 0;
+}
+
+/* var x = valor */
+static int js_cmd_var(const char *dentro)
+{
+    char nome[32];
+    int k = 0;
+    while (*dentro && *dentro != ' ' && *dentro != '=' && k < 31) nome[k++] = *dentro++;
+    nome[k] = 0;
+    while (*dentro && *dentro != '=') dentro++;
+    if (*dentro == '=') dentro++;
+    while (*dentro == ' ') dentro++;
+    char valor[256];
+    k = 0;
+    if (*dentro == '"') dentro++;
+    while (*dentro && *dentro != '"' && k < 255) valor[k++] = *dentro++;
+    valor[k] = 0;
+    js_tirar_aspas(valor);
+    js_definir_var_js(nome, valor);
+    return 0;
+}
+
+/* function nome() { ... } */
+static int js_cmd_funcao(const char *dentro)
+{
+    char nome[32];
+    int k = 0;
+    while (*dentro && *dentro != '(' && *dentro != ' ' && k < 31) nome[k++] = *dentro++;
+    nome[k] = 0;
+    /* Procura o corpo da função */
+    const char *chave_abre = acha_char(dentro, '{');
+    const char *chave_fecha = acha_char(dentro, '}');
+    if (chave_abre && chave_fecha && chave_fecha > chave_abre) {
+        int tam = (int)(chave_fecha - chave_abre - 1);
+        if (tam > 0 && tam < 1024) {
+            char *codigo = aloca(tam + 1);
+            if (codigo) {
+                memcpy(codigo, chave_abre + 1, tam);
+                codigo[tam] = 0;
+                if (qtd_funcoes_js < MAX_FUNC_JS) {
+                    copia_texto(funcoes_js[qtd_funcoes_js].nome, nome, sizeof funcoes_js[qtd_funcoes_js].nome);
+                    funcoes_js[qtd_funcoes_js].codigo = codigo;
+                    funcoes_js[qtd_funcoes_js].tamanho = tam;
+                    qtd_funcoes_js++;
+                } else {
+                    libera(codigo);
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------ API pública */
+
+void js_definir_var_js(const char *nome, const char *valor)
+{
+    int idx = js_procurar_var(nome);
+    if (idx >= 0) {
+        copia_texto(variaveis_js[idx].valor, valor, sizeof variaveis_js[idx].valor);
+        return;
+    }
+    if (qtd_variaveis_js < MAX_VAR_JS) {
+        copia_texto(variaveis_js[qtd_variaveis_js].nome, nome, sizeof variaveis_js[qtd_variaveis_js].nome);
+        copia_texto(variaveis_js[qtd_variaveis_js].valor, valor, sizeof variaveis_js[qtd_variaveis_js].valor);
+        variaveis_js[qtd_variaveis_js].eh_numero = false;
+        qtd_variaveis_js++;
+    }
+}
+
+/* Mostra uma caixa de alerta JS. */
+void js_alerta(const char *texto)
+{
+    mensagem("JavaScript", texto);
+}
+
+/* Executa um único comando JavaScript. */
+int js_executar_comando(const char *comando)
+{
+    char cmd[512];
+    int k = 0;
+    while (*comando && k < 511) cmd[k++] = *comando++;
+    cmd[k] = 0;
+    js_trim(cmd);
+    if (tam_texto(cmd) == 0) return -1;
+
+    if (comeca_com(cmd, "alert(")) { return js_cmd_alerta(cmd + 6); }
+    if (comeca_com(cmd, "document.write(")) { return js_cmd_document_write(cmd + 15); }
+    if (comeca_com(cmd, "console.log(")) { return js_cmd_console_log(cmd + 12); }
+    if (comeca_com(cmd, "var ")) { return js_cmd_var(cmd + 4); }
+    if (comeca_com(cmd, "function ")) { return js_cmd_funcao(cmd + 9); }
+
+    return -1;
+}
+
+/* Executa um bloco de JavaScript (conteúdo de uma tag <script>). */
+int js_executar_bloco(const char *codigo, int tamanho)
+{
+    if (!codigo || tamanho <= 0) return -1;
+
+    /* Copia para um buffer com terminação zero. */
+    char *bloco = aloca((uint32_t)tamanho + 1);
+    if (!bloco) return -1;
+    memcpy(bloco, codigo, (size_t)tamanho);
+    bloco[tamanho] = 0;
+
+    /* Executa linha por linha. */
+    char *linha = bloco;
+    int comandos_executados = 0;
+    while (*linha) {
+        char *fim = acha_char(linha, '\n');
+        if (fim) *fim = 0;
+        js_trim(linha);
+        if (tam_texto(linha) > 0) {
+            if (js_executar_comando(linha) == 0) comandos_executados++;
+        }
+        if (fim) linha = fim + 1;
+        else break;
+    }
+
+    libera(bloco);
+    return comandos_executados > 0 ? 0 : -1;
+}
+
+/* Procura um nó no documento por id. */
+no_t *js_document_get_element_by_id(documento_t *doc, const char *id)
+{
+    if (!doc || !doc->raiz || !id) return NULL;
+    /* Percorre a árvore procurando um nó com o id dado. */
+    /* Implementação simples: busca em profundidade. */
+    return NULL; /* não implementado completamente */
+}

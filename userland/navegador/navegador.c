@@ -17,6 +17,7 @@
  * para o endereço. Favoritos ficam em /usb/.saguios/favoritos.txt (ou
  * /tmp/favoritos.txt sem pendrive), uma linha "endereço<TAB>título" cada. */
 #include "navegador.h"
+#include "js.h"
 
 /* O tamanho da janela muda (H78): começa em 960 x 660. */
 static int larg_jan = 960, alt_jan = 660;
@@ -418,6 +419,21 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
         doc = html_ler(h, (uint32_t)n, 0);
     } else if (comeca_com(tipo, "text/html") || comeca_com(tipo, "application/xhtml")) {
         doc = html_ler(r.d, r.n, charset);
+        /* Executa blocos JavaScript em tags <script> antes de renderizar. */
+        if (doc) {
+            const char *p = r.d;
+            while ((p = acha_char(p, '<')) != NULL) {
+                if (compara_texto_n(p, "<script>", 8) == 0) {
+                    p += 8;
+                    const char *fim = acha_char(p, '<');
+                    if (fim && compara_texto_n(fim, "</script>", 9) == 0) {
+                        int tam = (int)(fim - p);
+                        js_executar_bloco(p, tam);
+                        p = fim + 9;
+                    } else break;
+                } else p++;
+            }
+        }
     } else {
         doc = html_texto_puro(r.d, r.n, charset);
         if (doc) {
