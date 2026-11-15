@@ -103,10 +103,11 @@ static void desenhar_aviso(superficie_t *t)
     if (!aviso_ate) return;
     int x, y;
     aviso_retangulo(&x, &y);
-    sup_retangulo(t, x, y, AVISO_L, AVISO_A, 0x18202A);
-    sup_moldura(t, x, y, AVISO_L, AVISO_A, 0xFFDF4A);
-    sup_retangulo(t, x, y, 6, AVISO_A, 0xFFDF4A);
-    sup_texto(t, x + 16, y + 6, "SaguiOS", 0xFFDF4A);
+    vidro_sombra(t, x, y, AVISO_L, AVISO_A);
+    vidro_pintar(t, x, y, AVISO_L, AVISO_A, 0x0F172A, 180, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    sup_moldura(t, x, y, AVISO_L, AVISO_A, 0x3B82F6);
+    sup_retangulo(t, x, y, 6, AVISO_A, 0x3B82F6);
+    sup_texto(t, x + 16, y + 6, "SaguiOS", 0x60A5FA);
     /* Até duas linhas, quebrando no último espaço que couber. */
     const char *p = aviso_texto;
     for (int l = 0; l < 2 && *p; l++) {
@@ -118,7 +119,7 @@ static void desenhar_aviso(superficie_t *t)
         }
         char linha[AVISO_COLUNAS + 1];
         txt_copia_n(linha, p, (size_t)n + 1);
-        sup_texto(t, x + 16, y + 24 + l * 17, linha, 0xFFFFFF);
+        sup_texto(t, x + 16, y + 24 + l * 17, linha, 0xF8FAFC);
         p += n;
         while (*p == ' ') p++;
     }
@@ -166,16 +167,16 @@ typedef struct {
 
 static const tema_t tema_escuro = {
     /* barras de título: foco, normal, texto foco, texto normal, intensidade vidro */
-    0x1E3A8A, 0x1E293B, 0xFFFFFF, 0xCBD5E1, 160,
+    0x2563EB, 0x1E293B, 0xFFFFFF, 0xCBD5E1, 170,
     /* barra superior: topo, nome, frase, relógio, intensidade vidro */
-    0x0F172A, 0x60A5FA, 0x94A3B8, 0xFFFFFF, 140,
+    0x0F172A, 0x3B82F6, 0x93C5FD, 0xFFFFFF, 150,
     /* doca: fundo, destaque, ponto, texto, intensidade vidro */
-    0x0F172A, 0x3B82F6, 0x60A5FA, 0xFFFFFF, 120, false,
+    0x0F172A, 0x2563EB, 0x60A5FA, 0xFFFFFF, 130, false,
 };
 static const tema_t tema_claro = {
-    0x2563EB, 0xF1F5F9, 0x1E293B, 0x475569, 200,
-    0xF8FAFC, 0x15803D, 0x64748B, 0x0F172A, 190,
-    0xF8FAFC, 0x1E293B, 0x15803D, 0x0F172A, 180, true,
+    0x3B82F6, 0xF1F5F9, 0x1E293B, 0x475569, 210,
+    0xF8FAFC, 0x2563EB, 0x64748B, 0x0F172A, 200,
+    0xF8FAFC, 0x3B82F6, 0x15803D, 0x0F172A, 190, true,
 };
 static const tema_t *tema = &tema_escuro;
 static bool efeitos_automaticos = true, efeitos_lento;
@@ -281,12 +282,15 @@ static void desenhar_doca(void)
     if (!doca_ligada) return;
     vidro_sombra(&tela, doca_x, doca_y, doca_l, DOCA_A);
     vidro_pintar(&tela, doca_x, doca_y, doca_l, DOCA_A, tema->doca, tema->k_doca, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    sup_moldura(&tela, doca_x, doca_y, doca_l, DOCA_A, 0x3B82F6);
     janela_t *f = focada();
     for (int i = 0; i < qtd_doca; i++) {
         int cx = doca_x + 8 + i * DOCA_CELULA;
         bool aberto = doca[i].janela >= 0;
         if (aberto && f && &janelas[doca[i].janela] == f)
-            vidro_pintar(&tela, cx + 2, doca_y + 4, DOCA_CELULA - 4, DOCA_A - 8, tema->doca_destaque, 50, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+            vidro_pintar(&tela, cx + 2, doca_y + 4, DOCA_CELULA - 4, DOCA_A - 8, tema->doca_destaque, 55, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+        else if (i == doca_sob)
+            vidro_pintar(&tela, cx + 2, doca_y + 4, DOCA_CELULA - 4, DOCA_A - 8, 0xFFFFFF, 20, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
         sup_desenho(&tela, cx + (DOCA_CELULA - 32) / 2, doca_y + 8, doca[i].desenho, 1);
         if (aberto) sup_retangulo(&tela, cx + DOCA_CELULA / 2 - 3, doca_y + DOCA_A - 10, 6, 3, tema->doca_ponto);
         if (i == QTD_FIXOS - 1 && qtd_doca > QTD_FIXOS)
@@ -299,6 +303,7 @@ static void desenhar_doca(void)
         int l = texto_largura(nome) + 16, x = doca_x + 8 + doca_sob * DOCA_CELULA + DOCA_CELULA / 2 - l / 2;
         vidro_pintar(&tela, x, doca_y - 28, l, 22, tema->doca, tema->k_doca + 40 > 255 ? 255 : tema->k_doca + 40,
                      CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+        sup_moldura(&tela, x, doca_y - 28, l, 22, 0x3B82F6);
         sup_texto(&tela, x + 8, doca_y - 25, nome, tema->doca_texto);
     }
 }
@@ -332,10 +337,15 @@ static void desenhar_menu(void)
     vidro_sombra(&tela, MENU_X, MENU_Y, MENU_L, a);
     vidro_pintar(&tela, MENU_X, MENU_Y, MENU_L, a, tema->topo, tema->k_topo + 30 > 255 ? 255 : tema->k_topo + 30,
                  CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    sup_moldura(&tela, MENU_X, MENU_Y, MENU_L, a, 0x3B82F6);
     for (int i = 0; i < QTD_MENU; i++) {
         int y = MENU_Y + 4 + i * MENU_ITEM;
-        if (i == menu_sob) sup_retangulo(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, 0x0B7A3E);
-        sup_texto(&tela, MENU_X + 14, y + 5, menu_itens[i].nome, i == menu_sob ? 0xFFFFFF : tema->topo_relogio);
+        if (i == menu_sob) {
+            vidro_pintar(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, 0x3B82F6, 60, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+            sup_texto(&tela, MENU_X + 14, y + 5, menu_itens[i].nome, 0xFFFFFF);
+        } else {
+            sup_texto(&tela, MENU_X + 14, y + 5, menu_itens[i].nome, tema->topo_relogio);
+        }
     }
 }
 
@@ -413,8 +423,8 @@ static void desenhar_anims(void)
         if (!anims[i].ativa) continue;
         int r[4];
         anim_retangulo(&anims[i], r);
-        sup_moldura(&tela, r[0], r[1], r[2], r[3], 0xFFFFFF);
-        sup_moldura(&tela, r[0] + 1, r[1] + 1, r[2] - 2, r[3] - 2, 0x0B7A3E);
+        sup_moldura(&tela, r[0], r[1], r[2], r[3], 0x60A5FA);
+        sup_moldura(&tela, r[0] + 1, r[1] + 1, r[2] - 2, r[3] - 2, 0x3B82F6);
     }
 }
 
@@ -431,24 +441,32 @@ static void desenhar_moldura(janela_t *j, bool foco)
     sup_retangulo(&tela, x, y + a - BORDA, l, BORDA, cor);
     if (!vidro_efeitos) sup_moldura(&tela, x - 1, y - 1, l + 2, a + 2, 0x101010);
     sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
-    /* Fechar: um círculo vermelho com um X; minimizar: um traço. */
-    int bx = x + l - BORDA - 20, by = y + 4;
-    uint32_t vermelho = foco ? 0xE0483E : 0x9A6A66;
-    for (int r = 0; r < 16; r++) {
-        int pula = r < 4 ? (int[]){ 5, 3, 2, 1 }[r] : (r > 11 ? (int[]){ 1, 2, 3, 5 }[r - 12] : 0);
-        sup_retangulo(&tela, bx + pula, by + r, 16 - 2 * pula, 1, vermelho);
+    /* Fechar: um círculo vermelho com um X. */
+    int bx = x + l - BORDA - 22, by = y + 6;
+    uint32_t vermelho = foco ? 0xEF4444 : 0x9CA3AF;
+    for (int r = 0; r < 14; r++) {
+        int pula = r < 3 ? (int[]){ 4, 2, 1 }[r] : (r > 10 ? (int[]){ 1, 2, 4 }[r - 11] : 0);
+        sup_retangulo(&tela, bx + pula, by + r, 14 - 2 * pula, 1, vermelho);
     }
-    for (int k = 4; k < 12; k++) {
+    for (int k = 3; k < 11; k++) {
         sup_retangulo(&tela, bx + k, by + k, 1, 1, 0xFFFFFF);
-        sup_retangulo(&tela, bx + 15 - k, by + k, 1, 1, 0xFFFFFF);
+        sup_retangulo(&tela, bx + 13 - k, by + k, 1, 1, 0xFFFFFF);
     }
-    int mx = bx - 24;
+    /* Minimizar: um traço horizontal. */
+    int mx = bx - 26;
     uint32_t tc = foco ? tema->texto_foco : tema->texto;
-    sup_retangulo(&tela, mx + 3, by + 11, 10, 2, tc);
-    if (j->redimensionavel) {                    /* maximizar (H78): um quadrado; maximizada: dois */
-        int qx = bx - 48;
-        if (j->maximizada) { sup_moldura(&tela, qx + 5, by + 2, 9, 9, tc); sup_retangulo(&tela, qx + 2, by + 5, 9, 9, foco ? tema->titulo_foco : tema->titulo); sup_moldura(&tela, qx + 2, by + 5, 9, 9, tc); }
-        else { sup_moldura(&tela, qx + 2, by + 2, 12, 12, tc); sup_retangulo(&tela, qx + 2, by + 3, 12, 1, tc); }
+    sup_retangulo(&tela, mx + 2, by + 6, 12, 2, tc);
+    /* Maximizar: um quadrado (ou dois se maximizada). */
+    if (j->redimensionavel) {
+        int qx = mx - 26;
+        if (j->maximizada) {
+            sup_moldura(&tela, qx + 4, by + 1, 8, 8, tc);
+            sup_retangulo(&tela, qx + 1, by + 4, 8, 8, foco ? tema->titulo_foco : tema->titulo);
+            sup_moldura(&tela, qx + 1, by + 4, 8, 8, tc);
+        } else {
+            sup_moldura(&tela, qx + 2, by + 2, 10, 10, tc);
+            sup_retangulo(&tela, qx + 2, by + 3, 10, 1, tc);
+        }
     }
 }
 
@@ -523,12 +541,14 @@ static void desenhar_redimensionar(void)
     if (redimensionando < 0) return;
     janela_t *j = &janelas[redimensionando];
     int l = redim_l + 2 * BORDA, a = redim_a + BARRA_TITULO + BORDA;
-    sup_moldura(&tela, j->x, j->y, l, a, 0xFFFFFF);
-    sup_moldura(&tela, j->x + 1, j->y + 1, l - 2, a - 2, 0x0B7A3E);
+    vidro_sombra(&tela, j->x, j->y, l, a);
+    vidro_pintar(&tela, j->x, j->y, l, a, 0x0F172A, 160, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
+    sup_moldura(&tela, j->x, j->y, l, a, 0x3B82F6);
     char t[24];
     snformatar(t, sizeof t, "%d x %d", redim_l, redim_a);
-    sup_retangulo(&tela, j->x + l / 2 - 44, j->y + a / 2 - 10, 88, 20, 0x101820);
-    sup_texto(&tela, j->x + l / 2 - texto_largura(t) / 2, j->y + a / 2 - 8, t, 0xFFFFFF);
+    sup_retangulo(&tela, j->x + l / 2 - 40, j->y + a / 2 - 9, 80, 18, 0x1E293B);
+    sup_moldura(&tela, j->x + l / 2 - 40, j->y + a / 2 - 9, 80, 18, 0x3B82F6);
+    sup_texto(&tela, j->x + l / 2 - texto_largura(t) / 2, j->y + a / 2 - 7, t, 0xFFFFFF);
 }
 
 /* O vidro precisa do que está atrás dele: se o pedaço a redesenhar encosta

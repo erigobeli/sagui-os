@@ -47,6 +47,8 @@ static const icone_t icones[] = {
     { "uname",       "/bin/uname",       &arte_icone_terminal },   /* versão do sistema */
     { "Grep",        "/bin/grep",        &arte_icone_editor },     /* busca em arquivos */
     { "Car3D",       "/bin/car3d",       &arte_icone_banana },     /* corrida 3D */
+    { "Benchmark",   "/bin/benchmark",   &arte_icone_sagui3d },    /* teste de renderização 3D */
+    { "Matrix",      "/bin/smatrix",     &arte_icone_banana },     /* efeito Matrix */
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
 #define ICONE_PENDRIVE (QTD_ICONES - 1)
@@ -164,6 +166,16 @@ static void desenhar_fundo(void)
         uint32_t *p = fundo + y * larg;
         for (int x = 0; x < larg; x++) p[x] = c;
     }
+    /* Grade sutil para dar profundidade ao fundo. */
+    for (int y = 0; y < alt; y += 40) {
+        uint32_t *p = fundo + y * larg;
+        for (int x = 0; x < larg; x += 40) {
+            uint32_t grade = c0;
+            int r = (int)((grade >> 16) & 255), g = (int)((grade >> 8) & 255), b = (int)(grade & 255);
+            r = r > 240 ? 240 : (r + 20); g = g > 240 ? 240 : (g + 20); b = b > 240 ? 240 : (b + 20);
+            p[x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+        }
+    }
     /* O mascote, grande, no canto de baixo à direita (dá para esconder). */
     const char *mascote = config_obter("aparencia.sagui");
     if (!mascote || txt_compara(mascote, "nao") != 0) {
@@ -172,15 +184,18 @@ static void desenhar_fundo(void)
         sup_desenho(&s, mx, my, &arte_sagui, esc);
         texto_com_sombra(&s, mx + 16 * esc - texto_largura("SaguiOS") / 2, my + 32 * esc + 6, "SaguiOS", 0xFFFFFF);
     }
-    /* Ícones na coluna da esquerda, com o nome embaixo. */
+    /* Ícones na coluna da esquerda, com fundo arredondado e nome embaixo. */
     ler_ocultos();
     for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) {
         if (!icone_visivel(i)) continue;
         int x, y, l, a;
         area_icone_retangulo(i, &x, &y, &l, &a);
-        sup_desenho(&s, x + (l - 64) / 2, y, desenho_icone(i), 2);
+        /* Fundo arredondado do ícone. */
+        sup_retangulo(&s, x + 4, y + 4, l - 8, a - 8, 0x1E293B);
+        sup_moldura(&s, x + 4, y + 4, l - 8, a - 8, 0x475569);
+        sup_desenho(&s, x + (l - 48) / 2, y + 8, desenho_icone(i), 1);
         const char *nome = nome_icone(i);
-        texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 68, nome, 0xFFFFFF);
+        texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 64, nome, 0xFFFFFF);
     }
 }
 
@@ -244,9 +259,9 @@ bool area_relogio_mudou(void)
 void area_barra(superficie_t *s, bool vidro, bool claro)
 {
     static const char *semana[] = { "dom", "seg", "ter", "qua", "qui", "sex", "sáb" };
-    uint32_t nome = claro ? 0x0B6A36 : 0xFFDF4A, frase = claro ? 0x4A5560 : 0x9AA8B8, relogio = claro ? 0x1E2328 : 0xFFFFFF;
-    if (!vidro) sup_retangulo(s, 0, 0, larg, BARRA_SUPERIOR, claro ? 0xE8ECEF : 0x18202A);
-    sup_retangulo(s, 0, BARRA_SUPERIOR - 1, larg, 1, 0x0B7A3E);
+    uint32_t nome = claro ? 0x0B6A36 : 0x60A5FA, frase = claro ? 0x4A5560 : 0x93C5FD, relogio = claro ? 0x1E2328 : 0xFFFFFF;
+    if (!vidro) sup_retangulo(s, 0, 0, larg, BARRA_SUPERIOR, claro ? 0xF1F5F9 : 0x0F172A);
+    sup_retangulo(s, 0, BARRA_SUPERIOR - 1, larg, 1, 0x2563EB);
     /* O botão do menu (H75): cabecinha do sagui (as linhas 2 a 17 do ícone
      * "sobre"), o nome e uma setinha. */
     desenho_t cabeca = { arte_icone_sobre.linhas + 2, 32, 16 };
@@ -269,14 +284,14 @@ void area_barra(superficie_t *s, bool vidro, bool claro)
     if (estado > 0) {
         int ex0, ey0, el0, ea0;
         area_energia_retangulo(&ex0, &ey0, &el0, &ea0);
-        uint32_t cor = estado == 3 ? 0x5FD35F : (estado == 2 ? 0xF4D03F : 0x8A939C);
+        uint32_t cor = estado == 3 ? 0x10B981 : (estado == 2 ? 0xF59E0B : 0x64748B);
         for (int y = 0; y < 16; y++)
             for (int x = 0; x < 16; x++)
                 if (arte_icone_rede[y][x] == 'B') sup_retangulo(s, ex0 - 28 + x, ey0 + 2 + y, 1, 1, cor);
         if (estado == 1) {   /* sem cabo: um x vermelho por cima */
             for (int k = 0; k < 8; k++) {
-                sup_retangulo(s, ex0 - 28 + 4 + k, ey0 + 2 + 2 + k, 1, 1, 0xE04848);
-                sup_retangulo(s, ex0 - 28 + 11 - k, ey0 + 2 + 2 + k, 1, 1, 0xE04848);
+                sup_retangulo(s, ex0 - 28 + 4 + k, ey0 + 2 + 2 + k, 1, 1, 0xEF4444);
+                sup_retangulo(s, ex0 - 28 + 11 - k, ey0 + 2 + 2 + k, 1, 1, 0xEF4444);
             }
         }
     }
@@ -285,7 +300,7 @@ void area_barra(superficie_t *s, bool vidro, bool claro)
     if (vol >= 0) {
         int sx, sy, sl, sa;
         area_som_retangulo(&sx, &sy, &sl, &sa);
-        uint32_t c = claro ? 0x2A323A : 0xE8ECEF;
+        uint32_t c = claro ? 0x2A323A : 0xE5E7EB;
         sup_retangulo(s, sx + 2, sy + 7, 3, 6, c);
         for (int k = 0; k < 5; k++) sup_retangulo(s, sx + 5 + k, sy + 7 - k, 1, 6 + 2 * k, c);
         int ondas = vol == 0 ? 0 : vol < 40 ? 1 : vol < 75 ? 2 : 3;
@@ -294,7 +309,7 @@ void area_barra(superficie_t *s, bool vidro, bool claro)
             sup_retangulo(s, ox, meio - h, 1, 2 * h, c);
         }
         if (vol == 0)
-            for (int k = 0; k < 6; k++) { sup_retangulo(s, sx + 12 + k, sy + 7 + k, 1, 1, 0xE04848); sup_retangulo(s, sx + 17 - k, sy + 7 + k, 1, 1, 0xE04848); }
+            for (int k = 0; k < 6; k++) { sup_retangulo(s, sx + 12 + k, sy + 7 + k, 1, 1, 0xEF4444); sup_retangulo(s, sx + 17 - k, sy + 7 + k, 1, 1, 0xEF4444); }
         volume_mostrado = vol;
     }
     /* Botão de energia (H36), à esquerda do relógio. */

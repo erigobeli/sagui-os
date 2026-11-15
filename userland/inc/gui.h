@@ -8,15 +8,18 @@
 #include "sagui.h"
 
 /* Cores do tema (padrão 2026: tons suaves, escuro por padrão). */
-#define COR_FUNDO      0xF1F5F9
+#define COR_FUNDO      0xF8FAFC
 #define COR_TEXTO      0x0F172A
 #define COR_TEXTO_FRACO 0x64748B
 #define COR_BORDA      0xCBD5E1
 #define COR_BOTAO      0xE2E8F0
 #define COR_BOTAO_APERTADO 0xCBD5E1
-#define COR_DESTAQUE   0x2563EB   /* azul moderno do SaguiOS */
+#define COR_DESTAQUE   0x3B82F6   /* azul brilhante do SaguiOS */
 #define COR_SELECAO    0xBFDBFE
 #define COR_BRANCO     0xFFFFFF
+#define COR_SUCESSO    0x10B981   /* verde sucesso */
+#define COR_AVISO      0xF59E0B   /* âmbar aviso */
+#define COR_ERRO       0xEF4444   /* vermelho erro */
 
 typedef struct {
     int       id;
