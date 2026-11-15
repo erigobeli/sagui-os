@@ -1,14 +1,18 @@
 /* js.h - interpretador JavaScript mínimo para o Sagui Navegador.
  *
- * Suporta um subconjunto muito pequeno de JavaScript "antigo":
- *   - alert("texto")        - mostra uma caixa de mensagem
- *   - document.write("texto") - escreve texto no documento (apenas no carregamento)
- *   - document.getElementById("id") - retorna um elemento (simplificado)
- *   - var x = valor         - variáveis globais simples (números e strings)
+ * Suporta um subconjunto de JavaScript "antigo":
+ *   - alert("texto")        - mostra caixa de mensagem
+ *   - confirm("texto")      - mostra caixa sim/não (sempre devolve true)
+ *   - prompt("texto")       - mostra caixa de entrada (sempre devolve "")
  *   - console.log("texto")  - registra no log do sistema
- *   - function() { ... }    - funções sem parâmetros (apenas declaração)
+ *   - document.write("texto") - escreve texto no documento (no carregamento)
+ *   - document.getElementById("id") - busca elemento por id (simplificado)
+ *   - var x = valor         - variáveis globais (números e strings)
+ *   - function nome() { ... } - declara função
+ *   - nome()                - chama função declarada
+ *   - setTimeout(codigo, ms) - executa código após delay (apenas registra)
  *
- * Isso é intencionalmente limitado: o SaguiOS não é um navegador completo.
+ * É intencionalmente limitado: o SaguiOS não é um navegador completo.
  * O objetivo é fazer páginas simples funcionarem, não competir com o V8.
  *
  * Sem libc, apenas syscalls int 0x80 e libsagui. */
@@ -28,5 +32,11 @@ int js_executar_comando(const char *comando);
 
 /* Mostra uma caixa de alerta JS na janela do navegador. */
 void js_alerta(const char *texto);
+
+/* Define uma variável global JS. */
+void js_definir_var_js(const char *nome, const char *valor);
+
+/* Busca um elemento por id (simplificado: devolve NULL). */
+no_t *js_document_get_element_by_id(documento_t *doc, const char *id);
 
 #endif

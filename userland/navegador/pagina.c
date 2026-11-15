@@ -108,10 +108,18 @@ typedef struct {
     int16_t  link;
     int16_t  form;             /* formulário em que está (índice), -1 nenhum */
     uint8_t  escala;           /* 2 em h1 */
+    int      margem_top, margem_dir, margem_baixo, margem_esq;  /* pixels */
+    int      padding_top, padding_dir, padding_baixo, padding_esq; /* pixels */
+    int      borda_top, borda_dir, borda_baixo, borda_esq;        /* pixels */
+    int      largura, altura;   /* pixels, -1 = automático */
+    int      tamanho_fonte;     /* pixels, -1 = padrão (16) */
 } estilo_t;
 
 #define COR_NENHUMA 0xFF000000u
 #define COR_LINK    0x1A4FB0u
+
+/* Lê um valor CSS numérico (ex.: "10px", "2em", "50%") e devolve os pixels. */
+static int numero_css(const char *s, int n);
 
 /* Aplica declarações CSS ("a: b; c: d") ao estilo. */
 static void aplicar_css(estilo_t *e, const char *s, int n)
@@ -155,10 +163,64 @@ static void aplicar_css(estilo_t *e, const char *s, int n)
             if (VAL("none")) e->marcas &= (uint8_t)~(PECA_SUBLINHADO | PECA_RISCADO);
             else if (VAL("underline")) e->marcas |= PECA_SUBLINHADO;
             else if (VAL("line-through")) e->marcas |= PECA_RISCADO;
+        } else if (PROP("margin-top") || PROP("margin")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->margem_top = val;
+        } else if (PROP("margin-right")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->margem_dir = val;
+        } else if (PROP("margin-bottom")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->margem_baixo = val;
+        } else if (PROP("margin-left")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->margem_esq = val;
+        } else if (PROP("padding-top")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->padding_top = val;
+        } else if (PROP("padding-right")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->padding_dir = val;
+        } else if (PROP("padding-bottom")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->padding_baixo = val;
+        } else if (PROP("padding-left")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->padding_esq = val;
+        } else if (PROP("border-top")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->borda_top = val;
+        } else if (PROP("border-right")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->borda_dir = val;
+        } else if (PROP("border-bottom")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->borda_baixo = val;
+        } else if (PROP("border-left")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->borda_esq = val;
+        } else if (PROP("width")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->largura = val;
+        } else if (PROP("height")) {
+            int val = numero_css(v, nv);
+            if (val >= 0) e->altura = val;
+        } else if (PROP("font-size")) {
+            int val = numero_css(v, nv);
+            if (val > 0) e->tamanho_fonte = val;
         }
         #undef PROP
         #undef VAL
     }
+}
+
+static int numero_css(const char *s, int n)
+{
+    int v = 0, k = 0;
+    while (k < n && eh_espaco(s[k])) k++;
+    while (k < n && s[k] >= '0' && s[k] <= '9') { v = v * 10 + (s[k] - '0'); k++; }
+    /* Ignora a unidade (px, em, %). */
+    return v;
 }
 
 /* Regras de folha de estilo: seletor simples -> declarações. */
@@ -1150,7 +1212,11 @@ void pagina_layout(pagina_t *p, int largura)
     f.x0 = f.x = MARGEM_PAGINA;
     f.larg = largura - 2 * MARGEM_PAGINA;
     f.y = MARGEM_PAGINA;
-    estilo_t e = { COR_TEXTO, COR_NENHUMA, 0, 0, false, false, -1, -1, 1 };
+    estilo_t e = { COR_TEXTO, COR_NENHUMA, 0, 0, false, false, -1, -1, 1,
+                   0, 0, 0, 0,   /* margens */
+                   0, 0, 0, 0,   /* padding */
+                   0, 0, 0, 0,   /* bordas */
+                   -1, -1, -1 }; /* largura, altura, tamanho_fonte */
     layout_filhos(&f, p->doc->raiz, &e, 0);
     quebra(&f, 0);
     p->altura = (f.y > f.flut_y ? f.y : f.flut_y) + MARGEM_PAGINA;
