@@ -87,6 +87,31 @@ static const comando_t *achar_comando(const char *nome)
     return NULL;
 }
 
+/* Usuário logado, lido de /tmp/usuario_atual (gravado pelo login). */
+static char usuario_atual[32] = "live";
+
+static void ler_usuario_atual(void);
+static void limpar_final_sagsh(char *s);
+
+static void ler_usuario_atual(void)
+{
+    int fd = abrir("/tmp/usuario_atual", ABRIR_LER);
+    if (fd < 0) return;
+    int n = ler(fd, usuario_atual, sizeof usuario_atual - 1);
+    fechar(fd);
+    if (n <= 0) { copia_texto(usuario_atual, "live", sizeof usuario_atual); return; }
+    usuario_atual[n] = 0;
+    limpar_final_sagsh(usuario_atual);
+}
+
+static void limpar_final_sagsh(char *s)
+{
+    int n = (int)tam_texto(s);
+    while (n > 0 && (s[n-1] == ' ' || s[n-1] == '\n' || s[n-1] == '\r')) {
+        s[--n] = 0;
+    }
+}
+
 /* ------------------------------------------------------------------ edição da linha */
 
 static char historico[MAX_HIST][MAX_LINHA];
@@ -98,7 +123,8 @@ static void prompt(void)
 {
     char pasta[128];
     if (pasta_atual(pasta, sizeof pasta) < 0) copia_texto(pasta, "?", sizeof pasta);
-    imprimir("sagui:%s$ ", pasta);
+    bool eh_root = compara_texto(usuario_atual, "root") == 0;
+    imprimir("%s@saguios:%s%s ", usuario_atual, pasta, eh_root ? "# " : "$ ");
 }
 
 /* Lê uma tecla do terminal em modo bruto: caractere, ou 0x100 + letra para
@@ -554,7 +580,22 @@ int principal(int argc, char **argv)
         executar_linha(linha);
         return 0;
     }
-    imprimir("sagsh: o shell do SaguiOS (processo %d). Digite ajuda para ver os comandos.\n", meu_pid());
+
+    /* Lê o usuário autenticado (gravado pelo login em /tmp/usuario_atual). */
+    ler_usuario_atual();
+
+    /* Se passou o usuário como argumento (vindo do login), usa ele. */
+    if (argc >= 2) {
+        copia_texto(usuario_atual, argv[1], sizeof usuario_atual);
+    }
+
+    /* Vai para a pasta home do usuário. */
+    char home[64];
+    formatar_texto(home, sizeof home, "/home/%s", usuario_atual);
+    mudar_pasta(home);
+
+    imprimir("sagsh: o shell do SaguiOS (processo %d). Usuário: %s\n", meu_pid(), usuario_atual);
+    imprimir("Digite ajuda para ver os comandos.\n");
     char linha[MAX_LINHA];
     for (;;) {
         recolher_fundo();

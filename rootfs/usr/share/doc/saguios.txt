@@ -1,0 +1,15 @@
+SaguiOS - Documentação do Sistema
+==================================
+
+SaguiOS é um sistema operacional para PCs x86 de 32 bits, escrito do zero
+por IA (Claude, da Anthropica) para o projeto de Eli Rigobeli.
+
+Estrutura de diretorios:
+  /bin     - Programas essenciais do sistema
+  /etc     - Arquivos de configuracao do sistema
+  /tmp     - Arquivos temporarios
+  /usr     - Diretorio secundario para programas e dados
+  /usb     - Pendrive de dados montado (quando conectado)
+  /sistema - Arquivos internos do sistema (libsagui, cabecalhos, ajuda)
+
+Mais informacoes em: /leia-me.txt e /sobre.txt

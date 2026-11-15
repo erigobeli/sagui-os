@@ -1,0 +1,12 @@
+Bem-vindo ao SaguiOS, usuário root (administrador).
+
+Seu diretório home é /home/root.
+Você tem privilégios de administrador no sistema.
+
+Use 'sudo <comando>' para executar comandos como root quando
+não estiver logado como root.
+
+Comandos úteis:
+  sudo      - executa comando como root
+  passwd    - muda a senha do usuário
+  whoami    - mostra quem você é

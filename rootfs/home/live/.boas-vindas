@@ -1,0 +1,16 @@
+Bem-vindo ao SaguiOS, usuário live!
+
+Seu diretório home é /home/live.
+Você pode criar arquivos aqui com o Editor ou pelo terminal.
+
+Comandos úteis:
+  ls        - lista arquivos
+  cd        - muda de pasta
+  pwd       - mostra onde você está
+  editor    - abre o editor de texto
+  calculadora - abre a calculadora
+  banana    - joga Sagui Pega Banana
+  benchmark - teste de renderização 3D
+  smatrix   - efeito Matrix
+
+Para sair, digite: sair
