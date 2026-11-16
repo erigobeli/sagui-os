@@ -72,6 +72,10 @@ modification, are permitted provided that the following conditions are met:
    this list of conditions and the following disclaimer in the documentation
    and/or other materials provided with the distribution.
 
+3. Neither the name of Internet Society, IETF or IETF Trust, nor the names of
+   specific contributors, may be used to endorse or promote products derived
+   from this software without specific prior written permission.
+
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -236,7 +240,8 @@ def main():
 
     # Avisos escritos aqui.
     for arquivo, nome, texto in (("brotli-rfc7932.txt", "Brotli, RFC 7932 (BSD)", BROTLI),
-                                 ("certificados.txt", "Certificados raiz (MPL 2.0)", CERTIFICADOS),
+                                 ("certificados.txt", "Certificados raiz (MPL 2.0)", CERTIFICADOS + "\n\nTexto completo da MPL 2.0\n=========================\n\n" +
+                                  ler(os.path.join(raiz, "docs", "licencas", "MPL-2.0.txt"))),
                                  ("mata-atlantica.txt", "Fundo Mata Atlântica", MATA_ATLANTICA),
                                  ("normas.txt", "Tabelas do MP3 e do H.264", NORMAS)):
         gravar(saida, arquivo, texto)

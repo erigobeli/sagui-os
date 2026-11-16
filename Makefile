@@ -267,7 +267,7 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # estão no repositório (tools/mklicencas.py), e o histórico de versões para
 # /sistema/ajuda/versoes.md (o botão "Histórico" da janela Sobre).
 LICENCAS_FONTES := LICENSE CONTRIBUIDORES.md CREDITOS.md VERSOES.md $(shell find terceiros -type f | sort) \
-                   userland/navegador/motor/LICENCA-Unicode.txt tools/mklicencas.py
+                   userland/navegador/motor/LICENCA-Unicode.txt tools/mklicencas.py docs/licencas/MPL-2.0.txt
 
 $(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs/c-do-sagui.md tools/mksgfs.py $(LICENCAS_FONTES)
 	rm -rf $(B)/rootfs
