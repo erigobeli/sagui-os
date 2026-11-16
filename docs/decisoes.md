@@ -1844,3 +1844,158 @@ deixava alguns ícones fora do centro.
 - Saíram `arte/icones-folha.png`, `arte/icone-saguicode.png`,
   `tools/png_icones.py` e `tools/icones_imagem.py`. O padrão para um ícone
   novo está no começo do `mkarte.py` e no `AGENTS.md`.
+
+## D056. Menu Iniciar com todos os programas, busca e categorias (issue #25, parte 2)
+
+**Contexto.** O menu do sagui listava 12 programas numa coluna. Programas que
+existem em `/bin` e abrem janela (Chuva de letras, Triângulos 3D, Componentes
+e cada jogo do H92) não apareciam em lugar nenhum da interface.
+
+**Decisão.**
+- O menu continua no kernel (`kernel/gui/janelas.c`), no mesmo botão do
+  sagui: caixa de busca, uma fileira de categorias e uma grade de 5 x 4
+  ícones de 40 pixels, com o nome em até duas linhas. No rodapé, Sobre e
+  Desligar. As formas são as do `suave.h` (#36).
+- O catálogo (`catalogo[]`) dá a cada programa nome, caminho, categoria,
+  ícone e palavras extras para a busca ("navegador" acha o Cipó). Categorias:
+  Todos, Internet, Escritório, Mídia, Jogos, Sistema, Programação e
+  Instalados; Instalados só aparece quando há programas no pendrive, que
+  entram pelo `area_icone_nome`.
+- Jogos: o lançador `/bin/jogos` (H92) e cada jogo dele, como pediu a
+  revisão da issue #25.
+- Enquanto o menu está aberto, o teclado vai para a busca. A busca ignora
+  maiúsculas e acentos e compara Latin-1 (o kernel compila com
+  `-fexec-charset=ISO-8859-1` e o teclado entrega Latin-1). Setas escolhem,
+  Enter abre, Esc fecha; a tecla Windows abre e fecha.
+- O Sagui Code (terminal) roda com `terminal -e /bin/saguicode`. O Vídeo fica
+  fora, porque precisa de um arquivo.
+- O vidro do menu é quase opaco (250 de 256): com a grade grande, o texto
+  das janelas de trás atrapalhava a leitura.
+- `tools/mkarte.py`: ícones novos no estilo do D055 (Chuva de letras,
+  Triângulos 3D, Componentes, Desligar e a lupa da busca) e o tamanho de
+  20 pixels, usado no rodapé e na busca.
+
+**Compatibilidade.** Os testes que clicavam no menu antigo (`h74_h77`, `h78`,
+`h81`, `h89_saguicode_janela`, `h92_jogos`) agora clicam na grade: a célula
+k fica em `(44 + (k % 5) * 108 + 54, 134 + (k // 5) * 92 + 30)`.
+
+## D057. Laço de seleção na área de trabalho (issue #25, parte 3)
+
+**Contexto.** A ideia é a do commit 0b3c462 (ramo `area-lixeira`, do Robson,
+sobre o código da 1.0), refeita para o código atual.
+
+**Decisão.**
+- Arrastar no vazio da área de trabalho desenha um retângulo translúcido
+  (`suave_ret` com 64 de 256 e `suave_contorno`, do `suave.h`). Ao soltar, os
+  ícones que ele toca ficam marcados. Com Shift, somam aos já marcados.
+- Um clique num ícone marca só ele (Shift soma). Um clique no vazio desmarca
+  tudo.
+- O laço e o destaque dos marcados são desenhados logo depois do fundo, por
+  baixo das janelas: o laço é da área de trabalho.
+- A seleção fica no `area_trabalho.c` (`area_selecionar`,
+  `area_limpar_selecao`, `area_icone_selecionado`, `area_qtd_selecionados`).
+  Ela vale para os ícones do sistema e para os programas instalados.
+
+## D058. Arquivos: laço, vários marcados, "Novo" no menu e nome editado na linha (issue #25, parte 4)
+
+**Pedido.** Queria a seleção translúcida também no Arquivos, as opções de
+criar no menu do botão direito (pasta, arquivo de texto e outros) e o nome
+escrito na própria linha do item, sem janela de diálogo. Isso vale para criar
+e para renomear.
+
+**Na lista da `libsagui`.** Tudo é opcional, e quem não liga continua igual
+(Tocador, Componentes).
+- `lista_t.marc` (um byte por item) liga a seleção de vários itens:
+  - clique marca um, Ctrl+clique alterna, Shift+clique marca a faixa e
+    Ctrl+A marca todos;
+  - arrastar a partir do vazio desenha o laço translúcido. O vazio é abaixo
+    dos itens ou depois do fim do nome. O laço marca as linhas cujo nome ele
+    toca;
+  - um clique sem arrastar no fim da linha seleciona a linha, e o duplo clique
+    abre, como antes. Os testes antigos clicam no meio da linha.
+- `lista_editar(j, l, i, marcar)` abre a edição do nome na própria linha. O
+  texto fica numa caixa branca de contorno verde, e os primeiros `marcar`
+  caracteres ficam marcados: digitar troca a parte marcada.
+  - Enter termina e devolve `LISTA_EDITOU`;
+  - Esc desiste e devolve `LISTA_DESISTIU`;
+  - um clique fora também termina;
+  - "/" não entra no nome.
+
+**No Arquivos.**
+- O menu do botão direito no vazio tem Nova pasta, Novo arquivo de texto,
+  Nova página HTML, Atualizar e Voltar.
+- Num item, o menu tem Abrir (com o nome do programa), Abrir no Editor,
+  Renomear, Apagar e os "Novo".
+- Com vários marcados, o menu oferece "Apagar os N itens...".
+- Criar dá um nome livre ("Nova pasta", "Nova pasta (2)"...) e já abre a
+  edição na linha. Nos arquivos, só o nome fica marcado, sem a extensão: quem
+  digita "notas" tem "notas.txt".
+- A página HTML nasce com um esqueleto mínimo.
+- F2 e o menu Renomear usam a mesma edição.
+- O renomear recusa:
+  - nome vazio (fica o nome antigo);
+  - nome que começa com ponto, porque esses ficam escondidos;
+  - nome que já existe na pasta.
+- Apagar vale para todos os marcados, com uma
+  pergunta só.
+
+**Mudança de comportamento.** O botão "Nova pasta" não abre mais a janela que
+pedia o nome. O `h23_arquivos` passou a esperar a edição na linha.
+
+## D059. Visualizador de imagens (issue #25, parte 5)
+
+**Contexto.** As imagens abriam no Cipó, que é um navegador: sem zoom, sem
+passar para a próxima da pasta e sem os papéis de parede (.sgi).
+
+**Decisão.**
+- `/bin/visualizador` usa os decodificadores do Cipó pelo Makefile, sem
+  copiar código: `imagens.c` (PNG, JPEG, GIF e WebP), com o DEFLATE da
+  libsagui. Ele também lê BMP de 24 e 32 bits e o `.sgi` dos papéis de
+  parede (SGI1, paleta e RLE, o mesmo formato que o kernel lê para o fundo).
+- Ao reduzir, cada pixel da tela é a média dos pixels que ele cobre,
+  guardada até mudar o zoom ou a janela. Ao ampliar, pixel mais próximo.
+- As setas passam para a imagem anterior ou a próxima da pasta, em ordem
+  alfabética, porque a FAT do pendrive lista na ordem em que os arquivos
+  foram gravados. +/- mudam o zoom, 0 ajusta e 1 mostra em tamanho real.
+- O Arquivos manda .png, .jpg, .gif, .webp, .bmp e .sgi para o
+  Visualizador. O .svg continua no Cipó.
+
+## D060. Captura de tela com a tecla Print Screen (issue #25, parte 5)
+
+**Decisão.**
+- A tecla Print Screen (E0 37) virou `TECLA_IMPRIMIR` (0x118). O
+  gerenciador de janelas a trata antes da janela em foco e abre o
+  `/bin/captura`.
+- O `/bin/captura` lê a tela por uma chamada nova, `SIS_LER_TELA` (79). Ela
+  copia o buffer de trás (a tela montada, sem o cursor do mouse) para o
+  programa, se o espaço couber; com 0 bytes, só diz o tamanho. Qualquer
+  programa pode ler a tela, como no X11 sem extensões: o SaguiOS não tem
+  usuários separados, então não há de quem esconder.
+- O PNG é RGB de 8 bits, filtro "nenhum", com o IDAT comprimido pelo
+  `deflar` da libsagui num fluxo zlib (RFC 1950). Com pendrive montado vai
+  para `/usb/Capturas`; sem, para `/capturas`, que fica na memória e some ao
+  desligar. Um aviso mostra onde salvou.
+- `captura arquivo.png` no terminal salva onde se pede.
+
+## D061. Lixeira no Arquivos (issue #25, parte 5)
+
+**Decisão.**
+- "Apagar" no Arquivos move para a lixeira do mesmo disco: `/.lixeira` ou
+  `/usb/.lixeira`. Renomear entre a memória e o pendrive não existe (o
+  `sis_renomear` recusa com ERRO_ACESSO), então cada disco tem a sua.
+- O `.origens` de cada lixeira guarda, por linha, "nome na
+  lixeira<TAB>caminho original". Restaurar lê a última linha do nome e
+  recria a pasta de origem, se ela tiver sido apagada. Sem registro, o item
+  volta para a raiz do disco. Com nome repetido, entra como "nome~2".
+- Nomes que começam com ponto não aparecem no Arquivos (a lixeira e o
+  .origens).
+- A área de trabalho tem o ícone da Lixeira, sempre o último da fila. O
+  desenho troca para "cheia" quando há algo em `/.lixeira` ou
+  `/usb/.lixeira` (o kernel confere a cada 2 s, junto com os programas
+  instalados). O duplo clique abre o Arquivos na lixeira. Renomear e
+  esconder usam a chave "lixeira" nas configurações, porque o programa
+  (`/bin/arquivos`) é o mesmo do ícone do Arquivos.
+- O botão Lixeira também fica no pé da lateral do Arquivos. Dentro da lixeira, os botões viram
+  Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
+- Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
+  dentro. O `rm` do terminal continua apagando de vez, como no Unix.

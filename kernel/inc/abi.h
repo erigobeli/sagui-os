@@ -77,6 +77,7 @@
 #define SIS_JANELA_OPCOES  76   /* (id, opções, larg_min | alt_min << 16) -> 0 (H78) */
 #define SIS_AREA_COPIA     78   /* (0, &texto, n) copia; (1, &buffer, max) cola -> tamanho guardado */
 #define SIS_MENU_JANELA    77   /* (id, x | y << 16, "Item|Item|Item") -> abre um menu na janela; a escolha chega em EV_MENU (H81) */
+#define SIS_LER_TELA       79   /* (&pixels, bytes) -> largura | altura << 16; copia a tela (0x00RRGGBB) se couber */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -288,6 +289,7 @@ typedef struct {
 #define TECLA_F12       0x115
 #define TECLA_ESC       0x116
 #define TECLA_SUPER     0x117   /* tecla Windows: fica no gerenciador de janelas */
+#define TECLA_IMPRIMIR  0x118   /* Print Screen: o gerenciador de janelas abre o /bin/captura */
 #endif
 
 #define JANELA_LARG_MAX 1000

@@ -38,7 +38,6 @@ Já no código (no `main`), ainda não lançado como imagem:
 - **A janela "Sobre o SaguiOS" nova** (H94): versão, arquitetura, memória e
   créditos; os botões "Créditos e licenças" (todos os textos de licença dentro
   da imagem, em `/sistema/licencas`) e "Histórico" (este arquivo).
-
 - **Jogos com tema de banana** (H92, D053), do fork do Alejandro:
   Caça-Bananas, Paciência Banana, um emulador de CHIP-8 e o visor de
   atividades JClic, num menu "Jogos".
@@ -47,9 +46,19 @@ Já no código (no `main`), ainda não lançado como imagem:
   programa redesenha; o Cipó sem decodificar de novo as imagens quando a
   página muda; a **doca com cantos redondos** e ícones novos dos programas,
   num estilo só.
+- Correções do teste no G470: **Ctrl+V cola a chave da IA** nas
+  Configurações; o Editor só mostra "Compilar e rodar" e "Instalar" para
+  programas em C; o menu do Arquivos não repete "Abrir no Editor".
 - **Ícones desenhados em código** (D055), no estilo do Robson: todos os
   programas com o mesmo fundo de cantos redondos, centrados, e o build gera
   os tamanhos 64 e 40 sem depender de imagem pronta.
+- Também do Robson (issue #25): **menu Iniciar** com todos os programas,
+  busca sem acento e categorias (D056); **laço de seleção** na área de
+  trabalho (D057); no Arquivos, **vários marcados**, "Novo" no menu e
+  renomear na própria linha (D058); o **Visualizador de imagens** (D059);
+  **captura de tela** com a tecla Print Screen (D060); a **Lixeira**, com
+  restaurar e esvaziar (D061); e **cantos arredondados** com borda suavizada
+  nas janelas e nos menus.
 
 ## Versões lançadas
 

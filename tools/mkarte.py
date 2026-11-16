@@ -32,7 +32,7 @@ O PADRÃO PARA UM ÍCONE NOVO
      vai de 9,5 a 54,5; traços de uns 3 a 4 pixels de largura ficam legíveis
      também na doca, em 40 pixels;
   3. acrescente uma linha ("meu_programa", meu_programa) em ICONES.
-  O C gerado tem arte_px_<nome> (64) e arte_px_<nome>_40.
+  O C gerado tem arte_px_<nome> (64), arte_px_<nome>_40 e arte_px_<nome>_20.
 """
 import math
 import sys
@@ -615,12 +615,107 @@ def jclic(t):
     t.disco((x0 + x1) / 2, y1, 4.2, fundo)                 # o de baixo, para dentro
 
 
+# ---- menu Iniciar (issue #25, parte 2): os programas que ainda não tinham
+# ícone próprio, a lupa da busca e o Desligar ----
+
+def chuva(t):
+    """Chuva de letras: colunas de letras verdes caindo, na caixa preta."""
+    estilo_app(t, 0x24332A, 0x050A07)
+    for k, (x, y0, n) in enumerate([(19, 15, 6), (27, 21, 5), (35, 13, 7), (43, 19, 5)]):
+        for q in range(n):
+            y = y0 + q * 5
+            claro = q == n - 1
+            t.ret(x - 2, y, x + 2, y + 3, 0.8, 0xC8FFD8 if claro else 0x3CE070, 1.0 if claro else 0.35 + 0.65 * q / n)
+
+
+def triangulos(t):
+    """Triângulos 3D: dois triângulos coloridos sobrepostos, na caixa azul."""
+    estilo_app(t, 0x4FA6F8, 0x1A56C0)
+    t.poligono([(14, 46), (29, 16), (44, 46)], BRANCO)
+    t.poligono([(26, 49), (39, 25), (51, 49)], vertical(0xFFC24A, 0xF07A1C, 25, 49), 0.95)
+
+
+def componentes(t):
+    """Componentes: peças de interface (um botão, uma caixa de texto e uma
+    caixa marcada), em branco na caixa cinza-azulada."""
+    estilo_app(t, 0x8FA3B8, 0x4A5E74)
+    t.ret(15, 16, 49, 25, 3, BRANCO)
+    t.ret(15, 29, 49, 38, 2, 0x2A3A4C, 0.45)
+    t.traco([(18, 33.5), (34, 33.5)], 2, 0xFFFFFF, 0.8)
+    t.ret(15, 42, 23, 50, 2, BRANCO)
+    t.traco([(16.8, 46), (18.8, 48), (21.6, 44)], 1.6, 0x3A7A2A)
+    t.traco([(27, 46), (47, 46)], 3, BRANCO)
+
+
+def energia(t):
+    """Desligar: o símbolo de liga e desliga, em branco na caixa vermelha."""
+    estilo_app(t, 0xF0564A, 0xA8121E)
+    t.anel(CX, CY + 1.5, 12, 3.6, BRANCO, -1.05, 4.19)
+    t.traco([(CX, 16), (CX, 30)], 3.6, BRANCO)
+
+
+def lupa(t):
+    """A lupa da caixa de busca (sem a caixa colorida: fica sobre o campo)."""
+    t.anel(27, 27, 13, 5, 0x6A7684)
+    t.traco([(37, 37), (50, 50)], 7, 0x6A7684)
+
+
+def _cesto(t, cheia):
+    """A lixeira: um cesto branco com três frisos, na caixa cinza-azulada.
+    Vazia, com a tampa fechada; cheia, sem tampa, com papéis amassados e uma
+    folha saindo por cima."""
+    estilo_app(t, 0x8FA3B8, 0x4A5E74)
+    corpo = [(19, 27), (45, 27), (42, 50), (22, 50)]
+    if cheia:
+        # o que está dentro aparece por cima da borda
+        t.poligono(girar([(20, 13), (34, 13), (34, 31), (20, 31)], 27, 22, math.radians(-16)), 0xFFF6D0)
+        for k in range(3):
+            y = 17 + k * 4
+            t.traco(girar([(23, y), (31, y)], 27, 22, math.radians(-16)), 1.2, 0xC9A24A, 0.7)
+        t.disco(37, 22, 6.5, 0xDCEEFF)
+        t.traco([(33, 20), (37, 23), (41, 19)], 1.2, 0x8AA6C4, 0.8)
+        t.disco(29, 25, 5, 0xFFFFFF)
+    t.poligono([(x + 0.6, y + 1.6) for x, y in corpo], 0x1E2A38, 0.3)
+    t.poligono(corpo, BRANCO)
+    if cheia:
+        t.ret(17, 25, 47, 29, 1.6, BRANCO)                # a borda do cesto
+    else:
+        t.ret(16, 21, 48, 26, 2, BRANCO)                  # a tampa
+        t.ret(28, 17.5, 36, 21.5, 1.5, BRANCO)            # o puxador
+    fundo = 0x5C7088
+    for x0, x1 in ((26, 27.5), (32, 32), (38, 36.5)):     # os frisos
+        t.traco([(x0, 31), (x1, 46)], 2.2, fundo, 0.8)
+
+
+def lixeira(t):
+    """A Lixeira vazia."""
+    _cesto(t, False)
+
+
+def lixeira_cheia(t):
+    """A Lixeira com coisas dentro."""
+    _cesto(t, True)
+
+
+def visualizador(t):
+    """O Visualizador de imagens: uma foto com o sol e as montanhas, em branco
+    e amarelo na caixa azul-celeste."""
+    estilo_app(t, 0x5CC8F5, 0x1A86D0)
+    t.ret(15, 18, 49, 46, 3, BRANCO)
+    t.ret(18, 21, 46, 43, 1.5, vertical(0x9AD8FF, 0xD6F0FF, 21, 43))
+    t.disco(39, 27, 3.6, 0xFFC928)
+    t.poligono([(18, 43), (18, 38), (26, 29), (33, 37), (37, 33), (46, 41), (46, 43)], vertical(0x3CB868, 0x1A7A40, 29, 43))
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
           ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive),
           ("configuracoes", configuracoes), ("cipo", cipo), ("instalado", instalado), ("tocador", tocador),
           ("saguicode", saguicode), ("jogos", jogos), ("cacabananas", cacabananas), ("paciencia", paciencia),
-          ("chip8", chip8), ("jclic", jclic)]
-TAMANHOS = [(64, ""), (40, "_40")]
+          ("chip8", chip8), ("jclic", jclic),
+          ("chuva", chuva), ("triangulos", triangulos), ("componentes", componentes), ("energia", energia),
+          ("lupa", lupa), ("lixeira", lixeira), ("lixeira_cheia", lixeira_cheia),
+          ("visualizador", visualizador)]
+TAMANHOS = [(64, ""), (40, "_40"), (20, "_20")]   # 20: o rodapé e a busca do menu Iniciar
 
 
 def gerar(desenhar, tam):

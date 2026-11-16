@@ -89,7 +89,7 @@ def main():
         esperar(m, "menu aberto", 10, antes)
         time.sleep(0.5)
         m.captura("H75-3-menu")
-        m.clique(40, 24 + 4 + 4 + 3 * 26 + 12)
+        m.clique(44 + 2 * 108 + 54, 134 + 0 * 92 + 30)   # menu Iniciar: célula 2 da grade 5 x 4
         s = esperar(m, "abrir /bin/editor", 10, antes)
         verificar(True, "o menu do sagui abriu o Editor")
         time.sleep(2)

@@ -28,6 +28,7 @@
 #include "video.h"
 #include "disco.h"
 #include "vidro.h"
+#include "suave.h"
 #include "configuracoes.h"
 
 #define MAX_JANELAS     32
@@ -256,7 +257,8 @@ static const uint32_t *px_de(const char *processo)
 {
     static const struct { const char *p; const uint32_t *px; } t[] = {
         { "calculadora", arte_px_calculadora_40 }, { "banana", arte_px_banana_40 }, { "sagui3d", arte_px_sagui3d_40 },
-        { "sobre-o-sistema", arte_px_sobre_40 }, { "energia", arte_px_sobre_40 }, { "cipo", arte_px_cipo_40 }, { "tocador", arte_px_tocador_40 },
+        { "sobre-o-sistema", arte_px_sobre_40 }, { "energia", arte_px_energia_40 }, { "cipo", arte_px_cipo_40 }, { "tocador", arte_px_tocador_40 },
+        { "visualizador", arte_px_visualizador_40 },
         { "saguicode-janela", arte_px_saguicode_40 }, { "jogos", arte_px_jogos_40 },
         { "cacabananas", arte_px_cacabananas_40 }, { "paciencia", arte_px_paciencia_40 }, { "chip8", arte_px_chip8_40 },
         { "jclic", arte_px_jclic_40 },
@@ -338,53 +340,340 @@ static void desenhar_doca(void)
     }
 }
 
-/* ------------------------------------------------------------ menu do sagui (H75) */
+/* ------------------------------------------------------------ menu Iniciar (H75, H89) */
 
-static const fixo_t menu_itens[] = {
-    { "Arquivos", "/bin/arquivos", "", 0 }, { "Terminal", "/bin/terminal", "", 0 },
-    { "Cipó", "/bin/navegador", "", 0 }, { "Editor", "/bin/editor", "", 0 },
-    { "Calculadora", "/bin/calculadora", "", 0 }, { "Jogos", "/bin/jogos", "", 0 },
-    { "Tocador", "/bin/tocador", "", 0 },
-    { "Sagui Code", "/bin/saguicode-janela", "", 0 }, { "Sagui Code (terminal)", "/bin/terminal -e /bin/saguicode", "", 0 },
-    { "Configurações", "/bin/configuracoes", "", 0 },
-    { "Sobre o SaguiOS", "/bin/sobre-o-sistema", "", 0 }, { "Desligar...", "/bin/energia", "", 0 },
+/* H89: o menu do sagui virou um menu Iniciar com todos os programas: uma
+ * caixa de busca no alto (o teclado vai para ela enquanto o menu está
+ * aberto), as categorias logo abaixo e a grade de ícones. Embaixo, Sobre e
+ * Desligar. Os programas instalados no pendrive entram em "Instalados". */
+enum { CAT_TODOS, CAT_INTERNET, CAT_ESCRITORIO, CAT_MIDIA, CAT_JOGOS, CAT_SISTEMA, CAT_DESENVOLVIMENTO,
+       CAT_INSTALADOS, QTD_CATS };
+static const char *const cat_nomes[QTD_CATS] = {
+    "Todos", "Internet", "Escritório", "Mídia", "Jogos", "Sistema", "Programação", "Instalados",
 };
-#define QTD_MENU (int)(sizeof menu_itens / sizeof menu_itens[0])
+typedef struct {
+    const char *nome, *programa, *extra;   /* extra: argumento (o Sagui Code roda no Terminal) */
+    int cat;
+    const uint32_t *px;                    /* 40 x 40 */
+    const char *palavras;                  /* outras palavras que a busca acha */
+} programa_menu_t;
+static const programa_menu_t catalogo[] = {
+    { "Cipó", "/bin/navegador", NULL, CAT_INTERNET, arte_px_cipo_40, "navegador internet web site pagina duckduckgo" },
+    { "Arquivos", "/bin/arquivos", NULL, CAT_ESCRITORIO, arte_px_arquivos_40, "pastas documentos explorador" },
+    { "Editor", "/bin/editor", NULL, CAT_ESCRITORIO, arte_px_editor_40, "texto bloco de notas escrever" },
+    { "Calculadora", "/bin/calculadora", NULL, CAT_ESCRITORIO, arte_px_calculadora_40, "contas numeros" },
+    { "Tocador", "/bin/tocador", NULL, CAT_MIDIA, arte_px_tocador_40, "musica mp3 wav audio som" },
+    /* Jogos: o lançador (H92) e cada jogo dele, como pediu a revisão da #25. */
+    { "Jogos", "/bin/jogos", NULL, CAT_JOGOS, arte_px_jogos_40, "jogo lancador" },
+    { "Banana", "/bin/banana", NULL, CAT_JOGOS, arte_px_banana_40, "jogo" },
+    { "Sagui 3D", "/bin/sagui3d", NULL, CAT_JOGOS, arte_px_sagui3d_40, "jogo 3d" },
+    { "Caça-Bananas", "/bin/cacabananas", NULL, CAT_JOGOS, arte_px_cacabananas_40, "jogo bomba campo minado" },
+    { "Paciência Banana", "/bin/paciencia", NULL, CAT_JOGOS, arte_px_paciencia_40, "jogo cartas baralho" },
+    { "CHIP-8", "/bin/chip8", NULL, CAT_JOGOS, arte_px_chip8_40, "jogo emulador" },
+    { "Atividades JClic", "/bin/jclic", NULL, CAT_JOGOS, arte_px_jclic_40, "jogo educativo escola" },
+    { "Chuva de letras", "/bin/chuva", NULL, CAT_JOGOS, arte_px_chuva_40, "matrix protetor de tela" },
+    { "Triângulos 3D", "/bin/triangulos", NULL, CAT_JOGOS, arte_px_triangulos_40, "fps desempenho demonstracao" },
+    { "Terminal", "/bin/terminal", NULL, CAT_SISTEMA, arte_px_terminal_40, "console shell comandos prompt sagsh" },
+    { "Configurações", "/bin/configuracoes", NULL, CAT_SISTEMA, arte_px_configuracoes_40, "ajustes preferencias tema rede som aparencia teclado" },
+    { "Sagui Code", "/bin/saguicode-janela", NULL, CAT_DESENVOLVIMENTO, arte_px_saguicode_40, "ia agente programar codigo" },
+    { "Sagui Code (terminal)", "/bin/terminal", "/bin/saguicode", CAT_DESENVOLVIMENTO, arte_px_terminal_40, "ia agente programar codigo terminal" },
+    { "Componentes", "/bin/componentes", NULL, CAT_DESENVOLVIMENTO, arte_px_componentes_40, "demonstracao botoes interface libsagui" },
+};
+#define QTD_CATALOGO (int)(sizeof catalogo / sizeof catalogo[0])
 #define MENU_X 4
 #define MENU_Y (BARRA_SUPERIOR + 4)
-#define MENU_L 200
-#define MENU_ITEM 26
+#define MENU_L 620
+#define MENU_ALT 544
+#define MENU_ITEM 26          /* menu de contexto */
+#define MENU_COLUNAS 5
+#define MENU_LINHAS 4
+#define MENU_CEL_L 108
+#define MENU_CEL_A 92
+#define MENU_GRADE_X (MENU_X + (MENU_L - MENU_COLUNAS * MENU_CEL_L) / 2)
+#define MENU_GRADE_Y (MENU_Y + 106)
+#define MENU_BUSCA_Y (MENU_Y + 16)
+#define MENU_CHIPS_Y (MENU_Y + 62)
+#define MENU_RODAPE_Y (MENU_Y + MENU_ALT - 50)
+/* Alvos do mouse: 0..n-1 um programa da grade; os outros abaixo. */
+#define ALVO_CAT    1000      /* + categoria */
+#define ALVO_SOBRE  2000
+#define ALVO_DESLIGAR 2001
+#define ALVO_BUSCA  2002
+
 static bool menu_aberto;
-static int menu_sob = -1;
+static int menu_sob = -1, menu_sel, menu_cat;
+static char menu_busca[40];
+/* A lista filtrada: índices do catálogo, ou -(1 + i) para o ícone i da área
+ * de trabalho (programa instalado). */
+static int menu_res[MENU_COLUNAS * MENU_LINHAS], menu_qtd;
+
+static void abrir_programa(const char *caminho);
 
 static void redesenhar_menu(void)
 {
-    gui_redesenhar(0, 0, MENU_X + MENU_L + VIDRO_SOMBRA + VIDRO_RAIO, MENU_Y + QTD_MENU * MENU_ITEM + 12 + VIDRO_SOMBRA + VIDRO_RAIO);
+    gui_redesenhar(0, 0, MENU_X + MENU_L + VIDRO_SOMBRA + VIDRO_RAIO, MENU_Y + MENU_ALT + 4 + VIDRO_SOMBRA + VIDRO_RAIO);
+}
+
+/* Letra para a busca: minúscula e sem acento. O kernel guarda texto em
+ * Latin-1 (-fexec-charset), e o teclado também entrega Latin-1. */
+static int letra_simples(const char **p)
+{
+    int c = *(const unsigned char *)(*p)++;
+    if (c >= 'A' && c <= 'Z') return c + 32;
+    if (c >= 0xC0) {
+        c |= 0x20;                               /* À-Þ viram à-þ */
+        return (c >= 0xE0 && c <= 0xE5) ? 'a' : c == 0xE7 ? 'c' : (c >= 0xE8 && c <= 0xEB) ? 'e'
+             : (c >= 0xEC && c <= 0xEF) ? 'i' : (c >= 0xF2 && c <= 0xF6) ? 'o' : (c >= 0xF9 && c <= 0xFC) ? 'u' : c;
+    }
+    return c;
+}
+
+/* O texto contém a busca (começando em qualquer palavra ou letra)? */
+static bool contem(const char *texto, const char *busca)
+{
+    if (!busca[0]) return true;
+    for (const char *t = texto; *t; ) {
+        const char *a = t, *b = busca;
+        for (;;) {
+            if (!*b) return true;
+            if (!*a) break;
+            if (letra_simples(&a) != letra_simples(&b)) break;
+        }
+        letra_simples(&t);                       /* avança um caractere */
+    }
+    return false;
+}
+
+static void menu_filtrar(void)
+{
+    menu_qtd = 0;
+    bool buscando = menu_busca[0] != 0;
+    for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
+        const programa_menu_t *p = &catalogo[i];
+        if (!buscando && menu_cat != CAT_TODOS && p->cat != menu_cat) continue;
+        if (buscando && !contem(p->nome, menu_busca) && !contem(p->palavras, menu_busca)) continue;
+        menu_res[menu_qtd++] = i;
+    }
+    for (int i = 0; i < area_qtd_icones() && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
+        if (area_icone_tipo(i) != 1) continue;
+        if (!buscando && menu_cat != CAT_TODOS && menu_cat != CAT_INSTALADOS) continue;
+        if (buscando && !contem(area_icone_nome(i), menu_busca)) continue;
+        menu_res[menu_qtd++] = -(1 + i);
+    }
+    if (menu_sel >= menu_qtd) menu_sel = menu_qtd ? menu_qtd - 1 : 0;
+}
+
+static bool ha_instalados(void)
+{
+    for (int i = 0; i < area_qtd_icones(); i++) if (area_icone_tipo(i) == 1) return true;
+    return false;
+}
+
+/* Folga dos chips: a sobra da fileira dividida entre eles, para a fileira
+ * caber sempre no painel (com ou sem "Instalados"). */
+#define CHIP_VAO 6
+static int chip_folga(void)
+{
+    int n = 0, soma = 0;
+    for (int c = 0; c < QTD_CATS; c++) {
+        if (c == CAT_INSTALADOS && !ha_instalados()) continue;
+        n++;
+        soma += texto_largura(cat_nomes[c]);
+    }
+    int f = (MENU_L - 32 - soma - (n - 1) * CHIP_VAO) / n;
+    return f > 22 ? 22 : f;
+}
+static int chip_largura(int c) { return texto_largura(cat_nomes[c]) + chip_folga(); }
+
+/* Nome que cabe em l pixels: corta com "..". */
+static void nome_cortado(char *saida, int tam, const char *nome, int l)
+{
+    txt_copia_n(saida, nome, tam);
+    if (texto_largura(saida) <= l) return;
+    int n = (int)txt_tamanho(saida);
+    while (n > 0) {
+        saida[--n] = 0;
+        char t[48];
+        snformatar(t, sizeof t, "%s..", saida);
+        if (texto_largura(t) <= l) { txt_copia_n(saida, t, tam); return; }
+    }
 }
 
 static void desenhar_menu(void)
 {
     if (!menu_aberto) return;
-    int a = QTD_MENU * MENU_ITEM + 8;
-    vidro_sombra(&tela, MENU_X, MENU_Y, MENU_L, a);
-    /* O menu tem texto pequeno em cima do vidro: quase opaco (transparente
-     * demais, ficava difícil de ler no G470), só um toque do fundo. */
-    vidro_pintar(&tela, MENU_X, MENU_Y, MENU_L, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
-    for (int i = 0; i < QTD_MENU; i++) {
-        int y = MENU_Y + 4 + i * MENU_ITEM;
-        if (i == menu_sob) {
-            sup_retangulo(&tela, MENU_X + 4, y, MENU_L - 8, MENU_ITEM, tema->destaque);
-            if (tema->filete) sup_retangulo(&tela, MENU_X + 4, y, 3, MENU_ITEM, tema->filete);
+    menu_filtrar();
+    vidro_sombra_r(&tela, MENU_X, MENU_Y, MENU_L, MENU_ALT, 14);
+    /* Texto pequeno em cima do vidro: quase opaco. Mais transparente, ficava
+     * difícil de ler no painel do G470, e com a grade grande o conteúdo das
+     * janelas de trás atrapalhava; 250 de 256 deixa só um toque do fundo. */
+    vidro_pintar_r(&tela, MENU_X, MENU_Y, MENU_L, MENU_ALT, tema->topo, 250, 14);
+    suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
+    suave_contorno(&sv, MENU_X, MENU_Y, MENU_L, MENU_ALT, 14, 0xFFFFFF, 40);
+    uint32_t texto = tema->topo_relogio, fraco = cor_mistura(tema->topo, tema->topo_relogio, 1, 2);
+    uint32_t caixa = tema->claro ? 0xFFFFFF : cor_mistura(tema->topo, 0xFFFFFF, 1, 9);
+
+    /* Busca */
+    int bx = MENU_X + 16, bl = MENU_L - 32;
+    suave_ret(&sv, bx, MENU_BUSCA_Y, bl, 34, 10, caixa, caixa, 256);
+    suave_contorno(&sv, bx, MENU_BUSCA_Y, bl, 34, 10, menu_busca[0] ? tema->destaque : fraco, 120);
+    sup_icone(&tela, bx + 10, MENU_BUSCA_Y + 7, arte_px_lupa_20, 20);
+    if (menu_busca[0]) {
+        sup_texto(&tela, bx + 40, MENU_BUSCA_Y + 9, menu_busca, texto);
+        sup_retangulo(&tela, bx + 41 + texto_largura(menu_busca), MENU_BUSCA_Y + 8, 2, 18, tema->destaque);
+    } else {
+        sup_retangulo(&tela, bx + 40, MENU_BUSCA_Y + 8, 2, 18, tema->destaque);
+        sup_texto(&tela, bx + 46, MENU_BUSCA_Y + 9, "Pesquisar programas", fraco);
+    }
+
+    /* Categorias (somem enquanto há busca: a busca olha todas) */
+    if (!menu_busca[0]) {
+        int x = MENU_X + 16;
+        for (int c = 0; c < QTD_CATS; c++) {
+            if (c == CAT_INSTALADOS && !ha_instalados()) continue;
+            int l = chip_largura(c);
+            bool ativo = c == menu_cat, sob = menu_sob == ALVO_CAT + c;
+            uint32_t fundo = ativo ? tema->destaque : sob ? cor_mistura(caixa, tema->destaque, 1, 3) : caixa;
+            suave_ret(&sv, x, MENU_CHIPS_Y, l, 26, 13, fundo, fundo, 256);
+            sup_texto(&tela, x + (l - texto_largura(cat_nomes[c])) / 2, MENU_CHIPS_Y + 5, cat_nomes[c], ativo ? 0xFFFFFF : texto);
+            x += l + CHIP_VAO;
         }
-        sup_texto(&tela, MENU_X + 14, y + 5, menu_itens[i].nome, i == menu_sob ? 0xFFFFFF : tema->topo_relogio);
+    } else {
+        char t[72];
+        snformatar(t, sizeof t, menu_qtd ? "Resultados para \"%s\"" : "Nada encontrado para \"%s\"", menu_busca);
+        sup_texto(&tela, MENU_X + 20, MENU_CHIPS_Y + 5, t, fraco);
+    }
+
+    /* Grade */
+    for (int k = 0; k < menu_qtd; k++) {
+        int cx = MENU_GRADE_X + (k % MENU_COLUNAS) * MENU_CEL_L, cy = MENU_GRADE_Y + (k / MENU_COLUNAS) * MENU_CEL_A;
+        bool sob = menu_sob == k, sel = menu_busca[0] && menu_sel == k;
+        if (sob || sel)
+            suave_ret(&sv, cx + 2, cy + 2, MENU_CEL_L - 4, MENU_CEL_A - 4, 12,
+                      sob ? tema->destaque : cor_mistura(caixa, tema->destaque, 1, 2), sob ? tema->destaque : cor_mistura(caixa, tema->destaque, 1, 2), 256);
+        int r = menu_res[k];
+        const char *nome = r >= 0 ? catalogo[r].nome : area_icone_nome(-r - 1);
+        const uint32_t *px = r >= 0 ? catalogo[r].px : arte_px_instalado_40;
+        sup_icone(&tela, cx + (MENU_CEL_L - 40) / 2, cy + 10, px, 40);
+        /* O nome em até duas linhas, quebrado num espaço. */
+        char l1[48], l2[48];
+        int lmax = MENU_CEL_L - 8;
+        txt_copia_n(l1, nome, sizeof l1);
+        l2[0] = 0;
+        if (texto_largura(l1) > lmax) {
+            int corte = -1;
+            for (int q = 0; l1[q]; q++)
+                if (l1[q] == ' ') {
+                    l1[q] = 0;
+                    if (texto_largura(l1) <= lmax) corte = q;
+                    l1[q] = ' ';
+                }
+            if (corte > 0) {
+                l1[corte] = 0;
+                nome_cortado(l2, sizeof l2, l1 + corte + 1, lmax);
+            } else nome_cortado(l1, sizeof l1, nome, lmax);
+        }
+        uint32_t ct = sob ? 0xFFFFFF : texto;
+        sup_texto(&tela, cx + (MENU_CEL_L - texto_largura(l1)) / 2, cy + 56, l1, ct);
+        if (l2[0]) sup_texto(&tela, cx + (MENU_CEL_L - texto_largura(l2)) / 2, cy + 72, l2, ct);
+    }
+
+    /* Rodapé: Sobre e Desligar */
+    sup_retangulo(&tela, MENU_X + 16, MENU_RODAPE_Y - 6, MENU_L - 32, 1, cor_mistura(tema->topo, tema->topo_relogio, 1, 4));
+    sup_icone(&tela, MENU_X + 22, MENU_RODAPE_Y + 9, arte_px_sobre_20, 20);
+    sup_texto(&tela, MENU_X + 50, MENU_RODAPE_Y + 11, "SaguiOS", texto);
+    static const char *const rot[2] = { "Sobre", "Desligar" };
+    for (int b = 0; b < 2; b++) {
+        int l = 112, x = MENU_X + MENU_L - 16 - (2 - b) * (l + 8) + 8, y = MENU_RODAPE_Y + 4;
+        bool sob = menu_sob == ALVO_SOBRE + b;
+        if (sob) suave_ret(&sv, x, y, l, 32, 10, tema->destaque, tema->destaque, 256);
+        sup_icone(&tela, x + 12, y + 6, b ? arte_px_energia_20 : arte_px_sobre_20, 20);
+        sup_texto(&tela, x + 40, y + 8, rot[b], sob ? 0xFFFFFF : texto);
     }
 }
 
-static int menu_item_em(int x, int y)
+/* O corpo do menu (da busca para baixo), sem a barra de cima. */
+static void redesenhar_corpo_menu(void)
 {
-    if (!menu_aberto || x < MENU_X || x >= MENU_X + MENU_L || y < MENU_Y + 4) return -1;
-    int i = (y - MENU_Y - 4) / MENU_ITEM;
-    return i < QTD_MENU ? i : -1;
+    gui_redesenhar(MENU_X, MENU_BUSCA_Y, MENU_L, MENU_Y + MENU_ALT - MENU_BUSCA_Y);
+}
+
+static int menu_alvo_em(int x, int y)
+{
+    if (!menu_aberto || x < MENU_X || x >= MENU_X + MENU_L || y < MENU_Y || y >= MENU_Y + MENU_ALT) return -1;
+    if (y >= MENU_BUSCA_Y && y < MENU_BUSCA_Y + 34) return ALVO_BUSCA;
+    if (!menu_busca[0] && y >= MENU_CHIPS_Y && y < MENU_CHIPS_Y + 26) {
+        int cx = MENU_X + 16;
+        for (int c = 0; c < QTD_CATS; c++) {
+            if (c == CAT_INSTALADOS && !ha_instalados()) continue;
+            int l = chip_largura(c);
+            if (x >= cx && x < cx + l) return ALVO_CAT + c;
+            cx += l + CHIP_VAO;
+        }
+        return -1;
+    }
+    if (y >= MENU_GRADE_Y && y < MENU_GRADE_Y + MENU_LINHAS * MENU_CEL_A && x >= MENU_GRADE_X &&
+        x < MENU_GRADE_X + MENU_COLUNAS * MENU_CEL_L) {
+        int k = (y - MENU_GRADE_Y) / MENU_CEL_A * MENU_COLUNAS + (x - MENU_GRADE_X) / MENU_CEL_L;
+        return k < menu_qtd ? k : -1;
+    }
+    if (y >= MENU_RODAPE_Y + 4 && y < MENU_RODAPE_Y + 36)
+        for (int b = 0; b < 2; b++) {
+            int l = 112, bx = MENU_X + MENU_L - 16 - (2 - b) * (l + 8) + 8;
+            if (x >= bx && x < bx + l) return ALVO_SOBRE + b;
+        }
+    return -1;
+}
+
+static void menu_abrir(bool abrir)
+{
+    menu_aberto = abrir;
+    menu_sob = -1;
+    menu_sel = 0;
+    menu_busca[0] = 0;
+    if (abrir) { menu_filtrar(); klog("[GUI] menu aberto\n"); }
+    redesenhar_menu();
+}
+
+/* Abre o k-ésimo resultado e fecha o menu. */
+static void menu_lancar(int k)
+{
+    if (k < 0 || k >= menu_qtd) return;
+    int r = menu_res[k];
+    menu_abrir(false);
+    if (r < 0) { klog("[GUI] menu: instalado %s\n", area_icone_nome(-r - 1)); area_icone_abrir(-r - 1); return; }
+    const programa_menu_t *p = &catalogo[r];
+    klog("[GUI] menu: %s\n", p->nome);
+    if (p->extra) {
+        char *argv[] = { "terminal", "-e", (char *)p->extra, NULL };
+        int pid = processo_executar(p->programa, 3, argv, NULL);
+        klog("[GUI] abrir %s -e %s (pid %d)\n", p->programa, p->extra, pid);
+    } else abrir_programa(p->programa);
+}
+
+/* O teclado enquanto o menu está aberto: digitar busca, setas escolhem,
+ * Enter abre, Esc fecha. */
+static void menu_tecla(int t)
+{
+    int n = (int)txt_tamanho(menu_busca);
+    if (t == TECLA_ESC) { menu_abrir(false); return; }
+    if (t == '\n') { menu_lancar(menu_busca[0] ? menu_sel : 0); return; }
+    if (t == '\b') {
+        if (n > 0) menu_busca[n - 1] = 0;
+    } else if (t == TECLA_DIREITA) menu_sel = menu_sel + 1 < menu_qtd ? menu_sel + 1 : menu_sel;
+    else if (t == TECLA_ESQUERDA) menu_sel = menu_sel > 0 ? menu_sel - 1 : 0;
+    else if (t == TECLA_BAIXO) menu_sel = menu_sel + MENU_COLUNAS < menu_qtd ? menu_sel + MENU_COLUNAS : menu_sel;
+    else if (t == TECLA_CIMA) menu_sel = menu_sel >= MENU_COLUNAS ? menu_sel - MENU_COLUNAS : menu_sel;
+    else if ((t >= 0x20 && t < 0x7F) || (t >= 0xA0 && t <= 0xFF)) {   /* Latin-1, como o kernel */
+        if (n + 1 < (int)sizeof menu_busca) { menu_busca[n] = (char)t; menu_busca[n + 1] = 0; menu_sel = 0; }
+    } else return;
+    if (menu_busca[0] == 0) menu_sel = 0;
+    /* Refaz a lista já: as teclas de um mesmo lote chegam antes do próximo
+     * desenho, e um Enter logo depois de "pac" tem de abrir a Paciência, não
+     * o primeiro da lista antiga. */
+    menu_filtrar();
+    klog("[GUI] menu: busca \"%s\" (%d resultados)\n", menu_busca, menu_qtd);
+    redesenhar_corpo_menu();
 }
 
 /* Menus do botão direito (H81, menus de contexto do pull request #1 do
@@ -560,6 +849,8 @@ static void desenhar_anims(void)
     }
 }
 
+static void desenhar_selecao(void);   /* o laço da área de trabalho, mais abaixo */
+
 /* ------------------------------------------------------------ composição */
 
 /* Disco de 16 pixels com degradê (botões redondos do pull request #1 do
@@ -578,6 +869,7 @@ static void desenhar_moldura(janela_t *j, bool foco)
     int x = j->x, y = j->y, l = moldura_l(j), a = moldura_a(j);
     uint32_t cor = foco ? tema->titulo_foco : tema->titulo;
     vidro_sombra(&tela, x, y, l, a);
+    vidro_guardar_cantos(&tela, x, y, l, a);          /* os de baixo voltam depois do conteúdo */
     vidro_pintar(&tela, x, y, l, BARRA_TITULO, cor, tema->k_titulo, CANTOS_EM_CIMA);
     sup_retangulo(&tela, x, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
     sup_retangulo(&tela, x + l - BORDA, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
@@ -784,7 +1076,7 @@ static void expandir_vidro(void)
         if (cruza(0, 0, (int)video_largura(), BARRA_SUPERIOR + R)) gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR + R);
         if (doca_ligada && cruza(doca_x - R, doca_y - 30 - R, doca_l + 2 * R, DOCA_A + 30 + 2 * R))
             gui_redesenhar(doca_x - R - DOCA_CELULA, doca_y - 30 - R, doca_l + 2 * R + 2 * DOCA_CELULA, DOCA_A + 30 + 2 * R);
-        if (menu_aberto && cruza(0, 0, MENU_X + MENU_L + R, MENU_Y + QTD_MENU * MENU_ITEM + 8 + R)) redesenhar_menu();
+        if (menu_aberto && cruza(0, 0, MENU_X + MENU_L + R, MENU_Y + MENU_ALT + R)) redesenhar_menu();
         if (ctx_aberto && cruza(ctx_x - R, ctx_y - R, ctx_l + 2 * R, ctx_qtd * MENU_ITEM + 8 + 2 * R)) redesenhar_ctx();
         for (int k = 0; k < qtd; k++) {
             janela_t *j = &janelas[ordem[k]];
@@ -807,6 +1099,7 @@ void gui_mostrar(void)
     sup_recorte(&tela, x, y, l, a);
     if (tela.cx0 >= tela.cx1 || tela.cy0 >= tela.cy1) return;
     area_fundo(&tela);
+    desenhar_selecao();   /* os ícones marcados e o laço, debaixo das janelas */
     janela_t *f = focada();
     for (int k = 0; k < qtd; k++) {
         janela_t *j = &janelas[ordem[k]];
@@ -819,6 +1112,7 @@ void gui_mostrar(void)
             if (vl < j->larg) sup_retangulo(&tela, cx + vl, cy, j->larg - vl, j->alt, 0xF4F4F0);
             if (va < j->alt) sup_retangulo(&tela, cx, cy + va, vl, j->alt - va, 0xF4F4F0);
         }
+        vidro_aplicar_cantos(&tela, j->x, j->y, moldura_l(j), moldura_a(j));
     }
     desenhar_anims();
     desenhar_redimensionar();
@@ -985,8 +1279,72 @@ static janela_t *tarefa_em(int x, int y)
     return &janelas[ordem[n]];
 }
 
+static void desenhar_selecao(void);
+
+/* ------------------------------------------------------------ laço da área de trabalho (issue #25, parte 3)
+ *
+ * Arrastar no vazio da área de trabalho desenha um retângulo translúcido;
+ * ao soltar, os ícones que ele toca ficam marcados (com Shift, somam aos já
+ * marcados). A ideia é a do commit 0b3c462
+ * (ramo area-lixeira, do Robson), refeita para o código atual. */
+static bool laco_ativo, laco_somar;
+static int laco_x0, laco_y0, laco_x1, laco_y1;
+
+static void laco_retangulo(int *x, int *y, int *l, int *a)
+{
+    *x = laco_x0 < laco_x1 ? laco_x0 : laco_x1;
+    *y = laco_y0 < laco_y1 ? laco_y0 : laco_y1;
+    *l = (laco_x0 < laco_x1 ? laco_x1 - laco_x0 : laco_x0 - laco_x1) + 1;
+    *a = (laco_y0 < laco_y1 ? laco_y1 - laco_y0 : laco_y0 - laco_y1) + 1;
+}
+
+static void sujar_laco(void)
+{
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    gui_redesenhar(x - 1, y - 1, l + 2, a + 2);
+}
+
+/* Destaque dos ícones marcados e o laço, por cima do fundo e por baixo das
+ * janelas (o laço é da área de trabalho). */
+static void desenhar_selecao(void)
+{
+    suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
+    uint32_t cor = tema->filete ? tema->filete : 0x2FB866;
+    for (int i = 0; i < area_qtd_icones(); i++) {
+        if (!area_icone_selecionado(i)) continue;
+        int x, y, l, a;
+        area_icone_retangulo(i, &x, &y, &l, &a);
+        suave_ret(&sv, x, y - 4, l, a + 2, 10, cor, cor, 80);
+        suave_contorno(&sv, x, y - 4, l, a + 2, 10, cor, 200);
+    }
+    if (!laco_ativo) return;
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    suave_ret(&sv, x, y, l, a, 3, cor, cor, 64);
+    suave_contorno(&sv, x, y, l, a, 3, cor, 230);
+}
+
+static void tratar_laco(evento_mouse_t *m)
+{
+    sujar_laco();
+    if (m->botoes & BOTAO_ESQUERDO) {
+        laco_x1 = m->x;
+        laco_y1 = m->y < BARRA_SUPERIOR ? BARRA_SUPERIOR : m->y;
+        sujar_laco();
+        return;
+    }
+    laco_ativo = false;
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    if (l > 4 || a > 4) area_selecionar(x, y, l, a, laco_somar);
+    klog("[GUI] laco: (%d,%d) %dx%d, %d icones marcados\n", x, y, l, a, area_qtd_selecionados());
+    gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+}
+
 static void tratar_mouse(evento_mouse_t *m)
 {
+    if (laco_ativo) { tratar_laco(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
 
@@ -1056,12 +1414,23 @@ static void tratar_mouse(evento_mouse_t *m)
         }
         /* O menu aberto pega o clique: num item, abre; fora, só fecha. */
         if (menu_aberto) {
-            int mi = menu_item_em(m->x, m->y);
-            menu_aberto = false;
-            menu_sob = -1;
-            redesenhar_menu();
-            if (mi >= 0) { klog("[GUI] menu: %s\n", menu_itens[mi].nome); abrir_programa(menu_itens[mi].programa); }
-            if (mi >= 0 || m->y >= BARRA_SUPERIOR) return;
+            int mi = menu_alvo_em(m->x, m->y);
+            if (!(m->mudaram & BOTAO_ESQUERDO) || !(m->botoes & BOTAO_ESQUERDO)) {
+                if (mi >= 0) return;              /* soltar o botão dentro do menu */
+            } else if (mi >= ALVO_CAT && mi < ALVO_CAT + QTD_CATS) {
+                menu_cat = mi - ALVO_CAT; menu_sel = 0; menu_filtrar();
+                klog("[GUI] menu: categoria %s\n", cat_nomes[menu_cat]);
+                redesenhar_corpo_menu();
+                return;
+            } else if (mi == ALVO_BUSCA) return;
+            else if (mi == ALVO_SOBRE || mi == ALVO_DESLIGAR) {
+                menu_abrir(false);
+                abrir_programa(mi == ALVO_SOBRE ? "/bin/sobre-o-sistema" : "/bin/energia");
+                return;
+            } else if (mi >= 0) { menu_lancar(mi); return; }
+            else if (m->x >= MENU_X && m->x < MENU_X + MENU_L && m->y >= MENU_Y && m->y < MENU_Y + MENU_ALT) return;
+            menu_abrir(false);
+            if (m->y >= BARRA_SUPERIOR) return;
             if (m->x < 110) return;               /* clicou no próprio botão do menu: fecha */
         }
         int di = doca_item_em(m->x, m->y);
@@ -1099,7 +1468,7 @@ static void tratar_mouse(evento_mouse_t *m)
                 klog("[GUI] barra de tarefas: %s\n", tj->titulo);
                 return;
             }
-            if (m->x < 110) { menu_aberto = true; redesenhar_menu(); klog("[GUI] menu aberto\n"); }
+            if (m->x < 110) menu_abrir(true);
             else if (area_som_em(m->x, m->y)) {
                 char *argv[] = { "configuracoes", "som", NULL };
                 processo_executar("/bin/configuracoes", 2, argv, NULL);
@@ -1114,6 +1483,24 @@ static void tratar_mouse(evento_mouse_t *m)
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
+            if (m->mudaram & BOTAO_ESQUERDO) {
+                bool shift = (teclado_modificadores() & MOD_SHIFT) != 0;
+                if (ic >= 0) {
+                    /* Um clique marca só este ícone (com Shift, soma). */
+                    if (!area_icone_selecionado(ic) || !shift) {
+                        int ix, iy, il, ia;
+                        area_icone_retangulo(ic, &ix, &iy, &il, &ia);
+                        area_selecionar(ix + il / 2, iy + ia / 2, 1, 1, shift);
+                        gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                    }
+                } else {
+                    if (!shift && area_limpar_selecao()) gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                    laco_ativo = true;
+                    laco_somar = shift;
+                    laco_x0 = laco_x1 = m->x;
+                    laco_y0 = laco_y1 = m->y;
+                }
+            }
             if (ic >= 0 && (m->mudaram & BOTAO_DIREITO)) abrir_ctx(ic, m->x, m->y);
             else if (m->mudaram & BOTAO_DIREITO) abrir_ctx_area(m->x, m->y);
             captura = -1;
@@ -1192,8 +1579,9 @@ static void tratar_mouse(evento_mouse_t *m)
     /* Movimento sem botão: o realce da doca e do menu, e a janela com foco. */
     int sob = doca_item_em(m->x, m->y);
     if (sob != doca_sob) { doca_sob = sob; redesenhar_doca(); }
-    int ms = menu_item_em(m->x, m->y);
-    if (ms != menu_sob) { menu_sob = ms; redesenhar_menu(); }
+    int ms = menu_alvo_em(m->x, m->y);
+    if (ms == ALVO_BUSCA) ms = -1;
+    if (ms != menu_sob) { menu_sob = ms; redesenhar_corpo_menu(); }
     int cs = ctx_item_em(m->x, m->y);
     if (cs != ctx_sob) { ctx_sob = cs; redesenhar_ctx(); }
     if (sob >= 0) return;
@@ -1212,12 +1600,7 @@ static int  alt_tab_lista[MAX_JANELAS], alt_tab_qtd, alt_tab_pos;
 
 static bool atalho(int t, uint32_t mods)
 {
-    if (t == TECLA_SUPER) {
-        menu_aberto = !menu_aberto;
-        redesenhar_menu();
-        if (menu_aberto) klog("[GUI] menu aberto\n");
-        return true;
-    }
+    if (t == TECLA_SUPER) { menu_abrir(!menu_aberto); return true; }
     janela_t *j = focada();
     if ((mods & MOD_ALT) && t == '\t') {
         if (!alt_tab_qtd) {                      /* começo: a ordem de agora, da frente para trás */
@@ -1228,7 +1611,7 @@ static bool atalho(int t, uint32_t mods)
         if (alt_tab_qtd < 2) return true;
         alt_tab_pos = (alt_tab_pos + ((mods & MOD_SHIFT) ? alt_tab_qtd - 1 : 1)) % alt_tab_qtd;
         int i = alt_tab_lista[alt_tab_pos];
-        if (menu_aberto) { menu_aberto = false; redesenhar_menu(); }
+        if (menu_aberto) menu_abrir(false);
         for (int k = 0; k < qtd; k++) if (ordem[k] == i) { trazer_para_cima(k); break; }
         klog("[GUI] alt+tab: janela %d\n", janelas[i].id);
         return true;
@@ -1276,7 +1659,23 @@ static void tarefa_gerenciador(void *arg)
         int t;
         if (!(teclado_modificadores() & MOD_ALT)) alt_tab_qtd = 0;   /* soltou o Alt: acaba o Alt+Tab */
         while ((t = teclado_tentar()) >= 0) {
+            if (t == TECLA_IMPRIMIR) {   /* a captura de tela é do sistema, não da janela em foco */
+                /* Segurar a tecla repete o Print Screen, e cada captura é um
+                 * processo com alguns MB (a tela e o PNG): uma por vez, no
+                 * máximo uma a cada 2 segundos. */
+                static uint32_t ultima_captura;
+                static bool ja_capturou;
+                uint32_t agora_cap = relogio_tiques();
+                if (ja_capturou && agora_cap - ultima_captura < 2 * TIQUES_POR_SEGUNDO) continue;
+                ja_capturou = true;
+                ultima_captura = agora_cap;
+                char *argv[] = { "captura", NULL };
+                int pid = processo_executar("/bin/captura", 1, argv, NULL);
+                klog("[GUI] Print Screen: captura pid %d\n", pid);
+                continue;
+            }
             if (atalho(t, teclado_modificadores())) continue;
+            if (menu_aberto) { menu_tecla(t); continue; }   /* a busca do menu Iniciar */
             janela_t *j = focada();
             if (!j) continue;
             evento_t e = { .tipo = EV_TECLA, .tecla = (unsigned)t, .modificadores = teclado_modificadores() & 3 };
@@ -1503,6 +1902,25 @@ int32_t sis_teclas_seguradas(uint32_t pmapa, uint32_t b, uint32_t c, uint32_t d,
     if (foco) teclado_seguradas(mapa);
     memcpy((void *)pmapa, mapa, 32);
     return foco ? 1 : 0;
+}
+
+/* SIS_LER_TELA (&pixels, bytes) -> largura | altura << 16 Copia o
+ * buffer de trás (a tela montada, sem o cursor do mouse) se "bytes" couber
+ * largura * altura * 4; com bytes = 0 só diz o tamanho. Para a captura de
+ * tela: qualquer programa pode ler a tela, como no X11 sem extensões. */
+int32_t sis_ler_tela(uint32_t ppx, uint32_t n, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)c; (void)d; (void)e;
+    if (!video_ativo()) return ERRO_NAO_EXISTE;
+    uint32_t l = video_largura(), a = video_altura();
+    int32_t tamanho = (int32_t)(l | a << 16);
+    if (n == 0) return tamanho;
+    if (n < l * a * 4) return ERRO_INVALIDO;
+    if (!usuario_ok((void *)ppx, l * a * 4, true)) return ERRO_ENDERECO;
+    bool i0 = int_salva_desliga();
+    memcpy((void *)ppx, video_buffer(), l * a * 4);
+    int_restaura(i0);
+    return tamanho;
 }
 
 int32_t sis_titulo_janela(uint32_t id, uint32_t ptitulo, uint32_t c, uint32_t d, uint32_t e)
