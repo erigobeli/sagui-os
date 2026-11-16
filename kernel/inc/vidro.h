@@ -6,7 +6,7 @@
 #define VIDRO_RAIO     6      /* desfoque: média num quadrado de 13 x 13 */
 #define VIDRO_ALT_MAX  72     /* vidro mais alto que isso não é desfocado */
 #define VIDRO_SOMBRA   12     /* largura da sombra das janelas */
-#define VIDRO_CANTO    8      /* raio dos cantos arredondados */
+#define VIDRO_CANTO    12     /* raio dos cantos arredondados */
 
 #define CANTOS_EM_CIMA  1
 #define CANTOS_EMBAIXO  2

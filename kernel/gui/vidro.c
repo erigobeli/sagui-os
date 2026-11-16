@@ -47,43 +47,33 @@ static inline uint32_t escurecer(uint32_t p, int k)
     return (rb & 0xFF00FF) | (g & 0x00FF00);
 }
 
-/* Canto arredondado suavizado: quanto do pixel (de 0 a 256) fica dentro de
- * um quarto de círculo de raio 8, contado com 8 x 8 amostras por pixel.
- * Linha 0 e coluna 0 são as da ponta. Antes o canto só pulava pixels
- * inteiros (5, 3, 2, 1, 1), e a borda ficava em escada. */
-static const uint16_t canto[VIDRO_CANTO][VIDRO_CANTO] = {
-    { 0, 0, 0, 0, 48, 156, 216, 256 },
-    { 0, 0, 12, 156, 256, 256, 256, 256 },
-    { 0, 12, 196, 256, 256, 256, 256, 256 },
-    { 0, 156, 256, 256, 256, 256, 256, 256 },
-    { 48, 256, 256, 256, 256, 256, 256, 256 },
-    { 156, 256, 256, 256, 256, 256, 256, 256 },
-    { 216, 256, 256, 256, 256, 256, 256, 256 },
-    { 256, 256, 256, 256, 256, 256, 256, 256 },
-};
-
-/* Pixels de cobertura 0 na ponta da linha r (o que fica todo de fora). */
-int vidro_canto(int r)
+/* Canto arredondado suavizado: quanto de cada pixel da ponta fica dentro
+ * do quarto de círculo, contado com 4 x 4 amostras (suave.h). Antes o canto
+ * só pulava pixels inteiros (5, 3, 2, 1, 1), e a borda ficava em escada. O
+ * raio é VIDRO_CANTO, ou menos se o retângulo for baixo ou estreito. */
+static int raio_de(int l, int a)
 {
-    int n = 0;
-    if (r >= 0 && r < VIDRO_CANTO) while (n < VIDRO_CANTO && canto[r][n] == 0) n++;
+    int r = VIDRO_CANTO;
+    if (2 * r > l) r = l / 2;
+    if (2 * r > a) r = a / 2;
+    return r;
+}
+
+/* Quanto do pixel (i, j) fica dentro do retângulo (0 a 256). */
+static int cobertura(int i, int j, int x, int y, int l, int a, int cantos, int r)
+{
+    int li = i - x, lj = j - y;
+    if (lj < r ? !(cantos & CANTOS_EM_CIMA) : lj >= a - r ? !(cantos & CANTOS_EMBAIXO) : true) return 256;
+    return suave_amostras_ret(li, lj, l, a, r) * 16;
+}
+
+/* Pixels todo de fora na ponta da linha "linha" de um canto de raio
+ * VIDRO_CANTO (0 = a da ponta). */
+int vidro_canto(int linha)
+{
+    int R = VIDRO_CANTO, n = 0;
+    if (linha >= 0 && linha < R) while (n < R && suave_amostras_ret(n, linha, 2 * R, 2 * R, R) == 0) n++;
     return n;
-}
-
-/* Linha do canto em que j cai (0 = a da ponta), ou -1 fora dos cantos. */
-static int linha_canto(int j, int y, int a, int cantos)
-{
-    if ((cantos & CANTOS_EM_CIMA) && j - y < VIDRO_CANTO) return j - y;
-    if ((cantos & CANTOS_EMBAIXO) && y + a - 1 - j < VIDRO_CANTO) return y + a - 1 - j;
-    return -1;
-}
-
-/* Quanto do pixel i da linha "lin" do canto fica dentro (0 a 256). */
-static int cobertura(int lin, int i, int x, int l)
-{
-    if (lin < 0) return 256;
-    int col = i - x < VIDRO_CANTO ? i - x : x + l - 1 - i < VIDRO_CANTO ? x + l - 1 - i : -1;
-    return col < 0 ? 256 : canto[lin][col];
 }
 
 void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, int k, int cantos)
@@ -91,13 +81,14 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
     int x0 = x < s->cx0 ? s->cx0 : x, y0 = y < s->cy0 ? s->cy0 : y;
     int x1 = x + l > s->cx1 ? s->cx1 : x + l, y1 = y + a > s->cy1 ? s->cy1 : y + a;
     if (x0 >= x1 || y0 >= y1) return;
+    int r = raio_de(l, a);
     if (!buf || a > VIDRO_ALT_MAX || !vidro_efeitos) {
         /* Sem desfoque (efeitos leves): só a cor, um pouco transparente. */
         for (int j = y0; j < y1; j++) {
-            int lin = linha_canto(j, y, a, cantos);
             uint32_t *p = s->px + j * s->larg;
+            bool linha_canto = j < y + r || j >= y + a - r;
             for (int i = x0; i < x1; i++) {
-                int cob = cobertura(lin, i, x, l);
+                int cob = linha_canto && (i < x + r || i >= x + l - r) ? cobertura(i, j, x, y, l, a, cantos, r) : 256;
                 if (!cob) continue;
                 uint32_t v = vidro_efeitos ? mistura(p[i], tinta, k) : tinta;
                 p[i] = cob == 256 ? v : mistura(p[i], v, cob);
@@ -129,6 +120,7 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
     /* Passada 2: cada coluna do destino, média vertical sobre buf, misturada com a tinta. */
     for (int i = x0; i < x1; i++) {
         int c = i - sx0;
+        bool coluna_canto = i < x + r || i >= x + l - r;   /* só as colunas dos cantos têm conta */
         uint32_t sr = 0, sg = 0, sb = 0;
         int n = 0;
         int jj0 = y0 - sy0;                          /* linha do buf do primeiro destino */
@@ -139,7 +131,7 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
         }
         for (int yy = y0; yy < y1; yy++) {
             int jb = yy - sy0;
-            int cob = cobertura(linha_canto(yy, y, a, cantos), i, x, l);
+            int cob = coluna_canto && (yy < y + r || yy >= y + a - r) ? cobertura(i, yy, x, y, l, a, cantos, r) : 256;
             if (cob) {
                 uint32_t media = ((sr / (uint32_t)n) << 16) | ((sg / (uint32_t)n) << 8) | (sb / (uint32_t)n);
                 uint32_t *p = &s->px[yy * s->larg + i];
@@ -221,8 +213,13 @@ void vidro_sombra_r(superficie_t *s, int x, int y, int l, int a, int r)
             /* Distância (em pixels) até o retângulo arredondado descido. */
             int cx = i < x + r ? x + r : (i >= x + l - r ? x + l - r - 1 : i);
             int cy = j < sy + r ? sy + r : (j >= sy + a - r ? sy + a - r - 1 : j);
-            int dx = i - cx, dy = j - cy, d2 = dx * dx + dy * dy, d = 0;
-            while ((d + 1) * (d + 1) <= d2) d++;
+            int dx = i - cx, dy = j - cy, d;
+            if (!dx || !dy) d = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);   /* ao lado de uma reta: sem raiz */
+            else {
+                int d2 = dx * dx + dy * dy;
+                d = 0;
+                while ((d + 1) * (d + 1) <= d2) d++;
+            }
             d -= r;
             if (d < 0) d = 0;
             if (d >= S) continue;
@@ -264,7 +261,7 @@ void vidro_aplicar_cantos(superficie_t *s, int x, int y, int l, int a)
     for (int lado = 0; lado < 2; lado++)
         for (int r = 0; r < VIDRO_CANTO; r++)
             for (int c = 0; c < VIDRO_CANTO; c++) {
-                int cob = canto[r][c];
+                int cob = suave_amostras_ret(c, a - 1 - r, l, a, raio_de(l, a)) * 16;
                 if (cob == 256) continue;
                 int px = lado ? x + l - 1 - c : x + c, py = y + a - 1 - r;
                 if (px >= s->cx0 && px < s->cx1 && py >= s->cy0 && py < s->cy1) {
