@@ -14,7 +14,7 @@
  * pouco deslocado para baixo, como uma luz vinda de cima.
  *
  * Cantos arredondados: uma tabela diz, para cada uma das primeiras linhas,
- * quantos pixels pular em cada ponta (um quarto de círculo de raio RAIO). */
+ * quanto de cada pixel da ponta fica dentro (um quarto de círculo de raio RAIO). */
 #include "vidro.h"
 #include "suave.h"
 #include "memoria.h"
@@ -47,17 +47,43 @@ static inline uint32_t escurecer(uint32_t p, int k)
     return (rb & 0xFF00FF) | (g & 0x00FF00);
 }
 
-/* Linha do canto arredondado: quantos pixels pular na linha r (0 = a de
- * cima). Raio 8: valores de 8 - raiz(64 - (8 - r - 0,5)^2), arredondados. */
-static const uint8_t canto[VIDRO_CANTO] = { 5, 3, 2, 1, 1, 0, 0, 0 };
-int vidro_canto(int r) { return r >= 0 && r < VIDRO_CANTO ? canto[r] : 0; }
+/* Canto arredondado suavizado: quanto do pixel (de 0 a 256) fica dentro de
+ * um quarto de círculo de raio 8, contado com 8 x 8 amostras por pixel.
+ * Linha 0 e coluna 0 são as da ponta. Antes o canto só pulava pixels
+ * inteiros (5, 3, 2, 1, 1), e a borda ficava em escada. */
+static const uint16_t canto[VIDRO_CANTO][VIDRO_CANTO] = {
+    { 0, 0, 0, 0, 48, 156, 216, 256 },
+    { 0, 0, 12, 156, 256, 256, 256, 256 },
+    { 0, 12, 196, 256, 256, 256, 256, 256 },
+    { 0, 156, 256, 256, 256, 256, 256, 256 },
+    { 48, 256, 256, 256, 256, 256, 256, 256 },
+    { 156, 256, 256, 256, 256, 256, 256, 256 },
+    { 216, 256, 256, 256, 256, 256, 256, 256 },
+    { 256, 256, 256, 256, 256, 256, 256, 256 },
+};
 
-/* Quantos pixels pular na ponta da linha j do retângulo (cantos arredondados). */
-static int pular(int j, int y, int a, int cantos)
+/* Pixels de cobertura 0 na ponta da linha r (o que fica todo de fora). */
+int vidro_canto(int r)
 {
-    if ((cantos & CANTOS_EM_CIMA) && j - y < VIDRO_CANTO) return vidro_canto(j - y);
-    if ((cantos & CANTOS_EMBAIXO) && y + a - 1 - j < VIDRO_CANTO) return vidro_canto(y + a - 1 - j);
-    return 0;
+    int n = 0;
+    if (r >= 0 && r < VIDRO_CANTO) while (n < VIDRO_CANTO && canto[r][n] == 0) n++;
+    return n;
+}
+
+/* Linha do canto em que j cai (0 = a da ponta), ou -1 fora dos cantos. */
+static int linha_canto(int j, int y, int a, int cantos)
+{
+    if ((cantos & CANTOS_EM_CIMA) && j - y < VIDRO_CANTO) return j - y;
+    if ((cantos & CANTOS_EMBAIXO) && y + a - 1 - j < VIDRO_CANTO) return y + a - 1 - j;
+    return -1;
+}
+
+/* Quanto do pixel i da linha "lin" do canto fica dentro (0 a 256). */
+static int cobertura(int lin, int i, int x, int l)
+{
+    if (lin < 0) return 256;
+    int col = i - x < VIDRO_CANTO ? i - x : x + l - 1 - i < VIDRO_CANTO ? x + l - 1 - i : -1;
+    return col < 0 ? 256 : canto[lin][col];
 }
 
 void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, int k, int cantos)
@@ -68,11 +94,13 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
     if (!buf || a > VIDRO_ALT_MAX || !vidro_efeitos) {
         /* Sem desfoque (efeitos leves): só a cor, um pouco transparente. */
         for (int j = y0; j < y1; j++) {
-            int pula = pular(j, y, a, cantos);
+            int lin = linha_canto(j, y, a, cantos);
             uint32_t *p = s->px + j * s->larg;
             for (int i = x0; i < x1; i++) {
-                if (i < x + pula || i >= x + l - pula) continue;
-                p[i] = vidro_efeitos ? mistura(p[i], tinta, k) : tinta;
+                int cob = cobertura(lin, i, x, l);
+                if (!cob) continue;
+                uint32_t v = vidro_efeitos ? mistura(p[i], tinta, k) : tinta;
+                p[i] = cob == 256 ? v : mistura(p[i], v, cob);
             }
         }
         return;
@@ -111,10 +139,12 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
         }
         for (int yy = y0; yy < y1; yy++) {
             int jb = yy - sy0;
-            int pula = pular(yy, y, a, cantos);
-            if (i >= x + pula && i < x + l - pula) {
+            int cob = cobertura(linha_canto(yy, y, a, cantos), i, x, l);
+            if (cob) {
                 uint32_t media = ((sr / (uint32_t)n) << 16) | ((sg / (uint32_t)n) << 8) | (sb / (uint32_t)n);
-                s->px[yy * s->larg + i] = mistura(media, tinta, k);
+                uint32_t *p = &s->px[yy * s->larg + i];
+                uint32_t v = mistura(media, tinta, k);
+                *p = cob == 256 ? v : mistura(*p, v, cob);
             }
             int entra = jb + R + 1, sai = jb - R;
             if (entra < H) { uint32_t v = buf[entra * W + c]; sr += (v >> 16) & 255; sg += (v >> 8) & 255; sb += v & 255; n++; }
@@ -226,3 +256,35 @@ void vidro_sombra(superficie_t *s, int x, int y, int l, int a)
 }
 
 bool vidro_efeitos = true;
+
+/* Cantos de baixo das janelas. O conteúdo da janela é copiado por cima de
+ * tudo, então os cantos são feitos assim: antes de pintar a moldura, guarda
+ * os pixels de fundo dos dois cantos de baixo; depois de copiar o conteúdo,
+ * mistura o fundo guardado de volta onde o canto fica de fora. */
+static uint32_t fundo_canto[2][VIDRO_CANTO][VIDRO_CANTO];
+
+void vidro_guardar_cantos(superficie_t *s, int x, int y, int l, int a)
+{
+    for (int lado = 0; lado < 2; lado++)
+        for (int r = 0; r < VIDRO_CANTO; r++)
+            for (int c = 0; c < VIDRO_CANTO; c++) {
+                int px = lado ? x + l - 1 - c : x + c, py = y + a - 1 - r;
+                if (px >= s->cx0 && px < s->cx1 && py >= s->cy0 && py < s->cy1)
+                    fundo_canto[lado][r][c] = s->px[py * s->larg + px];
+            }
+}
+
+void vidro_aplicar_cantos(superficie_t *s, int x, int y, int l, int a)
+{
+    for (int lado = 0; lado < 2; lado++)
+        for (int r = 0; r < VIDRO_CANTO; r++)
+            for (int c = 0; c < VIDRO_CANTO; c++) {
+                int cob = canto[r][c];
+                if (cob == 256) continue;
+                int px = lado ? x + l - 1 - c : x + c, py = y + a - 1 - r;
+                if (px >= s->cx0 && px < s->cx1 && py >= s->cy0 && py < s->cy1) {
+                    uint32_t *p = &s->px[py * s->larg + px];
+                    *p = mistura(fundo_canto[lado][r][c], *p, cob);
+                }
+            }
+}
