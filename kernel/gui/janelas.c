@@ -865,6 +865,7 @@ static void desenhar_moldura(janela_t *j, bool foco)
     int x = j->x, y = j->y, l = moldura_l(j), a = moldura_a(j);
     uint32_t cor = foco ? tema->titulo_foco : tema->titulo;
     vidro_sombra(&tela, x, y, l, a);
+    vidro_guardar_cantos(&tela, x, y, l, a);          /* os de baixo voltam depois do conteúdo */
     vidro_pintar(&tela, x, y, l, BARRA_TITULO, cor, tema->k_titulo, CANTOS_EM_CIMA);
     sup_retangulo(&tela, x, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
     sup_retangulo(&tela, x + l - BORDA, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, cor);
@@ -1107,6 +1108,7 @@ void gui_mostrar(void)
             if (vl < j->larg) sup_retangulo(&tela, cx + vl, cy, j->larg - vl, j->alt, 0xF4F4F0);
             if (va < j->alt) sup_retangulo(&tela, cx, cy + va, vl, j->alt - va, 0xF4F4F0);
         }
+        vidro_aplicar_cantos(&tela, j->x, j->y, moldura_l(j), moldura_a(j));
     }
     desenhar_anims();
     desenhar_redimensionar();
