@@ -47,6 +47,9 @@ Já no código (no `main`), ainda não lançado como imagem:
   programa redesenha; o Cipó sem decodificar de novo as imagens quando a
   página muda; a **doca com cantos redondos** e ícones novos dos programas,
   num estilo só.
+- Correções do teste no G470: **Ctrl+V cola a chave da IA** nas
+  Configurações; o Editor só mostra "Compilar e rodar" e "Instalar" para
+  programas em C; o menu do Arquivos não repete "Abrir no Editor".
 - **Ícones desenhados em código** (D055), no estilo do Robson: todos os
   programas com o mesmo fundo de cantos redondos, centrados, e o build gera
   os tamanhos 64 e 40 sem depender de imagem pronta.

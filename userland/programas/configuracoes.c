@@ -652,6 +652,17 @@ static void ia_tratar(const evento_t *e)
         int n = (int)tam_texto(chave_digitada);
         if (e->tecla == 8 && n > 0) chave_digitada[--n] = 0;
         else if (e->tecla >= 33 && e->tecla < 127 && n < (int)sizeof chave_digitada - 1) { chave_digitada[n++] = (char)e->tecla; chave_digitada[n] = 0; }
+        else if (e->tecla == 22) {
+            /* Ctrl+V: a chave é longa demais para digitar. Cola só as letras
+             * visíveis (espaços e quebras de linha copiados junto ficam de
+             * fora) e nunca registra o que veio da área de cópia. */
+            char c[sizeof chave_digitada];
+            int k = area_copia_ler(c, sizeof c - 1);
+            for (int i = 0; i < k && n < (int)sizeof chave_digitada - 1; i++)
+                if ((unsigned char)c[i] >= 33 && (unsigned char)c[i] < 127) chave_digitada[n++] = c[i];
+            chave_digitada[n] = 0;
+            memset(c, 0, sizeof c);
+        }
         char estrelas[48];
         int m = n < 40 ? n : 40;
         memset(estrelas, '*', (size_t)m);

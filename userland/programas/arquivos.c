@@ -16,6 +16,7 @@ static jan_t *j;
 static char pasta[160] = "/";
 static char nomes[MAX_ITENS][64];
 static uint8_t tipos[MAX_ITENS];
+static bool menu_sem_editor;       /* o menu do botão direito não repetiu "Abrir no Editor" */
 static uint32_t tamanhos[MAX_ITENS];
 static lista_t lista;
 static info_disco_t pendrive;
@@ -398,6 +399,10 @@ int principal(int argc, char **argv)
         if (e.tipo == EV_TECLA && e.tecla == TECLA_DELETE) { apagar_item(); continue; }
         if (e.tipo == EV_MENU) {                            /* menu do botão direito (H81) */
             registrar("arquivos: menu %u", e.tecla);
+            /* Num texto, o primeiro item já é "Abrir no Editor": o menu não
+             * repete o item, e as escolhas seguintes andam uma casa. */
+            unsigned esc = e.tecla + (menu_sem_editor && e.tecla >= 1 ? 1 : 0);
+            e.tecla = esc;
             if (e.tecla == 0 && lista.sel >= 0) abrir_item(lista.sel);
             else if (e.tecla == 1 && lista.sel >= 0 && tipos[lista.sel] != TIPO_PASTA) abrir_com(lista.sel, "/bin/editor");
             else if (e.tecla == 2) apagar_item();
@@ -411,10 +416,12 @@ int principal(int argc, char **argv)
             static char itens[160];
             const char *prog = lista.sel >= 0 && tipos[lista.sel] != TIPO_PASTA && tipos[lista.sel] != TIPO_PROGRAMA
                              ? programa_para(nomes[lista.sel]) : NULL;
-            formatar_texto(itens, sizeof itens, "%s|Abrir no Editor|Apagar...|Nova pasta...|Voltar",
+            menu_sem_editor = prog && compara_texto(prog, "/bin/editor") == 0;
+            formatar_texto(itens, sizeof itens, "%s%s|Apagar...|Nova pasta...|Voltar",
                            !prog ? "Abrir" : compara_texto(prog, "/bin/tocador") == 0 ? "Abrir no Tocador" :
                            compara_texto(prog, "/bin/cipo") == 0 ? "Abrir no Cipó" :
-                           compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor");
+                           compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor",
+                           menu_sem_editor ? "" : "|Abrir no Editor");
             jan_menu(j, e.x, e.y, itens);
             continue;
         }
