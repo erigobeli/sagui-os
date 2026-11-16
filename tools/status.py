@@ -33,7 +33,14 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Qual versão do projeto: v1 (prd.md, painel em dashboard/) ou v2 (prd2.md,
 # painel em dashboard/v2/). Escolhida pela variável SAGUI_PROJETO.
 PROJETO = os.environ.get("SAGUI_PROJETO", "v1")
-if PROJETO == "v2":
+if PROJETO == "v3":
+    ARQ_JSON = os.path.join(RAIZ, "dashboard", "v3", "status.json")
+    ARQ_JS = os.path.join(RAIZ, "dashboard", "v3", "status.js")
+    ARQ_MD = os.path.join(RAIZ, "status-v3.md")
+    PASTA_HIST = os.path.join(RAIZ, "docs", "v3", "historias")
+    PASTA_CAPT = os.path.join(RAIZ, "docs", "v3", "capturas")
+    META_BYTES = None
+elif PROJETO == "v2":
     ARQ_JSON = os.path.join(RAIZ, "dashboard", "v2", "status.json")
     ARQ_JS = os.path.join(RAIZ, "dashboard", "v2", "status.js")
     ARQ_MD = os.path.join(RAIZ, "status-v2.md")

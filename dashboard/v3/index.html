@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SaguiOS: painel</title>
+<style>
+  :root {
+    --fundo: #f4f6f2; --cartao: #ffffff; --texto: #1d2420; --suave: #5d6a62; --linha: #dfe5df;
+    --verde: #12924a; --amarelo: #e8b400; --azul: #1f4fa8; --vermelho: #c0392b; --laranja: #d9730d;
+    --trilho: #e8ece8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fundo: #111612; --cartao: #1a211c; --texto: #e6ece7; --suave: #9aa89f; --linha: #2c362f;
+      --verde: #2fbf6a; --amarelo: #f2c94c; --azul: #6d9cf0; --vermelho: #ef6b5b; --laranja: #f0a050;
+      --trilho: #263029;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fundo); color: var(--texto);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: linear-gradient(110deg, var(--verde) 0%, #0e7a3d 55%, var(--azul) 100%);
+           color: #fff; padding: 28px 16px 22px; }
+  .conteudo { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  header .conteudo { padding: 0; }
+  h1 { margin: 0 0 4px; font-size: clamp(20px, 3.4vw, 30px); letter-spacing: -0.01em; }
+  header p { margin: 0; opacity: .9; }
+  .faixa { margin-top: 14px; display: inline-block; background: var(--amarelo); color: #1d2420;
+           font-weight: 700; padding: 6px 12px; border-radius: 6px; }
+  .grade { display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); margin: 20px auto; }
+  .cartao { background: var(--cartao); border: 1px solid var(--linha); border-radius: 10px; padding: 16px; min-width: 0; }
+  .c12 { grid-column: span 12; } .c8 { grid-column: span 8; } .c6 { grid-column: span 6; } .c4 { grid-column: span 4; }
+  @media (max-width: 860px) { .c8, .c6, .c4 { grid-column: span 12; } }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .numero { font-size: 40px; font-weight: 800; line-height: 1; }
+  .rotulo { color: var(--suave); font-size: 13px; }
+  .barra { height: 12px; background: var(--trilho); border-radius: 6px; overflow: hidden; }
+  .barra > div { height: 100%; background: var(--verde); border-radius: 6px; transition: width .4s; }
+  .barra.alerta > div { background: var(--laranja); }
+  .fase { display: grid; grid-template-columns: 170px 1fr 52px; gap: 10px; align-items: center; margin: 8px 0; }
+  .fase .nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .fase .pct { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--suave); }
+  .selo { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .s-feito { background: color-mix(in srgb, var(--verde) 18%, transparent); color: var(--verde); }
+  .s-andamento { background: color-mix(in srgb, var(--azul) 18%, transparent); color: var(--azul); }
+  .s-aguardando { background: color-mix(in srgb, var(--amarelo) 30%, transparent); color: var(--texto); }
+  .s-afazer { background: var(--trilho); color: var(--suave); }
+  .s-cancelado { background: var(--trilho); color: var(--suave); text-decoration: line-through; }
+  .s-parcial { background: color-mix(in srgb, var(--laranja) 20%, transparent); color: var(--laranja); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--linha); vertical-align: top; }
+  th { color: var(--suave); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .rolagem { overflow-x: auto; }
+  .hist-fase { margin: 14px 0 4px; font-weight: 700; font-size: 13px; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }
+  .hist { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--linha); align-items: start; }
+  .hist .id { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hist .det { color: var(--suave); font-size: 13px; }
+  .hist details summary { cursor: pointer; }
+  ul.lista { list-style: none; padding: 0; margin: 0; }
+  ul.lista li { padding: 7px 0; border-bottom: 1px solid var(--linha); font-size: 14px; }
+  ul.lista time { display: block; color: var(--suave); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .galeria { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .galeria figure { margin: 0; }
+  .galeria img { width: 100%; border-radius: 6px; border: 1px solid var(--linha); background: #000; display: block; cursor: zoom-in; }
+  .galeria figcaption { font-size: 12px; color: var(--suave); margin-top: 4px; word-break: break-all; }
+  .vazio { color: var(--suave); font-style: italic; font-size: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .kpi .numero { font-size: 26px; }
+  .msg { white-space: pre-wrap; font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+         background: var(--trilho); padding: 12px; border-radius: 8px; overflow-x: auto; }
+  #zoom { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+  #zoom img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+  footer { color: var(--suave); font-size: 12px; text-align: center; padding: 20px 16px 40px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="conteudo">
+    <h1 id="titulo">SaguiOS: um sistema operacional escrito do zero por IA</h1>
+    <p id="atualizado">Carregando status…</p>
+    <p id="links"></p>
+    <div class="faixa" id="situacao">…</div>
+  </div>
+</header>
+
+<main class="conteudo">
+  <div class="grade">
+    <section class="cartao c12" id="cartao-msg" hidden>
+      <h2>Mensagem de fim de fase</h2>
+      <div class="msg" id="mensagem"></div>
+    </section>
+
+    <section class="cartao c4">
+      <h2>Progresso geral</h2>
+      <div class="numero" id="geral">0%</div>
+      <div class="rotulo" id="geral-det"></div>
+      <div class="barra" style="margin-top:12px"><div id="geral-barra" style="width:0"></div></div>
+    </section>
+
+    <section class="cartao c8">
+      <h2>Progresso por fase</h2>
+      <div id="fases"></div>
+    </section>
+
+    <section class="cartao c6">
+      <h2>Tamanho da imagem</h2>
+      <div class="numero" id="img-tam">0 KB</div>
+      <div class="rotulo" id="img-det"></div>
+      <div class="barra" id="img-barra-box" style="margin-top:12px"><div id="img-barra" style="width:0"></div></div>
+    </section>
+
+    <section class="cartao c6">
+      <h2>Linhas de código escritas</h2>
+      <div class="kpis" id="linhas"></div>
+    </section>
+
+    <section class="cartao c12">
+      <h2 id="tabela-titulo">Critério do Tanenbaum: o que torna isto um sistema operacional</h2>
+      <div class="rolagem"><table>
+        <thead><tr><th id="tabela-col1">Conceito do livro</th><th>O que o SaguiOS implementa</th><th>Histórias</th><th>Estado</th></tr></thead>
+        <tbody id="tanenbaum"></tbody>
+      </table></div>
+    </section>
+
+    <section class="cartao c8">
+      <h2>Histórias</h2>
+      <div id="historias"></div>
+    </section>
+
+    <section class="cartao c4">
+      <h2>Últimas ações</h2>
+      <ul class="lista" id="acoes"></ul>
+      <h2 style="margin-top:20px">Erros e correções</h2>
+      <ul class="lista" id="erros"></ul>
+    </section>
+
+    <section class="cartao c12">
+      <h2>Capturas de tela</h2>
+      <div class="galeria" id="galeria"></div>
+    </section>
+  </div>
+</main>
+<div id="zoom"><img alt=""></div>
+<footer>Painel sem dependências externas. Dados em <code>status.json</code>, nesta mesma pasta (cópia em <code>status.js</code> para abrir direto do disco).</footer>
+
+<script>
+// O painel lê window.SAGUI_STATUS (status.js). Se não existir, tenta o JSON
+// via fetch, que só funciona quando servido por HTTP.
+const ESTADOS = {
+  "feito": ["Feito", "s-feito"], "em andamento": ["Em andamento", "s-andamento"],
+  "aguardando teste": ["Aguardando teste", "s-aguardando"], "a fazer": ["A fazer", "s-afazer"],
+  "parcial": ["Parcial", "s-parcial"], "cancelado": ["Cancelado pelo Eli", "s-cancelado"]
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const selo = e => { const [t, c] = ESTADOS[e] || [e, "s-afazer"]; return `<span class="selo ${c}">${esc(t)}</span>`; };
+const dataBR = iso => iso ? new Date(iso).toLocaleString("pt-BR", {dateStyle: "short", timeStyle: "short"}) : "";
+const num = n => (n || 0).toLocaleString("pt-BR");
+const md = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+
+function desenhar(s) {
+  $("titulo").textContent = s.titulo;
+  $("atualizado").textContent = "Atualizado em " + dataBR(s.atualizado) +
+    (s.historia_atual ? " · história atual: " + s.historia_atual : "");
+  $("situacao").textContent = s.situacao + (s.bloqueio ? " · Bloqueio: " + s.bloqueio : "");
+  $("links").innerHTML = (s.links || []).map(l => `<a href="${esc(l.url)}">${esc(l.texto)}</a>`).join(" · ");
+  if (s.tabela_titulo) $("tabela-titulo").textContent = s.tabela_titulo;
+  if (s.tabela_coluna) $("tabela-col1").textContent = s.tabela_coluna;
+  $("cartao-msg").hidden = !s.mensagem_fase;
+  $("mensagem").textContent = s.mensagem_fase || "";
+
+  const principais = s.historias.filter(h => !h.bonus);
+  const feitas = principais.filter(h => h.estado === "feito" || h.estado === "aguardando teste").length;
+  $("geral").textContent = String(s.progresso_geral).replace(".", ",") + "%";
+  $("geral-det").textContent = `${feitas} de ${principais.length} histórias concluídas (bônus não contam)`;
+  $("geral-barra").style.width = s.progresso_geral + "%";
+
+  $("fases").innerHTML = s.fases.filter(f => !f.opcional).map(f => `
+    <div class="fase"><div class="nome" title="${esc(f.nome)}">${f.numero}. ${esc(f.nome)} ${f.estado !== "a fazer" ? selo(f.estado) : ""}</div>
+    <div class="barra"><div style="width:${f.progresso}%"></div></div>
+    <div class="pct">${String(f.progresso).replace(".", ",")}%</div></div>`).join("");
+
+  const img = s.imagem || {};
+  const util = img.bytes_util || 0, meta = img.meta_bytes;
+  $("img-tam").textContent = num(Math.round(util / 1024)) + " KB";
+  $("img-barra-box").hidden = !meta;
+  if (meta) {
+    $("img-det").textContent = `${num(util)} bytes úteis de ${num(meta)} (meta 1,44 MB) · ` +
+      `${(100 * util / meta).toFixed(1).replace(".", ",")}% da meta`;
+    $("img-barra").style.width = Math.min(100, 100 * util / meta) + "%";
+    $("img-barra-box").classList.toggle("alerta", util > meta);
+  } else {
+    $("img-det").textContent = `${num(util)} bytes úteis · sem teto de tamanho, medido a cada fase` +
+      (s.tamanho_inicial ? ` · começou em ${num(Math.round(s.tamanho_inicial / 1024))} KB` : "");
+  }
+
+  const L = s.linhas || {};
+  const totalCod = (L.boot || 0) + (L.kernel || 0) + (L.userland || 0);
+  const minutos = s.historias.reduce((a, h) => a + (h.minutos || 0), 0);
+  $("linhas").innerHTML = [["Boot", L.boot], ["Kernel", L.kernel], ["Userland", L.userland], ["Total", totalCod],
+     ["Scripts e testes", L.ferramentas], ["Minutos de trabalho", minutos]]
+    .map(([r, v]) => `<div class="kpi"><div class="numero">${num(v)}</div><div class="rotulo">${r}</div></div>`).join("");
+
+  $("tanenbaum").innerHTML = s.tanenbaum.map(t =>
+    `<tr><td><strong>${esc(t.conceito)}</strong></td><td>${esc(t.implementa)}</td><td>${esc(t.historias)}</td><td>${selo(t.estado)}</td></tr>`).join("");
+
+  let html = "";
+  for (const f of s.fases) {
+    const hs = s.historias.filter(h => h.fase === f.numero);
+    html += `<div class="hist-fase">${f.opcional ? "" : "Fase " + f.numero + ": "}${esc(f.nome)}</div>`;
+    html += hs.map(h => `<div class="hist"><div class="id">${h.id}</div>
+      <div><details><summary>${esc(h.titulo)}</summary>
+        <div class="det"><strong>Objetivo:</strong> ${md(h.objetivo)}<br><strong>Aceite:</strong> ${md(h.aceite)}
+        ${h.resultado ? "<br><strong>Resultado:</strong> " + md(h.resultado) : ""}</div></details>
+        <div class="det">${h.minutos ? h.minutos + " min" : ""}${h.fim ? " · concluída " + dataBR(h.fim) : (h.inicio ? "iniciada " + dataBR(h.inicio) : "")}</div></div>
+      <div>${selo(h.estado)}</div></div>`).join("");
+  }
+  $("historias").innerHTML = html;
+
+  $("acoes").innerHTML = s.acoes.length ? s.acoes.slice(0, 14).map(a =>
+    `<li><time>${dataBR(a.data)}</time>${md(a.texto)}</li>`).join("") : `<li class="vazio">Nada ainda.</li>`;
+  $("erros").innerHTML = s.erros.length ? s.erros.slice(0, 10).map(e =>
+    `<li><time>${dataBR(e.data)}</time><strong>${md(e.sintoma)}</strong><br>Causa: ${md(e.causa)}<br>Correção: ${md(e.correcao)}</li>`).join("")
+    : `<li class="vazio">Nenhum erro registrado.</li>`;
+
+  $("galeria").innerHTML = s.capturas.length ? s.capturas.slice(0, 24).map(c =>
+    `<figure><img loading="lazy" src="${esc(s.raiz || "../")}${esc(c.arquivo)}" alt="${esc(c.nome)}"><figcaption>${esc(c.nome)}</figcaption></figure>`).join("")
+    : `<p class="vazio">Nenhuma captura ainda.</p>`;
+}
+
+// Zoom das capturas.
+document.addEventListener("click", ev => {
+  const z = $("zoom");
+  if (ev.target.matches(".galeria img")) { z.querySelector("img").src = ev.target.src; z.style.display = "flex"; }
+  else if (ev.target.closest("#zoom")) z.style.display = "none";
+});
+
+// Recarrega status.js periodicamente para acompanhar o agente trabalhando.
+function carregar() {
+  const sc = document.createElement("script");
+  sc.src = "status.js?t=" + Date.now();
+  sc.onload = () => { desenhar(window.SAGUI_STATUS); sc.remove(); };
+  sc.onerror = () => {
+    sc.remove();
+    fetch("status.json?t=" + Date.now()).then(r => r.json()).then(desenhar)
+      .catch(() => { $("atualizado").textContent = "Não foi possível ler status.js nem status.json."; });
+  };
+  document.head.appendChild(sc);
+}
+carregar();
+setInterval(carregar, 30000);
+</script>
+</body>
+</html>
