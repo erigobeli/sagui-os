@@ -16,6 +16,7 @@
  * Cantos arredondados: uma tabela diz, para cada uma das primeiras linhas,
  * quantos pixels pular em cada ponta (um quarto de círculo de raio RAIO). */
 #include "vidro.h"
+#include "suave.h"
 #include "memoria.h"
 
 
@@ -122,22 +123,11 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
     }
 }
 
-/* Retângulo com cantos de raio r e borda suavizada (a doca): quanto do
- * pixel (li, lj), relativo ao canto do retângulo l x a, fica dentro, de 0 a
- * 256, contado com 4 x 4 amostras. As contas são em oitavos de pixel: a
- * amostra u (0 a 3) do pixel p fica em p*8 + 2u + 1. */
+/* Quanto do pixel (li, lj), relativo ao canto do retângulo l x a de cantos
+ * com raio r, fica dentro, de 0 a 256 (4 x 4 amostras, suave.h). */
 static int cobertura_r(int li, int lj, int l, int a, int r)
 {
-    if ((li >= r && li < l - r) || (lj >= r && lj < a - r)) return 256;
-    int R = r * 8, cx = li < r ? R : (l - r) * 8, cy = lj < r ? R : (a - r) * 8, n = 0;
-    for (int u = 0; u < 4; u++)
-        for (int v = 0; v < 4; v++) {
-            int sx = li * 8 + 2 * u + 1, sy = lj * 8 + 2 * v + 1;
-            int dx = li < r ? (sx < cx ? cx - sx : 0) : (sx > cx ? sx - cx : 0);
-            int dy = lj < r ? (sy < cy ? cy - sy : 0) : (sy > cy ? sy - cy : 0);
-            if (dx * dx + dy * dy <= R * R) n++;
-        }
-    return n * 16;
+    return suave_amostras_ret(li, lj, l, a, r) * 16;
 }
 
 /* Vidro de cantos com raio r e borda suavizada. Para a doca: ela é baixa
