@@ -44,14 +44,15 @@ def main():
         time.sleep(1)
         # O Terminal abre por cima do meio da tela. Os ícones ficam em duas
         # colunas (x de 20 a 116 e de 130 a 226; cada linha desce 92 pixels a
-        # partir de y = 40); na segunda só há o "Sobre", na primeira linha.
-        # O laço vai de (170, 300) a (10, 140): toca Terminal e Editor.
+        # partir de y = 40); na segunda há o "Sobre" e, embaixo dele, a
+        # Lixeira (H103). O laço vai de (127, 300) a (10, 140), só na primeira
+        # coluna: toca Terminal e Editor.
         antes_png = m.captura("H99-0-antes")
-        ponto = (150, 250)                      # vazio, dentro do laço
+        ponto = (122, 250)                      # vazio, dentro do laço (entre as colunas)
         fundo = cor_do_pixel(antes_png, *ponto)
 
         n = len(m.serial())
-        m.mouse_para(170, 300)
+        m.mouse_para(127, 300)
         m.monitor("mouse_button 1")             # segura o botão (mouse_mover só move)
         time.sleep(0.2)
         m.mouse_mover(10, 140)

@@ -5,7 +5,9 @@ Critérios:
   - num arquivo de texto (.txt), o Editor não mostra "Compilar e rodar" nem
     "Instalar" (são só para programas em C);
   - no Arquivos, o botão direito num .txt mostra "Abrir no Editor" uma vez
-    só (4 itens), e a escolha "Apagar..." continua chegando certo;
+    só (7 itens: Abrir no Editor, Renomear, Apagar..., Nova pasta, Novo
+    arquivo de texto, Nova página HTML e Voltar), e a escolha "Apagar..."
+    continua chegando certo;
   - em Configurações > IA, Ctrl+V cola na caixa da chave o texto copiado no
     Editor (a chave é longa demais para digitar), "Guardar" grava a chave em
     /usb/.saguios/chaves.txt, e a chave não aparece no registro do sistema.
@@ -47,16 +49,16 @@ def main():
         xi, yi = a["x"] + 170 + 6 + 60, a["y"] + 70 + 2 + 10
         antes = len(m.serial())
         m.clique(xi, yi, botao=2)
-        esperar(m, "menu aberto (tipo 3, 4 itens)", 10, antes)
+        esperar(m, "menu aberto (tipo 3, 7 itens)", 10, antes)
         m.captura("H97-1-menu-texto")
-        verificar(True, "o menu de um .txt tem 4 itens, com \"Abrir no Editor\" uma vez só")
-        # O 2º item agora é "Apagar...": a escolha tem de chegar como apagar (o
+        verificar(True, "o menu de um .txt tem 7 itens, com \"Abrir no Editor\" uma vez só")
+        # O 3º item é "Apagar...": a escolha tem de chegar como apagar (o
         # Arquivos pergunta antes; a resposta é Não).
         antes = len(m.serial())
-        m.clique(xi + 20, yi + 4 + 26 + 10)
-        esperar(m, "arquivos: menu 1", 10, antes)
+        m.clique(xi + 20, yi + 4 + 2 * 26 + 10)
+        esperar(m, "arquivos: menu 2", 10, antes)
         esperar(m, ': "Apagar"', 10, antes)
-        verificar(True, "a 2ª escolha do menu abre a pergunta de apagar")
+        verificar(True, "a 3ª escolha do menu abre a pergunta de apagar")
         time.sleep(1)
         m.tecla("esc")
         time.sleep(0.8)
