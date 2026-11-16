@@ -1895,3 +1895,72 @@ sobre o código da 1.0), refeita para o código atual.
 - A seleção fica no `area_trabalho.c` (`area_selecionar`,
   `area_limpar_selecao`, `area_icone_selecionado`, `area_qtd_selecionados`).
   Ela vale para os ícones do sistema e para os programas instalados.
+
+## D058. Arquivos: laço, vários marcados, "Novo" no menu e nome editado na linha (issue #25, parte 4)
+
+**Pedido.** Queria a seleção translúcida também no Arquivos, as opções de
+criar no menu do botão direito (pasta, arquivo de texto e outros) e o nome
+escrito na própria linha do item, sem janela de diálogo. Isso vale para criar
+e para renomear.
+
+**Na lista da `libsagui`.** Tudo é opcional, e quem não liga continua igual
+(Tocador, Componentes).
+- `lista_t.marc` (um byte por item) liga a seleção de vários itens:
+  - clique marca um, Ctrl+clique alterna, Shift+clique marca a faixa e
+    Ctrl+A marca todos;
+  - arrastar a partir do vazio desenha o laço translúcido. O vazio é abaixo
+    dos itens ou depois do fim do nome. O laço marca as linhas cujo nome ele
+    toca;
+  - um clique sem arrastar no fim da linha seleciona a linha, e o duplo clique
+    abre, como antes. Os testes antigos clicam no meio da linha.
+- `lista_editar(j, l, i, marcar)` abre a edição do nome na própria linha. O
+  texto fica numa caixa branca de contorno verde, e os primeiros `marcar`
+  caracteres ficam marcados: digitar troca a parte marcada.
+  - Enter termina e devolve `LISTA_EDITOU`;
+  - Esc desiste e devolve `LISTA_DESISTIU`;
+  - um clique fora também termina;
+  - "/" não entra no nome.
+
+**No Arquivos.**
+- O menu do botão direito no vazio tem Nova pasta, Novo arquivo de texto,
+  Nova página HTML, Atualizar e Voltar.
+- Num item, o menu tem Abrir (com o nome do programa), Abrir no Editor,
+  Renomear, Apagar e os "Novo".
+- Com vários marcados, o menu oferece "Apagar os N itens...".
+- Criar dá um nome livre ("Nova pasta", "Nova pasta (2)"...) e já abre a
+  edição na linha. Nos arquivos, só o nome fica marcado, sem a extensão: quem
+  digita "notas" tem "notas.txt".
+- A página HTML nasce com um esqueleto mínimo.
+- F2 e o menu Renomear usam a mesma edição.
+- O renomear recusa:
+  - nome vazio (fica o nome antigo);
+  - nome que começa com ponto, porque esses ficam escondidos;
+  - nome que já existe na pasta.
+- Apagar vale para todos os marcados, com uma
+  pergunta só.
+
+**Mudança de comportamento.** O botão "Nova pasta" não abre mais a janela que
+pedia o nome. O `h23_arquivos` passou a esperar a edição na linha.
+
+## D061. Lixeira no Arquivos (issue #25, parte 5)
+
+**Decisão.**
+- "Apagar" no Arquivos move para a lixeira do mesmo disco: `/.lixeira` ou
+  `/usb/.lixeira`. Renomear entre a memória e o pendrive não existe (o
+  `sis_renomear` recusa com ERRO_ACESSO), então cada disco tem a sua.
+- O `.origens` de cada lixeira guarda, por linha, "nome na
+  lixeira<TAB>caminho original". Restaurar lê a última linha do nome e
+  recria a pasta de origem, se ela tiver sido apagada. Sem registro, o item
+  volta para a raiz do disco. Com nome repetido, entra como "nome~2".
+- Nomes que começam com ponto não aparecem no Arquivos (a lixeira e o
+  .origens).
+- A área de trabalho tem o ícone da Lixeira, sempre o último da fila. O
+  desenho troca para "cheia" quando há algo em `/.lixeira` ou
+  `/usb/.lixeira` (o kernel confere a cada 2 s, junto com os programas
+  instalados). O duplo clique abre o Arquivos na lixeira. Renomear e
+  esconder usam a chave "lixeira" nas configurações, porque o programa
+  (`/bin/arquivos`) é o mesmo do ícone do Arquivos.
+- O botão Lixeira também fica no pé da lateral do Arquivos. Dentro da lixeira, os botões viram
+  Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
+- Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
+  dentro. O `rm` do terminal continua apagando de vez, como no Unix.
