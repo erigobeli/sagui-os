@@ -14,6 +14,7 @@ enum {
     TECLA_F7, TECLA_F8, TECLA_F9, TECLA_F10, TECLA_F11, TECLA_F12,
     TECLA_ESC,
     TECLA_SUPER,      /* tecla Windows solta sem outra tecla */
+    TECLA_IMPRIMIR,   /* Print Screen */
 };
 
 #define MOD_SHIFT 1

@@ -1276,6 +1276,12 @@ static void tarefa_gerenciador(void *arg)
         int t;
         if (!(teclado_modificadores() & MOD_ALT)) alt_tab_qtd = 0;   /* soltou o Alt: acaba o Alt+Tab */
         while ((t = teclado_tentar()) >= 0) {
+            if (t == TECLA_IMPRIMIR) {   /* a captura de tela é do sistema, não da janela em foco */
+                char *argv[] = { "captura", NULL };
+                int pid = processo_executar("/bin/captura", 1, argv, NULL);
+                klog("[GUI] Print Screen: captura pid %d\n", pid);
+                continue;
+            }
             if (atalho(t, teclado_modificadores())) continue;
             janela_t *j = focada();
             if (!j) continue;
@@ -1503,6 +1509,25 @@ int32_t sis_teclas_seguradas(uint32_t pmapa, uint32_t b, uint32_t c, uint32_t d,
     if (foco) teclado_seguradas(mapa);
     memcpy((void *)pmapa, mapa, 32);
     return foco ? 1 : 0;
+}
+
+/* SIS_LER_TELA (&pixels, bytes) -> largura | altura << 16 Copia o
+ * buffer de trás (a tela montada, sem o cursor do mouse) se "bytes" couber
+ * largura * altura * 4; com bytes = 0 só diz o tamanho. Para a captura de
+ * tela: qualquer programa pode ler a tela, como no X11 sem extensões. */
+int32_t sis_ler_tela(uint32_t ppx, uint32_t n, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)c; (void)d; (void)e;
+    if (!video_ativo()) return ERRO_NAO_EXISTE;
+    uint32_t l = video_largura(), a = video_altura();
+    int32_t tamanho = (int32_t)(l | a << 16);
+    if (n == 0) return tamanho;
+    if (n < l * a * 4) return ERRO_INVALIDO;
+    if (!usuario_ok((void *)ppx, l * a * 4, true)) return ERRO_ENDERECO;
+    bool i0 = int_salva_desliga();
+    memcpy((void *)ppx, video_buffer(), l * a * 4);
+    int_restaura(i0);
+    return tamanho;
 }
 
 int32_t sis_titulo_janela(uint32_t id, uint32_t ptitulo, uint32_t c, uint32_t d, uint32_t e)
