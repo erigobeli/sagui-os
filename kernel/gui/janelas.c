@@ -490,6 +490,7 @@ static const programa_menu_t catalogo[] = {
     { "Sagui Code", "/bin/saguicode-janela", NULL, CAT_DESENVOLVIMENTO, arte_px_saguicode_40, "ia agente programar codigo" },
     { "Sagui Code (terminal)", "/bin/terminal", "/bin/saguicode", CAT_DESENVOLVIMENTO, arte_px_terminal_40, "ia agente programar codigo terminal" },
     { "Componentes", "/bin/componentes", NULL, CAT_DESENVOLVIMENTO, arte_px_componentes_40, "demonstracao botoes interface libsagui" },
+    { "Instalar o SaguiOS", "/bin/instalar", NULL, CAT_SISTEMA, arte_px_instalado_40, "instalar disco hd gravar instalacao particao" },
 };
 #define QTD_CATALOGO (int)(sizeof catalogo / sizeof catalogo[0])
 #define MENU_X 4
@@ -558,11 +559,16 @@ static bool contem(const char *texto, const char *busca)
 
 static void menu_filtrar(void)
 {
+    /* Ligado pelo disco instalado (o instalador grava sistema.instalado =
+     * sim nele), o instalador sai do menu. */
+    const char *inst = config_obter("sistema.instalado");
+    bool ja_instalado = inst && txt_compara(inst, "sim") == 0;
     menu_qtd = 0;
     bool buscando = menu_busca[0] != 0;
     for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
         const programa_menu_t *p = &catalogo[i];
         if (!buscando && menu_cat != CAT_TODOS && p->cat != menu_cat) continue;
+        if (ja_instalado && txt_compara(p->programa, "/bin/instalar") == 0) continue;
         if (buscando && !contem(p->nome, menu_busca) && !contem(p->palavras, menu_busca)) continue;
         menu_res[menu_qtd++] = i;
     }

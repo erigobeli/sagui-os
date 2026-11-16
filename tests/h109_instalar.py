@@ -10,6 +10,8 @@ Critérios:
   - a caixa do kernel: nome errado não libera, Esc cancela (ERRO_ACESSO), o
     nome certo libera; a liberação acaba quando o processo termina;
   - "instalar hd1 --sim" não existe mais;
+  - o menu Iniciar acha e abre o instalador; ligado pelo disco instalado, o
+    instalador não aparece mais no menu (a busca não acha);
   - pela janela: clicar no hd1, digitar "hd1" na caixa do kernel, e o
     instalador termina ("instalar: pronto em hd1");
   - a tabela de partições do disco instalado: 0xDA (sistema) e 0x0C (FAT32,
@@ -99,10 +101,16 @@ def main():
         esperar(m, "sagui:/$", 10, n)
         verificar(setores(m, "hd1 0 gravar") == ERRO_ACESSO, "a liberação acaba com o processo: o próximo volta a ser travado")
 
-        # A instalação pela janela.
+        # A instalação pela janela, aberta pelo menu Iniciar.
         n = len(m.serial())
-        m.digitar("instalar\n", 0.03)
+        m.clique(40, 12)
+        esperar(m, "[GUI] menu aberto", 10, n)
+        time.sleep(0.6)
+        m.digitar("instalar", 0.08)
+        esperar(m, '[GUI] menu: busca "instalar" (1 resultados)', 10, n)
+        m.digitar("\n", 0.05)
         esperar(m, "instalar: janela aberta (1 discos)", 20, n)
+        verificar(True, "o menu Iniciar acha e abre o instalador")
         time.sleep(1)
         m.captura("H109-instalador")
         verificar(True, "o instalador oferece só o hd1 (o hd0 é a origem)")
@@ -135,6 +143,16 @@ def main():
     with Maquina("h109b", "ide", imagem=hd, memoria="768M", reiniciar=True) as m:
         m.esperar_serial("sagui:/$", 120)
         verificar("tem configuracoes do SaguiOS: montado sozinho" in m.serial(), "a partição dos arquivos monta sozinha no boot")
+        # Já instalado: o instalador some do menu (a busca não acha).
+        n = len(m.serial())
+        m.clique(40, 12)
+        esperar(m, "[GUI] menu aberto", 10, n)
+        time.sleep(0.6)
+        m.digitar("instalar", 0.08)
+        esperar(m, '[GUI] menu: busca "instalar" (0 resultados)', 10, n)
+        verificar(True, "ligado pelo disco instalado, o instalador não aparece no menu")
+        m.tecla("esc")
+        time.sleep(0.8)
         n = len(m.serial())
         m.digitar("echo guardado no disco > /usb/nota.txt\n", 0.03)
         time.sleep(1.5)
