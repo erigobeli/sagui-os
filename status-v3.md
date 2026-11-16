@@ -1,11 +1,15 @@
+```
+Fase 1 da 3.0 pronta: kernel em 64 bits, programas de 32 sem mudança. Teste do Eli no G470 (docs/teste-v3.0-fase1.md)
+```
+
 # Status do SaguiOS
 
-_Atualizado em 2026-11-16T05:22:52_
+_Atualizado em 2026-11-16T07:18:41_
 
-- **Situação:** Trabalhando na H107: A suíte inteira em 64 bits
+- **Situação:** Aguardando teste do Eli: fase 1
 - **Fase atual:** 1
-- **História atual:** H107
-- **Progresso geral:** 58.3%
+- **História atual:** -
+- **Progresso geral:** 66.7%
 - **Bloqueio:** nenhum
 - **Imagem:** 6535680 bytes úteis (sem teto: só medida)
 - **Linhas de código:** boot 1077, kernel 16118, userland 68063
@@ -14,21 +18,21 @@ _Atualizado em 2026-11-16T05:22:52_
 
 | Fase | Nome | Progresso | Estado |
 | --- | --- | --- | --- |
-| 1 | Kernel em 64 bits, programas de 32 sem mudança | 87.5% | em andamento |
+| 1 | Kernel em 64 bits, programas de 32 sem mudança | 100.0% | aguardando teste |
 | 2 | Programas em 64 bits | 0.0% | a fazer |
 
 ## Histórias
 
 | ID | Título | Estado | Minutos |
 | --- | --- | --- | --- |
-| H100 | Boot em modo longo | feito | 15 |
-| H101 | Base do kernel em 64 bits | feito | 1 |
-| H102 | Memória em 64 bits | feito | 1 |
-| H103 | Processos e troca de contexto em 64 bits | feito | 1 |
-| H104 | Programas de 32 bits em modo de compatibilidade | feito | 1 |
-| H105 | Drivers em 64 bits | feito | 1 |
-| H106 | Janelas e interface em 64 bits | feito | 1 |
-| H107 | A suíte inteira em 64 bits | em andamento |  |
+| H100 | Boot em modo longo | aguardando teste | 15 |
+| H101 | Base do kernel em 64 bits | aguardando teste | 1 |
+| H102 | Memória em 64 bits | aguardando teste | 1 |
+| H103 | Processos e troca de contexto em 64 bits | aguardando teste | 1 |
+| H104 | Programas de 32 bits em modo de compatibilidade | aguardando teste | 1 |
+| H105 | Drivers em 64 bits | aguardando teste | 1 |
+| H106 | Janelas e interface em 64 bits | aguardando teste | 1 |
+| H107 | A suíte inteira em 64 bits | aguardando teste | 116 |
 | H108 | Chamadas de sistema de 64 bits | a fazer |  |
 | H109 | libsagui e programas em 64 bits | a fazer |  |
 | H110 | O compilador `cc` gera x86-64 | a fazer |  |
@@ -36,6 +40,8 @@ _Atualizado em 2026-11-16T05:22:52_
 
 ## Últimas ações
 
+- 2026-11-16T07:18:41: Fase 1 entregue. Aguardando teste do Eli.
+- 2026-11-16T07:18:40: H107 concluída: suíte inteira (88 testes) passa com a imagem de 64 bits; roteiro do G470 e imagem em entrega/v3.0-fase1
 - 2026-11-16T05:22:52: Início da H107: A suíte inteira em 64 bits
 - 2026-11-16T05:22:52: Erro corrigido: h10 falhou na suíte de 64 bits: etapa de paginação não aparecia
 - 2026-11-16T05:22:52: H106 concluída: janelas e pixels compartilhados (0xA0000000) iguais à 2.x; H20-H28, H74-H92 passam
@@ -49,5 +55,3 @@ _Atualizado em 2026-11-16T05:22:52_
 - 2026-11-16T04:23:52: Início da H104: Programas de 32 bits em modo de compatibilidade
 - 2026-11-16T04:23:52: Início da H103: Processos e troca de contexto em 64 bits
 - 2026-11-16T04:23:52: Início da H102: Memória em 64 bits
-- 2026-11-16T04:23:52: Início da H101: Base do kernel em 64 bits
-- 2026-11-16T04:23:52: H100 concluída: estágio 2 entra no modo longo quando o kernel é ELF64; mensagem clara em CPU sem 64 bits

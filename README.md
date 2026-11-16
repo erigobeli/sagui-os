@@ -151,7 +151,8 @@ python3-pil qemu-system-x86 qemu-utils imagemagick mtools dosfstools fdisk
 procps openssl openssh-client openssh-server vim htop ffmpeg`.
 
 ```bash
-make            # build/saguios.img
+make            # build/saguios.img (kernel de 64 bits no branch da 3.0; programas de 32)
+make ARQ=32     # build32/saguios.img (o kernel de 32 bits da 2.x)
 make vdi        # build/saguios.vdi (VirtualBox)
 make test       # todos os testes no QEMU (sem janela)
 make rodar      # abre no QEMU com janela

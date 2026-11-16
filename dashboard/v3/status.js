@@ -1,12 +1,12 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 3.0 — 64 bits",
-  "atualizado": "2026-11-16T05:22:52",
-  "situacao": "Trabalhando na H107: A suíte inteira em 64 bits",
+  "atualizado": "2026-11-16T07:18:41",
+  "situacao": "Aguardando teste do Eli: fase 1",
   "fase_atual": 1,
-  "historia_atual": "H107",
+  "historia_atual": null,
   "bloqueio": null,
-  "mensagem_fase": "",
+  "mensagem_fase": "Fase 1 da 3.0 pronta: kernel em 64 bits, programas de 32 sem mudança. Teste do Eli no G470 (docs/teste-v3.0-fase1.md)",
   "raiz": "../../",
   "links": [
     {
@@ -25,8 +25,8 @@ window.SAGUI_STATUS = {
     {
       "numero": 1,
       "nome": "Kernel em 64 bits, programas de 32 sem mudança",
-      "estado": "em andamento",
-      "progresso": 87.5
+      "estado": "aguardando teste",
+      "progresso": 100.0
     },
     {
       "numero": 2,
@@ -42,7 +42,7 @@ window.SAGUI_STATUS = {
       "titulo": "Boot em modo longo",
       "objetivo": "O estágio 2 confere o CPUID (bit LM), monta tabelas de página de 4 níveis com a identidade dos primeiros GB, liga PAE, EFER.LME e a paginação, salta para um segmento de 64 bits e entra no kernel ELF64.",
       "aceite": "no QEMU e no VirtualBox, o kernel de 64 bits escreve na tela e na serial; numa CPU sem 64 bits, uma mensagem clara.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T04:09:03",
       "fim": "2026-11-16T04:23:52",
@@ -55,7 +55,7 @@ window.SAGUI_STATUS = {
       "titulo": "Base do kernel em 64 bits",
       "objetivo": "GDT com segmentos de 64 bits e de 32 bits (compatibilidade), TSS de 64 bits (RSP0, IST), IDT de 64 bits, exceções com o quadro de 64 bits, PIC/PIT, relógio, console de texto e gráfico (VESA).",
       "aceite": "H03, H05, H09, H17 e H18 passam com o kernel novo.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T04:23:52",
       "fim": "2026-11-16T04:23:52",
@@ -68,7 +68,7 @@ window.SAGUI_STATUS = {
       "titulo": "Memória em 64 bits",
       "objetivo": "Memória física (E820), paginação de 4 níveis para o kernel e para cada processo, heap do kernel, mapeamento de MMIO (framebuffer com escrita combinada, PAT), DMA sempre abaixo de 4 GB.",
       "aceite": "H06 e H10 passam.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T04:23:52",
       "fim": "2026-11-16T04:23:52",
@@ -81,7 +81,7 @@ window.SAGUI_STATUS = {
       "titulo": "Processos e troca de contexto em 64 bits",
       "objetivo": "Estrutura de processo com os registradores de 64 bits, FXSAVE/FXRSTOR, escalonador, tarefas do kernel.",
       "aceite": "H11 e H80 passam.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T04:23:52",
       "fim": "2026-11-16T04:23:52",
@@ -94,7 +94,7 @@ window.SAGUI_STATUS = {
       "titulo": "Programas de 32 bits em modo de compatibilidade",
       "objetivo": "Carregador ELF32 num espaço de endereçamento abaixo de 4 GB, `int 0x80` com os números e os ponteiros de 32 bits de hoje (todas as chamadas da 2.x), sinais/erros como antes.",
       "aceite": "H12, H13, H14, H15, H16 e H24 passam com os binários atuais.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T04:23:52",
       "fim": "2026-11-16T04:23:52",
@@ -107,7 +107,7 @@ window.SAGUI_STATUS = {
       "titulo": "Drivers em 64 bits",
       "objetivo": "PCI, ATA, EHCI/USB (armazenamento e rede CDC), FAT32, SGFS, i8042, HDA, e1000, ACPI (desligar/reiniciar), vídeo nativo do G470, CMOS, aleatório.",
       "aceite": "os testes de cada driver passam (H29 a H48, H79, H84...).",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T05:22:52",
       "fim": "2026-11-16T05:22:52",
@@ -120,7 +120,7 @@ window.SAGUI_STATUS = {
       "titulo": "Janelas e interface em 64 bits",
       "objetivo": "Gerenciador de janelas, vidro, doca, menus, área de cópia, notificações.",
       "aceite": "H20 a H28, H74 a H81, H87, H89, H92.",
-      "estado": "feito",
+      "estado": "aguardando teste",
       "bonus": false,
       "inicio": "2026-11-16T05:22:52",
       "fim": "2026-11-16T05:22:52",
@@ -133,9 +133,12 @@ window.SAGUI_STATUS = {
       "titulo": "A suíte inteira em 64 bits",
       "objetivo": "`tests/rodar_todos.py` passa com a imagem de 64 bits; o CI ganha a imagem de 64 bits. Roteiro de teste no G470.",
       "aceite": "todos os testes passam; o Eli confirma no G470.",
-      "estado": "em andamento",
+      "estado": "aguardando teste",
       "bonus": false,
-      "inicio": "2026-11-16T05:22:52"
+      "inicio": "2026-11-16T05:22:52",
+      "fim": "2026-11-16T07:18:40",
+      "minutos": 116,
+      "resultado": "suíte inteira (88 testes) passa com a imagem de 64 bits; roteiro do G470 e imagem em entrega/v3.0-fase1"
     },
     {
       "id": "H108",
@@ -244,6 +247,14 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-16T07:18:41",
+      "texto": "Fase 1 entregue. Aguardando teste do Eli."
+    },
+    {
+      "data": "2026-11-16T07:18:40",
+      "texto": "H107 concluída: suíte inteira (88 testes) passa com a imagem de 64 bits; roteiro do G470 e imagem em entrega/v3.0-fase1"
+    },
+    {
       "data": "2026-11-16T05:22:52",
       "texto": "Início da H107: A suíte inteira em 64 bits"
     },
@@ -332,5 +343,5 @@ window.SAGUI_STATUS = {
     "bytes_arquivo": 6553600,
     "meta_bytes": null
   },
-  "progresso_geral": 58.3
+  "progresso_geral": 66.7
 };
