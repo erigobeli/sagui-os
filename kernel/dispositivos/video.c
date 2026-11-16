@@ -58,7 +58,7 @@ bool video_iniciar(void)
     pos_b = info_boot.azul_pos;
     if (!larg || !alt || pitch < larg * (bpp / 8)) return false;
     bool wc = false;
-    tela = (uint8_t *)janela_mapear_wc(info_boot.vesa_fb, pitch * alt, &wc);
+    tela = (uint8_t *)(uintptr_t)janela_mapear_wc(info_boot.vesa_fb, pitch * alt, &wc);
     klog("[VIDEO] memoria de video %s\n", wc ? "com escrita combinada (PAT/WC)" : "sem escrita combinada (processador sem PAT)");
     tras = kmalloc(larg * alt * 4);
     if (!tela || !tras) return false;

@@ -109,9 +109,9 @@ int32_t sis_bip(uint32_t pnotas, uint32_t n, uint32_t modo, uint32_t d, uint32_t
     (void)d; (void)e;
     if (n == 0) { bool i0 = int_salva_desliga(); quantas = 0; som_parar(); int_restaura(i0); return 0; }
     if (n > MAX_NOTAS) n = MAX_NOTAS;
-    if (!usuario_ok((const void *)pnotas, n * sizeof(nota_t), false)) return ERRO_INVALIDO;
+    if (!usuario_ok((const void *)(uintptr_t)pnotas, n * sizeof(nota_t), false)) return ERRO_INVALIDO;
     nota_t copia[MAX_NOTAS];
-    memcpy(copia, (const void *)pnotas, n * sizeof(nota_t));
+    memcpy(copia, (const void *)(uintptr_t)pnotas, n * sizeof(nota_t));
     /* Com placa de som (H42), as notas tocam por ela; o alto-falante do PC
      * fica de reserva para quando não há placa. */
     if (misturador_notas(copia, (int)n, modo == BIP_ENFILEIRAR)) {

@@ -1208,7 +1208,7 @@ static void destruir(int i)
     if (dono && dono->usuario && dono->espaco != espaco_kernel())
         for (uint32_t k = 0; k < j->paginas; k++)
             espaco_desmapear(dono->espaco, j->virt + k * PAGINA);
-    memfisica_liberar_seguidas((uint32_t)j->px, j->paginas);
+    memfisica_liberar_seguidas((uint32_t)(uintptr_t)j->px, j->paginas);
     j->usada = false;
     int k = 0;
     while (k < qtd && ordem[k] != i) k++;
@@ -1232,11 +1232,11 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     (void)d; (void)e;
     if (!ativa) return ERRO_ACESSO;
     char titulo[48];
-    int r = usuario_texto((const char *)ptitulo, titulo, sizeof titulo);
+    int r = usuario_texto((const char *)(uintptr_t)ptitulo, titulo, sizeof titulo);
     if (r < 0) return r;
     int l = (int)(dims & 0xFFFF), a = (int)(dims >> 16);
     if (l < 40 || a < 20 || l > JANELA_LARG_MAX || a > JANELA_ALT_MAX) return ERRO_INVALIDO;
-    if (!usuario_ok((void *)ppixels, 4, true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)ppixels, 4, true)) return ERRO_ENDERECO;
     int i = 0;
     while (i < MAX_JANELAS && janelas[i].usada) i++;
     if (i == MAX_JANELAS) return ERRO_LIMITE;
@@ -1249,7 +1249,7 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     j->id = proximo_id++;
     j->pid = atual->pid;
     j->larg = l; j->alt = a;
-    j->px = (uint32_t *)fis;
+    j->px = (uint32_t *)(uintptr_t)fis;
     j->paginas = paginas;
     j->virt = JANELAS_USUARIO + (uint32_t)i * ESPACO_JANELA;
     txt_copia_n(j->titulo, titulo, sizeof j->titulo);
@@ -1271,7 +1271,7 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     animar(j->x + moldura_l(j) / 2 - moldura_l(j) / 8, j->y + moldura_a(j) / 2 - moldura_a(j) / 8, moldura_l(j) / 4,
            moldura_a(j) / 4, j->x, j->y, moldura_l(j), moldura_a(j), i);
     gui_mostrar();
-    *(uint32_t *)ppixels = j->virt;
+    *(uint32_t *)(uintptr_t)ppixels = j->virt;
     klog("[GUI] janela %d criada por %d: \"%s\" %dx%d em (%d,%d)\n", j->id, j->pid, j->titulo, l, a, j->x, j->y);
     return j->id;
 }
@@ -1293,8 +1293,8 @@ int32_t sis_atualizar_janela(uint32_t id, uint32_t pret, uint32_t c, uint32_t d,
     if (!j) return ERRO_INVALIDO;
     int x = 0, y = 0, l = j->larg, a = j->alt;
     if (pret) {
-        if (!usuario_ok((void *)pret, sizeof(retangulo_t), false)) return ERRO_ENDERECO;
-        retangulo_t *r = (retangulo_t *)pret;
+        if (!usuario_ok((void *)(uintptr_t)pret, sizeof(retangulo_t), false)) return ERRO_ENDERECO;
+        retangulo_t *r = (retangulo_t *)(uintptr_t)pret;
         x = r->x; y = r->y; l = r->largura; a = r->altura;
         if (x < 0) { l += x; x = 0; }
         if (y < 0) { a += y; y = 0; }
@@ -1309,14 +1309,14 @@ int32_t sis_atualizar_janela(uint32_t id, uint32_t pret, uint32_t c, uint32_t d,
 int32_t sis_proximo_evento(uint32_t id, uint32_t pev, uint32_t esperar, uint32_t d, uint32_t e)
 {
     (void)d; (void)e;
-    if (!usuario_ok((void *)pev, sizeof(evento_t), true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)pev, sizeof(evento_t), true)) return ERRO_ENDERECO;
     bool tem_janela = false;
     for (int i = 0; i < MAX_JANELAS; i++) {
         janela_t *j = &janelas[i];
         if (!j->usada || j->pid != atual->pid || (id && j->id != (int)id)) continue;
         tem_janela = true;
         if (j->ini != j->fim) {
-            *(evento_t *)pev = j->fila[j->ini];
+            *(evento_t *)(uintptr_t)pev = j->fila[j->ini];
             j->ini = (j->ini + 1) % FILA_EVENTOS;
             return 1;
         }
@@ -1333,13 +1333,13 @@ int32_t sis_proximo_evento(uint32_t id, uint32_t pev, uint32_t esperar, uint32_t
 int32_t sis_teclas_seguradas(uint32_t pmapa, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;
-    if (!usuario_ok((void *)pmapa, 32, true)) return ERRO_INVALIDO;
+    if (!usuario_ok((void *)(uintptr_t)pmapa, 32, true)) return ERRO_INVALIDO;
     uint8_t mapa[32];
     memset(mapa, 0, sizeof mapa);
     janela_t *j = focada();
     bool foco = j && j->pid == atual->pid;
     if (foco) teclado_seguradas(mapa);
-    memcpy((void *)pmapa, mapa, 32);
+    memcpy((void *)(uintptr_t)pmapa, mapa, 32);
     return foco ? 1 : 0;
 }
 
@@ -1348,7 +1348,7 @@ int32_t sis_titulo_janela(uint32_t id, uint32_t ptitulo, uint32_t c, uint32_t d,
     (void)c; (void)d; (void)e;
     janela_t *j = janela_do_processo((int)id);
     if (!j) return ERRO_INVALIDO;
-    int r = usuario_texto((const char *)ptitulo, j->titulo, sizeof j->titulo);
+    int r = usuario_texto((const char *)(uintptr_t)ptitulo, j->titulo, sizeof j->titulo);
     if (r < 0) return r;
     gui_redesenhar(j->x, j->y, moldura_l(j), BARRA_TITULO);
     gui_mostrar();
@@ -1370,10 +1370,10 @@ int32_t sis_janela_opcoes(uint32_t id, uint32_t opcoes, uint32_t minimos, uint32
     uint32_t paginas = (max_px * 4 + PAGINA - 1) / PAGINA;
     uint32_t fis = memfisica_alocar_seguidas(paginas);
     if (!fis) return ERRO_SEM_MEMORIA;
-    uint32_t *novo = (uint32_t *)fis;
+    uint32_t *novo = (uint32_t *)(uintptr_t)fis;
     for (uint32_t k = 0; k < (uint32_t)(j->larg * j->alt); k++) novo[k] = j->px[k];
     for (uint32_t k = 0; k < j->paginas; k++) espaco_desmapear(atual->espaco, j->virt + k * PAGINA);
-    memfisica_liberar_seguidas((uint32_t)j->px, j->paginas);
+    memfisica_liberar_seguidas((uint32_t)(uintptr_t)j->px, j->paginas);
     j->px = novo;
     j->paginas = paginas;
     for (uint32_t k = 0; k < paginas; k++)
@@ -1398,7 +1398,7 @@ int32_t sis_menu_janela(uint32_t id, uint32_t xy, uint32_t pitens, uint32_t d, u
     janela_t *j = janela_do_processo((int)id);
     if (!j) return ERRO_INVALIDO;
     char itens[CTX_MAX * 32];
-    int r = usuario_texto((const char *)pitens, itens, sizeof itens);
+    int r = usuario_texto((const char *)(uintptr_t)pitens, itens, sizeof itens);
     if (r < 0) return r;
     bool i0 = int_salva_desliga();
     if (ctx_aberto) redesenhar_ctx();

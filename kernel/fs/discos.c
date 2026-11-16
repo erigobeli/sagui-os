@@ -253,7 +253,7 @@ int disco_desmontar(disco_t *d)
 int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t dd, uint32_t e)
 {
     (void)c; (void)dd; (void)e;
-    info_disco_t *inf = (info_disco_t *)pinfo;
+    info_disco_t *inf = (info_disco_t *)(uintptr_t)pinfo;
     if (!usuario_ok(inf, sizeof *inf, true)) return ERRO_ENDERECO;
     int k = 0;
     for (int i = 0; i < MAX_DISCOS; i++) {
@@ -277,7 +277,7 @@ int32_t sis_montar(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uint32_t
 {
     (void)b; (void)c; (void)dd; (void)e;
     char nome[16];
-    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    int r = usuario_texto((const char *)(uintptr_t)pnome, nome, sizeof nome);
     if (r < 0) return r;
     disco_t *d = disco_por_nome(nome);
     return d ? disco_montar(d) : ERRO_NAO_EXISTE;
@@ -287,7 +287,7 @@ int32_t sis_desmontar(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uint3
 {
     (void)b; (void)c; (void)dd; (void)e;
     char nome[16];
-    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    int r = usuario_texto((const char *)(uintptr_t)pnome, nome, sizeof nome);
     if (r < 0) return r;
     disco_t *d = disco_por_nome(nome);
     if (!d) return ERRO_NAO_EXISTE;

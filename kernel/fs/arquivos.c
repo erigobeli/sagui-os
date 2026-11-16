@@ -93,7 +93,7 @@ void arquivos_fechar_todos(processo_t *p)
 static int caminho_do_usuario(uint32_t ptr, char *saida)
 {
     char bruto[CAMINHO_MAX];
-    int r = usuario_texto((const char *)ptr, bruto, sizeof bruto);
+    int r = usuario_texto((const char *)(uintptr_t)ptr, bruto, sizeof bruto);
     if (r < 0) return r;
     if (r == 0) return ERRO_INVALIDO;
     if (!caminho_resolver(atual->pasta, bruto, saida, CAMINHO_MAX)) return ERRO_INVALIDO;
@@ -145,27 +145,27 @@ int32_t sis_ler(uint32_t fd, uint32_t buf, uint32_t n, uint32_t d, uint32_t e)
     (void)d; (void)e;
     arquivo_t *a = pegar(fd);
     if (!a) return ERRO_DESCRITOR;
-    if (!usuario_ok((void *)buf, n, true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)buf, n, true)) return ERRO_ENDERECO;
     switch (a->tipo) {
     case A_NO: {
         if (!(a->modo & ABRIR_LER)) return ERRO_ACESSO;
-        uint32_t r = vfs_ler(a->no, a->pos, (void *)buf, n);
+        uint32_t r = vfs_ler(a->no, a->pos, (void *)(uintptr_t)buf, n);
         a->pos += r;
         return (int32_t)r;
     }
     case A_FAT: {
         if (!(a->modo & ABRIR_LER)) return ERRO_ACESSO;
         if (!fat_vivo(a)) return ERRO_NAO_EXISTE;   /* pendrive desmontado ou removido */
-        int r = fat_ler(a->fat, a->pos, (void *)buf, n);
+        int r = fat_ler(a->fat, a->pos, (void *)(uintptr_t)buf, n);
         if (r > 0) a->pos += (uint32_t)r;
         return r;
     }
     case A_TERMINAL: {
-        int32_t r = terminal_ler((char *)buf, n);
+        int32_t r = terminal_ler((char *)(uintptr_t)buf, n);
         console_mostrar();   /* o eco do que foi digitado aparece já */
         return r;
     }
-    case A_PIPE_LER:  return pipe_ler(a->pipe, (char *)buf, n);
+    case A_PIPE_LER:  return pipe_ler(a->pipe, (char *)(uintptr_t)buf, n);
     default:          return ERRO_ACESSO;
     }
 }
@@ -175,12 +175,12 @@ int32_t sis_escrever(uint32_t fd, uint32_t buf, uint32_t n, uint32_t d, uint32_t
     (void)d; (void)e;
     arquivo_t *a = pegar(fd);
     if (!a) return ERRO_DESCRITOR;
-    if (!usuario_ok((void *)buf, n, false)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)buf, n, false)) return ERRO_ENDERECO;
     switch (a->tipo) {
     case A_NO: {
         if (!(a->modo & ABRIR_ESCREVER)) return ERRO_ACESSO;
         if (a->modo & ABRIR_ACRESCENTAR) a->pos = a->no->tamanho;
-        int r = vfs_escrever(a->no, a->pos, (const void *)buf, n);
+        int r = vfs_escrever(a->no, a->pos, (const void *)(uintptr_t)buf, n);
         if (r > 0) a->pos += (uint32_t)r;
         return r;
     }
@@ -188,12 +188,12 @@ int32_t sis_escrever(uint32_t fd, uint32_t buf, uint32_t n, uint32_t d, uint32_t
         if (!(a->modo & ABRIR_ESCREVER)) return ERRO_ACESSO;
         if (!fat_vivo(a)) return ERRO_NAO_EXISTE;
         if (a->modo & ABRIR_ACRESCENTAR) a->pos = a->fat->tamanho;
-        int r = fat_escrever(a->fat, a->pos, (const void *)buf, n);
+        int r = fat_escrever(a->fat, a->pos, (const void *)(uintptr_t)buf, n);
         if (r > 0) a->pos += (uint32_t)r;
         return r;
     }
-    case A_TERMINAL:      return terminal_escrever((const char *)buf, n);
-    case A_PIPE_ESCREVER: return pipe_escrever(a->pipe, (const char *)buf, n);
+    case A_TERMINAL:      return terminal_escrever((const char *)(uintptr_t)buf, n);
+    case A_PIPE_ESCREVER: return pipe_escrever(a->pipe, (const char *)(uintptr_t)buf, n);
     default:              return ERRO_ACESSO;
     }
 }
@@ -230,7 +230,7 @@ int32_t sis_info_arquivo(uint32_t ptr, uint32_t pinfo, uint32_t c, uint32_t d, u
     char caminho[CAMINHO_MAX];
     int r = caminho_do_usuario(ptr, caminho);
     if (r < 0) return r;
-    info_arquivo_t *info = (info_arquivo_t *)pinfo;
+    info_arquivo_t *info = (info_arquivo_t *)(uintptr_t)pinfo;
     if (!usuario_ok(info, sizeof *info, true)) return ERRO_ENDERECO;
     const char *rel;
     if (vfs_na_usb(caminho, &rel)) {
@@ -289,10 +289,10 @@ int32_t sis_listar(uint32_t ptr, uint32_t indice, uint32_t pent, uint32_t d, uin
     char caminho[CAMINHO_MAX];
     int r = caminho_do_usuario(ptr, caminho);
     if (r < 0) return r;
-    if (!usuario_ok((void *)pent, sizeof(entrada_pasta_t), true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)pent, sizeof(entrada_pasta_t), true)) return ERRO_ENDERECO;
     const char *rel;
-    if (vfs_na_usb(caminho, &rel)) return fat_listar(rel, (int)indice, (entrada_pasta_t *)pent);
-    return vfs_listar(caminho, (int)indice, (entrada_pasta_t *)pent);
+    if (vfs_na_usb(caminho, &rel)) return fat_listar(rel, (int)indice, (entrada_pasta_t *)(uintptr_t)pent);
+    return vfs_listar(caminho, (int)indice, (entrada_pasta_t *)(uintptr_t)pent);
 }
 
 int32_t sis_mudar_pasta(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
@@ -324,8 +324,8 @@ int32_t sis_pasta_atual(uint32_t buf, uint32_t n, uint32_t c, uint32_t d, uint32
     (void)c; (void)d; (void)e;
     uint32_t precisa = txt_tamanho(atual->pasta) + 1;
     if (n < precisa) return ERRO_LIMITE;
-    if (!usuario_ok((void *)buf, precisa, true)) return ERRO_ENDERECO;
-    memcpy((void *)buf, atual->pasta, precisa);
+    if (!usuario_ok((void *)(uintptr_t)buf, precisa, true)) return ERRO_ENDERECO;
+    memcpy((void *)(uintptr_t)buf, atual->pasta, precisa);
     return (int32_t)precisa - 1;
 }
 
@@ -347,7 +347,7 @@ int32_t sis_renomear(uint32_t po, uint32_t pd, uint32_t c, uint32_t d, uint32_t 
 int32_t sis_pipe(uint32_t pfds, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;
-    int *fds = (int *)pfds;
+    int *fds = (int *)(uintptr_t)pfds;
     if (!usuario_ok(fds, 2 * sizeof(int), true)) return ERRO_ENDERECO;
     int fl = fd_livre(atual);
     if (fl < 0) return fl;

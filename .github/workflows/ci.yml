@@ -114,7 +114,7 @@ jobs:
           {
             for cmd in \
               gcc nasm ld objcopy objdump nm size make python3 \
-              qemu-system-i386 qemu-img \
+              qemu-system-i386 qemu-system-x86_64 qemu-img \
               convert identify \
               mkfs.vfat fsck.vfat mcopy mmd mtype mdir mdel sfdisk \
               sshd ssh-keygen openssl ffmpeg vim htop
@@ -167,6 +167,15 @@ jobs:
           test -s build/tamanho.txt
           (cd build && sha256sum -c saguios.img.sha256)
           echo "Imagem: $(wc -c < build/saguios.img) bytes; úteis: $(cat build/tamanho.txt) bytes"
+
+      # 3.0 (D058): a imagem padrão tem o kernel de 64 bits; a de 32 bits
+      # (a da 2.x) continua compilando até a 3.0 ser aprovada no G470.
+      - name: Compilar a imagem de 32 bits
+        run: |
+          set -eu
+          set -o pipefail
+          make ARQ=32 2>&1 | tee -a build/testes/resultado.txt
+          test -s build32/saguios.img
 
       - name: Rodar a suíte completa de testes
         run: |

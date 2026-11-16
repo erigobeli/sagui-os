@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 3.0 — 64 bits",
-  "atualizado": "2026-11-16T04:23:52",
-  "situacao": "Trabalhando na H104: Programas de 32 bits em modo de compatibilidade",
+  "atualizado": "2026-11-16T05:22:52",
+  "situacao": "Trabalhando na H107: A suíte inteira em 64 bits",
   "fase_atual": 1,
-  "historia_atual": "H104",
+  "historia_atual": "H107",
   "bloqueio": null,
   "mensagem_fase": "",
   "raiz": "../../",
@@ -26,7 +26,7 @@ window.SAGUI_STATUS = {
       "numero": 1,
       "nome": "Kernel em 64 bits, programas de 32 sem mudança",
       "estado": "em andamento",
-      "progresso": 62.5
+      "progresso": 87.5
     },
     {
       "numero": 2,
@@ -107,8 +107,12 @@ window.SAGUI_STATUS = {
       "titulo": "Drivers em 64 bits",
       "objetivo": "PCI, ATA, EHCI/USB (armazenamento e rede CDC), FAT32, SGFS, i8042, HDA, e1000, ACPI (desligar/reiniciar), vídeo nativo do G470, CMOS, aleatório.",
       "aceite": "os testes de cada driver passam (H29 a H48, H79, H84...).",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T05:22:52",
+      "fim": "2026-11-16T05:22:52",
+      "minutos": 1,
+      "resultado": "drivers (EHCI, e1000, HDA, vídeo, FAT32, ACPI) com conversões explícitas por uintptr_t; DMA continua abaixo de 4 GB"
     },
     {
       "id": "H106",
@@ -116,8 +120,12 @@ window.SAGUI_STATUS = {
       "titulo": "Janelas e interface em 64 bits",
       "objetivo": "Gerenciador de janelas, vidro, doca, menus, área de cópia, notificações.",
       "aceite": "H20 a H28, H74 a H81, H87, H89, H92.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T05:22:52",
+      "fim": "2026-11-16T05:22:52",
+      "minutos": 1,
+      "resultado": "janelas e pixels compartilhados (0xA0000000) iguais à 2.x; H20-H28, H74-H92 passam"
     },
     {
       "id": "H107",
@@ -125,8 +133,9 @@ window.SAGUI_STATUS = {
       "titulo": "A suíte inteira em 64 bits",
       "objetivo": "`tests/rodar_todos.py` passa com a imagem de 64 bits; o CI ganha a imagem de 64 bits. Roteiro de teste no G470.",
       "aceite": "todos os testes passam; o Eli confirma no G470.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "em andamento",
+      "bonus": false,
+      "inicio": "2026-11-16T05:22:52"
     },
     {
       "id": "H108",
@@ -235,6 +244,30 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-16T05:22:52",
+      "texto": "Início da H107: A suíte inteira em 64 bits"
+    },
+    {
+      "data": "2026-11-16T05:22:52",
+      "texto": "Erro corrigido: h10 falhou na suíte de 64 bits: etapa de paginação não aparecia"
+    },
+    {
+      "data": "2026-11-16T05:22:52",
+      "texto": "H106 concluída: janelas e pixels compartilhados (0xA0000000) iguais à 2.x; H20-H28, H74-H92 passam"
+    },
+    {
+      "data": "2026-11-16T05:22:52",
+      "texto": "Início da H106: Janelas e interface em 64 bits"
+    },
+    {
+      "data": "2026-11-16T05:22:52",
+      "texto": "H105 concluída: drivers (EHCI, e1000, HDA, vídeo, FAT32, ACPI) com conversões explícitas por uintptr_t; DMA continua abaixo de 4 GB"
+    },
+    {
+      "data": "2026-11-16T05:22:52",
+      "texto": "Início da H105: Drivers em 64 bits"
+    },
+    {
       "data": "2026-11-16T04:23:52",
       "texto": "H104 concluída: ELF32 no modo de compatibilidade (CS 0x1B, L=0 D=1), int 0x80 igual, argv lido como uint32_t; H12-H16 H24 passam"
     },
@@ -279,7 +312,14 @@ window.SAGUI_STATUS = {
       "texto": "Plano da 3.0 (64 bits) escrito em prd3.md"
     }
   ],
-  "erros": [],
+  "erros": [
+    {
+      "data": "2026-11-16T05:22:52",
+      "sintoma": "h10 falhou na suíte de 64 bits: etapa de paginação não aparecia",
+      "causa": "o texto novo da etapa ('Paginação de 4 níveis; programas...') perdeu 'um espaço de endereço', que o teste procura",
+      "correcao": "texto da etapa volta a dizer 'um espaço de endereço por processo'"
+    }
+  ],
   "capturas": [],
   "linhas": {
     "boot": 1077,
@@ -292,5 +332,5 @@ window.SAGUI_STATUS = {
     "bytes_arquivo": 6553600,
     "meta_bytes": null
   },
-  "progresso_geral": 41.7
+  "progresso_geral": 58.3
 };

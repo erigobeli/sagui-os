@@ -206,7 +206,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
         etapa(linha);
     }
 #ifdef __x86_64__
-    etapa("Paginação de 4 níveis; programas de 32 bits no modo de compatibilidade");
+    etapa("Paginação de 4 níveis, páginas de 4 KB, um espaço de endereço por processo");
 #else
     etapa("Paginação: páginas de 4 KB, um espaço de endereço por processo");
 #endif
