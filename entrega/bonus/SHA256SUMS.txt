@@ -1,2 +1,0 @@
-b0f7b7fba8cc4378612bd92e352d84313d1fab82fdbb677131b140a6b2e54ddc  saguios.img
-acf17c9d9eae65c63c3487cd3a9bf94f4f5ee071bf2d0ebd408919216e4c1d3b  saguios.vdi

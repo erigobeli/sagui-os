@@ -127,7 +127,7 @@ na seção "Sagui 3D" de [`docs/decisoes.md`](docs/decisoes.md).
 
 ## Experimentar
 
-As imagens prontas estão em [`entrega/final/`](entrega/final/):
+As imagens prontas estão nas [Releases](https://github.com/erigobeli/sagui-os/releases) do GitHub:
 
 - **VirtualBox:** `saguios.vdi` (máquina "Other/Unknown", 32 bits, EFI desligado).
 - **PC de verdade:** grave `saguios.img` num pendrive em modo DD (Rufus, balenaEtcher ou `dd`)
@@ -190,7 +190,7 @@ tools/       build (mksgfs.py, mkimagem.py), painel (status.py), verificador de 
 tests/       testes automáticos no QEMU, um por história
 docs/        histórias, decisões, diário, erros, roteiros de teste e capturas de tela
 dashboard/   painel do projeto (abra dashboard/index.html no navegador)
-entrega/     imagens .img e .vdi de cada fase, com SHA-256
+entrega/     onde o make entrega copia as imagens (elas ficam nas Releases)
 testes_eli/  fotos dos testes do Eli no G470
 ```
 
