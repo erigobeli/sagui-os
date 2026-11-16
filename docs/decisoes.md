@@ -1942,29 +1942,6 @@ e para renomear.
 **Mudança de comportamento.** O botão "Nova pasta" não abre mais a janela que
 pedia o nome. O `h23_arquivos` passou a esperar a edição na linha.
 
-## D061. Lixeira no Arquivos (issue #25, parte 5)
-
-**Decisão.**
-- "Apagar" no Arquivos move para a lixeira do mesmo disco: `/.lixeira` ou
-  `/usb/.lixeira`. Renomear entre a memória e o pendrive não existe (o
-  `sis_renomear` recusa com ERRO_ACESSO), então cada disco tem a sua.
-- O `.origens` de cada lixeira guarda, por linha, "nome na
-  lixeira<TAB>caminho original". Restaurar lê a última linha do nome e
-  recria a pasta de origem, se ela tiver sido apagada. Sem registro, o item
-  volta para a raiz do disco. Com nome repetido, entra como "nome~2".
-- Nomes que começam com ponto não aparecem no Arquivos (a lixeira e o
-  .origens).
-- A área de trabalho tem o ícone da Lixeira, sempre o último da fila. O
-  desenho troca para "cheia" quando há algo em `/.lixeira` ou
-  `/usb/.lixeira` (o kernel confere a cada 2 s, junto com os programas
-  instalados). O duplo clique abre o Arquivos na lixeira. Renomear e
-  esconder usam a chave "lixeira" nas configurações, porque o programa
-  (`/bin/arquivos`) é o mesmo do ícone do Arquivos.
-- O botão Lixeira também fica no pé da lateral do Arquivos. Dentro da lixeira, os botões viram
-  Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
-- Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
-  dentro. O `rm` do terminal continua apagando de vez, como no Unix.
-
 ## D059. Visualizador de imagens (issue #25, parte 5)
 
 **Contexto.** As imagens abriam no Cipó, que é um navegador: sem zoom, sem
@@ -1999,3 +1976,26 @@ passar para a próxima da pasta e sem os papéis de parede (.sgi).
   para `/usb/Capturas`; sem, para `/capturas`, que fica na memória e some ao
   desligar. Um aviso mostra onde salvou.
 - `captura arquivo.png` no terminal salva onde se pede.
+
+## D061. Lixeira no Arquivos (issue #25, parte 5)
+
+**Decisão.**
+- "Apagar" no Arquivos move para a lixeira do mesmo disco: `/.lixeira` ou
+  `/usb/.lixeira`. Renomear entre a memória e o pendrive não existe (o
+  `sis_renomear` recusa com ERRO_ACESSO), então cada disco tem a sua.
+- O `.origens` de cada lixeira guarda, por linha, "nome na
+  lixeira<TAB>caminho original". Restaurar lê a última linha do nome e
+  recria a pasta de origem, se ela tiver sido apagada. Sem registro, o item
+  volta para a raiz do disco. Com nome repetido, entra como "nome~2".
+- Nomes que começam com ponto não aparecem no Arquivos (a lixeira e o
+  .origens).
+- A área de trabalho tem o ícone da Lixeira, sempre o último da fila. O
+  desenho troca para "cheia" quando há algo em `/.lixeira` ou
+  `/usb/.lixeira` (o kernel confere a cada 2 s, junto com os programas
+  instalados). O duplo clique abre o Arquivos na lixeira. Renomear e
+  esconder usam a chave "lixeira" nas configurações, porque o programa
+  (`/bin/arquivos`) é o mesmo do ícone do Arquivos.
+- O botão Lixeira também fica no pé da lateral do Arquivos. Dentro da lixeira, os botões viram
+  Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
+- Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
+  dentro. O `rm` do terminal continua apagando de vez, como no Unix.
