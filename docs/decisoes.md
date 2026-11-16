@@ -1844,3 +1844,37 @@ deixava alguns ícones fora do centro.
 - Saíram `arte/icones-folha.png`, `arte/icone-saguicode.png`,
   `tools/png_icones.py` e `tools/icones_imagem.py`. O padrão para um ícone
   novo está no começo do `mkarte.py` e no `AGENTS.md`.
+
+## D056. Menu Iniciar com todos os programas, busca e categorias (issue #25, parte 2)
+
+**Contexto.** O menu do sagui listava 12 programas numa coluna. Programas que
+existem em `/bin` e abrem janela (Chuva de letras, Triângulos 3D, Componentes
+e cada jogo do H92) não apareciam em lugar nenhum da interface.
+
+**Decisão.**
+- O menu continua no kernel (`kernel/gui/janelas.c`), no mesmo botão do
+  sagui: caixa de busca, uma fileira de categorias e uma grade de 5 x 4
+  ícones de 40 pixels, com o nome em até duas linhas. No rodapé, Sobre e
+  Desligar. As formas são as do `suave.h` (#36).
+- O catálogo (`catalogo[]`) dá a cada programa nome, caminho, categoria,
+  ícone e palavras extras para a busca ("navegador" acha o Cipó). Categorias:
+  Todos, Internet, Escritório, Mídia, Jogos, Sistema, Programação e
+  Instalados; Instalados só aparece quando há programas no pendrive, que
+  entram pelo `area_icone_nome`.
+- Jogos: o lançador `/bin/jogos` (H92) e cada jogo dele, como pediu a
+  revisão da issue #25.
+- Enquanto o menu está aberto, o teclado vai para a busca. A busca ignora
+  maiúsculas e acentos e compara Latin-1 (o kernel compila com
+  `-fexec-charset=ISO-8859-1` e o teclado entrega Latin-1). Setas escolhem,
+  Enter abre, Esc fecha; a tecla Windows abre e fecha.
+- O Sagui Code (terminal) roda com `terminal -e /bin/saguicode`. O Vídeo fica
+  fora, porque precisa de um arquivo.
+- O vidro do menu é quase opaco (250 de 256): com a grade grande, o texto
+  das janelas de trás atrapalhava a leitura.
+- `tools/mkarte.py`: ícones novos no estilo do D055 (Chuva de letras,
+  Triângulos 3D, Componentes, Desligar e a lupa da busca) e o tamanho de
+  20 pixels, usado no rodapé e na busca.
+
+**Compatibilidade.** Os testes que clicavam no menu antigo (`h74_h77`, `h78`,
+`h81`, `h89_saguicode_janela`, `h92_jogos`) agora clicam na grade: a célula
+k fica em `(44 + (k % 5) * 108 + 54, 134 + (k // 5) * 92 + 30)`.
