@@ -317,6 +317,11 @@ int principal(int argc, char **argv)
             if (e.tipo == EV_TECLA && (e.tecla == '\n' || e.tecla == TECLA_ESC)) break;
             continue;
         }
+        /* As janelas de créditos e de histórico são processos filhos: quando
+         * fecham, o kernel guarda a vaga deles na tabela até o pai recolher.
+         * Sem isto, abrir e fechar muitas vezes esgotaria os processos. */
+        int c;
+        while (recolher(&c) > 0) ;
         if (tempo_ms() - ultimo >= 1000) { ultimo = tempo_ms(); informacoes(j); }
         dormir(50);
     }
