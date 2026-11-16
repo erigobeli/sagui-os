@@ -69,6 +69,11 @@ static void desenhar_tela(void)
 {
     int e = escala(), ox = (LARG - maq.larg * e) / 2, oy = (AREA_A - maq.alt * e) / 2;
     int x0 = maq.larg, y0 = maq.alt, x1 = -1, y1 = -1;
+    /* SUPER-CHIP e XO-CHIP trocam entre 64x32 e 128x64 no meio do jogo: aí o
+     * mesmo índice de tela_antes passa a ser outro lugar e outro tamanho de
+     * pixel, e só redesenhar tudo deixa a tela certa. */
+    static int larg_antes, alt_antes;
+    if (maq.larg != larg_antes || maq.alt != alt_antes) { tudo = true; larg_antes = maq.larg; alt_antes = maq.alt; }
     if (tudo) g_retangulo(j, 0, 0, LARG, AREA_A, 0x0A1510);
     for (int y = 0; y < maq.alt; y++)
         for (int x = 0; x < maq.larg; x++) {
@@ -212,10 +217,18 @@ static uint16_t ler_teclas(void)
 
 static void som(void)
 {
+    /* O kernel toca a nota sozinho pelo tempo pedido e depois para. Um jogo
+     * que recarrega o temporizador de som antes de zerar quer a nota mais
+     * longa: se a mesma frequência continua e a nota pedida está para
+     * acabar, pede de novo, com o tempo que o temporizador diz agora. */
+    static unsigned fim_nota;
     uint32_t f = c8_freq_som(&maq);
-    if (f == freq_tocando) return;
-    if (f) bip((int)f, maq.st * 1000 / 60 + 20);   /* o kernel toca sozinho pelo tempo pedido */
-    else silenciar();
+    if (f == freq_tocando && (!f || (int)(fim_nota - tempo_ms()) > 30)) return;
+    if (f) {
+        unsigned dur = maq.st * 1000 / 60 + 20;
+        bip((int)f, (int)dur);
+        fim_nota = tempo_ms() + dur;
+    } else silenciar();
     freq_tocando = f;
 }
 
