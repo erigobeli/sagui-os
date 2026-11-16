@@ -1728,6 +1728,47 @@ do fork do Alejandro Anuncibay. Os programas básicos e a libsagui são núcleo
   Python nos dois sentidos; `tests/h93_compactar.py` usa os programas dentro
   do SaguiOS e confere tudo no computador com o `tarfile` e o `zipfile`.
 
+## D053. Os jogos do fork de Alejandro: menu "Jogos" e uma pasta por jogo (H92)
+
+O fork SaguiOS-Extended de Alejandro Anuncibay (GPL 2 "ou posterior",
+compatível com a GPL 3) partiu da versão 1.0 e tem uma libsagui bem maior que
+a nossa. Os jogos dele foram reescritos sobre o `main` atual, com o nosso
+`gui.h` (só um ajudante novo: `g_imagem`, que desenha uma imagem ARGB com
+transparência), nomes e textos em português e, a pedido do Eli, com o tema de
+banana do sistema: Caça-Bananas (a mina é uma banana-bomba, a bandeira tem a
+cara do sagui), Paciência Banana (feltro verde, banana no verso e nos ases, o
+sagui nas figuras, os quatro naipes de sempre), o emulador de CHIP-8 com o
+montador `chip8asm` e o visor de atividades JClic. Nenhum nome de jogo ou
+produto existente.
+
+**Menu.** O menu do sagui troca Banana e Sagui 3D por um item "Jogos", que
+abre o lançador `/bin/jogos`: os ícones (os mesmos da doca, gerados por
+`tools/mkarte.py` e ligados ao programa) e o nome de cada jogo que existe em
+`/bin`. Os ícones da área de trabalho continuam.
+
+**Pastas.** Cada jogo com mais de um arquivo fica em `userland/jogos/<nome>/`
+e vira `/bin/<nome>` (o Makefile lê as pastas). As regras de cada jogo ficam
+num arquivo sem tela (`regras.c`, `nucleo.c`, `montador.c`, `motor.c`...),
+que compila também no computador de desenvolvimento com `-DTESTE_HOSPEDEIRO`:
+os testes `tests/jogos/teste_*.c` conferem as regras sem o QEMU.
+
+**Sem binários e sem conteúdo de fora.** As ROMs de CHIP-8 de exemplo
+(`sagui.asm`, `rebate.asm`) foram escritas aqui e são montadas no build pelo
+mesmo montador, compilado para o computador (`tools/chip8asm.c`). O projeto
+JClic de exemplo ("O sagui e a banana") também foi escrito aqui, em XML, e o
+build o põe num ZIP (`tools/mkzip.py`). Nenhuma ROM nem atividade baixada da
+internet entra na imagem: as licenças delas são desconhecidas. A fonte 4x5 do
+CHIP-8 são os valores da referência técnica (os programas dependem deles); a
+8x10 foi desenhada no fork.
+
+**JClic.** O XML, o ZIP e as regras são nossos (nada do JClic nem do
+JClic.js); o DEFLATE e as imagens PNG/JPEG são os do Cipó. Jogam-se a tela de
+informação, os quebra-cabeças duplo, de troca e de buraco, a associação
+simples e a complexa, a memória, explorar, identificar, o caça-palavras e a
+cruzadinha. Ficaram de fora as atividades de texto, as formas não
+retangulares (`@Holes`), o som das células, os saltos entre atividades e as
+imagens GIF.
+
 ## D054. Licenças dentro da imagem, histórico de versões e números MAIOR.MENOR.CORREÇÃO (H94)
 
 A janela "Sobre o SaguiOS" foi refeita e ganhou dois botões: "Créditos e
