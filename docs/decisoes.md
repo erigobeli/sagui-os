@@ -1686,3 +1686,85 @@ código diz a posição física da tecla); muda só a tabela de caracteres, o
 AltGr e a tecla Del do teclado numérico (ponto no ES). O euro do AltGr+E não
 existe no Latin-1 e ficou de fora. O ~ do AltGr+4 é tecla morta, como no
 ABNT2: ~ + espaço dá o próprio ~.
+
+## D052. Compactação na libsagui: DEFLATE próprio, gzip, tar e zip (H93)
+
+O SaguiOS ganhou `gzip`/`gunzip`, `tar` e `zip`/`unzip` (apelidos
+`compactar`, `descompactar`, `empacotar`, `zipar` e `deszipar`), ideia trazida
+do fork do Alejandro Anuncibay. Os programas básicos e a libsagui são núcleo
+(D041), então tudo foi escrito aqui:
+
+- **Um DEFLATE só, na libsagui** (`compactar.c`, `compactar.h`). O
+  descompactador é o do navegador (H59), que saiu de
+  `userland/navegador/descompactar.c` e agora serve também ao PNG, às fontes
+  do Cipó e aos programas novos, conferindo mais coisas (NLEN dos blocos
+  guardados, códigos de Huffman com códigos demais, o Adler-32 do zlib) e
+  podendo alocar a saída, com um limite de 256 MB contra "bombas".
+- **O compactador é nosso, da RFC 1951.** O do fork foi lido, mas não
+  aproveitado: ele traz marcas do zlib (a tabela de níveis com os limites
+  "bom" e "preguiçoso", o corte de repetições de 3 bytes a mais de 4096 de
+  distância, a constante 5552 do Adler-32). O nosso procura repetições com
+  uma tabela de hash de 3 bytes e cadeias de posições (a ideia da seção 4 da
+  RFC), olha 4 a 1024 candidatos conforme o nível, espera um byte do nível 4
+  em diante, monta códigos de Huffman (1952) com o limite de 15 bits
+  garantido por um conserto da soma de Kraft, e cada bloco de até 16384
+  símbolos sai guardado, com códigos fixos ou próprios, o que custar menos
+  bits. No texto e em binários fica igual ou um pouco menor que o zlib
+  nível 6; dados aleatórios crescem só os cabeçalhos dos blocos guardados.
+- **Tudo na memória.** Os programas leem o arquivo inteiro, compactam e
+  gravam. É simples, e os arquivos do SaguiOS cabem na memória; um pacote
+  de várias centenas de MB pediria compactar em fluxo, que fica para depois.
+- **Nomes.** No SaguiOS os nomes são Latin-1; dentro do .tar e do .zip vão
+  em UTF-8 (no zip, com o bit 11 ligado só quando há acento), como os outros
+  sistemas esperam. Na volta, o que não existe em Latin-1 vira "_"; um zip
+  sem o bit 11 é lido como página de código 437.
+- **Extrair é perigoso, e os programas se protegem**: nomes absolutos ou
+  com ".." são recusados (`caminho_seguro`), ligações simbólicas do tar são
+  ignoradas, e nada que já existe é substituído sem pedir (`-f` no gunzip,
+  a letra `o` no tar, `-o` no unzip). Os testes conferem com pacotes
+  maliciosos feitos pelo Python.
+- **Como se sabe que está certo.** `tests/h93_compactar_pc.py` compila o
+  `compactar.c` no computador e confere ida e volta com o zlib e o gzip do
+  Python nos dois sentidos; `tests/h93_compactar.py` usa os programas dentro
+  do SaguiOS e confere tudo no computador com o `tarfile` e o `zipfile`.
+
+## D053. Os jogos do fork de Alejandro: menu "Jogos" e uma pasta por jogo (H92)
+
+O fork SaguiOS-Extended de Alejandro Anuncibay (GPL 2 "ou posterior",
+compatível com a GPL 3) partiu da versão 1.0 e tem uma libsagui bem maior que
+a nossa. Os jogos dele foram reescritos sobre o `main` atual, com o nosso
+`gui.h` (só um ajudante novo: `g_imagem`, que desenha uma imagem ARGB com
+transparência), nomes e textos em português e, a pedido do Eli, com o tema de
+banana do sistema: Caça-Bananas (a mina é uma banana-bomba, a bandeira tem a
+cara do sagui), Paciência Banana (feltro verde, banana no verso e nos ases, o
+sagui nas figuras, os quatro naipes de sempre), o emulador de CHIP-8 com o
+montador `chip8asm` e o visor de atividades JClic. Nenhum nome de jogo ou
+produto existente.
+
+**Menu.** O menu do sagui troca Banana e Sagui 3D por um item "Jogos", que
+abre o lançador `/bin/jogos`: os ícones (os mesmos da doca, gerados por
+`tools/mkarte.py` e ligados ao programa) e o nome de cada jogo que existe em
+`/bin`. Os ícones da área de trabalho continuam.
+
+**Pastas.** Cada jogo com mais de um arquivo fica em `userland/jogos/<nome>/`
+e vira `/bin/<nome>` (o Makefile lê as pastas). As regras de cada jogo ficam
+num arquivo sem tela (`regras.c`, `nucleo.c`, `montador.c`, `motor.c`...),
+que compila também no computador de desenvolvimento com `-DTESTE_HOSPEDEIRO`:
+os testes `tests/jogos/teste_*.c` conferem as regras sem o QEMU.
+
+**Sem binários e sem conteúdo de fora.** As ROMs de CHIP-8 de exemplo
+(`sagui.asm`, `rebate.asm`) foram escritas aqui e são montadas no build pelo
+mesmo montador, compilado para o computador (`tools/chip8asm.c`). O projeto
+JClic de exemplo ("O sagui e a banana") também foi escrito aqui, em XML, e o
+build o põe num ZIP (`tools/mkzip.py`). Nenhuma ROM nem atividade baixada da
+internet entra na imagem: as licenças delas são desconhecidas. A fonte 4x5 do
+CHIP-8 são os valores da referência técnica (os programas dependem deles); a
+8x10 foi desenhada no fork.
+
+**JClic.** O XML, o ZIP e as regras são nossos (nada do JClic nem do
+JClic.js); o DEFLATE e as imagens PNG/JPEG são os do Cipó. Jogam-se a tela de
+informação, os quebra-cabeças duplo, de troca e de buraco, a associação
+simples e a complexa, a memória, explorar, identificar, o caça-palavras e a
+cruzadinha. Ficaram de fora as atividades de texto, as formas não
+retangulares (`@Holes`), o som das células, os saltos entre atividades e as
+imagens GIF.

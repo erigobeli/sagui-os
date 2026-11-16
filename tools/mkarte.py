@@ -294,10 +294,94 @@ def saguicode(t):
     t.traco([(42, 43), (49, 48.5), (42, 54)], 3.4, 0x42E584)   # >
 
 
+def banana_curva(t, cx, cy, r_ext, r_int, a0, a1, cor, n=24):
+    """Uma banana como faixa de anel (H92): o arco externo de a0 a a1 e o
+    interno de volta. Usada nos ícones dos jogos com tema de banana."""
+    ext = [(cx - r_ext * math.cos(a), cy + r_ext * math.sin(a)) for a in
+           (a0 + (a1 - a0) * k / n for k in range(n + 1))]
+    inte = [(cx - r_int * math.cos(a), cy + r_int * math.sin(a)) for a in
+            (a1 + (a0 - a1) * k / n for k in range(n + 1))]
+    t.poligono(ext + inte, cor)
+
+
+def jogos(t):
+    """Os Jogos (H92): um controle verde com cruz e botões, um deles amarelo-banana."""
+    t.ret(5, 18, 59, 48, 14, vertical(0x2EB872, 0x0E6E3C, 18, 48))
+    t.disco(16, 46, 9, 0x13804A)
+    t.disco(48, 46, 9, 0x13804A)
+    t.ret(5, 18, 59, 30, 12, 0xFFFFFF, 0.10)
+    t.ret(13, 30, 25, 35, 1.2, 0x18202A)                 # a cruz
+    t.ret(16.5, 26.5, 21.5, 38.5, 1.2, 0x18202A)
+    t.disco(44, 29, 3.6, 0xFFDF4A)                       # botões
+    t.disco(51, 34, 3.6, 0xE05A4A)
+    t.disco(37, 34, 3.6, 0x42A5F5)
+    t.disco(44, 39, 3.6, 0xF5F5F0)
+
+
+def cacabananas(t):
+    """O Caça-Bananas (H92): uma banana-bomba, com faixas escuras e pavio
+    aceso, sobre um canteiro verde do bananal."""
+    t.ret(5, 5, 59, 59, 8, vertical(0x5CC46E, 0x2E8B3A, 5, 59))
+    for k in (1, 2):                                      # as casas do canteiro
+        t.traco([(5 + k * 18, 8), (5 + k * 18, 56)], 1, 0x1F6B2A, 0.35)
+        t.traco([(8, 5 + k * 18), (56, 5 + k * 18)], 1, 0x1F6B2A, 0.35)
+    banana_curva(t, 42, 12, 36, 18, 0.12, 1.42, vertical(0xFFE35A, 0xE8A812, 16, 50))
+    for a in (0.55, 0.85, 1.15):                          # as faixas de "bomba"
+        t.traco([(42 - 19 * math.cos(a), 12 + 19 * math.sin(a)), (42 - 35 * math.cos(a), 12 + 35 * math.sin(a))],
+                2.6, 0x6B4A1A, 0.85)
+    t.traco([(8, 19), (11, 13)], 5, 0x5A3E1A)             # o cabinho
+    t.traco([(11, 13), (15, 8), (20, 8)], 1.8, 0x3A2A16)   # o pavio
+    for a in range(8):                                     # a faísca
+        ang = a * math.pi / 4
+        t.traco([(21, 8), (21 + 5 * math.cos(ang), 8 + 5 * math.sin(ang))], 1.6, 0xFF8A1E)
+    t.disco(21, 8, 2.2, 0xFFF3A8)
+
+
+def paciencia(t):
+    """A Paciência Banana (H92): uma carta virada (verso com banana) e uma
+    carta aberta com um ás de copas."""
+    t.ret(6, 10, 34, 50, 4, 0xFFFFFF)
+    t.ret(7.5, 11.5, 32.5, 48.5, 3, vertical(0x2E9E52, 0x16683A, 11, 48))
+    banana_curva(t, 26, 18, 14, 8, 0.2, 1.4, 0xFFD52E, n=14)
+    t.poligono([(26, 6), (54, 12), (46, 58), (18, 52)], 0x9AA3AC)       # sombra da carta da frente
+    t.poligono([(27, 5), (55, 11), (47, 57), (19, 51)], 0xFFFFFF)
+    t.disco(33, 33.5, 5.2, 0xD8323A)                      # copas: dois discos e um triângulo
+    t.disco(41, 35, 5.2, 0xD8323A)
+    t.poligono([(28.2, 35.5), (45.8, 38.8), (34.5, 47)], 0xD8323A)
+    t.traco([(29, 20), (32.5, 11.5), (35, 21)], 2, 0xD8323A)   # um "A" no canto
+    t.traco([(30.4, 17.3), (34.2, 18)], 1.6, 0xD8323A)
+
+
+def chip8(t):
+    """O emulador de CHIP-8 (H92): um monitor antigo com uma banana de pixels grandes."""
+    t.ret(5, 7, 59, 49, 6, vertical(0xC9C2B0, 0x938B78, 7, 49))
+    t.ret(10, 12, 54, 42, 2, 0x0B140E)
+    desenho = [".........#", "........#.", "#......##.", "##....###.", ".#######..", "..####...."]
+    for lin, fila in enumerate(desenho):
+        for col, c in enumerate(fila):
+            if c == "#":
+                t.ret(12.5 + col * 4, 15 + lin * 4, 15.8 + col * 4, 18.3 + lin * 4, 0, 0x42E584)
+    t.ret(24, 49, 40, 54, 0, 0x7A7262)
+    t.ret(16, 54, 48, 59, 2.5, vertical(0xA8A090, 0x7A7262, 54, 59))
+
+
+def jclic(t):
+    """As atividades JClic (H92): três blocos de montar com cores fortes."""
+    t.ret(6, 30, 30, 54, 3, vertical(0xFF8A4A, 0xD8562A, 30, 54))
+    t.ret(34, 30, 58, 54, 3, vertical(0x5AA8F5, 0x2A6FD8, 30, 54))
+    t.ret(20, 6, 44, 30, 3, vertical(0xFFE35A, 0xE8A812, 6, 30))
+    t.traco([(12, 48), (18, 36), (24, 48)], 2.6, 0xFFFFFF)      # A
+    t.traco([(14.5, 43), (21.5, 43)], 2.4, 0xFFFFFF)
+    t.traco([(46 + 6.5 * math.cos(a), 42 + 6.5 * math.sin(a)) for a in
+             (0.8 + k * 4.7 / 16 for k in range(17))], 2.6, 0xFFFFFF)   # C
+    t.disco(32, 18, 6.5, 0x0B7A3E)                             # um ponto verde no bloco de cima
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
           ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive),
           ("configuracoes", configuracoes), ("cipo", cipo), ("instalado", instalado), ("tocador", tocador),
-          ("saguicode", saguicode)]
+          ("saguicode", saguicode), ("jogos", jogos), ("cacabananas", cacabananas), ("paciencia", paciencia),
+          ("chip8", chip8), ("jclic", jclic)]
 TAMANHOS = [(64, ""), (40, "_40")]
 
 

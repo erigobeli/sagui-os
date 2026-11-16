@@ -275,7 +275,14 @@ typedef struct {
 #define TECLA_PGDN      0x107
 #define TECLA_INSERT    0x108
 #define TECLA_DELETE    0x109
+#define TECLA_F1        0x10A   /* F1 a F12 seguem em ordem (H92: F2 = partida nova nos jogos) */
+#define TECLA_F2        0x10B
+#define TECLA_F3        0x10C
+#define TECLA_F4        0x10D
+#define TECLA_F5        0x10E
+#define TECLA_F12       0x115
 #define TECLA_ESC       0x116
+#define TECLA_SUPER     0x117   /* tecla Windows: fica no gerenciador de janelas */
 #endif
 
 #define JANELA_LARG_MAX 1000

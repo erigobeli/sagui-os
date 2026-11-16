@@ -44,6 +44,8 @@ typedef struct {
     int        pid;
     int        x, y;          /* canto da moldura */
     int        larg, alt;     /* área de conteúdo */
+    int        vl, va;        /* H96: tamanho com que o programa desenha em px agora */
+    int        pend_l, pend_a;    /* tamanho do último EV_REDIMENSIONAR já lido (0 = nenhum) */
     char       titulo[48];
     uint32_t  *px;            /* pixels (físico = virtual no kernel) */
     uint32_t   paginas;
@@ -57,6 +59,7 @@ typedef struct {
     uint32_t   cap_px;            /* quantos pixels cabem na memória da janela */
     bool       maximizada;
     int        antes[4];          /* x, y, largura, altura antes de maximizar */
+    bool       encaixada;         /* H94: presa numa metade ou num quarto da tela */
 } janela_t;
 
 static janela_t janelas[MAX_JANELAS];
@@ -71,6 +74,8 @@ static int suj_x0, suj_y0, suj_x1, suj_y1;   /* retângulo a recompor */
 static int redimensionando = -1, redim_modo, redim_l, redim_a;
 
 /* Estado do mouse no gerenciador. */
+static int encaixe_zona;                      /* H94: 0 nenhuma, 1 tela toda, 2 esq., 3 dir., 4-7 quartos */
+static int arr_x0, arr_y0;                     /* onde a janela estava ao ser pega */
 static int arrastando = -1, arr_dx, arr_dy;   /* janela sendo arrastada e onde foi pega */
 static int captura = -1;                       /* janela que recebeu o último clique */
 static uint32_t ult_clique_tique;
@@ -252,7 +257,9 @@ static const uint32_t *px_de(const char *processo)
     static const struct { const char *p; const uint32_t *px; } t[] = {
         { "calculadora", arte_px_calculadora_40 }, { "banana", arte_px_banana_40 }, { "sagui3d", arte_px_sagui3d_40 },
         { "sobre-o-sistema", arte_px_sobre_40 }, { "energia", arte_px_sobre_40 }, { "cipo", arte_px_cipo_40 }, { "tocador", arte_px_tocador_40 },
-        { "saguicode-janela", arte_px_saguicode_40 },
+        { "saguicode-janela", arte_px_saguicode_40 }, { "jogos", arte_px_jogos_40 },
+        { "cacabananas", arte_px_cacabananas_40 }, { "paciencia", arte_px_paciencia_40 }, { "chip8", arte_px_chip8_40 },
+        { "jclic", arte_px_jclic_40 },
     };
     for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++) if (txt_compara(t[i].p, processo) == 0) return t[i].px;
     return arte_px_instalado_40;
@@ -336,8 +343,8 @@ static void desenhar_doca(void)
 static const fixo_t menu_itens[] = {
     { "Arquivos", "/bin/arquivos", "", 0 }, { "Terminal", "/bin/terminal", "", 0 },
     { "Cipó", "/bin/navegador", "", 0 }, { "Editor", "/bin/editor", "", 0 },
-    { "Calculadora", "/bin/calculadora", "", 0 }, { "Banana", "/bin/banana", "", 0 },
-    { "Sagui 3D", "/bin/sagui3d", "", 0 }, { "Tocador", "/bin/tocador", "", 0 },
+    { "Calculadora", "/bin/calculadora", "", 0 }, { "Jogos", "/bin/jogos", "", 0 },
+    { "Tocador", "/bin/tocador", "", 0 },
     { "Sagui Code", "/bin/saguicode-janela", "", 0 }, { "Sagui Code (terminal)", "/bin/terminal -e /bin/saguicode", "", 0 },
     { "Configurações", "/bin/configuracoes", "", 0 },
     { "Sobre o SaguiOS", "/bin/sobre-o-sistema", "", 0 }, { "Desligar...", "/bin/energia", "", 0 },
@@ -638,10 +645,8 @@ static void aplicar_tamanho(janela_t *j, int x, int y, int l, int a)
     if (l > lmax) l = lmax;
     if ((uint32_t)(l * a) > j->cap_px) a = (int)(j->cap_px / (uint32_t)l);
     redesenhar_janela(j);
-    if (l != j->larg || a != j->alt) {
-        /* Até o programa redesenhar, a área nova fica na cor de fundo das janelas. */
-        for (uint32_t k = 0; k < (uint32_t)(l * a); k++) j->px[k] = 0xF4F4F0;
-    }
+    /* H96: px continua com o desenho antigo (largura vl) até o programa ler
+     * o evento e redesenhar; a composição mostra o antigo, cortado. */
     j->x = x; j->y = y; j->larg = l; j->alt = a;
     redesenhar_janela(j);
     evento_t e = { .tipo = EV_REDIMENSIONAR, .x = l, .y = a };
@@ -654,9 +659,11 @@ static void alternar_maximizar(janela_t *j)
     if (!j->redimensionavel) return;
     if (j->maximizada) {
         j->maximizada = false;
+        j->encaixada = false;
         aplicar_tamanho(j, j->antes[0], j->antes[1], j->antes[2], j->antes[3]);
     } else {
-        j->antes[0] = j->x; j->antes[1] = j->y; j->antes[2] = j->larg; j->antes[3] = j->alt;
+        if (!j->encaixada) { j->antes[0] = j->x; j->antes[1] = j->y; j->antes[2] = j->larg; j->antes[3] = j->alt; }
+        j->encaixada = false;
         int l, a;
         tamanho_maximo(j, &l, &a);
         j->maximizada = true;
@@ -681,6 +688,73 @@ static int borda_em(int x, int y, int *modo)
         if (dentro) return -1;                   /* uma janela por cima tapa as bordas das de baixo */
     }
     return -1;
+}
+
+/* H94: encaixe ao arrastar para a borda. Retângulo da moldura de cada zona. */
+static void encaixe_ret(int z, int *x, int *y, int *l, int *a)
+{
+    int W = (int)video_largura(), topo = BARRA_SUPERIOR;
+    int base = doca_ligada ? doca_y - 4 : (int)video_altura();
+    int h = base - topo, mw = W / 2, mh = h / 2;
+    *x = 0; *y = topo; *l = W; *a = h;
+    if (z == 2 || z == 4 || z == 6) *l = mw;
+    if (z == 3 || z == 5 || z == 7) { *x = mw; *l = W - mw; }
+    if (z >= 4) *a = mh;
+    if (z == 6 || z == 7) { *y = topo + mh; *a = h - mh; }
+}
+
+static int encaixe_em(int mx, int my)
+{
+    int W = (int)video_largura(), base = doca_ligada ? doca_y - 4 : (int)video_altura();
+    bool cima = my < BARRA_SUPERIOR + 80, baixo = my > base - 80;
+    if (mx <= 4) return cima ? 4 : baixo ? 6 : 2;
+    if (mx >= W - 5) return cima ? 5 : baixo ? 7 : 3;
+    if (my <= BARRA_SUPERIOR + 2) return 1;
+    return 0;
+}
+
+/* Põe a janela na zona z (2 a 7). Quem chama já guardou o tamanho de antes
+ * em j->antes, se a janela não estava encaixada. */
+static void encaixar(janela_t *j, int z)
+{
+    int x, y, l, a;
+    encaixe_ret(z, &x, &y, &l, &a);
+    j->encaixada = true;
+    j->maximizada = false;
+    aplicar_tamanho(j, x, y, l - 2 * BORDA, a - BARRA_TITULO - BORDA);
+    klog("[GUI] janela %d encaixada na zona %d\n", j->id, z);
+}
+
+static void desenhar_encaixe(void)
+{
+    if (!encaixe_zona || arrastando < 0) return;
+    int x, y, l, a;
+    encaixe_ret(encaixe_zona, &x, &y, &l, &a);
+    uint32_t cor = tema->filete ? tema->filete : 0x2FB866;
+    x += 6; y += 6; l -= 12; a -= 12;
+    /* Retângulo translúcido (60 de 256 da cor por cima do que está atrás),
+     * só dentro do recorte de agora, e um contorno de 2 pixels. */
+    int x0 = x > tela.cx0 ? x : tela.cx0, x1 = x + l < tela.cx1 ? x + l : tela.cx1;
+    int y0 = y > tela.cy0 ? y : tela.cy0, y1 = y + a < tela.cy1 ? y + a : tela.cy1;
+    for (int yy = y0; yy < y1; yy++) {
+        uint32_t *p = &tela.px[yy * tela.larg];
+        for (int xx = x0; xx < x1; xx++) {
+            uint32_t v = p[xx];
+            uint32_t rb = ((v & 0xFF00FF) * 196 + (cor & 0xFF00FF) * 60) >> 8;
+            uint32_t g = ((v & 0x00FF00) * 196 + (cor & 0x00FF00) * 60) >> 8;
+            p[xx] = (rb & 0xFF00FF) | (g & 0x00FF00);
+        }
+    }
+    sup_moldura(&tela, x, y, l, a, cor);
+    sup_moldura(&tela, x + 1, y + 1, l - 2, a - 2, cor);
+}
+
+static void redesenhar_encaixe(int z)
+{
+    if (!z) return;
+    int x, y, l, a;
+    encaixe_ret(z, &x, &y, &l, &a);
+    gui_redesenhar(x, y, l, a);
 }
 
 static void desenhar_redimensionar(void)
@@ -738,10 +812,17 @@ void gui_mostrar(void)
         janela_t *j = &janelas[ordem[k]];
         if (j->minimizada || j->escondida) continue;
         desenhar_moldura(j, j == f);
-        sup_copiar(&tela, j->x + BORDA, j->y + BARRA_TITULO, j->px, j->larg, j->alt, j->larg);
+        {
+            int vl = j->vl < j->larg ? j->vl : j->larg, va = j->va < j->alt ? j->va : j->alt;
+            int cx = j->x + BORDA, cy = j->y + BARRA_TITULO;
+            sup_copiar(&tela, cx, cy, j->px, vl, va, j->vl);
+            if (vl < j->larg) sup_retangulo(&tela, cx + vl, cy, j->larg - vl, j->alt, 0xF4F4F0);
+            if (va < j->alt) sup_retangulo(&tela, cx, cy + va, vl, j->alt - va, 0xF4F4F0);
+        }
     }
     desenhar_anims();
     desenhar_redimensionar();
+    desenhar_encaixe();
     desenhar_doca();
     if (tela.cy0 < BARRA_SUPERIOR) {
         if (vidro_efeitos) vidro_pintar(&tela, 0, 0, (int)video_largura(), BARRA_SUPERIOR, tema->topo, tema->k_topo, 0);
@@ -935,10 +1016,23 @@ static void tratar_mouse(evento_mouse_t *m)
     if (arrastando >= 0) {
         janela_t *j = &janelas[arrastando];
         if (!j->usada || !(m->botoes & BOTAO_ESQUERDO)) {
-            if (j->usada) klog("[GUI] janela %d movida para (%d,%d)\n", j->id, j->x, j->y);
+            int z = encaixe_zona;
+            redesenhar_encaixe(z);
+            encaixe_zona = 0;
             arrastando = -1;
+            if (!j->usada) return;
+            if (z == 1) {
+                if (!j->encaixada) { j->antes[0] = arr_x0; j->antes[1] = arr_y0; j->antes[2] = j->larg; j->antes[3] = j->alt; }
+                j->encaixada = true;                   /* guarda o antes já posto acima */
+                alternar_maximizar(j);
+            } else if (z) {
+                if (!j->encaixada) { j->antes[0] = arr_x0; j->antes[1] = arr_y0; j->antes[2] = j->larg; j->antes[3] = j->alt; }
+                encaixar(j, z);
+            } else klog("[GUI] janela %d movida para (%d,%d)\n", j->id, j->x, j->y);
             return;
         }
+        int z = j->redimensionavel ? encaixe_em(m->x, m->y) : 0;
+        if (z != encaixe_zona) { redesenhar_encaixe(encaixe_zona); encaixe_zona = z; redesenhar_encaixe(z); }
         int nx = m->x - arr_dx, ny = m->y - arr_dy;
         if (ny < BARRA_SUPERIOR) ny = BARRA_SUPERIOR;
         if (ny > (int)video_altura() - BARRA_TITULO) ny = (int)video_altura() - BARRA_TITULO;
@@ -1057,13 +1151,16 @@ static void tratar_mouse(evento_mouse_t *m)
                 arr_dx = rx; arr_dy = ry;
                 ult_clique_alvo = 2000 + j->id;
                 ult_clique_tique = relogio_tiques();
-                if (j->maximizada) {
-                    /* Arrastar uma janela maximizada: ela volta ao tamanho de antes, sob o mouse. */
+                encaixe_zona = 0;
+                if (j->maximizada || j->encaixada) {
+                    /* Arrastar uma janela maximizada ou encaixada: ela volta ao tamanho de antes, sob o mouse. */
                     j->maximizada = false;
+                    j->encaixada = false;
                     int nl = j->antes[2];
                     arr_dx = rx * (nl + 2 * BORDA) / moldura_l(j);
                     aplicar_tamanho(j, m->x - arr_dx, j->y, nl, j->antes[3]);
-                }
+                    arr_x0 = j->antes[0]; arr_y0 = j->antes[1];
+                } else { arr_x0 = j->x; arr_y0 = j->y; }
             }
             captura = -1;
             return;
@@ -1110,6 +1207,63 @@ static void tratar_mouse(evento_mouse_t *m)
     }
 }
 
+/* H95: atalhos do sistema. Devolve true se a tecla foi usada. */
+static int  alt_tab_lista[MAX_JANELAS], alt_tab_qtd, alt_tab_pos;
+
+static bool atalho(int t, uint32_t mods)
+{
+    if (t == TECLA_SUPER) {
+        menu_aberto = !menu_aberto;
+        redesenhar_menu();
+        if (menu_aberto) klog("[GUI] menu aberto\n");
+        return true;
+    }
+    janela_t *j = focada();
+    if ((mods & MOD_ALT) && t == '\t') {
+        if (!alt_tab_qtd) {                      /* começo: a ordem de agora, da frente para trás */
+            for (int k = qtd - 1; k >= 0; k--)
+                if (!janelas[ordem[k]].escondida) alt_tab_lista[alt_tab_qtd++] = ordem[k];
+            alt_tab_pos = 0;
+        }
+        if (alt_tab_qtd < 2) return true;
+        alt_tab_pos = (alt_tab_pos + ((mods & MOD_SHIFT) ? alt_tab_qtd - 1 : 1)) % alt_tab_qtd;
+        int i = alt_tab_lista[alt_tab_pos];
+        if (menu_aberto) { menu_aberto = false; redesenhar_menu(); }
+        for (int k = 0; k < qtd; k++) if (ordem[k] == i) { trazer_para_cima(k); break; }
+        klog("[GUI] alt+tab: janela %d\n", janelas[i].id);
+        return true;
+    }
+    if ((mods & MOD_ALT) && t == TECLA_F4) {
+        if (j) {
+            evento_t e = { .tipo = EV_FECHAR };
+            entregar(j, &e);
+            klog("[GUI] alt+f4: fechar janela %d (%s)\n", j->id, j->titulo);
+        }
+        return true;
+    }
+    if (!(mods & MOD_SUPER)) return false;
+    if (t == 'd' || t == 'D') {                  /* Windows+D: minimiza todas */
+        for (int k = qtd - 1; k >= 0; k--)
+            if (!janelas[ordem[k]].minimizada && !janelas[ordem[k]].escondida) minimizar(&janelas[ordem[k]]);
+        return true;
+    }
+    if (!j || !j->redimensionavel) return t >= TECLA_CIMA && t <= TECLA_DIREITA;
+    if (t == TECLA_CIMA) {
+        if (!j->maximizada) alternar_maximizar(j);
+    } else if (t == TECLA_BAIXO) {
+        if (j->maximizada) alternar_maximizar(j);
+        else if (j->encaixada) {
+            j->encaixada = false;
+            aplicar_tamanho(j, j->antes[0], j->antes[1], j->antes[2], j->antes[3]);
+            klog("[GUI] janela %d voltou ao tamanho de antes\n", j->id);
+        } else minimizar(j);
+    } else if (t == TECLA_ESQUERDA || t == TECLA_DIREITA) {
+        if (!j->encaixada && !j->maximizada) { j->antes[0] = j->x; j->antes[1] = j->y; j->antes[2] = j->larg; j->antes[3] = j->alt; }
+        encaixar(j, t == TECLA_ESQUERDA ? 2 : 3);
+    } else return false;
+    return true;
+}
+
 static void tarefa_gerenciador(void *arg)
 {
     (void)arg;
@@ -1120,7 +1274,9 @@ static void tarefa_gerenciador(void *arg)
         while (mouse_tentar(&m))
             tratar_mouse(&m);
         int t;
+        if (!(teclado_modificadores() & MOD_ALT)) alt_tab_qtd = 0;   /* soltou o Alt: acaba o Alt+Tab */
         while ((t = teclado_tentar()) >= 0) {
+            if (atalho(t, teclado_modificadores())) continue;
             janela_t *j = focada();
             if (!j) continue;
             evento_t e = { .tipo = EV_TECLA, .tecla = (unsigned)t, .modificadores = teclado_modificadores() & 3 };
@@ -1249,6 +1405,7 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     j->id = proximo_id++;
     j->pid = atual->pid;
     j->larg = l; j->alt = a;
+    j->vl = l; j->va = a; j->pend_l = 0;
     j->px = (uint32_t *)fis;
     j->paginas = paginas;
     j->virt = JANELAS_USUARIO + (uint32_t)i * ESPACO_JANELA;
@@ -1291,6 +1448,10 @@ int32_t sis_atualizar_janela(uint32_t id, uint32_t pret, uint32_t c, uint32_t d,
     (void)c; (void)d; (void)e;
     janela_t *j = janela_do_processo((int)id);
     if (!j) return ERRO_INVALIDO;
+    if (j->pend_l) {                     /* H96: o programa já desenha no tamanho novo */
+        j->vl = j->pend_l; j->va = j->pend_a; j->pend_l = 0;
+        redesenhar_janela(j);
+    }
     int x = 0, y = 0, l = j->larg, a = j->alt;
     if (pret) {
         if (!usuario_ok((void *)pret, sizeof(retangulo_t), false)) return ERRO_ENDERECO;
@@ -1317,6 +1478,7 @@ int32_t sis_proximo_evento(uint32_t id, uint32_t pev, uint32_t esperar, uint32_t
         tem_janela = true;
         if (j->ini != j->fim) {
             *(evento_t *)pev = j->fila[j->ini];
+            if (j->fila[j->ini].tipo == EV_REDIMENSIONAR) { j->pend_l = j->fila[j->ini].x; j->pend_a = j->fila[j->ini].y; }
             j->ini = (j->ini + 1) % FILA_EVENTOS;
             return 1;
         }
