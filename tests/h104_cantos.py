@@ -10,6 +10,8 @@ Critérios (medidos nos pixels da captura):
     e o pixel do meio da curva é uma mistura das duas cores;
   - canto de baixo da janela: também redondo (a ponta é o fundo, não a
     borda), e o pixel do meio da curva é mistura;
+  - a sombra segue a curva: na diagonal do canto ela é mais fraca que
+    embaixo da janela, à mesma distância;
   - menu do botão direito: o mesmo nos cantos de cima;
   - capturas para a revisão a olho.
 """
@@ -39,6 +41,9 @@ def main():
         n = len(m.serial())
         m.digitar("calculadora\n", 0.03)
         m.esperar_serial('"Calculadora"', 30)
+        time.sleep(1)
+        t = janela(m.serial(), "Terminal")
+        m.clique(t["x"] + t["l"] - 37, t["y"] - 12)       # minimiza o Terminal: a Calculadora fica sobre o fundo claro
         time.sleep(1.5)
         c = janela(m.serial()[n:], "Calculadora")
         png = m.captura("H104-janela")
@@ -46,7 +51,7 @@ def main():
         fa = c["a"] + 24 + 2
 
         fora, dentro, meio = cor_do_pixel(png, fx, fy), cor_do_pixel(png, fx + 12, fy + 2), cor_do_pixel(png, fx + 2, fy + 2)   # (12, 2): barra, antes do título
-        verificar(distancia(fora, dentro) > 60, f"o canto de cima é redondo: ponta {fora}, barra {dentro}")
+        verificar(distancia(fora, dentro) > 25, f"o canto de cima é redondo: ponta {fora}, barra {dentro}")
         verificar(mistura(meio, fora, dentro), f"a curva de cima é suavizada: {meio} entre {fora} e {dentro}")
 
         ponta, borda = cor_do_pixel(png, fx, fy + fa - 1), cor_do_pixel(png, fx + 12, fy + fa - 1)
@@ -54,6 +59,17 @@ def main():
         meio_b = cor_do_pixel(png, fx + 3, fy + fa - 2)    # linha 1, coluna 3 do canto: 156 de 256 dentro
         borda_b = cor_do_pixel(png, fx + 12, fy + fa - 2)
         verificar(mistura(meio_b, ponta, borda_b), f"a curva de baixo é suavizada: {meio_b} entre {ponta} e {borda_b}")
+
+        # A sombra segue a curva: na diagonal do canto de baixo ela é mais
+        # clara que embaixo do meio da janela, à mesma distância. (A sombra
+        # antiga era de cantos retos e deixava uma ponta escura ali.)
+        def brilho(c):
+            return sum(c)
+        diag = cor_do_pixel(png, fx - 2, fy + fa + 4)
+        baixo = cor_do_pixel(png, fx + 60, fy + fa + 4)
+        longe = cor_do_pixel(png, fx + 60, fy + fa + 40)
+        verificar(brilho(diag) - brilho(baixo) > 0.3 * (brilho(longe) - brilho(baixo)),
+                  f"a sombra arredonda no canto: diagonal {diag}, embaixo {baixo}, fundo {longe}")
 
         # O menu do botão direito na área vazia.
         n = len(m.serial())

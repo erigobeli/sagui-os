@@ -232,27 +232,12 @@ void vidro_sombra_r(superficie_t *s, int x, int y, int l, int a, int r)
     }
 }
 
+/* Sombra das janelas e dos menus: a mesma da doca, que segue a curva dos
+ * cantos. A antiga era a de um retângulo de cantos retos e deixava uma
+ * ponta escura por fora do canto arredondado. */
 void vidro_sombra(superficie_t *s, int x, int y, int l, int a)
 {
-    if (!vidro_efeitos) return;
-    const int S = VIDRO_SOMBRA, desce = 4;
-    int bx0 = x - S, by0 = y - S + desce, bx1 = x + l + S, by1 = y + a + S + desce;
-    int x0 = bx0 < s->cx0 ? s->cx0 : bx0, y0 = by0 < s->cy0 ? s->cy0 : by0;
-    int x1 = bx1 > s->cx1 ? s->cx1 : bx1, y1 = by1 > s->cy1 ? s->cy1 : by1;
-    for (int j = y0; j < y1; j++) {
-        /* Distância vertical até a janela (deslocada para baixo). */
-        int dy = j < y + desce ? y + desce - j : (j >= y + a + desce ? j - (y + a + desce) + 1 : 0);
-        uint32_t *p = s->px + j * s->larg;
-        for (int i = x0; i < x1; i++) {
-            if (i >= x && i < x + l && j >= y && j < y + a) { i = x + l - 1; continue; }   /* debaixo da janela: nada */
-            int dx = i < x ? x - i : (i >= x + l ? i - (x + l) + 1 : 0);
-            int d = dx > dy ? dx : dy;
-            if (dx && dy) d = (dx + dy) * 3 / 4 > d ? (dx + dy) * 3 / 4 : d;   /* cantos mais suaves */
-            if (d >= S) continue;
-            int f = S - d;                         /* 1..S */
-            p[i] = escurecer(p[i], f * f * 90 / (S * S));
-        }
-    }
+    vidro_sombra_r(s, x, y, l, a, VIDRO_CANTO);
 }
 
 bool vidro_efeitos = true;
