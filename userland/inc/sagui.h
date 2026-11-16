@@ -107,6 +107,8 @@ int  area_copia_ler(char *buf, unsigned max);   /* -> tamanho do texto guardado 
 /* ---- dispositivos (fase 6) ---- */
 int  listar_discos(int indice, info_disco_t *d);   /* 1 = achou, 0 = acabou */
 int  montar(const char *nome);                     /* "usb0" -> /usb */
+int  disco_setores(pedido_setores_t *p);           /* setores crus (instalador) */
+int  disco_reler(const char *nome);                /* reconhecer o formato de novo */
 int  desmontar(const char *nome);
 
 /* ---- som (bônus B3): volta na hora, o kernel toca em segundo plano ---- */

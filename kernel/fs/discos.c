@@ -316,6 +316,51 @@ int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t 
     return 0;
 }
 
+/* Setores crus, para o instalador (tabela de partições, sistema e
+ * formatação da FAT32). Ler e gravar de 1 a 128 setores; gravar num disco
+ * montado é recusado, porque a FAT dele está na memória. */
+int32_t sis_disco_setores(uint32_t pped, uint32_t b, uint32_t c, uint32_t dd, uint32_t e)
+{
+    (void)b; (void)c; (void)dd; (void)e;
+    pedido_setores_t *p = (pedido_setores_t *)pped;
+    if (!usuario_ok(p, sizeof *p, false)) return ERRO_ENDERECO;
+    char nome[8];
+    txt_copia_n(nome, p->nome, sizeof nome);
+    uint32_t lba = p->lba, n = p->n, esc = p->escrever;
+    void *buf = p->buf;
+    disco_t *d = disco_por_nome(nome);
+    if (!d || !d->presente) return ERRO_NAO_EXISTE;
+    if (n == 0 || n > 128 || d->tam_setor != 512 || lba + n < lba || lba + n > d->setores) return ERRO_INVALIDO;
+    if (!usuario_ok(buf, n * 512, !esc)) return ERRO_ENDERECO;
+    if (esc && d->montado) return ERRO_OCUPADO;
+    /* O buffer do programa pode não ser contíguo na memória física: passa
+     * por um do kernel. */
+    uint8_t *k = kmalloc(n * 512);
+    if (!k) return ERRO_SEM_MEMORIA;
+    int r;
+    if (esc) { memcpy(k, buf, n * 512); r = d->escrever(d, lba, n, k); }
+    else { r = d->ler(d, lba, n, k); if (r == 0) memcpy(buf, k, n * 512); }
+    kfree(k);
+    return r < 0 ? ERRO_ES : 0;
+}
+
+int32_t sis_disco_reler(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uint32_t e)
+{
+    (void)b; (void)c; (void)dd; (void)e;
+    char nome[8];
+    if (!usuario_ok((void *)pnome, 1, false)) return ERRO_ENDERECO;
+    txt_copia_n(nome, (const char *)pnome, sizeof nome);
+    disco_t *d = disco_por_nome(nome);
+    if (!d || !d->presente) return ERRO_NAO_EXISTE;
+    if (d->montado) return ERRO_OCUPADO;
+    d->fat32 = d->de_boot = false;
+    d->part_inicio = 0;
+    d->rotulo[0] = 0;
+    reconhecer(d);
+    klog("[DISCO] %s relido: %s, rotulo \"%s\"\n", d->nome, d->formato, d->rotulo);
+    return 0;
+}
+
 int32_t sis_montar(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uint32_t e)
 {
     (void)b; (void)c; (void)dd; (void)e;

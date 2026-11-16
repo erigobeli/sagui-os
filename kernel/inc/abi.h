@@ -78,6 +78,8 @@
 #define SIS_AREA_COPIA     78   /* (0, &texto, n) copia; (1, &buffer, max) cola -> tamanho guardado */
 #define SIS_MENU_JANELA    77   /* (id, x | y << 16, "Item|Item|Item") -> abre um menu na janela; a escolha chega em EV_MENU (H81) */
 #define SIS_LER_TELA       79   /* (&pixels, bytes) -> largura | altura << 16; copia a tela (0x00RRGGBB) se couber */
+#define SIS_DISCO_SETORES  80   /* (&pedido_setores) -> 0; lê ou grava setores crus de um disco (o instalador) */
+#define SIS_DISCO_RELER    81   /* (nome) -> 0; reconhece de novo o formato do disco (depois de gravar a tabela) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -98,6 +100,7 @@
 #define ERRO_OCUPADO      -15
 #define ERRO_REDE         -16   /* sem rede configurada, ou o destino não responde */
 #define ERRO_FIM          -17   /* a conexão terminou: o outro lado não manda mais nada */
+#define ERRO_ES           -18   /* o disco não leu ou não gravou */
 
 /* Modos de abrir */
 #define ABRIR_LER       1
@@ -222,6 +225,16 @@ typedef struct {
     unsigned int suportado;
     unsigned int interno;          /* disco rígido (hd0...), não pendrive */
 } info_disco_t;
+
+/* SIS_DISCO_SETORES: setores de 512 bytes, até 128 por chamada. Não
+ * grava num disco montado (a FAT dele está em uso). */
+typedef struct {
+    char         nome[8];          /* "hd1" */
+    unsigned int lba;
+    unsigned int n;
+    unsigned int escrever;         /* 0 = ler para buf, 1 = gravar buf */
+    void        *buf;
+} pedido_setores_t;
 
 /* SIS_TECLAS_SEGURADAS: posição de algumas teclas no mapa (código de
  * varredura do conjunto 1; 128 + código para as teclas estendidas E0). */
