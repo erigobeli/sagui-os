@@ -257,6 +257,7 @@ static const uint32_t *px_de(const char *processo)
     static const struct { const char *p; const uint32_t *px; } t[] = {
         { "calculadora", arte_px_calculadora_40 }, { "banana", arte_px_banana_40 }, { "sagui3d", arte_px_sagui3d_40 },
         { "sobre-o-sistema", arte_px_sobre_40 }, { "energia", arte_px_sobre_40 }, { "cipo", arte_px_cipo_40 }, { "tocador", arte_px_tocador_40 },
+        { "visualizador", arte_px_visualizador_40 },
         { "saguicode-janela", arte_px_saguicode_40 }, { "jogos", arte_px_jogos_40 },
         { "cacabananas", arte_px_cacabananas_40 }, { "paciencia", arte_px_paciencia_40 }, { "chip8", arte_px_chip8_40 },
         { "jclic", arte_px_jclic_40 },
