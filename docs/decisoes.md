@@ -1890,3 +1890,20 @@ e para renomear.
 
 **Mudança de comportamento.** O botão "Nova pasta" não abre mais a janela que
 pedia o nome. O `h23_arquivos` passou a esperar a edição na linha.
+
+## D061. Lixeira no Arquivos (issue #25, parte 5)
+
+**Decisão.**
+- "Apagar" no Arquivos move para a lixeira do mesmo disco: `/.lixeira` ou
+  `/usb/.lixeira`. Renomear entre a memória e o pendrive não existe (o
+  `sis_renomear` recusa com ERRO_ACESSO), então cada disco tem a sua.
+- O `.origens` de cada lixeira guarda, por linha, "nome na
+  lixeira<TAB>caminho original". Restaurar lê a última linha do nome e
+  recria a pasta de origem, se ela tiver sido apagada. Sem registro, o item
+  volta para a raiz do disco. Com nome repetido, entra como "nome~2".
+- Nomes que começam com ponto não aparecem no Arquivos (a lixeira e o
+  .origens).
+- O botão Lixeira fica no pé da lateral. Dentro da lixeira, os botões viram
+  Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
+- Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
+  dentro. O `rm` do terminal continua apagando de vez, como no Unix.
