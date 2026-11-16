@@ -1727,3 +1727,57 @@ do fork do Alejandro Anuncibay. Os programas básicos e a libsagui são núcleo
   `compactar.c` no computador e confere ida e volta com o zlib e o gzip do
   Python nos dois sentidos; `tests/h93_compactar.py` usa os programas dentro
   do SaguiOS e confere tudo no computador com o `tarfile` e o `zipfile`.
+
+## D054. Licenças dentro da imagem, histórico de versões e números MAIOR.MENOR.CORREÇÃO (H94)
+
+A janela "Sobre o SaguiOS" foi refeita e ganhou dois botões: "Créditos e
+licenças" e "Histórico". As escolhas:
+
+- **As licenças vão dentro da imagem.** Quem recebe só a imagem (um pendrive,
+  o .vdi) também recebe os avisos de copyright e os textos das licenças, como
+  a GPL 3, a LGPL, as BSD e a Apache pedem para quem distribui. O build
+  (`tools/mklicencas.py`) monta `/sistema/licencas` copiando os textos **dos
+  lugares onde já estão** no repositório (`LICENSE`, `CONTRIBUIDORES.md`,
+  `CREDITOS.md`, as pastas de `terceiros/`, a licença das fontes DejaVu e a
+  do Unicode), em vez de guardar uma segunda cópia no git, que poderia ficar
+  diferente da original.
+- **Terceiros entram sozinhos, e sem licença o build para.** Cada pasta de
+  `terceiros/` vira um arquivo (o `ORIGEM.md` mais os `LICENSE*`,
+  `COPYING*`, `PATENTS*` e `NOTICE*`), e o nome que aparece na lista sai do
+  título do `ORIGEM.md` e da coluna "Licença" do `CREDITOS.md`. Uma pasta sem
+  arquivo de licença faz o `make` falhar, e o teste `h94_sobre.py` confere
+  que cada licença de `terceiros/` chegou a `/sistema/licencas`. Dados e
+  fontes, que não ficam em `terceiros/`, são uma lista curta no próprio
+  `mklicencas.py`; para o dicionário da RFC 7932, os certificados raiz (MPL
+  2.0), o fundo da Mata Atlântica e as tabelas das normas, que não têm um
+  arquivo de licença no repositório, o aviso é escrito ali.
+- **Os certificados raiz levam o aviso da MPL 2.0**, com o endereço do texto
+  (https://mozilla.org/MPL/2.0/), que é a forma que a própria MPL prevê
+  ("If a copy of the MPL was not distributed with this file..."); o texto
+  completo da MPL não está no repositório.
+- **Latin-1.** Os textos saem em UTF-8 com extensão .txt, e o `mksgfs.py`
+  converte para Latin-1, como os outros textos do sistema. Antes, as letras
+  tipográficas que não existem no Latin-1 (travessão, aspas curvas) viram as
+  simples, para não aparecerem como "?".
+- **Um programa, três janelas.** `sobre-o-sistema creditos` e
+  `sobre-o-sistema historico` são o mesmo programa com um argumento, cada
+  janela num processo próprio, para a janela Sobre continuar atualizando. A
+  área de texto da libsagui não quebra linhas, então o programa quebra as
+  linhas largas num espaço antes de mostrar.
+- **32 ou 64 bits pela ABI, sem quebrar os programas antigos.** O
+  `info_versao_t` ganhou um campo `bits` **no fim**. O kernel só o preenche
+  quando o programa pede o tamanho novo (o terceiro argumento de
+  `info_sistema`); um programa compilado antes pede 48 bytes e recebe só os
+  campos que conhece, sem memória escrita além da variável dele. O valor é
+  `sizeof(void *) * 8` do próprio kernel: num kernel de 64 bits ele vira 64
+  sem ninguém lembrar de trocar uma constante.
+- **O histórico de versões fica em `VERSOES.md`**, na raiz e dentro da
+  imagem (`/sistema/ajuda/versoes.md`). Mudanças novas entram na seção "Em
+  desenvolvimento"; quando sai uma versão, aquilo vira a seção dela.
+- **Versões MAIOR.MENOR.CORREÇÃO a partir da 3.0.** Até a 2.1 as versões eram
+  "fases" grandes, entregues de uma vez. Com contribuições chegando o tempo
+  todo, os números passam a dizer o tamanho da mudança: só correções mudam o
+  último número, coisas novas o do meio, mudanças na base (que podem fazer
+  programas antigos pararem) o primeiro. Os números não têm limite (3.10,
+  3.0.12), e as versões saem de tempos em tempos, juntando muitas mudanças.
+  A versão em preparação já usa três números: 2.2.0.

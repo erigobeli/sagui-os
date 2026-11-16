@@ -263,7 +263,13 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # ---------- ramdisk (SGFS) ----------
 # O ramdisk é montado a partir de uma cópia do rootfs/ com os programas em
 # /bin e os programas de teste em /testes.
-$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs/c-do-sagui.md tools/mksgfs.py
+# H94: as licenças vão para /sistema/licencas, copiadas dos lugares onde já
+# estão no repositório (tools/mklicencas.py), e o histórico de versões para
+# /sistema/ajuda/versoes.md (o botão "Histórico" da janela Sobre).
+LICENCAS_FONTES := LICENSE CONTRIBUIDORES.md CREDITOS.md VERSOES.md $(shell find terceiros -type f | sort) \
+                   userland/navegador/motor/LICENCA-Unicode.txt tools/mklicencas.py
+
+$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs/c-do-sagui.md tools/mksgfs.py $(LICENCAS_FONTES)
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
@@ -272,6 +278,8 @@ $(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs
 	cp $(CC_LIB) $(B)/rootfs/sistema/lib/libsagui.o
 	cp $(CC_INC) $(B)/rootfs/sistema/inc/
 	cp docs/c-do-sagui.md $(B)/rootfs/sistema/ajuda/   # o manual que o Sagui Code manda para a IA (H71)
+	cp VERSOES.md $(B)/rootfs/sistema/ajuda/versoes.md
+	$(PY) tools/mklicencas.py . $(B)/rootfs/sistema/licencas
 	$(PY) tools/mksgfs.py $(B)/rootfs $@
 
 # ---------- imagem final ----------
