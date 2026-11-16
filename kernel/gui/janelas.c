@@ -28,6 +28,7 @@
 #include "video.h"
 #include "disco.h"
 #include "vidro.h"
+#include "suave.h"
 #include "configuracoes.h"
 
 #define MAX_JANELAS     32
@@ -467,9 +468,10 @@ static void desenhar_ctx(void)
     vidro_pintar(&tela, ctx_x, ctx_y, ctx_l, a, tema->topo, 238, CANTOS_EM_CIMA | CANTOS_EMBAIXO);
     for (int i = 0; i < ctx_qtd; i++) {
         int y = ctx_y + 4 + i * MENU_ITEM;
-        if (i == ctx_sob) {
-            sup_retangulo(&tela, ctx_x + 4, y, ctx_l - 8, MENU_ITEM, tema->destaque);
-            if (tema->filete) sup_retangulo(&tela, ctx_x + 4, y, 3, MENU_ITEM, tema->filete);
+        if (i == ctx_sob) {   /* o item sob o mouse: retângulo de cantos redondos, com a borda suavizada */
+            suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
+            suave_ret(&sv, ctx_x + 5, y + 1, ctx_l - 10, MENU_ITEM - 2, 6, tema->destaque, tema->destaque, 256);
+            if (tema->filete) suave_ret(&sv, ctx_x + 5, y + 6, 3, MENU_ITEM - 12, 1, tema->filete, tema->filete, 256);
         }
         sup_texto(&tela, ctx_x + 14, y + 5, ctx[i].nome, i == ctx_sob ? 0xFFFFFF : tema->topo_relogio);
     }
@@ -564,12 +566,35 @@ static void desenhar_anims(void)
 
 /* Disco de 16 pixels com degradê (botões redondos do pull request #1 do
  * Robson): "meia" é metade da largura de cada linha. */
-static void desenhar_disco(int bx, int by, uint32_t topo, uint32_t base)
+/* Botões da barra de título : discos e símbolos com a borda suavizada
+ * (suave.h). Antes eram linhas de pixels inteiros, e o X e o círculo
+ * saíam em escada. */
+static void disco(const suave_t *sv, int bx, int by, uint32_t topo, uint32_t base)
 {
-    static const uint8_t meia[8] = { 3, 5, 6, 7, 7, 8, 8, 8 };
-    for (int k = 0; k < 16; k++) {
-        int m = meia[k < 8 ? k : 15 - k];
-        sup_retangulo(&tela, bx + 8 - m, by + k, 2 * m, 1, cor_mistura(topo, base, k, 15));
+    suave_ret(sv, bx, by, 16, 16, 8, topo, base, 256);
+    suave_contorno(sv, bx, by, 16, 16, 8, 0x000000, 40);
+}
+
+static void simbolo_fechar(const suave_t *sv, int bx, int by, uint32_t cor)
+{
+    suave_traco(sv, bx * 8 + 40, by * 8 + 40, bx * 8 + 88, by * 8 + 88, 13, cor);
+    suave_traco(sv, bx * 8 + 88, by * 8 + 40, bx * 8 + 40, by * 8 + 88, 13, cor);
+}
+
+static void simbolo_minimizar(const suave_t *sv, int bx, int by, uint32_t cor)
+{
+    suave_traco(sv, bx * 8 + 34, by * 8 + 68, bx * 8 + 94, by * 8 + 68, 14, cor);
+}
+
+static void simbolo_maximizar(const suave_t *sv, int bx, int by, uint32_t cor, bool maximizada, uint32_t fundo)
+{
+    if (maximizada) {
+        suave_contorno(sv, bx + 5, by + 2, 9, 9, 2, cor, 256);
+        suave_ret(sv, bx + 2, by + 5, 9, 9, 2, fundo, fundo, 256);
+        suave_contorno(sv, bx + 2, by + 5, 9, 9, 2, cor, 256);
+    } else {
+        suave_contorno(sv, bx + 3, by + 3, 11, 11, 2, cor, 256);
+        suave_contorno(sv, bx + 4, by + 4, 9, 9, 1, cor, 200);
     }
 }
 
@@ -590,39 +615,27 @@ static void desenhar_moldura(janela_t *j, bool foco)
         sup_texto_forte(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
     } else sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
     int bx = x + l - BORDA - 20, by = y + 4, mx = bx - 24, qx = bx - 48;
+    suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
     uint32_t tc = foco ? tema->texto_foco : tema->texto;
     if (tema->botoes_cores) {
-        /* Fechar vermelho, minimizar amarelo, maximizar verde (cinza se a
-         * janela não muda de tamanho); sem foco, tons apagados. */
-        desenhar_disco(bx, by, foco ? 0xEC5A4E : 0x9A6A66, foco ? 0xC02E26 : 0x7A524E);
-        for (int k = 4; k < 12; k++) {
-            sup_retangulo(&tela, bx + k, by + k, 2, 1, 0xFFFFFF);
-            sup_retangulo(&tela, bx + 14 - k, by + k, 2, 1, 0xFFFFFF);
-        }
-        desenhar_disco(mx, by, foco ? 0xF6CE50 : 0xA89A6A, foco ? 0xD09A18 : 0x887A4E);
-        sup_retangulo(&tela, mx + 4, by + 10, 8, 2, 0xFFFFFF);
+        /* Fechar vermelho, minimizar amarelo, maximizar verde; sem foco,
+         * tons apagados. */
+        disco(&sv, bx, by, foco ? 0xF06A5E : 0x9A6A66, foco ? 0xC8352C : 0x7A524E);
+        simbolo_fechar(&sv, bx, by, 0xFFFFFF);
+        disco(&sv, mx, by, foco ? 0xF8D25A : 0xA89A6A, foco ? 0xD49E1C : 0x887A4E);
+        simbolo_minimizar(&sv, mx, by, 0xFFFFFF);
         if (j->redimensionavel) {
-            desenhar_disco(qx, by, foco ? 0x4CC47C : 0x7C9A88, foco ? 0x1E8A4C : 0x5C7A68);
-            sup_moldura(&tela, qx + 4, by + 4, 8, 8, 0xFFFFFF);
-            sup_retangulo(&tela, qx + 4, by + 5, 8, 1, 0xFFFFFF);
+            disco(&sv, qx, by, foco ? 0x56CA84 : 0x7C9A88, foco ? 0x22904F : 0x5C7A68);
+            simbolo_maximizar(&sv, qx, by, 0xFFFFFF, j->maximizada, foco ? 0x34A862 : 0x6C8A78);
         }
         return;
     }
-    /* Fechar: um círculo vermelho com um X; minimizar: um traço. */
-    uint32_t vermelho = foco ? 0xE0483E : 0x9A6A66;
-    for (int r = 0; r < 16; r++) {
-        int pula = r < 4 ? (int[]){ 5, 3, 2, 1 }[r] : (r > 11 ? (int[]){ 1, 2, 3, 5 }[r - 12] : 0);
-        sup_retangulo(&tela, bx + pula, by + r, 16 - 2 * pula, 1, vermelho);
-    }
-    for (int k = 4; k < 12; k++) {
-        sup_retangulo(&tela, bx + k, by + k, 1, 1, 0xFFFFFF);
-        sup_retangulo(&tela, bx + 15 - k, by + k, 1, 1, 0xFFFFFF);
-    }
-    sup_retangulo(&tela, mx + 3, by + 11, 10, 2, tc);
-    if (j->redimensionavel) {                    /* maximizar (H78): um quadrado; maximizada: dois */
-        if (j->maximizada) { sup_moldura(&tela, qx + 5, by + 2, 9, 9, tc); sup_retangulo(&tela, qx + 2, by + 5, 9, 9, foco ? tema->titulo_foco : tema->titulo); sup_moldura(&tela, qx + 2, by + 5, 9, 9, tc); }
-        else { sup_moldura(&tela, qx + 2, by + 2, 12, 12, tc); sup_retangulo(&tela, qx + 2, by + 3, 12, 1, tc); }
-    }
+    /* Fechar: um disco vermelho com um X; minimizar: um traço; maximizar:
+     * um quadrado de cantos redondos. */
+    disco(&sv, bx, by, foco ? 0xEE5A50 : 0x9A6A66, foco ? 0xC8352C : 0x7A524E);
+    simbolo_fechar(&sv, bx, by, 0xFFFFFF);
+    simbolo_minimizar(&sv, mx, by, tc);
+    if (j->redimensionavel) simbolo_maximizar(&sv, qx, by, tc, j->maximizada, cor);
 }
 
 /* ------------------------------------------------------------ tamanho (H78) */
