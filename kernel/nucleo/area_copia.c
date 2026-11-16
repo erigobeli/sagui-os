@@ -23,18 +23,18 @@ int32_t sis_area_copia(uint32_t modo, uint32_t ptr, uint32_t n, uint32_t d, uint
     (void)d; (void)e;
     if (modo == 0) {
         if (n > AREA_MAX) n = AREA_MAX;
-        if (!usuario_ok((const void *)ptr, n, false)) return ERRO_ENDERECO;
+        if (!usuario_ok((const void *)(uintptr_t)ptr, n, false)) return ERRO_ENDERECO;
         if (!texto) texto = kmalloc(AREA_MAX);
         if (!texto) return ERRO_SEM_MEMORIA;
-        memcpy(texto, (const void *)ptr, n);
+        memcpy(texto, (const void *)(uintptr_t)ptr, n);
         tamanho = n;
         klog("[SAGUI] area de copia: %u bytes\n", n);
         return (int32_t)n;
     }
     if (modo == 1) {
-        if (n && !usuario_ok((const void *)ptr, n, true)) return ERRO_ENDERECO;   /* n = 0: só pergunta o tamanho */
+        if (n && !usuario_ok((const void *)(uintptr_t)ptr, n, true)) return ERRO_ENDERECO;   /* n = 0: só pergunta o tamanho */
         uint32_t c = n < tamanho ? n : tamanho;
-        if (c) memcpy((void *)ptr, texto, c);
+        if (c) memcpy((void *)(uintptr_t)ptr, texto, c);
         return (int32_t)tamanho;
     }
     return ERRO_INVALIDO;

@@ -25,6 +25,11 @@ IMAGEM = os.environ.get("SAGUI_IMAGEM") or os.path.join(RAIZ, "build", "saguios.
 SAIDA = os.path.join(RAIZ, "build", "testes")
 CAPTURAS = os.environ.get("SAGUI_CAPTURAS") or os.path.join(RAIZ, "docs", "capturas")
 TEMPO_MAX = 180
+# SAGUI_QEMU: qual QEMU usar. A 3.0 tem o kernel de 64 bits (D054), que só
+# roda no qemu-system-x86_64; ele também roda a imagem de 32 bits (make
+# ARQ=32), então é o padrão. "qemu-system-i386" testa a imagem de 32 bits
+# numa CPU sem 64 bits, como era na 2.x.
+QEMU = os.environ.get("SAGUI_QEMU") or "qemu-system-x86_64"
 
 # Como digitar cada caractere num teclado ABNT2 pelo QEMU. O QEMU nomeia as
 # teclas pela posição do teclado americano; o kernel aplica o mapa ABNT2. Por
@@ -207,7 +212,7 @@ class Maquina:
         for f in (self.arq_serial, self.sock_monitor):
             if os.path.exists(f):
                 os.remove(f)
-        cmd = ["qemu-system-i386", "-m", self.memoria, "-display", "none",
+        cmd = [QEMU, "-m", self.memoria, "-display", "none",
                "-serial", "file:" + self.arq_serial,
                "-monitor", f"unix:{self.sock_monitor},server,nowait",
                ] + ([] if self.reiniciar else ["-no-reboot"])

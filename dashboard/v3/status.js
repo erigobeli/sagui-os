@@ -1,10 +1,10 @@
 // Gerado por tools/status.py a partir de status.json. Não editar.
 window.SAGUI_STATUS = {
   "titulo": "SaguiOS 3.0 — 64 bits",
-  "atualizado": "2026-11-16T04:05:27",
-  "situacao": "Planejamento da 3.0 (trabalho local, não publicado)",
+  "atualizado": "2026-11-16T04:23:52",
+  "situacao": "Trabalhando na H104: Programas de 32 bits em modo de compatibilidade",
   "fase_atual": 1,
-  "historia_atual": null,
+  "historia_atual": "H104",
   "bloqueio": null,
   "mensagem_fase": "",
   "raiz": "../../",
@@ -26,7 +26,7 @@ window.SAGUI_STATUS = {
       "numero": 1,
       "nome": "Kernel em 64 bits, programas de 32 sem mudança",
       "estado": "em andamento",
-      "progresso": 0.0
+      "progresso": 62.5
     },
     {
       "numero": 2,
@@ -42,8 +42,12 @@ window.SAGUI_STATUS = {
       "titulo": "Boot em modo longo",
       "objetivo": "O estágio 2 confere o CPUID (bit LM), monta tabelas de página de 4 níveis com a identidade dos primeiros GB, liga PAE, EFER.LME e a paginação, salta para um segmento de 64 bits e entra no kernel ELF64.",
       "aceite": "no QEMU e no VirtualBox, o kernel de 64 bits escreve na tela e na serial; numa CPU sem 64 bits, uma mensagem clara.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T04:09:03",
+      "fim": "2026-11-16T04:23:52",
+      "minutos": 15,
+      "resultado": "estágio 2 entra no modo longo quando o kernel é ELF64; mensagem clara em CPU sem 64 bits"
     },
     {
       "id": "H101",
@@ -51,8 +55,12 @@ window.SAGUI_STATUS = {
       "titulo": "Base do kernel em 64 bits",
       "objetivo": "GDT com segmentos de 64 bits e de 32 bits (compatibilidade), TSS de 64 bits (RSP0, IST), IDT de 64 bits, exceções com o quadro de 64 bits, PIC/PIT, relógio, console de texto e gráfico (VESA).",
       "aceite": "H03, H05, H09, H17 e H18 passam com o kernel novo.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T04:23:52",
+      "fim": "2026-11-16T04:23:52",
+      "minutos": 1,
+      "resultado": "GDT com código 64/32, TSS64 com IST, IDT de 16 bytes, quadro_t de 64 bits; H03 H05 H09 H17 H18 passam"
     },
     {
       "id": "H102",
@@ -60,8 +68,12 @@ window.SAGUI_STATUS = {
       "titulo": "Memória em 64 bits",
       "objetivo": "Memória física (E820), paginação de 4 níveis para o kernel e para cada processo, heap do kernel, mapeamento de MMIO (framebuffer com escrita combinada, PAT), DMA sempre abaixo de 4 GB.",
       "aceite": "H06 e H10 passam.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T04:23:52",
+      "fim": "2026-11-16T04:23:52",
+      "minutos": 1,
+      "resultado": "paginação de 4 níveis com o primeiro GB compartilhado, PAT/WC, DMA abaixo de 4 GB; H06 H10 passam"
     },
     {
       "id": "H103",
@@ -69,8 +81,12 @@ window.SAGUI_STATUS = {
       "titulo": "Processos e troca de contexto em 64 bits",
       "objetivo": "Estrutura de processo com os registradores de 64 bits, FXSAVE/FXRSTOR, escalonador, tarefas do kernel.",
       "aceite": "H11 e H80 passam.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T04:23:52",
+      "fim": "2026-11-16T04:23:52",
+      "minutos": 1,
+      "resultado": "tarefas do kernel e troca de contexto com iretq, FXSAVE por processo, pilha do kernel de 16 KB; H11 H80 passam"
     },
     {
       "id": "H104",
@@ -78,8 +94,12 @@ window.SAGUI_STATUS = {
       "titulo": "Programas de 32 bits em modo de compatibilidade",
       "objetivo": "Carregador ELF32 num espaço de endereçamento abaixo de 4 GB, `int 0x80` com os números e os ponteiros de 32 bits de hoje (todas as chamadas da 2.x), sinais/erros como antes.",
       "aceite": "H12, H13, H14, H15, H16 e H24 passam com os binários atuais.",
-      "estado": "a fazer",
-      "bonus": false
+      "estado": "feito",
+      "bonus": false,
+      "inicio": "2026-11-16T04:23:52",
+      "fim": "2026-11-16T04:23:52",
+      "minutos": 1,
+      "resultado": "ELF32 no modo de compatibilidade (CS 0x1B, L=0 D=1), int 0x80 igual, argv lido como uint32_t; H12-H16 H24 passam"
     },
     {
       "id": "H105",
@@ -215,6 +235,46 @@ window.SAGUI_STATUS = {
   ],
   "acoes": [
     {
+      "data": "2026-11-16T04:23:52",
+      "texto": "H104 concluída: ELF32 no modo de compatibilidade (CS 0x1B, L=0 D=1), int 0x80 igual, argv lido como uint32_t; H12-H16 H24 passam"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "H103 concluída: tarefas do kernel e troca de contexto com iretq, FXSAVE por processo, pilha do kernel de 16 KB; H11 H80 passam"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "H102 concluída: paginação de 4 níveis com o primeiro GB compartilhado, PAT/WC, DMA abaixo de 4 GB; H06 H10 passam"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "H101 concluída: GDT com código 64/32, TSS64 com IST, IDT de 16 bytes, quadro_t de 64 bits; H03 H05 H09 H17 H18 passam"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "Início da H104: Programas de 32 bits em modo de compatibilidade"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "Início da H103: Processos e troca de contexto em 64 bits"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "Início da H102: Memória em 64 bits"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "Início da H101: Base do kernel em 64 bits"
+    },
+    {
+      "data": "2026-11-16T04:23:52",
+      "texto": "H100 concluída: estágio 2 entra no modo longo quando o kernel é ELF64; mensagem clara em CPU sem 64 bits"
+    },
+    {
+      "data": "2026-11-16T04:09:03",
+      "texto": "Início da H100: Boot em modo longo"
+    },
+    {
       "data": "2026-11-16T04:05:27",
       "texto": "Plano da 3.0 (64 bits) escrito em prd3.md"
     }
@@ -222,15 +282,15 @@ window.SAGUI_STATUS = {
   "erros": [],
   "capturas": [],
   "linhas": {
-    "boot": 920,
-    "kernel": 15444,
+    "boot": 1077,
+    "kernel": 16118,
     "userland": 68063,
-    "ferramentas": 13313
+    "ferramentas": 13407
   },
   "imagem": {
-    "bytes_util": 0,
-    "bytes_arquivo": 0,
+    "bytes_util": 6535680,
+    "bytes_arquivo": 6553600,
     "meta_bytes": null
   },
-  "progresso_geral": 0.0
+  "progresso_geral": 41.7
 };

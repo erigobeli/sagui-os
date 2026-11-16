@@ -41,7 +41,7 @@ int32_t sis_matar(uint32_t pid, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 int32_t sis_esperar(uint32_t pid, uint32_t ptr_codigo, uint32_t sem_bloquear, uint32_t d, uint32_t e)
 {
     (void)d; (void)e;
-    int *codigo = (int *)ptr_codigo;
+    int *codigo = (int *)(uintptr_t)ptr_codigo;
     if (codigo && !usuario_ok(codigo, sizeof(int), true)) return ERRO_ENDERECO;
     bool tem_filho = false;
     for (int i = 1; i < MAX_PROCESSOS; i++) {
@@ -83,7 +83,7 @@ int32_t sis_tempo(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 int32_t sis_data(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;
-    data_t *dt = (data_t *)ptr;
+    data_t *dt = (data_t *)(uintptr_t)ptr;
     if (!usuario_ok(dt, sizeof *dt, true)) return ERRO_ENDERECO;
     data_hora_t h;
     cmos_ler_data(&h);
@@ -97,7 +97,7 @@ int32_t sis_data(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 int32_t sis_ajustar_data(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;
-    const data_t *dt = (const data_t *)ptr;
+    const data_t *dt = (const data_t *)(uintptr_t)ptr;
     if (!usuario_ok(dt, sizeof *dt, false)) return ERRO_ENDERECO;
     static const uint8_t dias[12] = { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
     if (dt->ano < 2000 || dt->ano > 2099 || dt->mes < 1 || dt->mes > 12 || dt->dia < 1 || dt->dia > dias[dt->mes - 1] ||
@@ -113,7 +113,7 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
 {
     (void)d; (void)e;
     if (tipo == INFO_MEMORIA) {
-        info_memoria_t *m = (info_memoria_t *)ptr;
+        info_memoria_t *m = (info_memoria_t *)(uintptr_t)ptr;
         if (!usuario_ok(m, sizeof *m, true)) return ERRO_ENDERECO;
         estat_memoria_t est;
         memoria_estatisticas(&est);
@@ -124,7 +124,7 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
         return 0;
     }
     if (tipo == INFO_PROCESSOS) {
-        info_processo_t *v = (info_processo_t *)ptr;
+        info_processo_t *v = (info_processo_t *)(uintptr_t)ptr;
         if (n > MAX_PROCESSOS) n = MAX_PROCESSOS;
         if (!usuario_ok(v, n * sizeof *v, true)) return ERRO_ENDERECO;
         uint32_t k = 0;
@@ -144,24 +144,24 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
         return (int32_t)k;
     }
     if (tipo == INFO_USB) {
-        if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
+        if (!usuario_ok((void *)(uintptr_t)ptr, n, true) || n < 2) return ERRO_ENDERECO;
         int usb_relatorio(char *s, int max);
-        return usb_relatorio((char *)ptr, (int)n);
+        return usb_relatorio((char *)(uintptr_t)ptr, (int)n);
     }
     if (tipo == INFO_REGISTRO) {
-        if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
+        if (!usuario_ok((void *)(uintptr_t)ptr, n, true) || n < 2) return ERRO_ENDERECO;
         extern int diario_copiar(char *destino, int max);
-        return diario_copiar((char *)ptr, (int)n);
+        return diario_copiar((char *)(uintptr_t)ptr, (int)n);
     }
     if (tipo == INFO_PCI) {
-        if (!usuario_ok((void *)ptr, n, true) || n < 2) return ERRO_ENDERECO;
-        return pci_relatorio((char *)ptr, (int)n);
+        if (!usuario_ok((void *)(uintptr_t)ptr, n, true) || n < 2) return ERRO_ENDERECO;
+        return pci_relatorio((char *)(uintptr_t)ptr, (int)n);
     }
     if (tipo == INFO_DISCOS_ESPACO) {
         /* "/" é a árvore na memória (ramdisk + o que foi gravado na RAM): o
          * usado é a soma dos arquivos, e o livre é a memória livre, que é
          * onde um arquivo novo vai parar. "/usb" vem da FAT do pendrive. */
-        info_espaco_t *v = (info_espaco_t *)ptr;
+        info_espaco_t *v = (info_espaco_t *)(uintptr_t)ptr;
         if (n > 2) n = 2;
         if (n == 0 || !usuario_ok(v, n * sizeof *v, true)) return ERRO_ENDERECO;
         memset(v, 0, n * sizeof *v);
@@ -187,7 +187,7 @@ int32_t sis_info_sistema(uint32_t tipo, uint32_t ptr, uint32_t n, uint32_t d, ui
         return (int32_t)k;
     }
     if (tipo == INFO_VERSAO) {
-        info_versao_t *v = (info_versao_t *)ptr;
+        info_versao_t *v = (info_versao_t *)(uintptr_t)ptr;
         if (!usuario_ok(v, sizeof *v, true)) return ERRO_ENDERECO;
         extern const char *sagui_versao;
         extern uint32_t imagem_bytes;
@@ -227,7 +227,7 @@ int32_t sis_registrar(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t
 {
     (void)b; (void)c; (void)d; (void)e;
     char t[256];
-    int r = usuario_texto((const char *)ptr, t, sizeof t);
+    int r = usuario_texto((const char *)(uintptr_t)ptr, t, sizeof t);
     if (r < 0) return r;
     klog("[%s %d] %s\n", atual->nome, atual->pid, t);
     return 0;

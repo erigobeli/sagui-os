@@ -1,7 +1,10 @@
 # Makefile do SaguiOS
 #
 # Alvos principais:
-#   make            -> gera build/saguios.img (imagem para pendrive)
+#   make            -> gera build/saguios.img (imagem para pendrive), com o
+#                      kernel em 64 bits (3.0, D054)
+#   make ARQ=32     -> a imagem com o kernel de 32 bits da 2.x, em build32/
+#                      (fica até a 3.0 ser aprovada no G470)
 #   make vdi        -> gera também build/saguios.vdi (VirtualBox)
 #   make test       -> roda todos os testes automáticos no QEMU
 #   make rodar      -> abre o sistema no QEMU (precisa de janela; na VPS use os testes)
@@ -19,19 +22,47 @@ AS      := nasm
 LD      := ld
 PY      := python3
 
-CFLAGS  := -m32 -march=i686 -std=gnu11 -O2 -g \
+# ARQ escolhe o kernel: 64 (padrão da 3.0, modo longo) ou 32 (o da 2.x).
+# Os programas de usuário são os mesmos ELF32 nos dois (prd3.md, fase 1).
+ARQ ?= 64
+ifeq ($(ARQ),32)
+B         := build32
+ARQ_DIR   := i386
+KARQ      := -m32 -march=i686
+KLD_ARQ   := -m elf_i386
+KASM_FMT  := elf32
+QEMU      := qemu-system-i386
+else ifeq ($(ARQ),64)
+B         := build
+ARQ_DIR   := x86_64
+# -mno-red-zone: no modo longo a CPU empilha o quadro da interrupção logo
+# abaixo do RSP, por cima dos 128 bytes que a ABI deixaria a função usar
+# sem mexer no RSP ("zona vermelha"); no kernel ela não pode existir.
+# -mcmodel=kernel não serve: o kernel fica em 1 MB (D054), endereços baixos,
+# e o modelo "small" (tudo abaixo de 2 GB) é o certo para isso.
+KARQ      := -m64 -march=x86-64 -mcmodel=small -mno-red-zone
+KLD_ARQ   := -m elf_x86_64 -z max-page-size=4096
+KASM_FMT  := elf64
+QEMU      := qemu-system-x86_64
+else
+$(error ARQ deve ser 32 ou 64)
+endif
+
+CFLAGS  := $(KARQ) -std=gnu11 -O2 -g \
            -ffreestanding -fno-builtin -nostdlib -fno-pic -fno-pie \
            -fno-stack-protector -fno-asynchronous-unwind-tables \
            -mgeneral-regs-only -fno-omit-frame-pointer \
            -Wall -Wextra -Werror=implicit-function-declaration \
            -finput-charset=UTF-8 -fexec-charset=ISO-8859-1 \
            -DSAGUI_KERNEL -Ikernel/inc
-LDFLAGS := -m elf_i386 -nostdlib --no-dynamic-linker -z noexecstack --no-warn-rwx-segments
+LDFLAGS := $(KLD_ARQ) -nostdlib --no-dynamic-linker -z noexecstack --no-warn-rwx-segments
 
-B       := build
-
-KERNEL_C   := $(shell find kernel -name '*.c' | sort)
-KERNEL_ASM := $(shell find kernel -name '*.asm' | sort)
+# O código que muda com a arquitetura fica em kernel/arch/i386 e
+# kernel/arch/x86_64; só a pasta do ARQ escolhido entra no build.
+KERNEL_C   := $(shell find kernel -name '*.c' -not -path 'kernel/arch/i386/*' -not -path 'kernel/arch/x86_64/*' | sort) \
+              $(sort $(wildcard kernel/arch/$(ARQ_DIR)/*.c))
+KERNEL_ASM := $(shell find kernel -name '*.asm' -not -path 'kernel/arch/i386/*' -not -path 'kernel/arch/x86_64/*' | sort) \
+              $(sort $(wildcard kernel/arch/$(ARQ_DIR)/*.asm))
 KERNEL_OBJ := $(patsubst %.c,$(B)/%.o,$(KERNEL_C)) $(patsubst %.asm,$(B)/%.asm.o,$(KERNEL_ASM)) \
               $(B)/gerado/fonte8x16.o $(B)/gerado/arte_icones.o
 KERNEL_HDR := $(shell find kernel -name '*.h')
@@ -127,7 +158,7 @@ $(B)/kernel/%.o: kernel/%.c $(KERNEL_HDR)
 
 $(B)/kernel/%.asm.o: kernel/%.asm
 	@mkdir -p $(dir $@)
-	$(AS) -f elf32 -I kernel/arch/ -o $@ $<
+	$(AS) -f $(KASM_FMT) -I kernel/arch/ -o $@ $<
 
 # A fonte é desenhada em texto (tools/fonte/) e vira C no build.
 $(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/mkfonte.py
@@ -296,14 +327,14 @@ test: $(B)/saguios.img
 	$(PY) tests/rodar_todos.py
 
 rodar: $(B)/saguios.img
-	qemu-system-i386 -m 512M -drive format=raw,file=$< -serial stdio
+	$(QEMU) -m 512M -drive format=raw,file=$< -serial stdio
 
 # Do pull request #7: o sistema com as placas que ele sabe usar, como no
 # G470. "snapshot=on": o que for gravado no disco some ao fechar o QEMU (o
 # SaguiOS roda na memória; a imagem fica como saiu do make).
 SOM ?= pa
 run: $(B)/saguios.img
-	qemu-system-i386 -m 768M -drive format=raw,file=$<,snapshot=on -serial stdio \
+	$(QEMU) -m 768M -drive format=raw,file=$<,snapshot=on -serial stdio \
 	    -nic user,model=e1000 \
 	    -audiodev $(SOM),id=som -device intel-hda -device hda-duplex,audiodev=som \
 	    -device usb-ehci,id=ehci

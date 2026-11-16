@@ -103,20 +103,20 @@ static void teste_memoria(void)
         paginas[i] = memfisica_alocar();
         uint32_t p = paginas[i];
         if (!p || (p & 0xFFF) || p < 0x100000 || p >= MEMFIS_LIMITE ||
-            (p >= (uint32_t)_kernel_inicio && p < (uint32_t)_kernel_fim) ||
+            (p >= (uint32_t)(uintptr_t)_kernel_inicio && p < (uint32_t)(uintptr_t)_kernel_fim) ||
             (p >= info_boot.ramdisk_inicio && p < info_boot.ramdisk_inicio + info_boot.ramdisk_bytes))
             ok = false;
-        *(volatile uint32_t *)p = 0xCAFE0000u + i;   /* a página tem que ser RAM de verdade */
+        *(volatile uint32_t *)(uintptr_t)p = 0xCAFE0000u + i;   /* a página tem que ser RAM de verdade */
     }
     for (int i = 0; i < 1000; i++)
-        if (*(volatile uint32_t *)paginas[i] != 0xCAFE0000u + i) ok = false;
+        if (*(volatile uint32_t *)(uintptr_t)paginas[i] != 0xCAFE0000u + i) ok = false;
     confere(ok, "1000 páginas válidas, distintas e graváveis");
     for (int i = 0; i < 1000; i++) memfisica_liberar(paginas[i]);
     confere(memfisica_livres() == e0.paginas_livres, "páginas avulsas voltam ao bitmap");
 
     uint32_t seq = memfisica_alocar_seguidas(16);
     confere(seq != 0 && (seq & 0xFFF) == 0, "16 páginas seguidas");
-    memset((void *)seq, 0x5A, 16 * PAGINA);
+    memset((void *)(uintptr_t)seq, 0x5A, 16 * PAGINA);
     memfisica_liberar_seguidas(seq, 16);
 
     /* 2. kmalloc com tamanhos variados (pequenos e grandes). */
@@ -127,14 +127,14 @@ static void teste_memoria(void)
         id[i] = i;
         confere(ptr[i] != NULL, "kmalloc devolveu memória");
         if (!ptr[i]) return;
-        confere(((uint32_t)ptr[i] & 7) == 0, "ponteiro alinhado em 8 bytes");
+        confere(((uint32_t)(uintptr_t)ptr[i] & 7) == 0, "ponteiro alinhado em 8 bytes");
         preencher(ptr[i], tam[i], id[i]);
     }
     /* Nenhum bloco pode se sobrepor a outro. */
     ok = true;
     for (uint32_t i = 0; i < BLOCOS; i++)
         for (uint32_t j = i + 1; j < BLOCOS; j++)
-            if ((uint32_t)ptr[i] < (uint32_t)ptr[j] + tam[j] && (uint32_t)ptr[j] < (uint32_t)ptr[i] + tam[i])
+            if ((uint32_t)(uintptr_t)ptr[i] < (uint32_t)(uintptr_t)ptr[j] + tam[j] && (uint32_t)(uintptr_t)ptr[j] < (uint32_t)(uintptr_t)ptr[i] + tam[i])
                 ok = false;
     confere(ok, "nenhum bloco se sobrepõe a outro");
 
@@ -261,14 +261,14 @@ static void teste_paginacao(void)
     confere(espaco_traduzir(espaco_kernel(), v, NULL) == 0, "o espaço do kernel não vê a área dos programas");
 
     espaco_ativar(e1);
-    *(volatile uint32_t *)v = 0x11111111;
+    *(volatile uint32_t *)(uintptr_t)v = 0x11111111;
     confere(valor_global == 0x5A6E1234, "o kernel continua visível dentro do espaço 1");
     espaco_ativar(e2);
-    *(volatile uint32_t *)v = 0x22222222;
+    *(volatile uint32_t *)(uintptr_t)v = 0x22222222;
     espaco_ativar(e1);
-    uint32_t lido1 = *(volatile uint32_t *)v;
+    uint32_t lido1 = *(volatile uint32_t *)(uintptr_t)v;
     espaco_ativar(e2);
-    uint32_t lido2 = *(volatile uint32_t *)v;
+    uint32_t lido2 = *(volatile uint32_t *)(uintptr_t)v;
     espaco_ativar(espaco_kernel());
     klog("[TESTE] endereco virtual %x: espaco 1 = %x (fisico %x), espaco 2 = %x (fisico %x)\n",
          v, lido1, espaco_traduzir(e1, v, NULL), lido2, espaco_traduzir(e2, v, NULL));
@@ -296,7 +296,7 @@ static volatile int tarefas_vivas;
 
 static void tarefa_letra(void *arg)
 {
-    char letra = (char)(uint32_t)arg;
+    char letra = (char)(uint32_t)(uintptr_t)arg;
     for (int i = 0; i < 60; i++) {
         serial_char(letra);
         console_char(letra);
@@ -337,7 +337,7 @@ static processo_t *rodar_no_anel3(const char *nome, const uint8_t *ini, const ui
     espaco_alocar(p->espaco, USUARIO_INICIO, PAGINA, PG_USUARIO | PG_ESCRITA);
     espaco_alocar(p->espaco, USUARIO_FIM - PAGINA, PAGINA, PG_USUARIO | PG_ESCRITA);
     /* O kernel enxerga a página física pelo mapeamento 1:1 (D008). */
-    memcpy((void *)espaco_traduzir(p->espaco, USUARIO_INICIO, NULL), ini, (uint32_t)(fim - ini));
+    memcpy((void *)(uintptr_t)espaco_traduzir(p->espaco, USUARIO_INICIO, NULL), ini, (uint32_t)(fim - ini));
     arquivos_herdar(p, NULL);   /* terminal como entrada 0 e saídas 1 e 2 */
     processo_preparar_usuario(p, USUARIO_INICIO, USUARIO_FIM);
     return p;

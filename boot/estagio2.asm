@@ -10,6 +10,8 @@
 ;   [4/6] ramdisk           (idem, logo depois do fim do kernel)
 ;   [5/6] vídeo             (INT 10h VBE: escolher modo; trocar só se pedido)
 ;   [6/6] modo protegido    (GDT própria e salto para o kernel)
+;         ou modo longo     (kernel de 64 bits, 3.0: confere a CPU, monta as
+;                            tabelas de página e liga o IA-32e; D054)
 ;
 ; Cada etapa mostra uma linha na tela. No G470 não há serial: se travar, a
 ; foto da tela mostra em qual etapa parou.
@@ -35,6 +37,17 @@ BLOCO_SETORES   equ 64                  ; 32 KB por leitura: dentro do limite de
 
 SEL_CODIGO      equ 0x08
 SEL_DADOS       equ 0x10
+SEL_CODIGO64    equ 0x18
+
+; Tabelas de página provisórias do modo longo (D054): 7 páginas a partir de
+; 0x20000, uma área livre da memória baixa (o buffer de leitura do disco
+; termina em 0x18000 e o kernel não usa nada abaixo de 1 MB). O kernel monta
+; as tabelas definitivas dele logo no começo e esquece estas.
+TAB_PML4        equ 0x20000
+TAB_PDPT        equ 0x21000
+TAB_PD          equ 0x22000             ; 4 diretórios: 0x22000 a 0x25FFF
+TAB_PT0         equ 0x26000             ; tabela de 4 KB para os primeiros 2 MB
+MSR_EFER        equ 0xC0000080
 
 inicio:
         cli
@@ -150,8 +163,20 @@ inicio:
 .video_fim:
 
 ; ---------------------------------------------------------------- [6/6] modo protegido
+        ; Kernel de 64 bits (3.0): confere antes de tudo se a CPU tem o modo
+        ; longo. A conferência vem antes da troca de vídeo para a mensagem de
+        ; erro aparecer no modo texto da BIOS.
+        test word [CAB_ENDERECO + CAB_OPCOES], OPC_LONGO
+        jz .msg_32
+        call tem_modo_longo
+        jc .falha_64
+        mov si, msg_longo
+        call escrever
+        jmp .trocar_video
+.msg_32:
         mov si, msg_pm
         call escrever
+.trocar_video:
 
         ; Troca de modo de vídeo só quando o build pede (fase 4 em diante) e
         ; sempre por último, porque depois dela o texto da BIOS some.
@@ -184,6 +209,46 @@ inicio:
 .falha_soma:
         mov si, msg_falha_soma
         jmp parar
+.falha_64:
+        mov si, msg_falha_64
+        jmp parar
+
+; ============================================================================
+; Modo longo (64 bits): a CPU tem?
+; ============================================================================
+
+; tem_modo_longo: CF=0 se a CPU sabe rodar em 64 bits. Pelo manual da Intel
+; (vol. 2A, CPUID) e da AMD (APM vol. 3): a instrução CPUID existe se o bit
+; 21 (ID) do EFLAGS pode ser trocado; a função 0x80000000 diz até onde vão
+; as funções estendidas; e o bit 29 (LM) do EDX da função 0x80000001 diz se
+; há o modo longo (IA-32e).
+tem_modo_longo:
+        pushfd
+        pop eax
+        mov ecx, eax
+        xor eax, 1 << 21
+        push eax
+        popfd
+        pushfd
+        pop eax
+        push ecx                        ; devolve o EFLAGS original
+        popfd
+        xor eax, ecx
+        test eax, 1 << 21
+        jz .nao                         ; o bit não mudou: CPU sem CPUID
+        mov eax, 0x80000000
+        cpuid
+        cmp eax, 0x80000001
+        jb .nao
+        mov eax, 0x80000001
+        cpuid
+        test edx, 1 << 29
+        jz .nao
+        clc
+        ret
+.nao:
+        stc
+        ret
 
 ; ============================================================================
 ; A20
@@ -648,9 +713,93 @@ modo_protegido:
         mov gs, ax
         mov ss, ax
         mov esp, 0x7C00                 ; pilha provisória; o kernel monta a dele
+        test word [CAB_ENDERECO + CAB_OPCOES], OPC_LONGO
+        jnz entrar_modo_longo
         mov eax, BOOT_MAGICO
         mov ebx, BOOTINFO
         jmp [CAB_ENDERECO + CAB_K_ENTRADA]
+
+; ============================================================================
+; Modo longo (kernel de 64 bits, 3.0)
+; ============================================================================
+
+; A sequência é a do manual da Intel (vol. 3A, 10.8.5, "Initializing IA-32e
+; Mode") e da AMD (APM vol. 2, 14.6, "Enabling and Activating Long Mode"):
+; com a paginação desligada, ligar a PAE (CR4), apontar o CR3 para uma
+; tabela de 4 níveis, ligar o EFER.LME e por fim a paginação (CR0.PG). A
+; partir daí a CPU está no modo longo, ainda executando este código de 32
+; bits no "modo de compatibilidade"; um salto longo para um segmento com
+; L=1 entra nos 64 bits de verdade.
+;
+; As tabelas provisórias cobrem os primeiros 4 GB com o endereço virtual
+; igual ao físico ("identidade"), em páginas de 2 MB (bit PS no diretório):
+; 1 PML4 -> 1 PDPT -> 4 diretórios de 512 entradas. Assim o kernel (em 1 MB),
+; a memória baixa (boot_info, VGA) e o framebuffer continuam no mesmo
+; endereço de antes.
+entrar_modo_longo:
+        cld
+        mov edi, TAB_PML4               ; zera as 7 páginas
+        mov ecx, 7 * 4096 / 4
+        xor eax, eax
+        rep stosd
+        mov dword [TAB_PML4], TAB_PDPT | 3              ; presente + escrita
+        mov edi, TAB_PDPT
+        mov eax, TAB_PD | 3
+        mov ecx, 4
+.pdpt:  mov [edi], eax                  ; PDPT[i] -> diretório i (1 GB cada)
+        add eax, 4096
+        add edi, 8
+        loop .pdpt
+        mov edi, TAB_PD                 ; 2048 entradas de 2 MB = 4 GB
+        mov eax, 0x83                   ; presente + escrita + página de 2 MB
+        xor edx, edx                    ; metade alta do endereço (sempre 0 aqui)
+        mov ecx, 2048
+.pd:    mov [edi], eax
+        mov [edi + 4], edx
+        add eax, 0x200000
+        add edi, 8
+        loop .pd
+        ; Os primeiros 2 MB vão em páginas de 4 KB: ali se misturam RAM, a
+        ; memória de vídeo VGA (0xA0000) e a ROM da BIOS, com tipos de memória
+        ; diferentes nos MTRRs, e o manual da Intel (vol. 3A, 13.11.9) diz que
+        ; uma página grande sobre tipos diferentes tem comportamento indefinido.
+        mov dword [TAB_PD], TAB_PT0 | 3
+        mov edi, TAB_PT0
+        mov eax, 3                      ; presente + escrita, a partir do endereço 0
+        mov ecx, 512
+.pt0:   mov [edi], eax
+        add eax, 4096
+        add edi, 8
+        loop .pt0
+
+        mov eax, cr4
+        or eax, 1 << 5                  ; PAE
+        mov cr4, eax
+        mov eax, TAB_PML4
+        mov cr3, eax
+        mov ecx, MSR_EFER
+        rdmsr
+        or eax, 1 << 8                  ; LME: pede o modo longo
+        wrmsr
+        mov eax, cr0
+        or eax, 1 << 31                 ; PG: liga a paginação e ativa o modo longo
+        mov cr0, eax
+        jmp SEL_CODIGO64:modo_longo
+
+bits 64
+modo_longo:
+        mov ax, SEL_DADOS
+        mov ds, ax
+        mov es, ax
+        mov ss, ax
+        mov rsp, 0x7C00
+        ; Convenção de chamada do System V AMD64 (a do gcc): primeiro
+        ; argumento em RDI, segundo em RSI. O kernel recebe os mesmos dois
+        ; valores que a versão de 32 bits recebe em EAX e EBX.
+        mov edi, BOOT_MAGICO
+        mov esi, BOOTINFO
+        mov eax, [CAB_ENDERECO + CAB_K_ENTRADA]
+        jmp rax
 
 ; ============================================================================
 ; Dados
@@ -675,6 +824,8 @@ gdt:
         db 0x00, 0x9A, 0xCF, 0x00       ;      base 16-23, presente/anel 0/código, 4 KB + 32 bits, base 24-31
         dw 0xFFFF, 0x0000               ; 0x10 dados
         db 0x00, 0x92, 0xCF, 0x00
+        dw 0xFFFF, 0x0000               ; 0x18 código de 64 bits (L=1, D=0), só para o modo longo
+        db 0x00, 0x9A, 0xAF, 0x00
 gdt_fim:
 gdt_descritor:
         dw gdt_fim - gdt - 1
@@ -692,6 +843,11 @@ msg_video:      db "[5/6] video: ", 0
 msg_sem_vesa:   db "VESA nao encontrado, fica em modo texto", 13, 10, 0
 msg_crlf:       db 13, 10, 0
 msg_pm:         db "[6/6] entrando no modo protegido", 13, 10, 0
+msg_longo:      db "[6/6] entrando no modo longo (64 bits)", 13, 10, 0
+msg_falha_64:   db "ERRO: este processador nao tem 64 bits (x86-64).", 13, 10
+                db "Esta imagem do SaguiOS precisa de um processador de 64 bits;", 13, 10
+                db "use a imagem de 32 bits (make ARQ=32).", 13, 10
+                db "No VirtualBox, escolha a versao Other/Unknown (64-bit).", 0
 msg_falha_a20:  db "ERRO: nao consegui ligar a linha A20", 0
 msg_falha_mem:  db "ERRO: BIOS nao deu o mapa de memoria (E820)", 0
 msg_falha_leitura: db 13, 10, "ERRO: falha de leitura do disco (INT 13h)", 0

@@ -53,7 +53,7 @@ static bool soma_ok(const uint8_t *p, uint32_t n)
 static const uint8_t *procurar_rsdp(uint32_t ini, uint32_t fim)
 {
     for (uint32_t a = ini; a + 20 <= fim; a += 16) {
-        const uint8_t *p = (const uint8_t *)a;
+        const uint8_t *p = (const uint8_t *)(uintptr_t)a;
         if (memcmp(p, "RSD PTR ", 8) == 0 && soma_ok(p, 20)) return p;
     }
     return NULL;
@@ -63,12 +63,12 @@ static const uint8_t *procurar_rsdp(uint32_t ini, uint32_t fim)
 static const uint8_t *mapear_tabela(uint32_t fis)
 {
     if (!fis) return NULL;
-    const uint8_t *cab = fis < 0x38000000u ? (const uint8_t *)fis : (const uint8_t *)janela_mapear(fis, 36);
+    const uint8_t *cab = fis < 0x38000000u ? (const uint8_t *)(uintptr_t)fis : (const uint8_t *)(uintptr_t)janela_mapear(fis, 36);
     if (!cab) return NULL;
     uint32_t tam = *(const uint32_t *)(cab + 4);
     if (tam < 36 || tam > 1024 * 1024) return NULL;
     if (fis < 0x38000000u) return cab;
-    return (const uint8_t *)janela_mapear(fis, tam);
+    return (const uint8_t *)(uintptr_t)janela_mapear(fis, tam);
 }
 
 /* Lê um valor pequeno do AML: 0 (ZeroOp), 1 (OneOp) ou 0x0A seguido do byte. */
@@ -105,7 +105,7 @@ void energia_iniciar(void)
     /* O segmento da EBDA fica na área de dados da BIOS, no endereço 0x40E.
      * A página 0 fica desmapeada de propósito (pega ponteiro nulo), então a
      * leitura passa por uma janela do kernel. */
-    const uint16_t *bda = (const uint16_t *)janela_mapear(0x40E, 2);
+    const uint16_t *bda = (const uint16_t *)(uintptr_t)janela_mapear(0x40E, 2);
     uint32_t ebda = bda ? (uint32_t)(*bda) << 4 : 0;
     if (ebda >= 0x80000 && ebda < 0xA0000) rsdp = procurar_rsdp(ebda, ebda + 1024);
     if (!rsdp) rsdp = procurar_rsdp(0xE0000, 0x100000);
@@ -212,7 +212,7 @@ SEM_RETORNO void maquina_reiniciar(void)
     porta_escreve8(0x64, 0xFE);
     for (volatile int i = 0; i < 1000000; i++) ;
     /* Se não funcionou: IDT vazia + interrupção = falta tripla, que também reinicia. */
-    struct EMPACOTADO { uint16_t limite; uint32_t base; } vazia = { 0, 0 };
+    struct EMPACOTADO { uint16_t limite; uintptr_t base; } vazia = { 0, 0 };
     __asm__ volatile("lidt %0; int3" : : "m"(vazia));
     parar_maquina();
 }

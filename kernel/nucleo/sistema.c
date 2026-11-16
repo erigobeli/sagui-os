@@ -62,10 +62,14 @@ static const chamada_t tabela[SIS_MAX] = {
 
 bool usuario_ok(const void *p, uint32_t n, bool escrita)
 {
-    uint32_t ini = (uint32_t)p;
+    /* No kernel de 64 bits um ponteiro tem 8 bytes: o teste é feito com o
+     * valor inteiro, antes de reduzir a 32 bits, para que nada acima de 4 GB
+     * passe por um endereço baixo truncado. */
+    uintptr_t ini_l = (uintptr_t)p;
     if (n == 0) return true;
-    if (ini < USUARIO_INICIO || ini >= USUARIO_FIM || n > USUARIO_FIM - ini)
+    if (ini_l < USUARIO_INICIO || ini_l >= USUARIO_FIM || n > USUARIO_FIM - ini_l)
         return false;
+    uint32_t ini = (uint32_t)ini_l;
     for (uint32_t pag = ini & ~0xFFFu; pag < ini + n; pag += 4096) {
         uint32_t flags;
         if (!espaco_traduzir(atual->espaco, pag, &flags)) return false;
@@ -79,7 +83,7 @@ int usuario_texto(const char *origem, char *destino, uint32_t max)
 {
     for (uint32_t i = 0; i < max; i++) {
         /* Confere cada página quando entra nela (o texto pode cruzar páginas). */
-        if ((i == 0 || (((uint32_t)origem + i) & 0xFFF) == 0) && !usuario_ok(origem + i, 1, false))
+        if ((i == 0 || (((uintptr_t)origem + i) & 0xFFF) == 0) && !usuario_ok(origem + i, 1, false))
             return ERRO_ENDERECO;
         destino[i] = origem[i];
         if (!origem[i]) return (int)i;
@@ -100,7 +104,11 @@ static quadro_t *tratar_sistema(quadro_t *q)
         q->eip -= 2;               /* executa o "int 0x80" de novo ao acordar */
         return escalonar(q);
     }
+#ifdef __x86_64__
+    q->rax = (uint32_t)r;   /* o programa de 32 bits só vê EAX; a metade alta fica zerada */
+#else
     q->eax = (uint32_t)r;
+#endif
     if (atual->estado != P_EXECUTANDO)   /* bloqueou com resultado pronto, ou terminou */
         return escalonar(q);
     return q;

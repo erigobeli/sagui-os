@@ -135,13 +135,13 @@ int32_t sis_config_ler(uint32_t pchave, uint32_t pvalor, uint32_t max, uint32_t 
 {
     (void)d; (void)e;
     char chave[32];
-    int r = usuario_texto((const char *)pchave, chave, sizeof chave);
+    int r = usuario_texto((const char *)(uintptr_t)pchave, chave, sizeof chave);
     if (r < 0) return r;
-    if (max == 0 || !usuario_ok((void *)pvalor, max, true)) return ERRO_ENDERECO;
+    if (max == 0 || !usuario_ok((void *)(uintptr_t)pvalor, max, true)) return ERRO_ENDERECO;
     const char *v = txt_compara(chave, "sistema.persistente") == 0 ? (persistente ? "sim" : "nao") : config_obter(chave);
     if (!v) return ERRO_NAO_EXISTE;
-    txt_copia_n((char *)pvalor, v, max);
-    return (int32_t)txt_tamanho((char *)pvalor);
+    txt_copia_n((char *)(uintptr_t)pvalor, v, max);
+    return (int32_t)txt_tamanho((char *)(uintptr_t)pvalor);
 }
 
 /* SIS_CONFIG_GRAVAR (chave, valor) -> 1 guardada no pendrive, 0 só até desligar. */
@@ -149,9 +149,9 @@ int32_t sis_config_gravar(uint32_t pchave, uint32_t pvalor, uint32_t c, uint32_t
 {
     (void)c; (void)d; (void)e;
     char chave[32], valor[96];
-    int r = usuario_texto((const char *)pchave, chave, sizeof chave);
+    int r = usuario_texto((const char *)(uintptr_t)pchave, chave, sizeof chave);
     if (r < 0) return r;
-    r = usuario_texto((const char *)pvalor, valor, sizeof valor);
+    r = usuario_texto((const char *)(uintptr_t)pvalor, valor, sizeof valor);
     if (r < 0) return r;
     if (!chave[0]) return ERRO_INVALIDO;
     for (char *p = chave; *p; p++)
