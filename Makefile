@@ -80,6 +80,12 @@ NAVEGADOR_C   := $(wildcard userland/navegador/*.c userland/navegador/*/*.c) \
 NAVEGADOR_OBJ := $(patsubst %.c,$(B)/nav/%.o,$(NAVEGADOR_C))
 NAVEGADOR_HDR := $(wildcard userland/navegador/*.h userland/navegador/*/*.h terceiros/*/*.h) $(B)/gerado/js_base.h
 PROGRAMAS += $(B)/userland/bin/navegador $(B)/userland/bin/cipo
+# O visualizador de imagens usa os decodificadores do Cipó (PNG, JPEG, GIF e
+# WebP); o DEFLATE vem da libsagui.
+IMAGENS_OBJ := $(patsubst %.c,$(B)/nav/%.o,userland/navegador/imagens.c userland/navegador/png.c \
+                 userland/navegador/jpeg.c terceiros/libwebp-vp8/vp8.c)
+VISUALIZADOR_OBJ := $(B)/nav/userland/visualizador/visualizador.o $(IMAGENS_OBJ)
+PROGRAMAS += $(B)/userland/bin/visualizador
 # O tocador de vídeo (H82): MP4 com H.264 e AAC, do pull request #6.
 VIDEO_OBJ := $(patsubst %.c,$(B)/nav/%.o,$(wildcard userland/video/*.c))
 PROGRAMAS += $(B)/userland/bin/video
@@ -229,6 +235,15 @@ $(B)/userland/bin/navegador: $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.
 $(B)/nav/userland/video/%.o: userland/video/%.c $(wildcard userland/video/*.h terceiros/*/*.h) $(USER_HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(NAV_CFLAGS) -c -o $@ $<
+
+$(B)/nav/userland/visualizador/%.o: userland/visualizador/%.c $(USER_HDR) userland/inc/compactar.h $(wildcard userland/video/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(NAV_CFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/visualizador: $(VISUALIZADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $(VISUALIZADOR_OBJ) $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
 
 $(B)/userland/bin/video: $(VIDEO_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)

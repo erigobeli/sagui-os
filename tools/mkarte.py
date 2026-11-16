@@ -697,13 +697,24 @@ def lixeira_cheia(t):
     _cesto(t, True)
 
 
+def visualizador(t):
+    """O Visualizador de imagens: uma foto com o sol e as montanhas, em branco
+    e amarelo na caixa azul-celeste."""
+    estilo_app(t, 0x5CC8F5, 0x1A86D0)
+    t.ret(15, 18, 49, 46, 3, BRANCO)
+    t.ret(18, 21, 46, 43, 1.5, vertical(0x9AD8FF, 0xD6F0FF, 21, 43))
+    t.disco(39, 27, 3.6, 0xFFC928)
+    t.poligono([(18, 43), (18, 38), (26, 29), (33, 37), (37, 33), (46, 41), (46, 43)], vertical(0x3CB868, 0x1A7A40, 29, 43))
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
           ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive),
           ("configuracoes", configuracoes), ("cipo", cipo), ("instalado", instalado), ("tocador", tocador),
           ("saguicode", saguicode), ("jogos", jogos), ("cacabananas", cacabananas), ("paciencia", paciencia),
           ("chip8", chip8), ("jclic", jclic),
           ("chuva", chuva), ("triangulos", triangulos), ("componentes", componentes), ("energia", energia),
-          ("lupa", lupa), ("lixeira", lixeira), ("lixeira_cheia", lixeira_cheia)]
+          ("lupa", lupa), ("lixeira", lixeira), ("lixeira_cheia", lixeira_cheia),
+          ("visualizador", visualizador)]
 TAMANHOS = [(64, ""), (40, "_40"), (20, "_20")]   # 20: o rodapé e a busca do menu Iniciar
 
 

@@ -1964,3 +1964,21 @@ pedia o nome. O `h23_arquivos` passou a esperar a edição na linha.
   Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
 - Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
   dentro. O `rm` do terminal continua apagando de vez, como no Unix.
+
+## D059. Visualizador de imagens (issue #25, parte 5)
+
+**Contexto.** As imagens abriam no Cipó, que é um navegador: sem zoom, sem
+passar para a próxima da pasta e sem os papéis de parede (.sgi).
+
+**Decisão.**
+- `/bin/visualizador` usa os decodificadores do Cipó pelo Makefile, sem
+  copiar código: `imagens.c` (PNG, JPEG, GIF e WebP), com o DEFLATE da
+  libsagui. Ele também lê BMP de 24 e 32 bits e o `.sgi` dos papéis de
+  parede (SGI1, paleta e RLE, o mesmo formato que o kernel lê para o fundo).
+- Ao reduzir, cada pixel da tela é a média dos pixels que ele cobre,
+  guardada até mudar o zoom ou a janela. Ao ampliar, pixel mais próximo.
+- As setas passam para a imagem anterior ou a próxima da pasta, em ordem
+  alfabética, porque a FAT do pendrive lista na ordem em que os arquivos
+  foram gravados. +/- mudam o zoom, 0 ajusta e 1 mostra em tamanho real.
+- O Arquivos manda .png, .jpg, .gif, .webp, .bmp e .sgi para o
+  Visualizador. O .svg continua no Cipó.

@@ -257,8 +257,9 @@ static const char *programa_para(const char *nome)
     static const struct { const char *ext, *prog; } tabela[] = {
         { ".wav", "/bin/tocador" }, { ".mp3", "/bin/tocador" },
         { ".html", "/bin/cipo" }, { ".htm", "/bin/cipo" },
-        { ".png", "/bin/cipo" }, { ".jpg", "/bin/cipo" }, { ".jpeg", "/bin/cipo" }, { ".gif", "/bin/cipo" },
-        { ".webp", "/bin/cipo" }, { ".svg", "/bin/cipo" }, { ".mp4", "/bin/video" },
+        { ".png", "/bin/visualizador" }, { ".jpg", "/bin/visualizador" }, { ".jpeg", "/bin/visualizador" },
+        { ".gif", "/bin/visualizador" }, { ".webp", "/bin/visualizador" }, { ".bmp", "/bin/visualizador" },
+        { ".sgi", "/bin/visualizador" }, { ".svg", "/bin/cipo" }, { ".mp4", "/bin/video" },
     };
     for (unsigned k = 0; k < sizeof tabela / sizeof tabela[0]; k++)
         if (termina_com(nome, tabela[k].ext)) return tabela[k].prog;
@@ -676,6 +677,7 @@ static void menu_de_contexto(int x, int y)
         const char *primeiro = !prog ? "Abrir"
             : compara_texto(prog, "/bin/tocador") == 0 ? "Abrir no Tocador"
             : compara_texto(prog, "/bin/cipo") == 0 ? "Abrir no Cipó"
+            : compara_texto(prog, "/bin/visualizador") == 0 ? "Abrir no Visualizador"
             : compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor";
         acao(itens, sizeof itens, primeiro, AC_ABRIR);
         if (arquivo && compara_texto(primeiro, "Abrir no Editor") != 0) acao(itens, sizeof itens, "Abrir no Editor", AC_EDITOR);
