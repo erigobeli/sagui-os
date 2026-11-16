@@ -615,11 +615,49 @@ def jclic(t):
     t.disco((x0 + x1) / 2, y1, 4.2, fundo)                 # o de baixo, para dentro
 
 
+def _cesto(t, cheia):
+    """A lixeira: um cesto branco com três frisos, na caixa cinza-azulada.
+    Vazia, com a tampa fechada; cheia, sem tampa, com papéis amassados e uma
+    folha saindo por cima."""
+    estilo_app(t, 0x8FA3B8, 0x4A5E74)
+    corpo = [(19, 27), (45, 27), (42, 50), (22, 50)]
+    if cheia:
+        # o que está dentro aparece por cima da borda
+        t.poligono(girar([(20, 13), (34, 13), (34, 31), (20, 31)], 27, 22, math.radians(-16)), 0xFFF6D0)
+        for k in range(3):
+            y = 17 + k * 4
+            t.traco(girar([(23, y), (31, y)], 27, 22, math.radians(-16)), 1.2, 0xC9A24A, 0.7)
+        t.disco(37, 22, 6.5, 0xDCEEFF)
+        t.traco([(33, 20), (37, 23), (41, 19)], 1.2, 0x8AA6C4, 0.8)
+        t.disco(29, 25, 5, 0xFFFFFF)
+    t.poligono([(x + 0.6, y + 1.6) for x, y in corpo], 0x1E2A38, 0.3)
+    t.poligono(corpo, BRANCO)
+    if cheia:
+        t.ret(17, 25, 47, 29, 1.6, BRANCO)                # a borda do cesto
+    else:
+        t.ret(16, 21, 48, 26, 2, BRANCO)                  # a tampa
+        t.ret(28, 17.5, 36, 21.5, 1.5, BRANCO)            # o puxador
+    fundo = 0x5C7088
+    for x0, x1 in ((26, 27.5), (32, 32), (38, 36.5)):     # os frisos
+        t.traco([(x0, 31), (x1, 46)], 2.2, fundo, 0.8)
+
+
+def lixeira(t):
+    """A Lixeira vazia."""
+    _cesto(t, False)
+
+
+def lixeira_cheia(t):
+    """A Lixeira com coisas dentro."""
+    _cesto(t, True)
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
           ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive),
           ("configuracoes", configuracoes), ("cipo", cipo), ("instalado", instalado), ("tocador", tocador),
           ("saguicode", saguicode), ("jogos", jogos), ("cacabananas", cacabananas), ("paciencia", paciencia),
-          ("chip8", chip8), ("jclic", jclic)]
+          ("chip8", chip8), ("jclic", jclic),
+          ("lixeira", lixeira), ("lixeira_cheia", lixeira_cheia)]
 TAMANHOS = [(64, ""), (40, "_40")]
 
 

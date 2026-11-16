@@ -697,6 +697,7 @@ static void menu_de_contexto(int x, int y)
 int principal(int argc, char **argv)
 {
     if (argc > 1) copia_texto(pasta, argv[1], sizeof pasta);
+    if (na_lixeira()) criar_pasta(pasta);   /* o ícone da Lixeira abre aqui antes de ela existir */
     j = jan_abrir("Arquivos", LARG, ALT);
     if (!j) return 1;
     jan_redimensionavel(j, 480, 300);

@@ -32,21 +32,26 @@ typedef struct {
     const char *nome;
     const char *programa;
     const uint32_t *px;        /* ícone 64x64 em ARGB (tools/mkarte.py, H81) */
+    const char *arg;           /* argumento do programa (a Lixeira abre o Arquivos nela) */
+    const char *chave;         /* nome nas configurações, se não for o do programa */
 } icone_t;
 
 static const icone_t icones[] = {
-    { "Arquivos",    "/bin/arquivos",    arte_px_arquivos },
-    { "Terminal",    "/bin/terminal",    arte_px_terminal },
-    { "Editor",      "/bin/editor",      arte_px_editor },
-    { "Calculadora", "/bin/calculadora", arte_px_calculadora },
-    { "Banana",      "/bin/banana",      arte_px_banana },
-    { "Sagui 3D",    "/bin/sagui3d",     arte_px_sagui3d },   /* bônus B4 */
-    { "Configurações", "/bin/configuracoes", arte_px_configuracoes },   /* H38 */
-    { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre },
-    { "Pendrive",    "/bin/arquivos",    arte_px_pendrive },   /* só aparece com um pendrive conectado (H34) */
+    { "Arquivos",    "/bin/arquivos",    arte_px_arquivos, NULL, NULL },
+    { "Terminal",    "/bin/terminal",    arte_px_terminal, NULL, NULL },
+    { "Editor",      "/bin/editor",      arte_px_editor, NULL, NULL },
+    { "Calculadora", "/bin/calculadora", arte_px_calculadora, NULL, NULL },
+    { "Banana",      "/bin/banana",      arte_px_banana, NULL, NULL },
+    { "Sagui 3D",    "/bin/sagui3d",     arte_px_sagui3d, NULL, NULL },   /* bônus B4 */
+    { "Configurações", "/bin/configuracoes", arte_px_configuracoes, NULL, NULL },   /* H38 */
+    { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre, NULL, NULL },
+    { "Lixeira",     "/bin/arquivos",    arte_px_lixeira, "/.lixeira", "lixeira" },   /* a lixeira do Arquivos */
+    { "Pendrive",    "/bin/arquivos",    arte_px_pendrive, NULL, NULL },   /* só aparece com um pendrive conectado (H34) */
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
 #define ICONE_PENDRIVE (QTD_ICONES - 1)
+#define ICONE_LIXEIRA  (QTD_ICONES - 2)
+static bool lixeira_cheia;   /* troca o desenho: com papéis saindo */
 static bool pendrive_visivel;
 static char nome_pendrive[24] = "Pendrive";
 
@@ -62,6 +67,12 @@ static uint32_t conferido_em;
  * /bin e no Terminal; só o ícone some. */
 static bool oculto[16];
 
+/* O nome do ícone nas configurações (icone.<chave>, programas.ocultos). */
+static const char *chave_icone(int i)
+{
+    return icones[i].chave ? icones[i].chave : icones[i].programa + 5;   /* depois de "/bin/" */
+}
+
 static bool icone_visivel(int i)
 {
     if (i >= QTD_ICONES) return i - QTD_ICONES < qtd_instalados;
@@ -75,7 +86,7 @@ static void ler_ocultos(void)
     for (int i = 0; i < QTD_ICONES && i < 16; i++) {
         oculto[i] = false;
         if (!lista || i == ICONE_PENDRIVE) continue;
-        const char *nome = icones[i].programa + 5;   /* depois de "/bin/" */
+        const char *nome = chave_icone(i);
         size_t n = txt_tamanho(nome);
         for (const char *p = lista; *p;) {
             while (*p == ',' || *p == ' ') p++;
@@ -95,7 +106,7 @@ static const char *nome_icone(int i)
     if (i == ICONE_PENDRIVE) return nome_pendrive;
     /* Nome trocado pelo usuário (botão direito > Renomear): icone.<programa>. */
     char chave[48];
-    snformatar(chave, sizeof chave, "icone.%s", icones[i].programa + 5);
+    snformatar(chave, sizeof chave, "icone.%s", chave_icone(i));
     const char *apelido = config_obter(chave);
     return apelido && apelido[0] ? apelido : icones[i].nome;
 }
@@ -117,7 +128,7 @@ void area_icone_acao(int i, int acao)
     if (i < 0 || i >= QTD_ICONES + qtd_instalados) return;
     txt_copia_n(nome, nome_icone(i), sizeof nome);
     if (i >= QTD_ICONES) snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
-    else txt_copia_n(caminho, icones[i].programa, sizeof caminho);
+    else snformatar(caminho, sizeof caminho, "/bin/%s", chave_icone(i));   /* /bin/icone usa o fim do caminho */
     if (acao == ACAO_ABRIR) { area_icone_abrir(i); return; }
     if (acao == ACAO_DESMONTAR) { area_icone_direito(i); return; }
     const char *verbo = acao == ACAO_RENOMEAR ? (i >= QTD_ICONES ? "renomear-programa" : "renomear-icone")
@@ -129,6 +140,7 @@ void area_icone_acao(int i, int acao)
 
 static const uint32_t *px_icone(int i)
 {
+    if (i == ICONE_LIXEIRA && lixeira_cheia) return arte_px_lixeira_cheia;
     return i >= QTD_ICONES ? arte_px_instalado : icones[i].px;
 }
 #define ICONE_X 20
@@ -149,7 +161,10 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
     /* A posição na tela conta só os ícones visíveis antes deste (um
      * programa oculto não deixa buraco). */
     int vaga = 0;
-    for (int k = 0; k < i; k++) if (icone_visivel(k)) vaga++;
+    /* A Lixeira fica sempre por último, depois do pendrive e dos programas
+     * instalados, como no fim da fila de ícones dos outros sistemas. */
+    int ate = i == ICONE_LIXEIRA ? QTD_ICONES + qtd_instalados : i;
+    for (int k = 0; k < ate; k++) if (k != ICONE_LIXEIRA && icone_visivel(k)) vaga++;
     *x = ICONE_X + (vaga / por_coluna) * ICONE_COLUNA;
     *y = ICONE_Y0 + (vaga % por_coluna) * ICONE_PASSO;
     *l = ICONE_L; *a = ICONE_A;
@@ -319,6 +334,21 @@ bool area_instalados_mudaram(void)
 {
     if (relogio_tiques() - conferido_em < 2 * TIQUES_POR_SEGUNDO) return false;
     conferido_em = relogio_tiques();
+    /* A Lixeira está cheia? (o que o Arquivos pôs em /.lixeira ou /usb/.lixeira,
+     * sem contar o .origens) */
+    bool cheia = false;
+    static const char *const lixeiras[2] = { "/.lixeira", "/usb/.lixeira" };
+    for (int q = 0; q < 2 && !cheia; q++) {
+        entrada_pasta_t e;
+        for (int k = 0; vfs_listar(lixeiras[q], k, &e) == 1; k++)
+            if (e.nome[0] != '.') { cheia = true; break; }
+    }
+    if (cheia != lixeira_cheia) {
+        lixeira_cheia = cheia;
+        klog("[GUI] lixeira %s\n", cheia ? "cheia" : "vazia");
+        desenhar_fundo();
+        return true;
+    }
     char novos[MAX_INSTALADOS][NOME_MAX];
     int n = 0;
     if (disco_montado()) {
@@ -548,7 +578,7 @@ void area_icone_abrir(int i)
         klog("[GUI] icone Pendrive -> /bin/arquivos /usb (pid %d)\n", pid);
         return;
     }
-    char *argv[] = { (char *)icones[i].programa + 5, NULL };
-    int pid = processo_executar(icones[i].programa, 1, argv, NULL);
+    char *argv[] = { (char *)icones[i].programa + 5, (char *)icones[i].arg, NULL };
+    int pid = processo_executar(icones[i].programa, icones[i].arg ? 2 : 1, argv, NULL);
     klog("[GUI] icone %s -> %s (pid %d)\n", icones[i].nome, icones[i].programa, pid);
 }
