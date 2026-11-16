@@ -1878,3 +1878,20 @@ e cada jogo do H92) não apareciam em lugar nenhum da interface.
 **Compatibilidade.** Os testes que clicavam no menu antigo (`h74_h77`, `h78`,
 `h81`, `h89_saguicode_janela`, `h92_jogos`) agora clicam na grade: a célula
 k fica em `(44 + (k % 5) * 108 + 54, 134 + (k // 5) * 92 + 30)`.
+
+## D057. Laço de seleção na área de trabalho (issue #25, parte 3)
+
+**Contexto.** A ideia é a do commit 0b3c462 (ramo `area-lixeira`, do Robson,
+sobre o código da 1.0), refeita para o código atual.
+
+**Decisão.**
+- Arrastar no vazio da área de trabalho desenha um retângulo translúcido
+  (`suave_ret` com 64 de 256 e `suave_contorno`, do `suave.h`). Ao soltar, os
+  ícones que ele toca ficam marcados. Com Shift, somam aos já marcados.
+- Um clique num ícone marca só ele (Shift soma). Um clique no vazio desmarca
+  tudo.
+- O laço e o destaque dos marcados são desenhados logo depois do fundo, por
+  baixo das janelas: o laço é da área de trabalho.
+- A seleção fica no `area_trabalho.c` (`area_selecionar`,
+  `area_limpar_selecao`, `area_icone_selecionado`, `area_qtd_selecionados`).
+  Ela vale para os ícones do sistema e para os programas instalados.

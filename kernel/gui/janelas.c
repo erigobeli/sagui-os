@@ -844,6 +844,8 @@ static void desenhar_anims(void)
     }
 }
 
+static void desenhar_selecao(void);   /* o laço da área de trabalho, mais abaixo */
+
 /* ------------------------------------------------------------ composição */
 
 /* Disco de 16 pixels com degradê (botões redondos do pull request #1 do
@@ -1091,6 +1093,7 @@ void gui_mostrar(void)
     sup_recorte(&tela, x, y, l, a);
     if (tela.cx0 >= tela.cx1 || tela.cy0 >= tela.cy1) return;
     area_fundo(&tela);
+    desenhar_selecao();   /* os ícones marcados e o laço, debaixo das janelas */
     janela_t *f = focada();
     for (int k = 0; k < qtd; k++) {
         janela_t *j = &janelas[ordem[k]];
@@ -1269,8 +1272,72 @@ static janela_t *tarefa_em(int x, int y)
     return &janelas[ordem[n]];
 }
 
+static void desenhar_selecao(void);
+
+/* ------------------------------------------------------------ laço da área de trabalho (issue #25, parte 3)
+ *
+ * Arrastar no vazio da área de trabalho desenha um retângulo translúcido;
+ * ao soltar, os ícones que ele toca ficam marcados (com Shift, somam aos já
+ * marcados). A ideia é a do commit 0b3c462
+ * (ramo area-lixeira, do Robson), refeita para o código atual. */
+static bool laco_ativo, laco_somar;
+static int laco_x0, laco_y0, laco_x1, laco_y1;
+
+static void laco_retangulo(int *x, int *y, int *l, int *a)
+{
+    *x = laco_x0 < laco_x1 ? laco_x0 : laco_x1;
+    *y = laco_y0 < laco_y1 ? laco_y0 : laco_y1;
+    *l = (laco_x0 < laco_x1 ? laco_x1 - laco_x0 : laco_x0 - laco_x1) + 1;
+    *a = (laco_y0 < laco_y1 ? laco_y1 - laco_y0 : laco_y0 - laco_y1) + 1;
+}
+
+static void sujar_laco(void)
+{
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    gui_redesenhar(x - 1, y - 1, l + 2, a + 2);
+}
+
+/* Destaque dos ícones marcados e o laço, por cima do fundo e por baixo das
+ * janelas (o laço é da área de trabalho). */
+static void desenhar_selecao(void)
+{
+    suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
+    uint32_t cor = tema->filete ? tema->filete : 0x2FB866;
+    for (int i = 0; i < area_qtd_icones(); i++) {
+        if (!area_icone_selecionado(i)) continue;
+        int x, y, l, a;
+        area_icone_retangulo(i, &x, &y, &l, &a);
+        suave_ret(&sv, x, y - 4, l, a + 2, 10, cor, cor, 80);
+        suave_contorno(&sv, x, y - 4, l, a + 2, 10, cor, 200);
+    }
+    if (!laco_ativo) return;
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    suave_ret(&sv, x, y, l, a, 3, cor, cor, 64);
+    suave_contorno(&sv, x, y, l, a, 3, cor, 230);
+}
+
+static void tratar_laco(evento_mouse_t *m)
+{
+    sujar_laco();
+    if (m->botoes & BOTAO_ESQUERDO) {
+        laco_x1 = m->x;
+        laco_y1 = m->y < BARRA_SUPERIOR ? BARRA_SUPERIOR : m->y;
+        sujar_laco();
+        return;
+    }
+    laco_ativo = false;
+    int x, y, l, a;
+    laco_retangulo(&x, &y, &l, &a);
+    if (l > 4 || a > 4) area_selecionar(x, y, l, a, laco_somar);
+    klog("[GUI] laco: (%d,%d) %dx%d, %d icones marcados\n", x, y, l, a, area_qtd_selecionados());
+    gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+}
+
 static void tratar_mouse(evento_mouse_t *m)
 {
+    if (laco_ativo) { tratar_laco(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
 
@@ -1409,6 +1476,24 @@ static void tratar_mouse(evento_mouse_t *m)
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
+            if (m->mudaram & BOTAO_ESQUERDO) {
+                bool shift = (teclado_modificadores() & MOD_SHIFT) != 0;
+                if (ic >= 0) {
+                    /* Um clique marca só este ícone (com Shift, soma). */
+                    if (!area_icone_selecionado(ic) || !shift) {
+                        int ix, iy, il, ia;
+                        area_icone_retangulo(ic, &ix, &iy, &il, &ia);
+                        area_selecionar(ix + il / 2, iy + ia / 2, 1, 1, shift);
+                        gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                    }
+                } else {
+                    if (!shift && area_limpar_selecao()) gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                    laco_ativo = true;
+                    laco_somar = shift;
+                    laco_x0 = laco_x1 = m->x;
+                    laco_y0 = laco_y1 = m->y;
+                }
+            }
             if (ic >= 0 && (m->mudaram & BOTAO_DIREITO)) abrir_ctx(ic, m->x, m->y);
             else if (m->mudaram & BOTAO_DIREITO) abrir_ctx_area(m->x, m->y);
             captura = -1;
