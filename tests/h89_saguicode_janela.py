@@ -68,11 +68,12 @@ def main():
             m.esperar_serial("sagui:/$", 120)
             m.esperar_serial("[REDE] DHCP: endereco", 30)
             time.sleep(2)
-            # O menu do sagui: "Sagui Code" é o 9º item.
+            # O menu do sagui: "Sagui Code" é o 8º item (H92: Banana e Sagui 3D
+            # foram para o item "Jogos").
             antes = len(m.serial())
             m.clique(40, 12)
             time.sleep(0.5)
-            m.clique(40, 24 + 4 + 4 + 8 * 26 + 12)
+            m.clique(40, 24 + 4 + 4 + 7 * 26 + 12)
             s = h69.esperar(m, "saguicode-janela: pronta", 30, antes)
             verificar("executar /bin/saguicode-janela" in s, "o menu do sagui abre a janela do Sagui Code")
             verificar("modelo anthropic/claude-teste, 0 sessoes, chave sim, pendrive" in s,
