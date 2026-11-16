@@ -90,6 +90,7 @@ static const comando_t comandos[] = {
     { "df", "espaco", false, false, "espaço dos discos", "df [-k]", "Mostra o espaço total, usado e livre de / (a memória) e de /usb (o pendrive). -k: tudo em KB." },
     { "montar", NULL, false, false, "monta o pendrive", "montar [usb0]", "Monta o pendrive FAT32 em /usb." },
     { "desmontar", NULL, false, false, "libera o pendrive", "desmontar [usb0]", "Grava tudo o que falta e libera o pendrive para ser removido." },
+    { "captura", NULL, false, false, "salva a tela", "captura [arquivo.png]", "Salva a tela num PNG. Sem nome, vai para /usb/Capturas (com pendrive) ou /capturas. A tecla Print Screen faz o mesmo." },
     { "usb", NULL, false, false, "diagnóstico USB", "usb", "Mostra os controladores USB 2.0, as portas e os dispositivos." },
     { "pci", NULL, false, false, "lista o hardware", "pci", "Lista os dispositivos PCI (rede, som, USB, vídeo) e o que o SaguiOS já usa." },
     { "config", NULL, false, false, "configurações", "config [chave [valor]]", "Lê ou muda uma configuração do sistema (guardada no pendrive)." },

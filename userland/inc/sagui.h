@@ -165,5 +165,6 @@ uint32_t data_para_unix(const data_t *d);   /* segundos desde 1/1/1970 (tar, gzi
 uint32_t data_para_dos(const data_t *d);    /* hora << 16 | data, como no MS-DOS (zip) */
 
 int principal(int argc, char **argv);
+int  ler_tela(uint32_t *pixels, unsigned bytes);   /* largura | altura << 16; bytes = 0 só mede */
 
 #endif

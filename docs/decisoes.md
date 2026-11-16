@@ -1982,3 +1982,20 @@ passar para a próxima da pasta e sem os papéis de parede (.sgi).
   foram gravados. +/- mudam o zoom, 0 ajusta e 1 mostra em tamanho real.
 - O Arquivos manda .png, .jpg, .gif, .webp, .bmp e .sgi para o
   Visualizador. O .svg continua no Cipó.
+
+## D060. Captura de tela com a tecla Print Screen (issue #25, parte 5)
+
+**Decisão.**
+- A tecla Print Screen (E0 37) virou `TECLA_IMPRIMIR` (0x118). O
+  gerenciador de janelas a trata antes da janela em foco e abre o
+  `/bin/captura`.
+- O `/bin/captura` lê a tela por uma chamada nova, `SIS_LER_TELA` (79). Ela
+  copia o buffer de trás (a tela montada, sem o cursor do mouse) para o
+  programa, se o espaço couber; com 0 bytes, só diz o tamanho. Qualquer
+  programa pode ler a tela, como no X11 sem extensões: o SaguiOS não tem
+  usuários separados, então não há de quem esconder.
+- O PNG é RGB de 8 bits, filtro "nenhum", com o IDAT comprimido pelo
+  `deflar` da libsagui num fluxo zlib (RFC 1950). Com pendrive montado vai
+  para `/usb/Capturas`; sem, para `/capturas`, que fica na memória e some ao
+  desligar. Um aviso mostra onde salvou.
+- `captura arquivo.png` no terminal salva onde se pede.
