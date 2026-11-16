@@ -168,16 +168,38 @@ static bool montar_se_for_do_saguios(disco_t *d)
     return true;
 }
 
+static disco_t *registrar(bool interno, const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
+                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
+                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *));
+
 disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
+{
+    return registrar(false, fabricante, produto, setores, tam_setor, dono, ler, escrever);
+}
+
+disco_t *disco_registrar_interno(const char *modelo, uint32_t setores, void *dono,
+                                 int (*ler)(disco_t *, uint32_t, uint32_t, void *),
+                                 int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
+{
+    return registrar(true, "ATA", modelo, setores, 512, dono, ler, escrever);
+}
+
+static int contador_hd;
+
+static disco_t *registrar(bool interno, const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
+                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
+                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
 {
     for (int i = 0; i < MAX_DISCOS; i++) {
         disco_t *d = &discos[i];
         if (d->usado) continue;
         memset(d, 0, sizeof *d);
         d->usado = d->presente = true;
-        snformatar(d->nome, sizeof d->nome, "usb%d", contador++);
+        d->interno = interno;
+        if (interno) snformatar(d->nome, sizeof d->nome, "hd%d", contador_hd++);
+        else snformatar(d->nome, sizeof d->nome, "usb%d", contador++);
         txt_copia_n(d->fabricante, fabricante, sizeof d->fabricante);
         txt_copia_n(d->produto, produto, sizeof d->produto);
         d->setores = setores;
@@ -190,8 +212,10 @@ disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t s
         tamanho_legivel(setores, tam, sizeof tam);
         klog("[DISCO] %s: %s %s, %s, %s, rotulo \"%s\"\n", d->nome, fabricante, produto, tam, d->formato, d->rotulo);
         if (d->de_boot) ;   /* o pendrive de onde o sistema acabou de ligar: nada a avisar */
-        else if (d->fat32 && montar_se_for_do_saguios(d))
-            avisar(AVISO_MONTADO, "Pendrive com as suas configurações montado em /usb (%s)", d->rotulo[0] ? d->rotulo : d->produto);
+        else if (d->fat32 && montar_se_for_do_saguios(d)) {
+            if (!d->interno)      /* o disco instalado monta calado, como um disco de sistema */
+                avisar(AVISO_MONTADO, "Pendrive com as suas configurações montado em /usb (%s)", d->rotulo[0] ? d->rotulo : d->produto);
+        } else if (d->interno) ;  /* outros discos internos: sem aviso de "pendrive conectado" */
         else if (d->fat32) avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s)", d->rotulo[0] ? d->rotulo : d->produto, tam);
         else avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s), %s", d->produto, tam, d->formato);
         return d;
@@ -244,7 +268,8 @@ int disco_desmontar(disco_t *d)
     d->montado = false;
     vfs_ponto_montagem(false);
     config_ao_desmontar();
-    avisar(AVISO_DESMONTADO, "Pode remover o pendrive.");
+    if (d->interno) avisar(AVISO_DESMONTADO, "Disco %s desmontado: tudo gravado.", d->nome);
+    else avisar(AVISO_DESMONTADO, "Pode remover o pendrive.");
     return r;
 }
 
@@ -268,6 +293,7 @@ int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t 
         inf->setores = d->setores;
         inf->montado = d->montado;
         inf->suportado = d->fat32;
+        inf->interno = d->interno;
         return 1;
     }
     return 0;

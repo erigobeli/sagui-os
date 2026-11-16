@@ -220,6 +220,7 @@ typedef struct {
     unsigned int setores;          /* de 512 bytes */
     unsigned int montado;
     unsigned int suportado;
+    unsigned int interno;          /* disco rígido (hd0...), não pendrive */
 } info_disco_t;
 
 /* SIS_TECLAS_SEGURADAS: posição de algumas teclas no mapa (código de
