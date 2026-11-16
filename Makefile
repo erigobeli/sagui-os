@@ -146,7 +146,7 @@ $(B)/gerado/fonte8x16.o: $(B)/gerado/fonte8x16.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Os ícones (H81, do Robson) são descritos em tools/mkarte.py e viram C no build.
-$(B)/gerado/arte_icones.c: tools/mkarte.py
+$(B)/gerado/arte_icones.c: tools/mkarte.py tools/icones_imagem.py
 	@mkdir -p $(dir $@)
 	$(PY) tools/mkarte.py $@
 

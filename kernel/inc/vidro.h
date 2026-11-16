@@ -17,6 +17,9 @@ bool vidro_iniciar(int largura_tela);
 /* Desfoca o que já está em s no retângulo e mistura com a tinta (k/256). */
 void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, int k, int cantos);
 void vidro_sombra(superficie_t *s, int x, int y, int l, int a);
+/* Cantos de raio r com a borda suavizada, e a sombra que segue a curva (a doca). */
+void vidro_pintar_r(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, int k, int r);
+void vidro_sombra_r(superficie_t *s, int x, int y, int l, int a, int r);
 int  vidro_canto(int linha);  /* pixels a pular na ponta da linha (0 = a da ponta) */
 
 #endif

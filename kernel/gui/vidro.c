@@ -122,6 +122,96 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
     }
 }
 
+/* Retângulo com cantos de raio r e borda suavizada (a doca): quanto do
+ * pixel (li, lj), relativo ao canto do retângulo l x a, fica dentro, de 0 a
+ * 256, contado com 4 x 4 amostras. As contas são em oitavos de pixel: a
+ * amostra u (0 a 3) do pixel p fica em p*8 + 2u + 1. */
+static int cobertura_r(int li, int lj, int l, int a, int r)
+{
+    if ((li >= r && li < l - r) || (lj >= r && lj < a - r)) return 256;
+    int R = r * 8, cx = li < r ? R : (l - r) * 8, cy = lj < r ? R : (a - r) * 8, n = 0;
+    for (int u = 0; u < 4; u++)
+        for (int v = 0; v < 4; v++) {
+            int sx = li * 8 + 2 * u + 1, sy = lj * 8 + 2 * v + 1;
+            int dx = li < r ? (sx < cx ? cx - sx : 0) : (sx > cx ? sx - cx : 0);
+            int dy = lj < r ? (sy < cy ? cy - sy : 0) : (sy > cy ? sy - cy : 0);
+            if (dx * dx + dy * dy <= R * R) n++;
+        }
+    return n * 16;
+}
+
+/* Vidro de cantos com raio r e borda suavizada. Para a doca: ela é baixa
+ * (DOCA_A < VIDRO_ALT_MAX), então o desfoque é o mesmo do vidro_pintar; só
+ * os pixels dos cantos mudam: entram na proporção da cobertura. */
+void vidro_pintar_r(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, int k, int r)
+{
+    if (2 * r > l) r = l / 2;
+    if (2 * r > a) r = a / 2;
+    int x0 = x < s->cx0 ? s->cx0 : x, y0 = y < s->cy0 ? s->cy0 : y;
+    int x1 = x + l > s->cx1 ? s->cx1 : x + l, y1 = y + a > s->cy1 ? s->cy1 : y + a;
+    if (x0 >= x1 || y0 >= y1) return;
+    /* Guarda os pixels dos quatro cantos, pinta o retângulo inteiro e depois
+     * mistura cada pixel de canto entre o antigo e o pintado. */
+    enum { RMAX = 24 };
+    static uint32_t antes[4][RMAX * RMAX];
+    if (r > RMAX) r = RMAX;
+    for (int q = 0; q < 4; q++) {
+        int qx = q & 1 ? x + l - r : x, qy = q & 2 ? y + a - r : y;
+        for (int j = 0; j < r; j++)
+            for (int i = 0; i < r; i++) {
+                int px = qx + i, py = qy + j;
+                if (px >= x0 && px < x1 && py >= y0 && py < y1) antes[q][j * r + i] = s->px[py * s->larg + px];
+            }
+    }
+    vidro_pintar(s, x, y, l, a, tinta, k, 0);
+    for (int q = 0; q < 4; q++) {
+        int qx = q & 1 ? x + l - r : x, qy = q & 2 ? y + a - r : y;
+        for (int j = 0; j < r; j++)
+            for (int i = 0; i < r; i++) {
+                int px = qx + i, py = qy + j;
+                if (px < x0 || px >= x1 || py < y0 || py >= y1) continue;
+                int cob = cobertura_r(px - x, py - y, l, a, r);
+                if (cob == 256) continue;
+                uint32_t *p = &s->px[py * s->larg + px];
+                *p = mistura(antes[q][j * r + i], *p, cob);
+            }
+    }
+}
+
+/* Sombra que segue o retângulo de cantos com raio r (a doca): a distância
+ * nos cantos é até o arco, não até a quina; os pixels que o vidro cobre por
+ * inteiro são pulados. */
+void vidro_sombra_r(superficie_t *s, int x, int y, int l, int a, int r)
+{
+    if (!vidro_efeitos) return;
+    if (2 * r > l) r = l / 2;
+    if (2 * r > a) r = a / 2;
+    const int S = VIDRO_SOMBRA, desce = 4;
+    int bx0 = x - S, by0 = y - S + desce, bx1 = x + l + S, by1 = y + a + S + desce;
+    int x0 = bx0 < s->cx0 ? s->cx0 : bx0, y0 = by0 < s->cy0 ? s->cy0 : by0;
+    int x1 = bx1 > s->cx1 ? s->cx1 : bx1, y1 = by1 > s->cy1 ? s->cy1 : by1;
+    int sy = y + desce;                           /* a sombra é o retângulo descido */
+    for (int j = y0; j < y1; j++) {
+        uint32_t *p = s->px + j * s->larg;
+        for (int i = x0; i < x1; i++) {
+            if (i >= x && i < x + l && j >= y && j < y + a && cobertura_r(i - x, j - y, l, a, r) == 256) {
+                if (j >= y + r && j < y + a - r) i = x + l - 1;   /* meio da doca: pula a linha */
+                continue;
+            }
+            /* Distância (em pixels) até o retângulo arredondado descido. */
+            int cx = i < x + r ? x + r : (i >= x + l - r ? x + l - r - 1 : i);
+            int cy = j < sy + r ? sy + r : (j >= sy + a - r ? sy + a - r - 1 : j);
+            int dx = i - cx, dy = j - cy, d2 = dx * dx + dy * dy, d = 0;
+            while ((d + 1) * (d + 1) <= d2) d++;
+            d -= r;
+            if (d < 0) d = 0;
+            if (d >= S) continue;
+            int f = S - d;
+            p[i] = escurecer(p[i], f * f * 90 / (S * S));
+        }
+    }
+}
+
 void vidro_sombra(superficie_t *s, int x, int y, int l, int a)
 {
     if (!vidro_efeitos) return;
