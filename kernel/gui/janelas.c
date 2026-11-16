@@ -504,9 +504,9 @@ static void desenhar_menu(void)
     if (!menu_aberto) return;
     menu_filtrar();
     vidro_sombra_r(&tela, MENU_X, MENU_Y, MENU_L, MENU_ALT, 14);
-    /* Texto pequeno em cima do vidro: quase opaco (o Eli achou transparente
-     * demais no G470). H89: com a grade grande, o conteúdo das janelas de
-     * trás atrapalhava a leitura; 250 de 256 deixa só um toque do fundo. */
+    /* Texto pequeno em cima do vidro: quase opaco. Mais transparente, ficava
+     * difícil de ler no painel do G470, e com a grade grande o conteúdo das
+     * janelas de trás atrapalhava; 250 de 256 deixa só um toque do fundo. */
     vidro_pintar_r(&tela, MENU_X, MENU_Y, MENU_L, MENU_ALT, tema->topo, 250, 14);
     suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
     suave_contorno(&sv, MENU_X, MENU_Y, MENU_L, MENU_ALT, 14, 0xFFFFFF, 40);
@@ -668,6 +668,10 @@ static void menu_tecla(int t)
         if (n + 1 < (int)sizeof menu_busca) { menu_busca[n] = (char)t; menu_busca[n + 1] = 0; menu_sel = 0; }
     } else return;
     if (menu_busca[0] == 0) menu_sel = 0;
+    /* Refaz a lista já: as teclas de um mesmo lote chegam antes do próximo
+     * desenho, e um Enter logo depois de "pac" tem de abrir a Paciência, não
+     * o primeiro da lista antiga. */
+    menu_filtrar();
     klog("[GUI] menu: busca \"%s\" (%d resultados)\n", menu_busca, menu_qtd);
     redesenhar_corpo_menu();
 }
@@ -1414,7 +1418,7 @@ static void tratar_mouse(evento_mouse_t *m)
             if (!(m->mudaram & BOTAO_ESQUERDO) || !(m->botoes & BOTAO_ESQUERDO)) {
                 if (mi >= 0) return;              /* soltar o botão dentro do menu */
             } else if (mi >= ALVO_CAT && mi < ALVO_CAT + QTD_CATS) {
-                menu_cat = mi - ALVO_CAT; menu_sel = 0;
+                menu_cat = mi - ALVO_CAT; menu_sel = 0; menu_filtrar();
                 klog("[GUI] menu: categoria %s\n", cat_nomes[menu_cat]);
                 redesenhar_corpo_menu();
                 return;
@@ -1656,6 +1660,15 @@ static void tarefa_gerenciador(void *arg)
         if (!(teclado_modificadores() & MOD_ALT)) alt_tab_qtd = 0;   /* soltou o Alt: acaba o Alt+Tab */
         while ((t = teclado_tentar()) >= 0) {
             if (t == TECLA_IMPRIMIR) {   /* a captura de tela é do sistema, não da janela em foco */
+                /* Segurar a tecla repete o Print Screen, e cada captura é um
+                 * processo com alguns MB (a tela e o PNG): uma por vez, no
+                 * máximo uma a cada 2 segundos. */
+                static uint32_t ultima_captura;
+                static bool ja_capturou;
+                uint32_t agora_cap = relogio_tiques();
+                if (ja_capturou && agora_cap - ultima_captura < 2 * TIQUES_POR_SEGUNDO) continue;
+                ja_capturou = true;
+                ultima_captura = agora_cap;
                 char *argv[] = { "captura", NULL };
                 int pid = processo_executar("/bin/captura", 1, argv, NULL);
                 klog("[GUI] Print Screen: captura pid %d\n", pid);

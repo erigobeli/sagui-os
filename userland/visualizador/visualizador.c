@@ -97,6 +97,10 @@ static bool sgi_ler(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int
     if (n <= cab || d[0] != 'S' || d[1] != 'G' || d[2] != 'I' || d[3] != '1') return false;
     int l = d[4] | d[5] << 8, a = d[6] | d[7] << 8;
     if (l <= 0 || a <= 0) return false;
+    /* Largura e altura vêm do arquivo (até 65535 cada): sem limite,
+     * total * 4 daria a volta nos 32 bits do size_t e a reserva sairia
+     * pequena para o laço abaixo. O mesmo teto do BMP. */
+    if ((uint64_t)l * (uint64_t)a > 4096u * 4096u) return false;
     uint32_t total = (uint32_t)l * (uint32_t)a, o = 0;
     uint32_t *px = aloca((size_t)total * 4);
     if (!px) return false;

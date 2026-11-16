@@ -40,11 +40,15 @@ def cor_perto(a, b, tol):
 def main():
     im = Image.new("RGB", (300, 200), (220, 30, 30))
     im.paste((30, 60, 220), (150, 0, 300, 200))
-    pen = criar_pendrive("h101-pen", 64, "H101", pastas=("fotos",), arquivos={
+    pen = criar_pendrive("h101-pen", 64, "H101", pastas=("fotos", "estragadas"), arquivos={
         "fotos/foto.png": bytes_de(im, "PNG"),
         "fotos/foto.jpg": bytes_de(im, "JPEG", quality=92),
         "fotos/foto.webp": bytes_de(im, "WEBP", quality=90),
         "fotos/foto.bmp": bytes_de(im, "BMP"),
+        # Cabeçalho SGI1 malformado: 32768 x 32769 (o total * 4 daria a volta
+        # nos 32 bits) e um RLE que repete cores até o fim do arquivo.
+        "estragadas/gigante.sgi": b"SGI1" + (32768).to_bytes(2, "little") + (32769).to_bytes(2, "little")
+                                  + bytes(768) + bytes([0xFF, 0x01]) * 4000,
     })
     extras = ["-device", "usb-ehci,id=ehci"] + pendrive_qemu(pen)
     with Maquina("h101", "ide", extras=extras, memoria="768M") as m:
@@ -93,6 +97,17 @@ def main():
         cores = {cor_do_pixel(png, a["x"] + a["l"] // 2 + dx, a["y"] + a["a"] // 2 + dy)
                  for dx in (-60, 0, 60) for dy in (-40, 0, 40)}
         verificar(len(cores) >= 4, f"a foto aparece na janela ({len(cores)} cores diferentes em 9 pontos)")
+        m.tecla("esc")
+        time.sleep(1)
+
+        # Um .sgi com tamanho absurdo no cabeçalho é recusado, sem estourar a memória.
+        n0 = len(m.serial())
+        m.digitar("visualizador /usb/estragadas/gigante.sgi\n", 0.03)
+        m.esperar_serial("visualizador: erro em /usb/estragadas/gigante.sgi", 30)
+        time.sleep(1)
+        s = m.serial()[n0:]
+        verificar("Prote" not in s and "Falta de p" not in s,
+                  "o .sgi malformado (32768 x 32769) é recusado sem erro de memória")
 
 
 if __name__ == "__main__":

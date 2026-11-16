@@ -556,6 +556,19 @@ static int alvos(int *saida)
     return n;
 }
 
+/* O pendrive inteiro (/usb) e os programas e arquivos do sistema (/bin,
+ * /sistema) não são apagados pelo Arquivos: marcar "usb" na raiz e apagar
+ * de vez levaria tudo o que há no pendrive. */
+static bool protegido(const char *c)
+{
+    static const char *const raizes[] = { "/usb", "/bin", "/sistema" };
+    for (unsigned k = 0; k < sizeof raizes / sizeof raizes[0]; k++) {
+        size_t n = tam_texto(raizes[k]);
+        if (compara_texto_n(c, raizes[k], n) == 0 && (c[n] == 0 || (c[n] == '/' && k > 0))) return true;
+    }
+    return compara_texto(c, "/") == 0;
+}
+
 static void apagar_item_modo(bool de_vez)
 {
     static int itens[MAX_ITENS];
@@ -574,6 +587,7 @@ static void apagar_item_modo(bool de_vez)
         int i = itens[k];
         char c[200];
         caminho_de(i, c, sizeof c);
+        if (protegido(c)) { char m[200]; formatar_texto(m, sizeof m, "%s é do sistema ou é o pendrive:\nnão dá para apagar daqui.", c); mensagem("Arquivos", m); continue; }
         if (!de_vez) { mover_para_lixeira(i, c); continue; }
         int r = apagar_tudo(c, 0);
         if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui apagar %s:\n%s", nomes[i], nome_erro(r)); mensagem("Arquivos", m); continue; }
