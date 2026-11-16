@@ -194,6 +194,11 @@ typedef struct {
     unsigned int imagem_bytes;   /* tamanho útil da imagem de boot */
     unsigned int segundos_ligado;
     unsigned int largura, altura;
+    /* H94: 32 ou 64, a largura das palavras do kernel. Foi acrescentado no
+     * fim, e só é preenchido quando o programa pede o tamanho novo: um
+     * programa compilado antes (que pede 48 bytes) continua recebendo só os
+     * campos que conhece, sem ter memória escrita além da sua variável. */
+    unsigned int bits;
 } info_versao_t;
 
 typedef struct {
