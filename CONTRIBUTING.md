@@ -55,8 +55,8 @@ sob a GPL 3 (a licença do projeto, em [`LICENSE`](LICENSE)).
   para revisar e costumam ser fechados, com as ideias aproveitadas aos poucos.
 - Coisas grandes: abra uma **issue** antes, combine o plano e mande em partes
   (por exemplo, "motor de JavaScript" e "Canvas" separados).
-- Não troque as imagens da pasta `entrega/` (o mantenedor gera) nem mude a ABI
-  das chamadas de sistema sem combinar antes.
+- Não mande imagens (`.img`, `.vdi`): o mantenedor gera as imagens e as publica
+  nas Releases. Também não mude a ABI das chamadas de sistema sem combinar antes.
 - Baseie o trabalho no **`main` atual** (a versão 2.0 mudou muita coisa desde
   a 1.0).
 - `make` precisa compilar e `python3 tests/rodar_todos.py` precisa passar.
