@@ -13,15 +13,21 @@ polígono, traço), sempre numa grade de 64x64. O script calcula a cobertura de
 cada pixel com 4x4 amostras, o que suaviza as bordas, acrescenta uma sombra e
 escreve vetores ARGB em C. Para o tamanho menor, as mesmas formas são
 amostradas numa grade mais grossa (cada pixel cobre 64/40 da grade).
-Nenhuma imagem pronta entra no projeto: os desenhos são estes números.
+Os ícones dos programas vêm agora de uma folha de ícones (arte/icones-folha.png,
+feita como imagem num estilo só), convertida pelo tools/png_icones.py em
+tools/icones_imagem.py; os desenhos abaixo ficam para os ícones que a folha
+não tem.
 
 O padrão para um ícone novo: uma função que desenha na grade de 64, com uma
 margem de uns 4 pixels (a sombra precisa dela), cores com um degradê de cima
 para baixo e um contorno claro só onde ajuda a ler; depois, uma linha em
 ICONES. O C gerado tem arte_px_<nome> (64) e arte_px_<nome>_40.
 """
+import base64
 import math
+import os
 import sys
+import zlib
 
 GRADE = 64     # os desenhos são feitos nesta grade
 T = 64         # tamanho da saída (muda para 40 na segunda passada)
@@ -295,6 +301,29 @@ ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("
 TAMANHOS = [(64, ""), (40, "_40")]
 
 
+def da_imagem(pixels):
+    """Ícone a partir da folha de ícones (tools/icones_imagem.py, gerado pelo
+    png_icones.py): copia os pixels RGBA do tamanho T para a tela; a sombra
+    entra depois, como nos desenhos."""
+    def desenhar(t):
+        d = zlib.decompress(base64.b64decode(pixels[T]))
+        for y in range(T):
+            for x in range(T):
+                r, g, b, a = d[(y * T + x) * 4:(y * T + x) * 4 + 4]
+                t.p[y][x] = (r, g, b, a / 255)
+    return desenhar
+
+
+def com_imagens(lista):
+    """Troca os desenhos pelos da folha, quando ela tem o ícone."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from icones_imagem import ICONES as IMG
+    except ImportError:
+        return lista
+    return [(n, da_imagem(IMG[n]) if n in IMG else d) for n, d in lista]
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("uso: mkarte.py <saida.c>")
@@ -303,7 +332,7 @@ def main():
         global T
         for tam, sufixo in TAMANHOS:
             T = tam
-            for nome, desenhar in ICONES:
+            for nome, desenhar in com_imagens(ICONES):
                 t = Tela()
                 desenhar(t)
                 px = t.com_sombra()
