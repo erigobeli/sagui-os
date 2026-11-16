@@ -101,6 +101,14 @@ deixe misturado como se fosse original.
 - **Histórico de versões** em [`VERSOES.md`](VERSOES.md): toda mudança que
   quem usa o sistema percebe ganha uma linha na seção "Em desenvolvimento".
   O número da versão segue MAIOR.MENOR.CORREÇÃO, explicado no mesmo arquivo.
+- **Ícones são feitos em código**, em `tools/mkarte.py` (nada de imagem pronta
+  nem de gerador de imagens). Um programa novo ganha uma função que começa com
+  `estilo_app(t, cor_de_cima, cor_de_baixo)` (o fundo comum: caixa de cantos
+  redondos, degradê, brilho e sombra, no estilo criado por Robson de Lima
+  Barbosa no pull request #26) e desenha por cima um símbolo branco (ou na cor
+  do tema) com as formas do arquivo (`ret`, `disco`, `poligono`, `traco`,
+  `anel`, `bezier`), centrado em (32, 31) na grade de 64; depois, uma linha em
+  `ICONES`. O build gera os tamanhos 64 e 40.
 - Decisões de projeto importantes vão em `docs/decisoes.md` (uma seção nova,
   numerada); problemas encontrados e como foram resolvidos, em `docs/erros.md`.
 
