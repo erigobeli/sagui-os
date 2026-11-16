@@ -1822,3 +1822,25 @@ licenças" e "Histórico". As escolhas:
   programas antigos pararem) o primeiro. Os números não têm limite (3.10,
   3.0.12), e as versões saem de tempos em tempos, juntando muitas mudanças.
   A versão em preparação já usa três números: 2.2.0.
+
+## D055. Ícones desenhados só em código, no estilo do pull request #26
+
+O pull request #26 (Robson de Lima Barbosa) trouxe um visual novo para os
+ícones: um quadrado de cantos redondos com degradê vertical, um brilho no alto,
+sombra e um símbolo claro no meio. Os pixels vinham de uma folha de imagens
+recortada; o estilo ficou, mas a folha saiu. O motivo: o sistema não pode
+depender de um gerador de imagens para ganhar um ícone novo, e o recorte
+deixava alguns ícones fora do centro.
+
+- `tools/mkarte.py` tem `estilo_app(t, cor_de_cima, cor_de_baixo)`, que pinta
+  o fundo medido nos ícones do #26 (caixa de 45 pixels, raio 10,5, sempre no
+  mesmo lugar), e ganhou curvas de Bézier, arcos e rotação para os símbolos.
+- Todos os ícones foram redesenhados assim, com as cores dos do #26. Novos
+  desenhos: a calculadora (corpo, visor e teclas), o Sagui 3D (um corredor de
+  mata em primeira pessoa com uma banana na trilha, em vez de um cubo), a
+  banana-bomba do Caça-Bananas (no vermelho), as cartas da Paciência, o
+  monitor de fósforo verde com um foguete de pixels do CHIP-8 (na caixa
+  preta), a peça de quebra-cabeça do JClic e o controle dos Jogos (no roxo).
+- Saíram `arte/icones-folha.png`, `arte/icone-saguicode.png`,
+  `tools/png_icones.py` e `tools/icones_imagem.py`. O padrão para um ícone
+  novo está no começo do `mkarte.py` e no `AGENTS.md`.

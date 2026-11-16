@@ -39,16 +39,17 @@ Já no código (no `main`), ainda não lançado como imagem:
   créditos; os botões "Créditos e licenças" (todos os textos de licença dentro
   da imagem, em `/sistema/licencas`) e "Histórico" (este arquivo).
 
-A caminho (pull requests em revisão):
-
-- **Jogos com tema de banana** (H92), do fork do Alejandro: Caça-Bananas,
-  Paciência Banana, um emulador de CHIP-8 e o visor de atividades JClic, num
-  menu "Jogos".
+- **Jogos com tema de banana** (H92, D053), do fork do Alejandro:
+  Caça-Bananas, Paciência Banana, um emulador de CHIP-8 e o visor de
+  atividades JClic, num menu "Jogos".
 - Do Robson de Lima Barbosa: **encaixe das janelas** ao arrastar para a borda
   e atalhos de teclado; redimensionar sem a janela embaralhar enquanto o
   programa redesenha; o Cipó sem decodificar de novo as imagens quando a
   página muda; a **doca com cantos redondos** e ícones novos dos programas,
   num estilo só.
+- **Ícones desenhados em código** (D055), no estilo do Robson: todos os
+  programas com o mesmo fundo de cantos redondos, centrados, e o build gera
+  os tamanhos 64 e 40 sem depender de imagem pronta.
 
 ## Versões lançadas
 
