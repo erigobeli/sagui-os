@@ -723,7 +723,7 @@ static void abrir_ctx(int icone, int x, int y)
     ctx_item("Abrir", ACAO_ABRIR);
     if (tipo == 2) ctx_item("Remover com segurança", ACAO_DESMONTAR);
     else {
-        ctx_item("Renomear...", ACAO_RENOMEAR);
+        ctx_item("Renomear", ACAO_RENOMEAR);
         if (tipo == 1) ctx_item("Remover do pendrive...", ACAO_REMOVER);
         else ctx_item("Esconder o ícone", ACAO_ESCONDER);
     }
@@ -1300,6 +1300,9 @@ static void desenhar_selecao(void);
  * marcados). A ideia é a do commit 0b3c462
  * (ramo area-lixeira, do Robson), refeita para o código atual. */
 static bool laco_ativo, laco_somar;
+static int lento_icone = -1;     /* clique devagar num ícone marcado: renomear daqui a pouco */
+static uint32_t lento_tique;
+static bool fechou_edicao;       /* este clique fechou uma edição */
 static int laco_x0, laco_y0, laco_x1, laco_y1;
 
 static void laco_retangulo(int *x, int *y, int *l, int *a)
@@ -1317,6 +1320,49 @@ static void sujar_laco(void)
     gui_redesenhar(x - 1, y - 1, l + 2, a + 2);
 }
 
+/* Renomear no lugar (area_editar): a caixa com o nome, embaixo do ícone. */
+static bool caixa_nome_retangulo(int *x, int *y, int *l, int *a)
+{
+    const char *t; int cur; bool tudo;
+    int i = area_editar_estado(&t, &cur, &tudo);
+    if (i < 0) return false;
+    int ix, iy, il, ia;
+    area_icone_retangulo(i, &ix, &iy, &il, &ia);
+    int w = texto_largura(t) + 12;
+    if (w < il) w = il;
+    *x = ix + il / 2 - w / 2;
+    if (*x < 2) *x = 2;
+    *y = iy + 64; *l = w; *a = 24;
+    return true;
+}
+
+static void sujar_caixa_nome(void)
+{
+    int x, y, l, a;
+    if (caixa_nome_retangulo(&x, &y, &l, &a)) gui_redesenhar(x - 2, y - 2, l + 4, a + 4);
+}
+
+static void desenhar_caixa_nome(void)
+{
+    int x, y, l, a;
+    if (!caixa_nome_retangulo(&x, &y, &l, &a)) return;
+    const char *t; int cur; bool tudo;
+    area_editar_estado(&t, &cur, &tudo);
+    uint32_t cor = tema->filete ? tema->filete : 0x2FB866;
+    sup_retangulo(&tela, x - 1, y - 1, l + 2, a + 2, cor);
+    sup_retangulo(&tela, x, y, l, a, 0xFFFFFF);
+    int tx = x + (l - texto_largura(t)) / 2;
+    if (tudo && t[0]) {
+        sup_retangulo(&tela, tx - 1, y + 3, texto_largura(t) + 2, a - 6, 0x2F6FD0);
+        sup_texto(&tela, tx, y + 4, t, 0xFFFFFF);
+        return;
+    }
+    sup_texto(&tela, tx, y + 4, t, 0x101820);
+    char antes[48];
+    txt_copia_n(antes, t, (size_t)cur + 1 < sizeof antes ? (size_t)cur + 1 : sizeof antes);
+    sup_retangulo(&tela, tx + texto_largura(antes), y + 3, 2, a - 6, 0x101820);
+}
+
 /* Destaque dos ícones marcados e o laço, por cima do fundo e por baixo das
  * janelas (o laço é da área de trabalho). */
 static void desenhar_selecao(void)
@@ -1330,6 +1376,7 @@ static void desenhar_selecao(void)
         suave_ret(&sv, x, y - 4, l, a + 2, 10, cor, cor, 80);
         suave_contorno(&sv, x, y - 4, l, a + 2, 10, cor, 200);
     }
+    desenhar_caixa_nome();
     if (!laco_ativo) return;
     int x, y, l, a;
     laco_retangulo(&x, &y, &l, &a);
@@ -1359,6 +1406,15 @@ static void tratar_mouse(evento_mouse_t *m)
     if (laco_ativo) { tratar_laco(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
+    if (apertou) lento_icone = -1;
+    fechou_edicao = false;
+    if (apertou && area_editando()) {
+        int x, y, l, a;
+        if (caixa_nome_retangulo(&x, &y, &l, &a) && m->x >= x && m->x < x + l && m->y >= y && m->y < y + a) return;
+        area_editar_terminar(true);   /* clicou fora: grava, e o clique segue */
+        fechou_edicao = true;         /* (mas não começa outra edição) */
+        gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+    }
 
     if (redimensionando >= 0) {
         janela_t *j = &janelas[redimensionando];
@@ -1492,6 +1548,13 @@ static void tratar_mouse(evento_mouse_t *m)
             int ic = area_icone_em(m->x, m->y);
             uint32_t agora = relogio_tiques();
             bool duplo = ic >= 0 && ult_clique_alvo == 1000 + ic && agora - ult_clique_tique < DUPLO_CLIQUE;
+            /* Um clique devagar num ícone que já era o único marcado: renomear
+             * no lugar, se o segundo clique de um duplo clique não vier. */
+            bool era_unico = ic >= 0 && area_icone_selecionado(ic) && area_qtd_selecionados() == 1;
+            if (!duplo && era_unico && !fechou_edicao && (m->mudaram & BOTAO_ESQUERDO) && !(teclado_modificadores() & MOD_SHIFT)) {
+                lento_icone = ic;
+                lento_tique = agora;
+            }
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
@@ -1686,6 +1749,13 @@ static void tarefa_gerenciador(void *arg)
                 klog("[GUI] Print Screen: captura pid %d\n", pid);
                 continue;
             }
+            if (area_editando()) {   /* renomeando um ícone: a caixa fica com o teclado */
+                sujar_caixa_nome();
+                area_editar_tecla(t);
+                if (area_editando()) sujar_caixa_nome();
+                else gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                continue;
+            }
             if (atalho(t, teclado_modificadores())) continue;
             if (menu_aberto) { menu_tecla(t); continue; }   /* a busca do menu Iniciar */
             janela_t *j = focada();
@@ -1698,6 +1768,12 @@ static void tarefa_gerenciador(void *arg)
             gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
         }
         anim_tique();
+        if (lento_icone >= 0 && relogio_tiques() - lento_tique >= DUPLO_CLIQUE) {
+            int ic = lento_icone;
+            lento_icone = -1;
+            if (area_icone_selecionado(ic) && area_qtd_selecionados() == 1 && !menu_aberto && area_editar(ic))
+                gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+        }
         /* A doca muda quando janelas abrem e fecham. */
         static int qtd_vista = -1;
         if (qtd != qtd_vista) { qtd_vista = qtd; montar_doca(); redesenhar_doca(); }

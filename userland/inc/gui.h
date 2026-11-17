@@ -127,6 +127,7 @@ bool lista_marcado(const lista_t *l, int i);
 int  lista_qtd_marcados(const lista_t *l);
 #define LISTA_EDITOU   3
 #define LISTA_DESISTIU 4
+#define LISTA_DEVAGAR  5   /* clique simples no item que já era o único marcado (renomear devagar) */
 #define LISTA_ALTURA_ITEM 20
 
 /* ---- diálogos (janelas próprias, esperam a resposta) ---- */
