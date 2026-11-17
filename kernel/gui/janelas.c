@@ -1944,7 +1944,9 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     j->x = 150 + n * 34;
     j->y = BARRA_SUPERIOR + 30 + n * 28;
     if (j->x + moldura_l(j) > (int)video_largura()) j->x = (int)video_largura() - moldura_l(j);
-    if (j->y + moldura_a(j) > (int)video_altura()) j->y = (int)video_altura() - moldura_a(j);
+    /* Sem passar da doca: os botões do rodapé ficariam debaixo dela. */
+    int base = doca_ligada ? doca_y - 4 : (int)video_altura();
+    if (j->y + moldura_a(j) > base) j->y = base - moldura_a(j);
     if (j->x < 0) j->x = 0;
     if (j->y < BARRA_SUPERIOR) j->y = BARRA_SUPERIOR;
     janela_t *antes = focada();

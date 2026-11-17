@@ -180,7 +180,7 @@ static uint32_t total;                    /* setores do disco escolhido */
 /* As regiões do disco em ordem: partições (p >= 0) e espaços livres (p = -1). */
 typedef struct { int p; uint32_t ini, n; } regiao_t;
 static regiao_t reg[12];
-static int qtd_reg, sel_reg = -1;
+static int qtd_reg, sel_reg = -1, topo;   /* topo: a primeira linha mostrada na lista */
 
 /* Onde instalar: o disco inteiro (apaga tudo) ou um espaço livre. */
 static bool modo_inteiro = true;
@@ -451,12 +451,15 @@ static int instalar(void)
 
 /* ------------------------------------------------------------ a janela */
 
-#define L        820
-#define A        560
-#define LADO     212                      /* a coluna dos passos */
-#define X0       (LADO + 28)              /* o conteúdo */
-#define CL       (L - X0 - 28)
-#define RODAPE_Y (A - 58)
+/* O tamanho da janela muda (ela é redimensionável e nasce do tamanho da
+ * tela): tudo é medido a partir dela em medir(). Numa janela estreita, a
+ * coluna dos passos some e o conteúdo usa a largura toda. */
+static int L = 820, A = 560;
+static int LADO, X0, CL, RODAPE_Y;
+static int LINHAS = 5;                    /* linhas visíveis da lista de partições */
+static bool modos_empilhados;             /* os dois modos um embaixo do outro */
+static bool compacto;                     /* janela baixa (640x480): sem a barra do disco */
+static int BARRA_Y = 104, LISTA_Y = 172;
 
 #define COR_LADO     0xE6ECF0
 #define COR_CARTAO   0xFFFFFF
@@ -474,8 +477,11 @@ static int passo;
 /* Botões arredondados: o principal é verde cheio (vermelho no Instalar); os
  * outros, brancos com borda. */
 typedef struct { int x, y, l, a; const char *texto; bool principal, ativo, perigo; } bt_t;
-enum { B_VOLTAR, B_CONTINUAR, B_CANCELAR, B_EXCLUIR, B_NOVA, B_FORMATAR, B_TUDO, B_MODO_INTEIRO, B_MODO_LIVRE, QTD_BT };
+enum { B_VOLTAR, B_CONTINUAR, B_CANCELAR, B_REINICIAR, B_EXCLUIR, B_NOVA, B_FORMATAR, B_TUDO, B_MODO_INTEIRO, B_MODO_LIVRE, QTD_BT };
 static bt_t bts[QTD_BT];
+
+static int lim;                           /* (mais abaixo, com tx) */
+static void tx(int x, int y, const char *t, uint32_t cor);
 
 static void bt(int i, int x, int y, int l, const char *texto, bool principal, bool ativo)
 {
@@ -489,7 +495,11 @@ static void desenhar_bt(const bt_t *b)
     g_ret_redondo(j, b->x, b->y, b->l, b->a, 9, fundo, base);
     if (!b->principal || !b->ativo) g_contorno_redondo(j, b->x, b->y, b->l, b->a, 9, b->ativo ? 0xB8C2CB : 0xD8DEE3);
     uint32_t ct = !b->ativo ? 0xA5AEB6 : b->principal ? COR_BRANCO : COR_TEXTO;
-    g_texto(j, b->x + (b->l - g_largura_texto(b->texto)) / 2, b->y + (b->a - 16) / 2, b->texto, ct);
+    int w = g_largura_texto(b->texto), antes = lim;
+    if (w > b->l - 12) w = b->l - 12;
+    lim = b->x + b->l - 6;
+    tx(b->x + (b->l - w) / 2, b->y + (b->a - 16) / 2, b->texto, ct);
+    lim = antes;
 }
 
 static int bt_em(int x, int y)
@@ -501,10 +511,50 @@ static int bt_em(int x, int y)
     return -1;
 }
 
+/* Até onde o texto pode ir (x da borda direita); o que passar vira "...". */
+static int lim = 1 << 30;
+
+static void tx(int x, int y, const char *t, uint32_t cor)
+{
+    int max = lim - x;
+    if (max < 8 * 4) return;
+    if (g_largura_texto(t) <= max) { g_texto(j, x, y, t, cor); return; }
+    char b[160];
+    int n = max / 8 - 3;                       /* a fonte tem 8 px por letra (Latin-1) */
+    if (n > (int)sizeof b - 4) n = (int)sizeof b - 4;
+    memcpy(b, t, (size_t)n);
+    while (n > 0 && b[n - 1] == ' ') n--;
+    b[n] = '.'; b[n + 1] = '.'; b[n + 2] = '.'; b[n + 3] = 0;
+    g_texto(j, x, y, b, cor);
+}
+
 static void negrito(int x, int y, const char *t, uint32_t cor)
 {
-    g_texto(j, x, y, t, cor);
-    g_texto(j, x + 1, y, t, cor);
+    tx(x, y, t, cor);
+    lim++;
+    tx(x + 1, y, t, cor);
+    lim--;
+}
+
+static void medir(void)
+{
+    L = j->larg;
+    A = j->alt;
+    LADO = L >= 800 ? 212 : 0;
+    int m = L >= 560 ? 28 : 16;
+    X0 = LADO + m;
+    CL = L - X0 - m;
+    RODAPE_Y = A - 58;
+    modos_empilhados = CL < 500;
+    compacto = A < 460;
+    LISTA_Y = compacto ? 104 : 172;
+    /* A lista de partições fica com o que sobra da altura. */
+    /* A lista começa em 172; depois dela vêm os botões e o título (84) e os
+     * cartões dos modos; o rodapé ocupa os últimos 72. */
+    int modos = modos_empilhados ? 56 + 62 : 56;
+    LINHAS = (A - 72 - LISTA_Y - (compacto ? 60 : 84) - modos) / 28;
+    if (LINHAS > 5) LINHAS = 5;
+    if (LINHAS < 1) LINHAS = 1;
 }
 
 static void cartao(int x, int y, int l, int a, uint32_t fundo, uint32_t borda)
@@ -536,7 +586,7 @@ static int paragrafo(int x, int y, int l, const char *t, uint32_t cor)
         }
         if (t[n] && t[n] != '\n' && corte > 0) n = corte;
         linha[n] = 0;
-        g_texto(j, x, y, linha, cor);
+        tx(x, y, linha, cor);
         y += 20;
         t += n;
         while (*t == ' ' || *t == '\n') t++;
@@ -546,11 +596,14 @@ static int paragrafo(int x, int y, int l, const char *t, uint32_t cor)
 
 static void desenhar_lado(void)
 {
+    if (!LADO) return;
+    int antes = lim;
+    lim = LADO - 8;
     g_retangulo(j, 0, 0, LADO, A, COR_LADO);
     g_retangulo(j, LADO - 1, 0, 1, A, COR_LINHA);
     g_imagem(j, 22, 22, arte_px_sobre_40, 40, 40);
     negrito(72, 26, "SaguiOS", COR_TEXTO);
-    g_texto(j, 72, 44, "Instalação", COR_TEXTO_FRACO);
+    tx(72, 44, "Instalação", COR_TEXTO_FRACO);
     int atual = passo >= P_INSTALANDO ? 4 : passo;
     for (int k = 0; k < 5; k++) {
         int y = 104 + k * 44, cx = 34, cy = y + 8;
@@ -567,11 +620,12 @@ static void desenhar_lado(void)
         } else {
             char n[4];
             formatar_texto(n, sizeof n, "%d", k + 1);
-            g_texto(j, cx - g_largura_texto(n) / 2, cy - 8, n, agora ? COR_BRANCO : 0x8A949D);
+            tx(cx - g_largura_texto(n) / 2, cy - 8, n, agora ? COR_BRANCO : 0x8A949D);
         }
         if (agora) negrito(56, y, nomes_passos[k], COR_TEXTO);
-        else g_texto(j, 56, y, nomes_passos[k], feito ? COR_TEXTO : COR_TEXTO_FRACO);
+        else tx(56, y, nomes_passos[k], feito ? COR_TEXTO : COR_TEXTO_FRACO);
     }
+    lim = antes;
 }
 
 #define DISCO_Y(i) (86 + (i) * 86)
@@ -585,27 +639,42 @@ static void desenhar_disco_cartao(int i, bool sel)
     if (sel) g_contorno_redondo(j, X0 + 1, y + 1, CL - 2, 72, 9, COR_DESTAQUE);
     g_imagem(j, X0 + 16, y + 17, d->interno ? arte_px_disco_40 : arte_px_pendrive_40, 40, 40);
     char t[96], tam[24];
+    int antes = lim;
+    const char *e = CL >= 480 ? "O SaguiOS está ligado daqui" : "Origem";
+    int we = g_largura_texto(e);
+    lim = eh_origem ? X0 + CL - we - 42 : X0 + CL - 52;     /* antes da etiqueta ou do botão de rádio */
     tamanho_texto(d->setores, tam, sizeof tam);
     formatar_texto(t, sizeof t, "%s  -  %s", d->nome, d->interno ? "Disco interno" : "Pendrive USB");
     negrito(X0 + 72, y + 12, t, eh_origem ? COR_TEXTO_FRACO : COR_TEXTO);
     formatar_texto(t, sizeof t, "%s %s, %s", d->fabricante, d->produto, tam);
-    g_texto(j, X0 + 72, y + 32, t, COR_TEXTO_FRACO);
+    tx(X0 + 72, y + 32, t, COR_TEXTO_FRACO);
     if (eh_origem) {
-        const char *e = "O SaguiOS está ligado daqui";
-        int w = g_largura_texto(e);
-        g_ret_redondo(j, X0 + CL - w - 34, y + 24, w + 20, 26, 13, 0xE3E8EC, 0xE3E8EC);
-        g_texto(j, X0 + CL - w - 24, y + 29, e, COR_TEXTO_FRACO);
+        lim = antes;
+        g_ret_redondo(j, X0 + CL - we - 34, y + 24, we + 20, 26, 13, 0xE3E8EC, 0xE3E8EC);
+        tx(X0 + CL - we - 24, y + 29, e, COR_TEXTO_FRACO);
     } else {
         formatar_texto(t, sizeof t, "Hoje: %s%s%s", d->formato, d->rotulo[0] ? ", " : "", d->rotulo);
-        g_texto(j, X0 + 72, y + 52, t, 0x8A949D);
+        tx(X0 + 72, y + 52, t, 0x8A949D);
         radio(X0 + CL - 32, y + 37, sel);
     }
+    lim = antes;
 }
 
-#define BARRA_Y 104
-#define LISTA_Y 172
 #define LINHA_A 28
-#define LINHAS  5
+
+/* As colunas da lista, proporcionais à largura. */
+static int col(int k) { static const int pct[4] = { 0, 30, 62, 79 }; return X0 + 14 + (CL - 14) * pct[k] / 100; }
+
+/* Texto numa coluna: corta antes da próxima. */
+static void tx_col(int k, int y, const char *t, uint32_t cor, bool forte)
+{
+    int antes = lim;
+    lim = k < 3 ? col(k + 1) - 8 : X0 + CL - 8;
+    int x = k == 0 ? col(0) + 24 : col(k);
+    if (forte) negrito(x, y, t, cor);
+    else tx(x, y, t, cor);
+    lim = antes;
+}
 
 static int largura_regiao(int r)
 {
@@ -624,10 +693,11 @@ static void desenhar_particoes(void)
     formatar_texto(t, sizeof t, "Partições de %s", d->nome);
     negrito(X0 + 54, 22, t, COR_TEXTO);
     formatar_texto(t, sizeof t, "%s %s, %s. Nada é gravado antes do resumo.", d->fabricante, d->produto, tam);
-    g_texto(j, X0 + 54, 42, t, COR_TEXTO_FRACO);
+    tx(X0 + 54, 42, t, COR_TEXTO_FRACO);
 
-    /* A barra do disco: cada região do tamanho dela. */
-    g_texto(j, X0, BARRA_Y - 24, "Clique numa parte da barra ou da lista para escolher.", 0x8A949D);
+    /* A barra do disco: cada região do tamanho dela (some na janela baixa). */
+    if (!compacto) {
+    tx(X0, BARRA_Y - 24, "Clique numa parte da barra ou da lista para escolher.", 0x8A949D);
     g_ret_redondo(j, X0, BARRA_Y, CL, 40, 9, 0xE9EDF0, 0xE9EDF0);
     int x = X0 + 2;
     for (int r = 0; r < qtd_reg; r++) {
@@ -643,69 +713,87 @@ static void desenhar_particoes(void)
             g_contorno_redondo(j, x - 1, BARRA_Y + 1, w, 38, 8, COR_TEXTO);
             g_contorno_redondo(j, x, BARRA_Y + 2, w - 2, 36, 7, COR_BRANCO);
         }
-        if (w > 70) {
-            tamanho_texto(reg[r].n, tam, sizeof tam);
-            g_texto(j, x + (w - 2 - g_largura_texto(tam)) / 2, BARRA_Y + 12, tam, livre ? COR_TEXTO_FRACO : COR_BRANCO);
+        tamanho_texto(reg[r].n, tam, sizeof tam);
+        if (w > g_largura_texto(tam) + 12) {
+            tx(x + (w - 2 - g_largura_texto(tam)) / 2, BARRA_Y + 12, tam, livre ? COR_TEXTO_FRACO : COR_BRANCO);
         }
         x += w;
     }
-    if (modo_inteiro) {                         /* tudo vai sumir: a barra fica apagada */
-        g_ret_redondo(j, X0 + CL - 172, BARRA_Y + 8, 164, 24, 12, 0xFDECEA, 0xFDECEA);
-        g_texto(j, X0 + CL - 162, BARRA_Y + 12, "tudo vai ser apagado", COR_PERIGO);
+    if (modo_inteiro) {                         /* tudo vai sumir: um aviso por cima da barra */
+        const char *av = CL >= 360 ? "tudo vai ser apagado" : "apagar tudo";
+        int wa = g_largura_texto(av) + 20;
+        g_ret_redondo(j, X0 + CL - wa - 8, BARRA_Y + 8, wa, 24, 12, 0xFDECEA, 0xFDECEA);
+        tx(X0 + CL - wa + 2, BARRA_Y + 12, av, COR_PERIGO);
+    }
     }
 
     /* A lista. */
-    g_texto(j, X0 + 14, LISTA_Y - 22, "Partição", COR_TEXTO_FRACO);
-    g_texto(j, X0 + 170, LISTA_Y - 22, "Tipo", COR_TEXTO_FRACO);
-    g_texto(j, X0 + 362, LISTA_Y - 22, "Tamanho", COR_TEXTO_FRACO);
-    g_texto(j, X0 + 440, LISTA_Y - 22, "Rótulo", COR_TEXTO_FRACO);
+    static const char *const cab[4] = { "Partição", "Tipo", "Tamanho", "Rótulo" };
+    for (int k = 0; k < 4; k++) {
+        int antes = lim;
+        lim = k < 3 ? col(k + 1) - 8 : X0 + CL - 8;
+        tx(col(k), LISTA_Y - 22, cab[k], COR_TEXTO_FRACO);
+        lim = antes;
+    }
     cartao(X0, LISTA_Y - 4, CL, LINHAS * LINHA_A + 8, COR_CARTAO, COR_LINHA);
     if (gpt) paragrafo(X0 + 16, LISTA_Y + 10, CL - 32,
                        "Este disco usa a tabela GPT, que o instalador ainda não entende. Dá para instalar apagando o disco inteiro.",
                        COR_TEXTO);
-    for (int r = 0; r < qtd_reg && r < LINHAS && !gpt; r++) {
-        int y = LISTA_Y + r * LINHA_A;
+    if (sel_reg >= 0 && sel_reg < topo) topo = sel_reg;
+    if (sel_reg >= topo + LINHAS) topo = sel_reg - LINHAS + 1;
+    if (topo > qtd_reg - LINHAS) topo = qtd_reg - LINHAS > 0 ? qtd_reg - LINHAS : 0;
+    for (int r = topo; r < qtd_reg && r < topo + LINHAS && !gpt; r++) {
+        int y = LISTA_Y + (r - topo) * LINHA_A;
         if (r == sel_reg) g_ret_redondo(j, X0 + 4, y, CL - 8, LINHA_A, 7, 0xDCE8F8, 0xDCE8F8);
         bool livre = reg[r].p < 0;
         uint32_t c = livre ? 0xF7F9FA : (parts[reg[r].p].saguios ? COR_DESTAQUE : cor_tipo(parts[reg[r].p].tipo));
-        g_ret_redondo(j, X0 + 14, y + 7, 14, 14, 4, c, c);
-        if (livre) g_contorno_redondo(j, X0 + 14, y + 7, 14, 14, 4, 0xB8C2CB);
+        g_ret_redondo(j, col(0), y + 7, 14, 14, 4, c, c);
+        if (livre) g_contorno_redondo(j, col(0), y + 7, 14, 14, 4, 0xB8C2CB);
         tamanho_texto(reg[r].n, tam, sizeof tam);
         if (livre) {
-            g_texto(j, X0 + 38, y + 6, "Espaço livre", COR_TEXTO_FRACO);
-            g_texto(j, X0 + 362, y + 6, tam, COR_TEXTO_FRACO);
-            if (!modo_inteiro && r == livre_inst) negrito(X0 + 440, y + 6, "SaguiOS aqui", COR_DESTAQUE);
+            tx_col(0, y + 6, "Espaço livre", COR_TEXTO_FRACO, false);
+            tx_col(2, y + 6, tam, COR_TEXTO_FRACO, false);
+            if (!modo_inteiro && r == livre_inst) tx_col(3, y + 6, "SaguiOS aqui", COR_DESTAQUE, true);
             continue;
         }
         const part_t *p = &parts[reg[r].p];
         formatar_texto(t, sizeof t, "Partição %u%s", reg[r].p + 1, p->nova ? " (nova)" : "");
-        g_texto(j, X0 + 38, y + 6, t, COR_TEXTO);
+        tx_col(0, y + 6, t, COR_TEXTO, false);
         if (p->saguios) copia_texto(t, "SaguiOS (formatar)", sizeof t);
         else formatar_texto(t, sizeof t, "%s%s", nome_tipo(p->tipo), p->formatar && !p->nova ? " (formatar)" : "");
-        g_texto(j, X0 + 170, y + 6, t, (p->formatar && !p->nova) || p->saguios ? COR_PERIGO : COR_TEXTO);
-        g_texto(j, X0 + 362, y + 6, tam, COR_TEXTO);
-        if (p->saguios && !modo_inteiro && r == livre_inst) negrito(X0 + 440, y + 6, "SaguiOS aqui", COR_DESTAQUE);
-        else g_texto(j, X0 + 440, y + 6, p->rotulo, COR_TEXTO_FRACO);
+        tx_col(1, y + 6, t, (p->formatar && !p->nova) || p->saguios ? COR_PERIGO : COR_TEXTO, false);
+        tx_col(2, y + 6, tam, COR_TEXTO, false);
+        if (p->saguios && !modo_inteiro && r == livre_inst) tx_col(3, y + 6, "SaguiOS aqui", COR_DESTAQUE, true);
+        else tx_col(3, y + 6, p->rotulo, COR_TEXTO_FRACO, false);
     }
-    if (!qtd_reg && !gpt) g_texto(j, X0 + 16, LISTA_Y + 6, "O disco não tem espaço utilizável.", COR_TEXTO_FRACO);
+    if (!qtd_reg && !gpt) tx(X0 + 16, LISTA_Y + 6, "O disco não tem espaço utilizável.", COR_TEXTO_FRACO);
+    if (qtd_reg > LINHAS && !gpt) {             /* tem mais: as setas rolam */
+        char m[32];
+        formatar_texto(m, sizeof m, "%d de %d (setas)", topo + 1, qtd_reg);
+        tx(X0 + CL - g_largura_texto(m) - 4, LISTA_Y - 22, m, COR_SELECAO);
+    }
 
     /* Onde instalar. */
-    int oy = LISTA_Y + LINHAS * LINHA_A + 84;
-    negrito(X0, oy - 24, "Onde instalar o SaguiOS", COR_TEXTO);
+    int oy = LISTA_Y + LINHAS * LINHA_A + (compacto ? 60 : 84);
+    if (!compacto) negrito(X0, oy - 24, "Onde instalar o SaguiOS", COR_TEXTO);
+    int antes = lim;
     const char *mot = motivo_livre();
     for (int k = 0; k < 2; k++) {
         bool sel = k == 0 ? modo_inteiro : !modo_inteiro && livre_inst >= 0;
         bool ok = k == 0 || !mot || (!modo_inteiro && livre_inst >= 0);
-        int bx = X0 + k * (CL / 2 + 6), bl = CL / 2 - 6;
-        cartao(bx, oy, bl, 56, sel ? COR_VERDE_CL : COR_CARTAO, sel ? COR_DESTAQUE : COR_LINHA);
-        radio(bx + 22, oy + 19, sel);
+        int bx = modos_empilhados ? X0 : X0 + k * (CL / 2 + 6), bl = modos_empilhados ? CL : CL / 2 - 6;
+        int by = modos_empilhados ? oy + k * 62 : oy;
+        lim = bx + bl - 10;
+        cartao(bx, by, bl, 56, sel ? COR_VERDE_CL : COR_CARTAO, sel ? COR_DESTAQUE : COR_LINHA);
+        radio(bx + 22, by + 19, sel);
         bool na_part = livre_inst >= 0 && reg[livre_inst].p >= 0;
-        negrito(bx + 42, oy + 10, k == 0 ? "Apagar o disco e instalar" : na_part ? "Na partição formatada" : "No espaço livre",
+        negrito(bx + 42, by + 10, k == 0 ? "Apagar o disco e instalar" : na_part ? "Na partição formatada" : "No espaço livre",
                 ok ? COR_TEXTO : 0xA5AEB6);
         const char *sub = k == 0 ? "Todas as partições somem." : ok ? "As outras partições ficam." : mot;
-        g_texto(j, bx + 42, oy + 30, sub, k == 0 ? COR_PERIGO : ok ? COR_TEXTO_FRACO : 0xA5AEB6);
-        bts[k == 0 ? B_MODO_INTEIRO : B_MODO_LIVRE] = (bt_t){ bx, oy, bl, 56, "", false, true, false };
+        tx(bx + 42, by + 30, sub, k == 0 ? COR_PERIGO : ok ? COR_TEXTO_FRACO : 0xA5AEB6);
+        bts[k == 0 ? B_MODO_INTEIRO : B_MODO_LIVRE] = (bt_t){ bx, by, bl, 56, "", false, true, false };
     }
+    lim = antes;
 }
 
 static int pct_atual = -1;
@@ -716,10 +804,10 @@ static char etapa_atual[64] = "Preparando";
 static void desenhar_progresso_area(void)
 {
     g_retangulo(j, X0, PROG_Y - 4, CL, 64, COR_FUNDO);
-    g_texto(j, X0, PROG_Y, etapa_atual, COR_TEXTO);
+    tx(X0, PROG_Y, etapa_atual, COR_TEXTO);
     char t[8];
     formatar_texto(t, sizeof t, "%d%%", pct_atual < 0 ? 0 : pct_atual);
-    g_texto(j, X0 + CL - g_largura_texto(t), PROG_Y, t, COR_TEXTO_FRACO);
+    tx(X0 + CL - g_largura_texto(t), PROG_Y, t, COR_TEXTO_FRACO);
     g_ret_redondo(j, X0, PROG_Y + 28, CL, 16, 8, 0xDDE3E8, 0xDDE3E8);
     int w = pct_atual <= 0 ? 0 : CL * pct_atual / 100;
     if (w >= 16) g_ret_redondo(j, X0, PROG_Y + 28, w, 16, 8, 0x2BB463, COR_DESTAQUE);
@@ -750,18 +838,34 @@ static void desenhar_resumo(void)
     const info_disco_t *d = &discos[escolhido];
     char t[160], tam[24];
     negrito(X0, 22, "Tudo pronto para instalar", COR_TEXTO);
-    g_texto(j, X0, 42, "Confira. Ao clicar em Instalar, isto é gravado no disco:", COR_TEXTO_FRACO);
-    cartao(X0, 72, CL, 262, COR_CARTAO, COR_LINHA);
-    g_imagem(j, X0 + 16, 86, d->interno ? arte_px_disco_40 : arte_px_pendrive_40, 40, 40);
+    tx(X0, 42, "Confira. Ao clicar em Instalar, isto é gravado no disco:", COR_TEXTO_FRACO);
+    /* O aviso vai colado no rodapé, com a altura do texto; a lista usa o
+     * que sobra entre os dois. */
+    const char *aviso = modo_inteiro
+        ? "Tudo o que está no disco hoje se perde. Confira se é o disco certo antes de continuar."
+        : "O disco passa a ligar o SaguiOS. Se outro sistema (o Windows, por exemplo) ligava por ele, deixa de ligar sozinho.";
+    int por_linha = (CL - 36) / 8, linhas_aviso = ((int)tam_texto(aviso) + por_linha - 1) / por_linha;
+    if (linhas_aviso < 1) linhas_aviso = 1;
+    int ah = (compacto ? 24 : 44) + linhas_aviso * 20, ay = RODAPE_Y - 14 - 12 - ah;
+    int fim_lista = ay - 12;
+    cartao(X0, 72, CL, fim_lista - 72, COR_CARTAO, COR_LINHA);
+    int antes = lim;
+    lim = X0 + CL - 14;
+    int y = 154, passo_linha = compacto ? 20 : 22;
     tamanho_texto(d->setores, tam, sizeof tam);
     formatar_texto(t, sizeof t, "%s  -  %s %s, %s", d->nome, d->fabricante, d->produto, tam);
-    negrito(X0 + 70, 90, t, COR_TEXTO);
-    g_texto(j, X0 + 70, 110, d->interno ? "Disco interno" : "Pendrive USB", COR_TEXTO_FRACO);
-    g_retangulo(j, X0 + 16, 140, CL - 32, 1, COR_LINHA);
-    int y = 154;
+    if (compacto) {                              /* sem o ícone: só o nome, numa linha */
+        negrito(X0 + 16, 84, t, COR_TEXTO);
+        y = 110;
+    } else {
+        g_imagem(j, X0 + 16, 86, d->interno ? arte_px_disco_40 : arte_px_pendrive_40, 40, 40);
+        negrito(X0 + 70, 90, t, COR_TEXTO);
+        tx(X0 + 70, 110, d->interno ? "Disco interno" : "Pendrive USB", COR_TEXTO_FRACO);
+        g_retangulo(j, X0 + 16, 140, CL - 32, 1, COR_LINHA);
+    }
     if (modo_inteiro) {
-        g_texto(j, X0 + 22, y, "- Apaga todas as partições do disco.", COR_PERIGO);
-        y += 22;
+        if (y + 18 <= fim_lista) tx(X0 + 22, y, "- Apaga todas as partições do disco.", COR_PERIGO);
+        y += passo_linha;
     } else {
         for (int k = 0; k < 4; k++) {
             const part_t *p = &parts[k];
@@ -772,30 +876,28 @@ static void desenhar_resumo(void)
             else if (p->nova) { formatar_texto(t, sizeof t, "- Cria a partição %d: FAT32 \"%s\", %u MB.", k + 1, p->rotulo, p->n / MB); c = COR_TEXTO; }
             else if (p->formatar) formatar_texto(t, sizeof t, "- Formata a partição %d como FAT32 (o que há nela se perde).", k + 1);
             else continue;
-            g_texto(j, X0 + 22, y, t, c);
-            y += 22;
+            if (y + 18 <= fim_lista) tx(X0 + 22, y, t, c);
+            y += passo_linha;
         }
     }
     uint32_t livre_n = modo_inteiro ? (total - MB) / MB * MB : reg[livre_inst].n;
     formatar_texto(t, sizeof t, "- Copia o SaguiOS para uma partição de %u MB.", sistema_mb() / MB);
-    g_texto(j, X0 + 22, y, t, COR_TEXTO);
-    y += 22;
+    if (y + 18 <= fim_lista) tx(X0 + 22, y, t, COR_TEXTO);
+    y += passo_linha;
     formatar_texto(t, sizeof t, "- Cria a partição dos seus arquivos: FAT32 \"SAGUIOS\", %u MB.", (livre_n - sistema_mb()) / MB);
-    g_texto(j, X0 + 22, y, t, COR_TEXTO);
-    y += 22;
-    g_texto(j, X0 + 22, y, "- Grava o setor de boot do SaguiOS no começo do disco.", COR_TEXTO);
-    int ay = 350;
-    cartao(X0, ay, CL, 84, COR_AVISO, 0xE8CF8A);
-    negrito(X0 + 18, ay + 12, "Atenção", 0x8A5A00);
-    paragrafo(X0 + 18, ay + 34, CL - 36, modo_inteiro
-        ? "Tudo o que está no disco hoje se perde. Confira se é o disco certo antes de continuar."
-        : "O disco passa a ligar o SaguiOS. Se outro sistema (o Windows, por exemplo) ligava por ele, deixa de ligar sozinho.",
-        COR_TEXTO);
+    if (y + 18 <= fim_lista) tx(X0 + 22, y, t, COR_TEXTO);
+    y += passo_linha;
+    if (y + 18 <= fim_lista) tx(X0 + 22, y, "- Grava o setor de boot do SaguiOS no começo do disco.", COR_TEXTO);
+    lim = antes;
+    cartao(X0, ay, CL, ah, COR_AVISO, 0xE8CF8A);
+    if (!compacto) negrito(X0 + 18, ay + 12, "Atenção", 0x8A5A00);   /* na janela baixa, sem o título */
+    paragrafo(X0 + 18, ay + (compacto ? 12 : 34), CL - 36, aviso, COR_TEXTO);
 }
 
 static void desenhar(void)
 {
     memset(bts, 0, sizeof bts);
+    lim = X0 + CL;
     g_retangulo(j, 0, 0, L, A, COR_FUNDO);
     desenhar_lado();
     char t[160];
@@ -803,11 +905,11 @@ static void desenhar(void)
     case P_BOAS_VINDAS: {
         g_imagem(j, X0, 26, arte_px_instalar_sistema, 64, 64);
         negrito(X0 + 82, 40, "Instalar o SaguiOS", COR_TEXTO);
-        g_texto(j, X0 + 82, 62, "Leve o sistema para um disco e guarde os seus arquivos nele.", COR_TEXTO_FRACO);
+        tx(X0 + 82, 62, "Leve o sistema para um disco e guarde os seus arquivos nele.", COR_TEXTO_FRACO);
         int y = paragrafo(X0, 120, CL,
             "O instalador copia o SaguiOS para o disco que você escolher e cria uma partição para os seus "
             "arquivos. Depois, o computador liga pelo disco, sem o pendrive, e o que você guardar continua lá.", COR_TEXTO);
-        y = paragrafo(X0, y + 10, CL,
+        if (!compacto) y = paragrafo(X0, y + 10, CL,
             "Você escolhe o disco, vê as partições dele e decide se apaga tudo ou usa um espaço livre. "
             "Nada é gravado antes do último passo.", COR_TEXTO);
         int cy = y + 22;
@@ -816,21 +918,21 @@ static void desenhar(void)
             char tam[24];
             cartao(X0, cy, CL, 64, COR_CARTAO, COR_LINHA);
             g_imagem(j, X0 + 14, cy + 12, o->interno ? arte_px_disco_40 : arte_px_pendrive_40, 40, 40);
-            g_texto(j, X0 + 68, cy + 12, "O SaguiOS será copiado de", COR_TEXTO_FRACO);
+            tx(X0 + 68, cy + 12, "O SaguiOS será copiado de", COR_TEXTO_FRACO);
             tamanho_texto(o->setores, tam, sizeof tam);
             formatar_texto(t, sizeof t, "%s  -  %s, %s %s, %s", o->nome, o->interno ? "disco interno" : "pendrive USB", o->fabricante, o->produto, tam);
             negrito(X0 + 68, cy + 32, t, COR_TEXTO);
-            if (!sis_ok) g_texto(j, X0, cy + 78, erro, COR_PERIGO);
+            if (!sis_ok) tx(X0, cy + 78, erro, COR_PERIGO);
         } else {
             cartao(X0, cy, CL, 64, 0xFDECEA, 0xEBB3AE);
             negrito(X0 + 18, cy + 12, "Não achei o disco de onde o SaguiOS ligou.", COR_PERIGO);
-            g_texto(j, X0 + 18, cy + 34, "Sem ele, não há de onde copiar o sistema.", COR_TEXTO_FRACO);
+            tx(X0 + 18, cy + 34, "Sem ele, não há de onde copiar o sistema.", COR_TEXTO_FRACO);
         }
         break;
     }
     case P_DISCO: {
         negrito(X0, 22, "Onde instalar?", COR_TEXTO);
-        g_texto(j, X0, 42, "Escolha o disco. No próximo passo você vê as partições dele.", COR_TEXTO_FRACO);
+        tx(X0, 42, "Escolha o disco. No próximo passo você vê as partições dele.", COR_TEXTO_FRACO);
         int outros = 0;
         for (int i = 0; i < qtd_discos; i++) {
             desenhar_disco_cartao(i, i == escolhido);
@@ -840,7 +942,7 @@ static void desenhar(void)
             int y = DISCO_Y(qtd_discos) + 4;
             cartao(X0, y, CL, 58, COR_AVISO, 0xE8CF8A);
             negrito(X0 + 18, y + 10, "Nenhum outro disco para instalar.", COR_TEXTO);
-            g_texto(j, X0 + 18, y + 30, "Conecte um disco rígido (IDE/SATA) ou um pendrive e abra de novo.", COR_TEXTO_FRACO);
+            tx(X0 + 18, y + 30, "Conecte um disco rígido (IDE/SATA) ou um pendrive e abra de novo.", COR_TEXTO_FRACO);
         }
         break;
     }
@@ -848,10 +950,12 @@ static void desenhar(void)
         desenhar_particoes();
         bool parte = sel_reg >= 0 && reg[sel_reg].p >= 0, livre = sel_reg >= 0 && reg[sel_reg].p < 0;
         int by = LISTA_Y + LINHAS * LINHA_A + 14;
-        bt(B_EXCLUIR, X0, by, 104, "Excluir", false, parte && !gpt);
-        bt(B_NOVA, X0 + 112, by, 144, "Nova partição", false, livre && !gpt && entradas_livres() > 0);
-        bt(B_FORMATAR, X0 + 264, by, 104, "Formatar", false, parte && !gpt);
-        bt(B_TUDO, X0 + CL - 124, by, 124, "Apagar tudo", false, !modo_inteiro || gpt);
+        int bw = (CL - 3 * 8) / 4;                /* quatro botões iguais na largura */
+        bool curto = bw < 128;
+        bt(B_EXCLUIR, X0, by, bw, "Excluir", false, parte && !gpt);
+        bt(B_NOVA, X0 + (bw + 8), by, bw, curto ? "Nova" : "Nova partição", false, livre && !gpt && entradas_livres() > 0);
+        bt(B_FORMATAR, X0 + 2 * (bw + 8), by, bw, "Formatar", false, parte && !gpt);
+        bt(B_TUDO, X0 + 3 * (bw + 8), by, CL - 3 * (bw + 8), curto ? "Apagar" : "Apagar tudo", false, !modo_inteiro || gpt);
         break;
     }
     case P_RESUMO:
@@ -861,7 +965,7 @@ static void desenhar(void)
         g_imagem(j, X0, 26, arte_px_instalar_sistema, 64, 64);
         negrito(X0 + 82, 40, "Instalando o SaguiOS", COR_TEXTO);
         formatar_texto(t, sizeof t, "em %s. Não desligue o computador.", discos[escolhido].nome);
-        g_texto(j, X0 + 82, 62, t, COR_TEXTO_FRACO);
+        tx(X0 + 82, 62, t, COR_TEXTO_FRACO);
         desenhar_progresso_area();
         break;
     case P_PRONTO: {
@@ -873,7 +977,7 @@ static void desenhar(void)
         }
         negrito(X0 + 82, 40, "O SaguiOS foi instalado", COR_TEXTO);
         formatar_texto(t, sizeof t, "no disco %s.", discos[escolhido].nome);
-        g_texto(j, X0 + 82, 62, t, COR_TEXTO_FRACO);
+        tx(X0 + 82, 62, t, COR_TEXTO_FRACO);
         paragrafo(X0, 124, CL,
             "Desligue o computador, tire o pendrive de instalação e ligue de novo: o SaguiOS sobe pelo disco. "
             "Os seus arquivos ficam na partição SAGUIOS, que aparece como Disco no Arquivos.", COR_TEXTO);
@@ -888,12 +992,16 @@ static void desenhar(void)
 
     /* O rodapé. */
     g_retangulo(j, LADO, RODAPE_Y - 14, L - LADO, 1, COR_LINHA);
-    if (passo == P_PRONTO || passo == P_ERRO) {
-        bt(B_CONTINUAR, L - 28 - 120, RODAPE_Y, 120, "Fechar", true, true);
+    int dir = X0 + CL;                            /* a borda direita dos botões */
+    if (passo == P_PRONTO) {
+        bt(B_CANCELAR, dir - 170 - 10 - 110, RODAPE_Y, 110, "Fechar", false, true);
+        bt(B_REINICIAR, dir - 170, RODAPE_Y, 170, "Reiniciar agora", true, true);
+    } else if (passo == P_ERRO) {
+        bt(B_CANCELAR, dir - 120, RODAPE_Y, 120, "Fechar", true, true);
     } else if (passo != P_INSTALANDO) {
         bt(B_CANCELAR, X0, RODAPE_Y, 110, "Cancelar", false, true);
-        if (passo > P_BOAS_VINDAS) bt(B_VOLTAR, L - 28 - 140 - 10 - 110, RODAPE_Y, 110, "Voltar", false, true);
-        bt(B_CONTINUAR, L - 28 - 140, RODAPE_Y, 140, passo == P_RESUMO ? "Instalar" : "Continuar", true, pode_continuar());
+        if (passo > P_BOAS_VINDAS) bt(B_VOLTAR, dir - 140 - 10 - 110, RODAPE_Y, 110, "Voltar", false, true);
+        bt(B_CONTINUAR, dir - 140, RODAPE_Y, 140, passo == P_RESUMO ? "Instalar" : "Continuar", true, pode_continuar());
         if (passo == P_RESUMO) bts[B_CONTINUAR].perigo = true;
     }
     for (int i = 0; i < QTD_BT; i++) if (bts[i].texto && bts[i].texto[0]) desenhar_bt(&bts[i]);
@@ -989,10 +1097,10 @@ static int regiao_em(int x, int y)
 {
     if (x < X0 || x >= X0 + CL || gpt) return -1;
     if (y >= LISTA_Y && y < LISTA_Y + LINHAS * LINHA_A) {
-        int r = (y - LISTA_Y) / LINHA_A;
+        int r = (y - LISTA_Y) / LINHA_A + topo;
         return r < qtd_reg ? r : -1;
     }
-    if (y >= BARRA_Y && y < BARRA_Y + 40) {
+    if (!compacto && y >= BARRA_Y && y < BARRA_Y + 40) {
         int px = X0 + 2;
         for (int r = 0; r < qtd_reg; r++) {
             int w = largura_regiao(r);
@@ -1009,6 +1117,7 @@ static bool terminar;
 
 static void continuar(void)
 {
+    if (passo == P_PRONTO || passo == P_ERRO) { terminar = true; return; }   /* Enter na tela final fecha */
     if (!pode_continuar()) return;
     switch (passo) {
     case P_BOAS_VINDAS:
@@ -1070,6 +1179,11 @@ static void clique(int x, int y)
     case B_CONTINUAR: continuar(); break;
     case B_VOLTAR:    ir(passo - 1); break;
     case B_CANCELAR:  terminar = true; break;
+    case B_REINICIAR:
+        registrar("instalar: reiniciar");
+        jan_fechar(j);
+        reiniciar();
+        break;
     case B_EXCLUIR:   excluir(); desenhar(); break;
     case B_NOVA:      nova(); desenhar(); break;
     case B_FORMATAR:  formatar(); desenhar(); break;
@@ -1096,8 +1210,19 @@ int principal(int argc, char **argv)
     if (argc >= 2) { imprimir("uso: instalar   (abre a janela; não há opções)\n"); return 1; }
     buf = aloca(POR_VEZ * SETOR);
     if (!buf) return 1;
+    /* A janela nasce do tamanho da tela (até 820 x 560) e pode mudar de
+     * tamanho; tudo se arranja de novo em medir(). */
+    info_versao_t v;
+    memset(&v, 0, sizeof v);
+    if (info_sistema(INFO_VERSAO, &v, sizeof v) >= 0 && v.largura && v.altura) {
+        if ((int)v.largura - 24 < L) L = (int)v.largura - 24;
+        /* Entre a barra de cima (24) e a doca (62), com o título (24) e a borda. */
+        if ((int)v.altura - 116 < A) A = (int)v.altura - 116;
+    }
     j = jan_abrir("Instalar o SaguiOS", L, A);
     if (!j) return 1;
+    jan_redimensionavel(j, 480, 400);
+    medir();
     ler_discos();
     sis_ok = ler_sistema();
     /* Já deixa escolhido o primeiro disco que não é a origem. */
@@ -1110,9 +1235,21 @@ int principal(int argc, char **argv)
     while (!terminar) {
         if (proximo_evento(j->id, &e, true) != 1) continue;
         if (e.tipo == EV_FECHAR) { if (passo != P_INSTALANDO) break; continue; }
-        if (e.tipo == EV_CLIQUE) clique(e.x, e.y);
+        if (e.tipo == EV_REDIMENSIONAR) {
+            jan_novo_tamanho(j, &e);
+            medir();
+            desenhar();
+        } else if (e.tipo == EV_CLIQUE) clique(e.x, e.y);
         else if (e.tipo == EV_TECLA) {
             if (e.tecla == '\n') continuar();
+            else if (passo == P_PARTICOES && (e.tecla == TECLA_CIMA || e.tecla == TECLA_BAIXO) && qtd_reg) {
+                int r = sel_reg + (e.tecla == TECLA_BAIXO ? 1 : -1);
+                if (r < 0) r = 0;
+                if (r >= qtd_reg) r = qtd_reg - 1;
+                sel_reg = r;
+                if (!modo_inteiro) livre_inst = !motivo_livre() ? r : -1;
+                desenhar();
+            }
             else if (e.tecla == TECLA_ESC && passo != P_INSTALANDO) break;
         }
     }
