@@ -1999,3 +1999,44 @@ passar para a próxima da pasta e sem os papéis de parede (.sgi).
   Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
 - Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
   dentro. O `rm` do terminal continua apagando de vez, como no Unix.
+
+## D062. Discos internos (IDE/ATA), só leitura, e o que muda na ABI (issue #45)
+
+**Contexto.** Até aqui o kernel só enxergava pendrives USB. O disco de onde o
+sistema ligou só era lido pela BIOS, no boot. Para instalar o SaguiOS num HD
+(#45), o kernel precisa enxergar os discos internos. Esse disco também guarda
+os dados de quem testa (o Windows, outro Linux), e a regra prd2 vale: nada
+grava nele sem que a pessoa escolha e confirme. Por isso o driver entra
+primeiro só lendo; a gravação vem depois, junto com a trava no kernel.
+
+**Decisão.**
+- Driver ATA em PIO nas portas clássicas (0x1F0/0x170, controle em
+  0x3F6/0x376), mestre e escravo, sem interrupções (nIEN), LBA28 e LBA48 e
+  até 3 tentativas com reset do canal. O modo AHCI fica para depois.
+  Referência: ATA/ATAPI-6 (T13/1410D rev. 3a), com as seções citadas em
+  `ata.c`.
+- **Só leitura.** O driver não tem os comandos de gravação: gravar num disco
+  interno devolve erro.
+- Toda espera do driver tem limite de tempo, medido pelo contador do PIT
+  (`cronometro_ms`, que anda com as interrupções desligadas): 5 s por
+  comando e 1 s no IDENTIFY. Antes de escrever no Device register, o driver
+  espera BSY e DRQ em zero (7.7.3).
+- Os discos internos se chamam `hd0`, `hd1`... e ficam na mesma lista dos
+  pendrives (`disco_registrar_interno`). O kernel lê o setor 0 de cada um
+  para mostrar o formato e o rótulo.
+- **Nenhum disco interno é montado**, nem sozinho, nem com `montar hdX`
+  (ERRO_ACESSO), e o Arquivos e a área de trabalho não oferecem o disco.
+- O autoteste `usb_setores`, que grava setores, só usa pendrive, nunca disco
+  interno.
+
+**ABI (acréscimos, nada muda de lugar).**
+- `info_disco_t` ganha o campo `interno` no fim (1 = disco interno).
+  `SIS_LISTAR_DISCOS` passa a receber, no terceiro argumento, o tamanho da
+  estrutura do programa (a libsagui manda `sizeof`). Programas antigos
+  mandavam 0: o kernel escreve só os campos até `interno` (`offsetof`) e não
+  passa do fim da estrutura deles, como no campo `bits` da H94.
+
+**Teste.** `h105_disco_ata`: três discos IDE (o do sistema, um com a FAT32 do
+SaguiOS e um com a FAT32 de outro sistema) e um pendrive. Os discos são
+achados e lidos, nada monta, `montar` recusa, o pendrive continua montando e
+as imagens dos HDs saem byte a byte iguais.

@@ -222,8 +222,10 @@ static bool atualizar_pendrive(void)
 {
     info_disco_t d;
     bool achou = false;
-    for (int i = 0; listar_discos(i, &d) == 1; i++)
+    for (int i = 0; listar_discos(i, &d) == 1; i++) {
+        if (d.interno) continue;   /* disco interno: é o HD de quem testa, e o kernel não monta (D062) */
         if (d.suportado) { achou = true; break; }
+    }
     bool mudou = achou != tem_pendrive || (achou && (d.montado != pendrive.montado || compara_texto(d.nome, pendrive.nome) != 0));
     tem_pendrive = achou;
     if (achou) pendrive = d;

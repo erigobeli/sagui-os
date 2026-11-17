@@ -159,6 +159,7 @@ static void reconhecer(disco_t *d)
 static bool montar_se_for_do_saguios(disco_t *d)
 {
     if (disco_montado()) return false;
+    if (d->interno) return false;   /* disco interno: nunca monta (D062) */
     if (fat_montar(d) < 0) return false;
     if (!config_tem_arquivo()) { fat_desmontar(false); return false; }
     d->montado = true;
@@ -168,16 +169,38 @@ static bool montar_se_for_do_saguios(disco_t *d)
     return true;
 }
 
+static disco_t *registrar(bool interno, const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
+                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
+                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *));
+
 disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
+{
+    return registrar(false, fabricante, produto, setores, tam_setor, dono, ler, escrever);
+}
+
+disco_t *disco_registrar_interno(const char *modelo, uint32_t setores, void *dono,
+                                 int (*ler)(disco_t *, uint32_t, uint32_t, void *),
+                                 int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
+{
+    return registrar(true, "ATA", modelo, setores, 512, dono, ler, escrever);
+}
+
+static int contador_hd;
+
+static disco_t *registrar(bool interno, const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
+                          int (*ler)(disco_t *, uint32_t, uint32_t, void *),
+                          int (*escrever)(disco_t *, uint32_t, uint32_t, const void *))
 {
     for (int i = 0; i < MAX_DISCOS; i++) {
         disco_t *d = &discos[i];
         if (d->usado) continue;
         memset(d, 0, sizeof *d);
         d->usado = d->presente = true;
-        snformatar(d->nome, sizeof d->nome, "usb%d", contador++);
+        d->interno = interno;
+        if (interno) snformatar(d->nome, sizeof d->nome, "hd%d", contador_hd++);
+        else snformatar(d->nome, sizeof d->nome, "usb%d", contador++);
         txt_copia_n(d->fabricante, fabricante, sizeof d->fabricante);
         txt_copia_n(d->produto, produto, sizeof d->produto);
         d->setores = setores;
@@ -190,6 +213,7 @@ disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t s
         tamanho_legivel(setores, tam, sizeof tam);
         klog("[DISCO] %s: %s %s, %s, %s, rotulo \"%s\"\n", d->nome, fabricante, produto, tam, d->formato, d->rotulo);
         if (d->de_boot) ;   /* o pendrive de onde o sistema acabou de ligar: nada a avisar */
+        else if (d->interno) ;   /* disco interno: não é pendrive, nada a avisar nem montar */
         else if (d->fat32 && montar_se_for_do_saguios(d))
             avisar(AVISO_MONTADO, "Pendrive com as suas configurações montado em /usb (%s)", d->rotulo[0] ? d->rotulo : d->produto);
         else if (d->fat32) avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s)", d->rotulo[0] ? d->rotulo : d->produto, tam);
@@ -221,6 +245,12 @@ int disco_montar(disco_t *d)
     if (d->montado) return 0;
     if (!d->fat32) return ERRO_FORMATO;
     if (disco_montado()) return ERRO_OCUPADO;      /* um por vez em /usb */
+    /* Disco interno: é o HD de quem testa (o Windows, outro Linux). Por
+     * enquanto o driver só lê, e nada do HD é montado (D062). */
+    if (d->interno) {
+        klog("[DISCO] %s: disco interno, nao monta\n", d->nome);
+        return ERRO_ACESSO;
+    }
     int r = fat_montar(d);
     if (r < 0) return r;
     d->montado = true;
@@ -252,9 +282,13 @@ int disco_desmontar(disco_t *d)
 
 int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t dd, uint32_t e)
 {
-    (void)c; (void)dd; (void)e;
+    (void)dd; (void)e;
     info_disco_t *inf = (info_disco_t *)pinfo;
-    if (!usuario_ok(inf, sizeof *inf, true)) return ERRO_ENDERECO;
+    /* Programas antigos passam 0 em c e têm a estrutura sem o campo
+     * "interno" (D062): escreve só o que cabe no tamanho pedido. */
+    bool com_interno = c >= sizeof *inf;
+    uint32_t tam = com_interno ? sizeof *inf : __builtin_offsetof(info_disco_t, interno);
+    if (!usuario_ok(inf, tam, true)) return ERRO_ENDERECO;
     int k = 0;
     for (int i = 0; i < MAX_DISCOS; i++) {
         disco_t *d = &discos[i];
@@ -268,6 +302,7 @@ int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t 
         inf->setores = d->setores;
         inf->montado = d->montado;
         inf->suportado = d->fat32;
+        if (com_interno) inf->interno = d->interno;
         return 1;
     }
     return 0;

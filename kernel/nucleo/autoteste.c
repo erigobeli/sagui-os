@@ -411,7 +411,11 @@ static void teste_sem_irq12(void)
  * o arquivo da imagem depois, byte a byte. */
 static void teste_usb_setores(void)
 {
-    disco_t *d = disco_indice(0);
+    /* Só pendrive: este teste grava setores, e um disco interno (hd0, hd1)
+     * é o HD de quem testa. */
+    disco_t *d = NULL;
+    for (int i = 0; !d && disco_indice(i); i++)
+        if (!disco_indice(i)->interno) d = disco_indice(i);
     confere(d != NULL, "um pendrive foi reconhecido");
     if (!d) return;
     uint8_t *buf = kmalloc(64 * 512), *volta = kmalloc(64 * 512);

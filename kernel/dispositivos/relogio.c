@@ -20,6 +20,7 @@
 #define PIT_CMD    0x43
 
 static volatile uint32_t tiques;
+static uint16_t pit_divisor;   /* o canal 0 desce dele até 0 a cada tique */
 
 /* A cada tique: conta o tempo e deixa o escalonador decidir se troca de
  * processo. É isto que torna a multitarefa preemptiva: nenhum programa
@@ -41,11 +42,38 @@ void relogio_iniciar(void)
     porta_escreve8(PIT_CMD, 0x34);              /* canal 0, byte baixo e alto, modo 2 (gerador de taxa) */
     porta_escreve8(PIT_CANAL0, divisor & 0xFF);
     porta_escreve8(PIT_CANAL0, divisor >> 8);
+    pit_divisor = (uint16_t)divisor;
     irq_registrar(0, ao_tique);
 }
 
 uint32_t relogio_tiques(void)   { return tiques; }
 uint32_t relogio_segundos(void) { return tiques / TIQUES_POR_SEGUNDO; }
+
+/* Cronômetro que anda também com as interrupções desligadas (o driver ATA
+ * espera o disco assim): trava e lê o contador do canal 0 do PIT, que desce
+ * de "divisor" até 0 a cada tique, e soma o quanto ele desceu desde a última
+ * leitura. Vale enquanto for lido mais de uma vez por tique (10 ms); ler
+ * menos só faz contar menos, nunca mais. */
+static uint16_t pit_ler(void)
+{
+    porta_escreve8(PIT_CMD, 0x00);              /* trava o valor do canal 0 */
+    uint16_t v = porta_le8(PIT_CANAL0);
+    return (uint16_t)(v | porta_le8(PIT_CANAL0) << 8);
+}
+
+void cronometro_iniciar(cronometro_t *c)
+{
+    c->ult = pit_ler();
+    c->pulsos = 0;
+}
+
+uint32_t cronometro_ms(cronometro_t *c)
+{
+    uint16_t v = pit_ler();
+    c->pulsos += c->ult >= v ? (uint32_t)(c->ult - v) : (uint32_t)c->ult + pit_divisor - v;
+    c->ult = v;
+    return c->pulsos / (PIT_FREQ / 1000);
+}
 
 void relogio_dormir_ms(uint32_t ms)
 {
