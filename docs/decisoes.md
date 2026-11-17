@@ -2084,3 +2084,42 @@ antigos continuam recebendo só o que cabe, D062); `info_boot_t.disco_id`
 confirmação, a caixa (o que mostra, nome errado, Esc, nome certo), a
 liberação que acaba com o processo e, no fim, o disco conferido byte a byte:
 só o setor gravado depois da confirmação mudou.
+
+## D064. O instalador, por enquanto só apagando o disco inteiro (issue #45)
+
+**Contexto.** Com o driver ATA (D062) e a trava dos setores crus (D063), dá
+para levar o SaguiOS do pendrive para um disco. Editar partições e instalar
+num espaço livre mexe com os dados de outros sistemas e precisa de uma
+leitura da tabela muito mais cuidadosa (partições lógicas, GPT, tabelas
+malformadas). Por isso o instalador entra primeiro só com o caso mais
+simples e fácil de conferir: apagar o disco inteiro.
+
+**Decisão.**
+- `/bin/instalar` é um assistente em quatro passos: boas-vindas, disco,
+  resumo e instalação. Não tem opções de linha de comando.
+- Nada do disco escolhido é lido ou gravado antes do botão **Instalar**, no
+  resumo. É nele que o instalador chama `SIS_DISCO_LIBERAR` com o resumo, e
+  o kernel mostra a caixa em que a pessoa digita o nome do disco. O botão
+  Instalar não responde ao Enter. Nome errado ou Esc voltam ao resumo.
+- O resumo diz tudo o que muda: as partições e os dados somem, e o código de
+  boot, a tabela de partições e o identificador do disco são trocados (um
+  Windows ou Linux que ligava pelo disco deixa de ligar).
+- O que fica no disco: o primeiro MB e os 33 setores do fim (a cópia da
+  GPT) zerados; a partição do sistema (0xDA, ativa) a partir de 1 MB, com o
+  estágio 2, o kernel e o ramdisk copiados da origem; a FAT32 `SAGUIOS`
+  logo depois, alinhada em 1 MB, com `.saguios/configuracoes.txt`
+  (`sistema.instalado = sim`); o cabeçalho de boot no setor 1, com os LBA
+  novos; e por último o MBR, com um identificador novo. Cada setor gravado
+  é lido de volta e conferido.
+- O kernel monta um disco interno só se for a FAT32 de rótulo `SAGUIOS`
+  com `.saguios/configuracoes.txt`, ou se o processo que pede está liberado
+  para esse disco (o instalador, para gravar as configurações). Montado, o
+  disco aparece como "Disco", sem "Remover com segurança".
+- A FAT32 é formatada pelo próprio instalador, pela especificação da
+  Microsoft ("FAT32 File System Specification", 2000).
+
+**Teste.** `h110_instalar`: Cancelar, Enter no resumo, nome errado e Esc não
+mudam um byte do disco; a instalação deixa o MBR, o primeiro MB, o fim do
+disco, o sistema (cópia exata da origem) e a FAT32 (fsck.vfat) como
+descrito; ligando pelo disco, a partição dos arquivos monta sozinha e
+guarda um arquivo depois de reiniciar.

@@ -194,6 +194,12 @@ $(B)/userland/bin/jogos: $(B)/userland/programas/jogos.o $(B)/userland/arte_icon
 	$(LD) $(ULDFLAGS) -o $@.elf $< $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
+# O instalador mostra os ícones dos discos (D064).
+$(B)/userland/bin/instalar: $(B)/userland/programas/instalar.o $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $< $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
 $(B)/userland/jogos/%.o: userland/jogos/%.c $(wildcard userland/jogos/*/*.h) $(USER_HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(UCFLAGS) -c -o $@ $<

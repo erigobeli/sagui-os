@@ -167,10 +167,12 @@ static void reconhecer(disco_t *d)
  * as configurações valem desde o boot (D031). Os outros continuam esperando
  * o usuário montar. A espiada é só leitura: se não for do SaguiOS, desmonta
  * sem gravar nada. */
+static bool liberado_para_atual(const disco_t *d);
+
 static bool montar_se_for_do_saguios(disco_t *d)
 {
     if (disco_montado()) return false;
-    if (d->interno) return false;   /* disco interno: nunca monta (D062) */
+    if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) return false;   /* disco interno: só a partição do SaguiOS (D064) */
     if (fat_montar(d) < 0) return false;
     if (!config_tem_arquivo()) { fat_desmontar(false); return false; }
     d->montado = true;
@@ -224,9 +226,10 @@ static disco_t *registrar(bool interno, const char *fabricante, const char *prod
         tamanho_legivel(setores, tam, sizeof tam);
         klog("[DISCO] %s: %s %s, %s, %s, rotulo \"%s\"\n", d->nome, fabricante, produto, tam, d->formato, d->rotulo);
         if (d->de_boot) ;   /* o pendrive de onde o sistema acabou de ligar: nada a avisar */
-        else if (d->interno) ;   /* disco interno: não é pendrive, nada a avisar nem montar */
-        else if (d->fat32 && montar_se_for_do_saguios(d))
-            avisar(AVISO_MONTADO, "Pendrive com as suas configurações montado em /usb (%s)", d->rotulo[0] ? d->rotulo : d->produto);
+        else if (d->fat32 && montar_se_for_do_saguios(d)) {
+            if (!d->interno)      /* o disco instalado monta calado, como um disco de sistema */
+                avisar(AVISO_MONTADO, "Pendrive com as suas configurações montado em /usb (%s)", d->rotulo[0] ? d->rotulo : d->produto);
+        } else if (d->interno) ;  /* outros discos internos: nada a avisar nem montar */
         else if (d->fat32) avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s)", d->rotulo[0] ? d->rotulo : d->produto, tam);
         else avisar(AVISO_CONECTADO, "Pendrive conectado: %s (%s), %s", d->produto, tam, d->formato);
         return d;
@@ -256,14 +259,22 @@ int disco_montar(disco_t *d)
     if (d->montado) return 0;
     if (!d->fat32) return ERRO_FORMATO;
     if (disco_montado()) return ERRO_OCUPADO;      /* um por vez em /usb */
-    /* Disco interno: é o HD de quem testa (o Windows, outro Linux). Por
-     * enquanto o driver só lê, e nada do HD é montado (D062). */
-    if (d->interno) {
+    /* Disco interno: é o HD de quem testa (o Windows, outro Linux). Só
+     * monta a partição que o instalador criou: FAT32 com rótulo SAGUIOS e
+     * .saguios/configuracoes.txt. O instalador, liberado para esse disco
+     * (D063), monta a partição recém-formatada para gravar esse arquivo
+     * (D064). */
+    if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) {
         klog("[DISCO] %s: disco interno, nao monta\n", d->nome);
         return ERRO_ACESSO;
     }
     int r = fat_montar(d);
     if (r < 0) return r;
+    if (d->interno && !config_tem_arquivo() && !liberado_para_atual(d)) {
+        fat_desmontar(false);
+        klog("[DISCO] %s: disco interno, nao monta\n", d->nome);
+        return ERRO_ACESSO;
+    }
     d->montado = true;
     vfs_ponto_montagem(true);
     config_ao_montar();   /* as configurações guardadas nesse pendrive passam a valer (H37) */
@@ -285,7 +296,8 @@ int disco_desmontar(disco_t *d)
     d->montado = false;
     vfs_ponto_montagem(false);
     config_ao_desmontar();
-    avisar(AVISO_DESMONTADO, "Pode remover o pendrive.");
+    if (d->interno) avisar(AVISO_DESMONTADO, "Disco %s desmontado: tudo gravado.", d->nome);
+    else avisar(AVISO_DESMONTADO, "Pode remover o pendrive.");
     return r;
 }
 

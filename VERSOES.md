@@ -64,6 +64,9 @@ Já no código (no `main`), ainda não lançado como imagem:
 - **Gravar direto no disco fica travado no kernel** (D063): só depois que a
   pessoa digita o nome do disco numa caixa desenhada pelo próprio kernel,
   que mostra o disco e o que o programa diz que vai fazer.
+- **Instalador do SaguiOS** (D064): um assistente que copia o sistema do
+  pendrive para um disco, por enquanto apagando o disco inteiro, e cria a
+  partição dos seus arquivos. Ligado pelo disco, ela monta sozinha.
 
 ## Versões lançadas
 

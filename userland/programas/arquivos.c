@@ -202,10 +202,10 @@ static void desenhar_lateral(void)
     botao_desenhar(j, &bt_lado_raiz);
     if (tem_pendrive) {
         static char rotulo[24];
-        copia_texto(rotulo, pendrive.rotulo[0] ? pendrive.rotulo : "Pendrive", sizeof rotulo);
+        copia_texto(rotulo, pendrive.interno ? "Disco" : pendrive.rotulo[0] ? pendrive.rotulo : "Pendrive", sizeof rotulo);
         bt_lado_pen.texto = rotulo;
         botao_desenhar(j, &bt_lado_pen);
-        if (pendrive.montado) {
+        if (pendrive.montado && !pendrive.interno) {   /* o disco local não sai */
             bt_remover.texto = "";
             botao_desenhar(j, &bt_remover);
             g_texto(j, 8 + 12, 148 + 6, "Remover com", COR_TEXTO);
@@ -223,7 +223,9 @@ static bool atualizar_pendrive(void)
     info_disco_t d;
     bool achou = false;
     for (int i = 0; listar_discos(i, &d) == 1; i++) {
-        if (d.interno) continue;   /* disco interno: é o HD de quem testa, e o kernel não monta (D062) */
+        /* Disco interno só se for a partição do SaguiOS: o resto do HD é de
+         * quem testa, e o kernel nem monta (D062). */
+        if (d.interno && compara_texto(d.rotulo, "SAGUIOS") != 0) continue;
         if (d.suportado) { achou = true; break; }
     }
     bool mudou = achou != tem_pendrive || (achou && (d.montado != pendrive.montado || compara_texto(d.nome, pendrive.nome) != 0));
@@ -774,7 +776,7 @@ int principal(int argc, char **argv)
             if (r < 0) { char m[120]; formatar_texto(m, sizeof m, "Não consegui montar o pendrive:\n%s", nome_erro(r)); mensagem("Arquivos", m); }
             else { atualizar_pendrive(); desenhar_lateral(); copia_texto(pasta, "/usb", sizeof pasta); carregar(); registrar("arquivos: pendrive aberto"); }
         }
-        if (tem_pendrive && pendrive.montado && botao_tratar(j, &bt_remover, &e)) {
+        if (tem_pendrive && pendrive.montado && !pendrive.interno && botao_tratar(j, &bt_remover, &e)) {
             int r = desmontar(pendrive.nome);
             registrar("arquivos: remover com seguranca -> %d", r);
             if (comeca_com(pasta, "/usb")) { copia_texto(pasta, "/", sizeof pasta); carregar(); }

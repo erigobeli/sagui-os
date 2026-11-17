@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""H105 - discos rígidos IDE/ATA, só leitura (issue #45, parte 1).
+"""H105 - discos rígidos IDE/ATA (issue #45; D062 e D064).
 
 Critérios:
-  - o driver ATA acha o disco do sistema (hd0) e um segundo disco (hd1) e
-    lê o que há neles (formato e rótulo da FAT32, no log);
-  - nenhum disco interno monta sozinho, nem a FAT32 com as configurações do
-    SaguiOS: não há aviso de "pendrive" nem ícone;
-  - "montar hd1" recusa (ERRO_ACESSO) e o Arquivos não oferece o disco;
-  - o HD sai byte a byte igual ao que entrou (o driver só lê);
+  - o driver ATA acha o disco do sistema (hd0) e mais dois discos e lê o
+    que há neles (formato e rótulo da FAT32, no log);
+  - a partição que o instalador cria (FAT32 SAGUIOS com as configurações)
+    monta sozinha, sem o aviso de "pendrive";
+  - a FAT32 de outro sistema num HD não monta: "montar hd2" recusa
+    (ERRO_ACESSO), e esse HD sai byte a byte igual ao que entrou;
   - um pendrive USB ao lado continua montando como antes;
   - captura para a revisão a olho.
 """
@@ -49,12 +49,15 @@ def main():
                   "o driver ATA acha os três discos (hd0, hd1 e hd2)")
         verificar('FAT32, rotulo "SAGUIOS"' in s and 'rotulo "DADOS"' in s,
                   "o driver lê os discos: formato e rótulo das duas FAT32")
-        verificar("montado sozinho" not in s and "Pendrive com as suas configura" not in s,
-                  "nenhum disco interno monta sozinho, nem o com as configurações do SaguiOS")
-        for nome in ("hd1", "hd2"):
-            out = m.comando(f"montar {nome}")
-            verificar(f"{nome}: disco interno, nao monta" in m.serial() and "montado em /usb" not in out,
-                      f"montar {nome} recusa ({out.strip()[-60:]!r})")
+        verificar("tem configuracoes do SaguiOS: montado sozinho" in s and "Pendrive com as suas configura" not in s,
+                  "a partição SAGUIOS do hd1 monta sozinha, sem aviso de pendrive")
+        out = m.comando("cat /usb/nota.txt")
+        verificar("escrito aqui fora" in out, "o SaguiOS lê o arquivo do hd1")
+        out = m.comando("desmontar")
+        verificar("Disco hd1 desmontado: tudo gravado." in out and "pendrive" not in out, f"desmontar fala de disco ({out.strip()[-60:]!r})")
+        out = m.comando("montar hd2")
+        verificar("hd2: disco interno, nao monta" in m.serial() and "montado em /usb" not in out,
+                  f"montar hd2 recusa a FAT32 de outro sistema ({out.strip()[-60:]!r})")
         out = m.comando("montar usb0")
         verificar("montado em /usb" in out, f"o pendrive USB ainda monta ({out.strip()[-60:]!r})")
         out = m.comando("cat /usb/oi.txt")
@@ -64,10 +67,8 @@ def main():
         m.esperar_serial("arquivos: pasta /", 30)
         time.sleep(1)
         m.captura("H105-disco")
-        verificar("[ATA] " in m.serial() and "gravacao recusada" not in m.serial(), "ninguém tentou gravar no HD")
 
-    for p, h in antes.items():
-        verificar(soma(p) == h, f"{os.path.basename(p)} saiu byte a byte igual (o driver só lê)")
+    verificar(soma(alheio) == antes[alheio], "o HD de outro sistema saiu byte a byte igual")
 
 
 if __name__ == "__main__":

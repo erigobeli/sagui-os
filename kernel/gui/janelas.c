@@ -1830,8 +1830,8 @@ static void tarefa_gerenciador(void *arg)
         while (disco_proximo_aviso(&tipo, texto, sizeof texto))
             gui_aviso(texto);
         disco_t *pd = NULL;
-        for (int k = 0; k < MAX_DISCOS && !pd; k++) { disco_t *d = disco_indice(k); if (d && d->presente && !d->de_boot && !d->interno) pd = d; }   /* disco interno não é pendrive */
-        if (area_pendrive(pd != NULL, pd ? (pd->rotulo[0] ? pd->rotulo : "Pendrive") : NULL))
+        for (int k = 0; k < MAX_DISCOS && !pd; k++) { disco_t *d = disco_indice(k); if (d && d->presente && !d->de_boot && (!d->interno || d->montado)) pd = d; }   /* HD sem montar não é pendrive */
+        if (area_pendrive(pd != NULL, pd ? (pd->interno ? "Disco" : pd->rotulo[0] ? pd->rotulo : "Pendrive") : NULL))
             gui_redesenhar(0, BARRA_SUPERIOR, 140, (int)video_altura() - BARRA_SUPERIOR);
         if (aviso_ate && (int32_t)(relogio_tiques() - aviso_ate) >= 0) {
             aviso_ate = 0;
@@ -1954,7 +1954,9 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     j->x = 150 + n * 34;
     j->y = BARRA_SUPERIOR + 30 + n * 28;
     if (j->x + moldura_l(j) > (int)video_largura()) j->x = (int)video_largura() - moldura_l(j);
-    if (j->y + moldura_a(j) > (int)video_altura()) j->y = (int)video_altura() - moldura_a(j);
+    /* Sem passar da doca: os botões do rodapé ficariam debaixo dela. */
+    int base = doca_ligada ? doca_y - 4 : (int)video_altura();
+    if (j->y + moldura_a(j) > base) j->y = base - moldura_a(j);
     if (j->x < 0) j->x = 0;
     if (j->y < BARRA_SUPERIOR) j->y = BARRA_SUPERIOR;
     janela_t *antes = focada();

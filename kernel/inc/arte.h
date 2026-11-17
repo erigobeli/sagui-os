@@ -26,6 +26,7 @@ ARTE_PX(sobre) ARTE_PX(pendrive) ARTE_PX(configuracoes) ARTE_PX(cipo) ARTE_PX(in
 ARTE_PX(saguicode) ARTE_PX(jogos) ARTE_PX(cacabananas) ARTE_PX(paciencia) ARTE_PX(chip8)
 ARTE_PX(jclic) ARTE_PX(chuva) ARTE_PX(triangulos) ARTE_PX(componentes) ARTE_PX(energia)
 ARTE_PX(lupa) ARTE_PX(lixeira) ARTE_PX(lixeira_cheia) ARTE_PX(visualizador)
+ARTE_PX(disco) ARTE_PX(instalar_sistema)
 #undef ARTE_PX
 
 #endif
