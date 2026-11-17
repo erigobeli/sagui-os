@@ -10,8 +10,9 @@
  *     em /usb sozinho: configurações, programas instalados, capturas e o
  *     que você guardar ali continuam depois de desligar.
  *
- * Uso: instalar               (janela)
- *      instalar hd1 --sim     (sem perguntar; para os testes)
+ * Uso: instalar (só pela janela). Não há jeito de pular a confirmação: o
+ * kernel só deixa gravar no disco depois de a pessoa digitar o nome dele
+ * numa caixa desenhada pelo próprio kernel (SIS_DISCO_LIBERAR, D063).
  *
  * A FAT32 é formatada aqui, pela especificação da Microsoft ("FAT32 File
  * System Specification", 2000): setor de boot com o BPB, FSInfo, cópia do
@@ -161,7 +162,12 @@ static int instalar(const char *origem, const char *destino, uint32_t total)
     /* 2. A FAT32 dos arquivos. */
     if (formatar_fat32(destino, dados_ini, dados_n) < 0) return -1;
 
-    /* 3. A tabela de partições: a do sistema como estava, e a FAT32 depois. */
+    /* 3. A tabela de partições: a do sistema como estava, e a FAT32 depois.
+     * O identificador do disco (0x1B8) é novo: é por ele que o kernel sabe
+     * de qual disco ligou, e a origem e o destino não podem ficar iguais. */
+    uint32_t id = 0;
+    while (!id) bytes_aleatorios(&id, sizeof id);
+    poe32(mbr + 440, id);
     for (int k = 0; k < 4; k++) {
         uint8_t *e = mbr + 446 + k * 16;
         if (e[4] != 0xDA) memset(e, 0, 16);
@@ -199,42 +205,14 @@ static int instalar(const char *origem, const char *destino, uint32_t total)
     return 0;
 }
 
-/* O disco de onde o sistema ligou: o primeiro com a partição 0xDA. */
-static bool achar_origem(char *nome, int max)
+/* O disco de onde o sistema ligou, como o kernel diz (pelo identificador
+ * do MBR lido no boot). */
+static bool achar_origem(char *nome, int max, bool *interno)
 {
     info_disco_t d;
-    uint8_t mbr[SETOR];
-    uint32_t fim;
     for (int i = 0; listar_discos(i, &d) == 1; i++)
-        if (sistema_em(d.nome, &fim, mbr)) { copia_texto(nome, d.nome, (size_t)max); return true; }
+        if (d.origem) { copia_texto(nome, d.nome, (size_t)max); *interno = d.interno; return true; }
     return false;
-}
-
-/* ------------------------------------------------------------ linha de comando */
-
-static void progresso_texto(int pct, const char *etapa)
-{
-    static int ultimo = -1;
-    if (pct / 10 == ultimo / 10 && pct != 100) return;
-    ultimo = pct;
-    imprimir("  %3d%%  %s\n", pct, etapa);
-}
-
-static int linha_de_comando(const char *destino)
-{
-    char origem[8];
-    if (!achar_origem(origem, sizeof origem)) { imprimir("instalar: não achei o disco do SaguiOS\n"); return 1; }
-    if (compara_texto(origem, destino) == 0) { imprimir("instalar: %s é o disco de onde o sistema ligou\n", destino); return 1; }
-    info_disco_t d;
-    uint32_t total = 0;
-    for (int i = 0; listar_discos(i, &d) == 1; i++)
-        if (compara_texto(d.nome, destino) == 0) total = d.setores;
-    if (!total) { imprimir("instalar: não existe o disco %s\n", destino); return 1; }
-    avisar_progresso = progresso_texto;
-    imprimir("Instalando o SaguiOS de %s em %s...\n", origem, destino);
-    if (instalar(origem, destino, total) < 0) { imprimir("instalar: %s\n", erro); registrar("instalar: erro: %s", erro); return 1; }
-    imprimir("Pronto. Desligue, tire o disco de instalação e ligue pelo %s.\n", destino);
-    return 0;
 }
 
 /* ------------------------------------------------------------ janela */
@@ -260,13 +238,14 @@ int principal(int argc, char **argv)
 {
     buf = aloca(POR_VEZ * SETOR);
     if (!buf) return 1;
-    if (argc >= 3 && compara_texto(argv[2], "--sim") == 0) return linha_de_comando(argv[1]);
-    if (argc >= 2) { imprimir("uso: instalar          (janela)\n      instalar hd1 --sim\n"); return 1; }
+    (void)argv;
+    if (argc >= 2) { imprimir("uso: instalar   (abre a janela; não há opções)\n"); return 1; }
 
     j = jan_abrir("Instalar o SaguiOS", L, A);
     if (!j) return 1;
     char origem[8];
-    bool tem_origem = achar_origem(origem, sizeof origem);
+    bool origem_interna = false;
+    bool tem_origem = achar_origem(origem, sizeof origem, &origem_interna);
     /* Os discos onde dá para instalar: todos menos o de origem. */
     info_disco_t discos[4];
     botao_t botoes[4];
@@ -277,8 +256,9 @@ int principal(int argc, char **argv)
         if (tem_origem && compara_texto(d.nome, origem) == 0) continue;
         discos[qtd] = d;
         uint32_t mb = d.setores / 2048;
-        if (mb >= 1024) formatar_texto(rotulos[qtd], sizeof rotulos[qtd], "%s: %s (%u,%u GB)", d.nome, d.produto, mb / 1024, mb % 1024 * 10 / 1024);
-        else formatar_texto(rotulos[qtd], sizeof rotulos[qtd], "%s: %s (%u MB)", d.nome, d.produto, mb);
+        const char *tipo = d.interno ? "disco interno" : "pendrive USB";
+        if (mb >= 1024) formatar_texto(rotulos[qtd], sizeof rotulos[qtd], "%s, %s: %s (%u,%u GB)", d.nome, tipo, d.produto, mb / 1024, mb % 1024 * 10 / 1024);
+        else formatar_texto(rotulos[qtd], sizeof rotulos[qtd], "%s, %s: %s (%u MB)", d.nome, tipo, d.produto, mb);
         botao_t b = { 20, 108 + qtd * 40, L - 40, 32, rotulos[qtd], false };
         botoes[qtd++] = b;
     }
@@ -290,12 +270,8 @@ int principal(int argc, char **argv)
     else if (!qtd) {
         /* O único disco é o de onde o sistema ligou: se for interno, o
          * SaguiOS já está instalado nele. */
-        info_disco_t o;
-        bool interno = false;
-        for (int i = 0; listar_discos(i, &o) == 1; i++)
-            if (compara_texto(o.nome, origem) == 0) interno = o.interno;
         char t[96];
-        if (interno) {
+        if (origem_interna) {
             formatar_texto(t, sizeof t, "O SaguiOS já está instalado neste disco (%s).", origem);
             g_texto(j, 20, 116, t, COR_TEXTO);
             g_texto(j, 20, 140, "Para instalar em outro, conecte outro disco.", COR_TEXTO_FRACO);
@@ -315,9 +291,15 @@ int principal(int argc, char **argv)
         if (e.tipo == EV_FECHAR || botao_tratar(j, &fechar_b, &e) || (e.tipo == EV_TECLA && e.tecla == TECLA_ESC)) break;
         for (int i = 0; i < qtd && tem_origem; i++) {
             if (!botao_tratar(j, &botoes[i], &e)) continue;
-            char pergunta[160];
-            formatar_texto(pergunta, sizeof pergunta, "Apagar tudo em %s e instalar o SaguiOS?", discos[i].nome);
-            if (!confirmar("Instalar", pergunta)) break;
+            /* A confirmação é do kernel: a pessoa digita o nome do disco numa
+             * caixa que mostra o modelo, o tamanho e o que há nele. */
+            if (discos[i].montado) desmontar(discos[i].nome);
+            int r = disco_liberar(discos[i].nome);
+            registrar("instalar: liberar %s -> %d", discos[i].nome, r);
+            if (r < 0) {
+                if (r != ERRO_ACESSO) mensagem("Não deu para instalar", nome_erro(r));
+                break;   /* cancelou: nada foi gravado */
+            }
             avisar_progresso = progresso_janela;
             pct_atual = -1;
             if (instalar(origem, discos[i].nome, discos[i].setores) < 0) {

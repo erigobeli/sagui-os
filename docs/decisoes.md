@@ -2034,3 +2034,53 @@ grava nele sem que a pessoa escolha e confirme.
   estrutura do programa (a libsagui manda `sizeof`). Programas antigos
   mandavam 0: o kernel escreve só os campos de antes e não passa do fim da
   estrutura deles, como no campo `bits` da H94.
+- `info_disco_t` ganha também o campo `origem` (1 = o disco de onde o sistema
+  ligou), com a mesma regra do tamanho (D063).
+- Chamadas novas: `SIS_DISCO_SETORES` (80), `SIS_DISCO_RELER` (81) e
+  `SIS_DISCO_LIBERAR` (82), descritas na D063. Erro novo: `ERRO_ES` (-18),
+  "o disco não leu ou não gravou".
+- `info_boot_t` ganha `disco_id` (byte 152 da área do estágio 2): o
+  identificador do MBR do disco de onde o sistema ligou.
+
+## D063. Instalador e a trava dos setores crus (issue #45)
+
+**Contexto.** O instalador grava a tabela de partições, o sistema e uma
+FAT32 nova direto nos setores do disco. Essa chamada apaga um HD inteiro. A
+regra prd2 diz que só se instala num disco que a pessoa escolheu e confirmou,
+nunca por padrão. A confirmação não pode depender do programa, porque um
+programa com defeito, ou feito para isso, pularia a pergunta.
+
+**Decisão.**
+- `SIS_DISCO_SETORES` (80) lê ou grava de 1 a 128 setores de 512 bytes.
+  Gravar em qualquer disco e ler um disco interno só depois da liberação.
+  Sem ela, a chamada devolve ERRO_ACESSO. A exceção é a leitura da partição
+  do sistema (0xDA) do disco de onde o SaguiOS ligou, que é o que o
+  instalador copia e não tem dados de ninguém. Gravar num disco montado
+  continua recusado (ERRO_OCUPADO).
+- `SIS_DISCO_LIBERAR` (82, nome do disco) abre uma caixa desenhada pelo
+  kernel, por cima de tudo. Ela mostra o programa que pediu, o disco, se é
+  interno ou pendrive, o modelo, o tamanho e o que há nele hoje ("vazio",
+  "FAT32 DADOS", "ext (Linux)", "NTFS"...). Para liberar, a pessoa digita
+  o nome do disco (`hd1`) e aperta Enter. Nome diferente não libera, e Esc
+  cancela (ERRO_ACESSO). Enquanto a caixa está aberta, o teclado e o mouse
+  são só dela, e o teclado vem direto do driver: nenhum programa desenha
+  nem digita nela. Quem pede fica bloqueado até a resposta. Sem a interface
+  gráfica, a chamada devolve ERRO_ACESSO.
+- A liberação vale só para aquele disco, só para aquele processo e só até
+  ele terminar (`discos_processo_terminou`, chamado por `processo_encerrar`).
+- `SIS_DISCO_RELER` (81) reconhece de novo o formato de um disco liberado.
+  O nome é copiado com `usuario_texto`.
+- Um processo liberado pode montar a partição SAGUIOS que acabou de criar,
+  antes de ela ter o `.saguios/configuracoes.txt`. É assim que o instalador
+  grava esse arquivo.
+- A origem da cópia é o disco de onde o sistema ligou. O estágio 2 lê o
+  identificador do MBR (bytes 0x1B8-0x1BB) que a BIOS deixou em 0x7C00 e o
+  passa ao kernel. A origem é o único disco com a partição 0xDA e esse
+  identificador. Com dois iguais, nenhum é a origem, e o instalador avisa
+  que não achou. O instalador grava um identificador novo, aleatório, no
+  disco de destino.
+- O instalador só tem a janela: não há `--sim` nem outra forma de pular a
+  confirmação. Os testes digitam o nome do disco pelo QEMU. A lista de
+  destinos diz "disco interno" ou "pendrive USB" ao lado de cada nome.
+- `/testes/setores` (só na pasta de testes) chama as duas chamadas para o
+  h109 conferir a trava.

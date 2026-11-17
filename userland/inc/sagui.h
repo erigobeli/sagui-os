@@ -109,6 +109,7 @@ int  listar_discos(int indice, info_disco_t *d);   /* 1 = achou, 0 = acabou */
 int  montar(const char *nome);                     /* "usb0" -> /usb */
 int  disco_setores(pedido_setores_t *p);           /* setores crus (instalador) */
 int  disco_reler(const char *nome);                /* reconhecer o formato de novo */
+int  disco_liberar(const char *nome);              /* a pessoa digita o nome do disco numa caixa do kernel (D063) */
 int  desmontar(const char *nome);
 
 /* ---- som (bônus B3): volta na hora, o kernel toca em segundo plano ---- */

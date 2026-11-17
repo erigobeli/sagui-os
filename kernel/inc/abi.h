@@ -78,8 +78,9 @@
 #define SIS_AREA_COPIA     78   /* (0, &texto, n) copia; (1, &buffer, max) cola -> tamanho guardado */
 #define SIS_MENU_JANELA    77   /* (id, x | y << 16, "Item|Item|Item") -> abre um menu na janela; a escolha chega em EV_MENU (H81) */
 #define SIS_LER_TELA       79   /* (&pixels, bytes) -> largura | altura << 16; copia a tela (0x00RRGGBB) se couber */
-#define SIS_DISCO_SETORES  80   /* (&pedido_setores) -> 0; lê ou grava setores crus de um disco (o instalador) */
-#define SIS_DISCO_RELER    81   /* (nome) -> 0; reconhece de novo o formato do disco (depois de gravar a tabela) */
+#define SIS_DISCO_SETORES  80   /* (&pedido_setores) -> 0; lê ou grava setores crus; só com SIS_DISCO_LIBERAR (D063) */
+#define SIS_DISCO_RELER    81   /* (nome) -> 0; reconhece de novo o formato do disco liberado (depois de gravar a tabela) */
+#define SIS_DISCO_LIBERAR  82   /* (nome) -> 0 se a pessoa digitou o nome do disco na caixa do kernel; ERRO_ACESSO se não (D063) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -224,6 +225,7 @@ typedef struct {
     unsigned int montado;
     unsigned int suportado;
     unsigned int interno;          /* disco rígido (hd0...), não pendrive */
+    unsigned int origem;           /* o disco de onde o sistema ligou (D063) */
 } info_disco_t;
 
 /* SIS_DISCO_SETORES: setores de 512 bytes, até 128 por chamada. Não

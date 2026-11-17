@@ -18,6 +18,8 @@
 #include "sistema.h"
 #include "texto.h"
 #include "vfs.h"
+#include "gui.h"
+#include "bootinfo.h"
 
 static disco_t discos[MAX_DISCOS];
 static int contador;
@@ -92,6 +94,10 @@ static void reconhecer(disco_t *d)
     if (!s) return;
     txt_copia_n(d->formato, "desconhecido: formato não suportado", sizeof d->formato);
     if (d->ler(d, 0, 1, s) < 0) { txt_copia_n(d->formato, "erro de leitura", sizeof d->formato); kfree(s); return; }
+    d->id_mbr = s[510] == 0x55 && s[511] == 0xAA ? (uint32_t)s[440] | (uint32_t)s[441] << 8 | (uint32_t)s[442] << 16 | (uint32_t)s[443] << 24 : 0;
+    bool vazio = true;
+    for (int i = 0; i < 512 && vazio; i++) vazio = s[i] == 0;
+    if (vazio) txt_copia_n(d->formato, "vazio", sizeof d->formato);
     if (eh_fat32(s)) {                                   /* sem tabela de partições */
         d->part_inicio = 0;
         d->fat32 = true;
@@ -121,7 +127,10 @@ static void reconhecer(disco_t *d)
                 if (v) kfree(v);
                 continue;
             }
-            if (tipo == 0xDA) d->de_boot = true;
+            if (tipo == 0xDA) {
+                d->de_boot = d->tem_sistema = true;
+                d->sistema_fim = ini + ((uint32_t)e[12] | (uint32_t)e[13] << 8 | (uint32_t)e[14] << 16 | (uint32_t)e[15] << 24);
+            }
             if (achou_outro) continue;
             achou_outro = true;
             switch (tipo) {
@@ -255,7 +264,7 @@ int disco_montar(disco_t *d)
     }
     int r = fat_montar(d);
     if (r < 0) return r;
-    if (d->interno && !config_tem_arquivo()) {
+    if (d->interno && !config_tem_arquivo() && d->liberado_pid != atual->pid) {
         fat_desmontar(false);
         klog("[DISCO] %s: disco interno sem a particao do SaguiOS, nao monta\n", d->nome);
         return ERRO_ACESSO;
@@ -310,7 +319,10 @@ int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t 
         inf->setores = d->setores;
         inf->montado = d->montado;
         inf->suportado = d->fat32;
-        if (com_interno) inf->interno = d->interno;
+        if (com_interno) {
+            inf->interno = d->interno;
+            inf->origem = disco_eh_origem(d);
+        }
         return 1;
     }
     return 0;
@@ -332,6 +344,13 @@ int32_t sis_disco_setores(uint32_t pped, uint32_t b, uint32_t c, uint32_t dd, ui
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
     if (n == 0 || n > 128 || d->tam_setor != 512 || lba + n < lba || lba + n > d->setores) return ERRO_INVALIDO;
     if (!usuario_ok(buf, n * 512, !esc)) return ERRO_ENDERECO;
+    /* Só depois da confirmação (SIS_DISCO_LIBERAR, D063): gravar em
+     * qualquer disco e ler um disco interno. Sem ela, só dá para ler a
+     * partição do sistema do disco de onde o SaguiOS ligou (o que o
+     * instalador copia), e os pendrives. */
+    bool liberado = d->liberado_pid == atual->pid;
+    if (esc && !liberado) return ERRO_ACESSO;
+    if (!esc && d->interno && !liberado && !(disco_eh_origem(d) && lba + n <= d->sistema_fim)) return ERRO_ACESSO;
     if (esc && d->montado) return ERRO_OCUPADO;
     /* O buffer do programa pode não ser contíguo na memória física: passa
      * por um do kernel. */
@@ -348,17 +367,75 @@ int32_t sis_disco_reler(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uin
 {
     (void)b; (void)c; (void)dd; (void)e;
     char nome[8];
-    if (!usuario_ok((void *)pnome, 1, false)) return ERRO_ENDERECO;
-    txt_copia_n(nome, (const char *)pnome, sizeof nome);
+    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    if (r < 0) return r;
     disco_t *d = disco_por_nome(nome);
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
+    if (d->liberado_pid != atual->pid) return ERRO_ACESSO;
     if (d->montado) return ERRO_OCUPADO;
-    d->fat32 = d->de_boot = false;
-    d->part_inicio = 0;
+    d->fat32 = d->de_boot = d->tem_sistema = false;
+    d->part_inicio = d->sistema_fim = 0;
     d->rotulo[0] = 0;
     reconhecer(d);
     klog("[DISCO] %s relido: %s, rotulo \"%s\"\n", d->nome, d->formato, d->rotulo);
     return 0;
+}
+
+/* O disco de onde o sistema ligou: o único com a partição do SaguiOS e o
+ * mesmo identificador do MBR que o estágio 2 leu no boot. Com dois iguais
+ * (a mesma imagem gravada em dois discos), nenhum é a origem: melhor não
+ * saber do que copiar do disco errado. */
+bool disco_eh_origem(const disco_t *d)
+{
+    if (!d->usado || !d->presente || !d->tem_sistema || d->id_mbr != info_boot.disco_id) return false;
+    for (int i = 0; i < MAX_DISCOS; i++) {
+        const disco_t *o = &discos[i];
+        if (o != d && o->usado && o->presente && o->tem_sistema && o->id_mbr == d->id_mbr) return false;
+    }
+    return true;
+}
+
+void discos_processo_terminou(int pid)
+{
+    for (int i = 0; i < MAX_DISCOS; i++)
+        if (discos[i].liberado_pid == pid) {
+            discos[i].liberado_pid = 0;
+            klog("[DISCO] %s: liberacao do processo %d acabou\n", discos[i].nome, pid);
+        }
+}
+
+/* SIS_DISCO_LIBERAR (nome) -> 0 se a pessoa confirmou digitando o nome do
+ * disco na caixa do kernel; ERRO_ACESSO se cancelou. Vale só para esse
+ * disco, só para quem pediu e só até ele terminar (D063). */
+int32_t sis_disco_liberar(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uint32_t e)
+{
+    (void)b; (void)c; (void)dd; (void)e;
+    char nome[8];
+    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    if (r < 0) return r;
+    disco_t *d = disco_por_nome(nome);
+    if (!d || !d->presente) return ERRO_NAO_EXISTE;
+    if (d->liberado_pid == atual->pid) return 0;
+    int res = gui_confirmacao_resultado(atual->pid);
+    if (res == 1) {
+        d->liberado_pid = atual->pid;
+        klog("[DISCO] %s liberado para o processo %d (%s)\n", d->nome, atual->pid, atual->nome);
+        return 0;
+    }
+    if (res == -1) return ERRO_ACESSO;
+    if (res == -2) {
+        char tam[24], l[5][88];
+        tamanho_legivel(d->setores, tam, sizeof tam);
+        snformatar(l[0], sizeof l[0], "O programa \"%s\" pediu para ler e gravar setores do disco:", atual->nome);
+        snformatar(l[1], sizeof l[1], "%s, %s: %s %s, %s", d->nome, d->interno ? "disco interno" : "pendrive USB", d->fabricante, d->produto, tam);
+        snformatar(l[2], sizeof l[2], "O que tem nele hoje: %s%s%s%s", d->formato, d->rotulo[0] ? " \"" : "", d->rotulo, d->rotulo[0] ? "\"" : "");
+        l[3][0] = 0;
+        snformatar(l[4], sizeof l[4], "Tudo o que está em %s pode ser apagado.", d->nome);
+        const char *const linhas[5] = { l[0], l[1], l[2], l[3], l[4] };
+        if (!gui_confirmar_disco(atual->pid, d->nome, linhas)) return gui_ativa() ? ERRO_OCUPADO : ERRO_ACESSO;
+    }
+    bloquear(gui_confirmacao_canal());   /* a caixa acorda quem pediu ao fechar */
+    return SIS_REPETIR;
 }
 
 int32_t sis_montar(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uint32_t e)
