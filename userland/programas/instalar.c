@@ -220,13 +220,27 @@ static uint32_t sistema_mb(void) { return acima_mb(sis.n + 1); }   /* o cabeçal
 /* Onde vai cada coisa no disco escolhido. */
 static uint32_t s_ini, s_n, d_ini, d_n;
 
-enum { MODO_INTEIRO, MODO_LIVRE };
+enum { MODO_INTEIRO, MODO_LIVRE, MODO_EDITAR };
 static int modo = MODO_INTEIRO;
 static tabela_disco_t tab;                /* o que o kernel leu da tabela do disco escolhido (D066) */
 static bool tab_ok;
 static uint32_t livre_ini, livre_n;       /* a maior região sem partição, alinhada em MB */
 static int vagas[4], qtd_vagas;           /* as entradas vazias da tabela */
-static char livre_motivo[120];            /* por que o espaço livre não é oferecido */
+static char livre_motivo[120];            /* por que não dá (com as exclusões, no editor) */
+static bool pode_livre;                   /* o espaço livre de hoje, sem excluir nada, basta */
+static char motivo_livre[120];            /* ...e, se não basta, por quê */
+static uint32_t excluir;                  /* no editor: as primárias (índices em tab.p) que vão ser excluídas */
+
+static bool eh_estendida(uint32_t tipo) { return tipo == 0x05 || tipo == 0x0F || tipo == 0x85; }
+
+/* Uma partição sai junto: a lógica, com a estendida dela. */
+static bool excluida(uint32_t i)
+{
+    if (tab.p[i].entrada <= 4) return (excluir >> i) & 1;
+    for (uint32_t k = 0; k < tab.n; k++)
+        if (eh_estendida(tab.p[k].tipo) && tab.p[k].entrada <= 4) return (excluir >> k) & 1;
+    return false;
+}
 
 /* A maior região livre. As primárias (a estendida conta inteira, com as
  * lógicas dentro) são percorridas pelo início, e a região livre começa no
@@ -234,6 +248,7 @@ static char livre_motivo[120];            /* por que o espaço livre não é ofe
  * de outra, o fim da menor cai no meio da maior (B2 da revisão do #53). */
 static bool achar_livre(void)
 {
+    uint32_t excl = modo == MODO_EDITAR ? excluir : 0;    /* no editor, o lugar das excluídas conta como livre */
     livre_ini = livre_n = 0;
     qtd_vagas = 0;
     livre_motivo[0] = 0;
@@ -248,7 +263,7 @@ static bool achar_livre(void)
     int n = 0;
     for (uint32_t i = 0; i < tab.n; i++) {
         const particao_t *p = &tab.p[i];
-        if (p->entrada < 1 || p->entrada > 4) continue;
+        if (p->entrada < 1 || p->entrada > 4 || ((excl >> i) & 1)) continue;
         usada[p->entrada - 1] = true;
         int k = n++;
         while (k > 0 && ini[k - 1] > p->inicio) { ini[k] = ini[k - 1]; fim[k] = fim[k - 1]; k--; }
@@ -284,7 +299,7 @@ static bool cabe_inteiro(void)
 static bool planejar(void)
 {
     s_n = sistema_mb();
-    if (modo == MODO_LIVRE) {
+    if (modo != MODO_INTEIRO) {
         if (!livre_n) return false;
         s_ini = livre_ini;
         d_ini = s_ini + s_n;
@@ -323,7 +338,8 @@ static int instalar(void)
     uint32_t total = discos[escolhido].setores;
     if (!planejar()) { copia_texto(erro, "não há lugar para o SaguiOS neste disco", sizeof erro); return -1; }
     registrar("instalar: %s -> %s: sistema em %u (%u setores), arquivos em %u (%u MB), %s",
-              discos[origem].nome, dest, s_ini, sis.n, d_ini, d_n / MB, modo == MODO_LIVRE ? "espaço livre" : "disco inteiro");
+              discos[origem].nome, dest, s_ini, sis.n, d_ini, d_n / MB,
+              modo == MODO_LIVRE ? "espaço livre" : modo == MODO_EDITAR ? "editor" : "disco inteiro");
 
     /* 0. O disco tem de estar como no resumo: a tabela que o kernel lê
      * agora é comparada com a do resumo, e, no espaço livre, cada entrada
@@ -334,7 +350,7 @@ static int instalar(void)
         return -1;
     }
     if (setores(dest, 0, 1, antes, false) < 0) return -1;
-    if (modo == MODO_LIVRE) {
+    if (modo != MODO_INTEIRO) {
         for (uint32_t i = 0; i < tab.n; i++) {
             const particao_t *p = &tab.p[i];
             const uint8_t *e = antes + 446 + (p->entrada - 1) * 16;
@@ -344,8 +360,18 @@ static int instalar(void)
                 return -1;
             }
         }
-        for (int k = 0; k < 2; k++)
-            if (antes[446 + vagas[k] * 16 + 4]) { copia_texto(erro, "a entrada vazia não está vazia; nada foi gravado", sizeof erro); return -1; }
+        for (int k = 0; k < 2; k++) {
+            bool de_excluida = false;
+            for (uint32_t i = 0; i < tab.n; i++) if (tab.p[i].entrada == (uint32_t)vagas[k] + 1 && excluida(i)) de_excluida = true;
+            if (antes[446 + vagas[k] * 16 + 4] && !de_excluida) { copia_texto(erro, "a entrada vazia não está vazia; nada foi gravado", sizeof erro); return -1; }
+        }
+        /* Uma última conta: o lugar do SaguiOS não encosta em nenhuma partição que fica. */
+        for (uint32_t i = 0; i < tab.n; i++) {
+            const particao_t *p = &tab.p[i];
+            if (excluida(i) || (uint64_t)p->inicio >= (uint64_t)d_ini + d_n || (uint64_t)p->inicio + p->setores <= s_ini) continue;
+            formatar_texto(erro, sizeof erro, "o lugar do SaguiOS cairia na partição %u; nada foi gravado", p->entrada);
+            return -1;
+        }
     }
 
     /* 1. Disco inteiro: apaga o que diz como o disco era, o primeiro MB
@@ -386,15 +412,17 @@ static int instalar(void)
      * troca do identificador quebraria o boot do Windows (BCD) e o
      * PARTUUID do Linux. */
     uint8_t m[SETOR];
-    if (modo == MODO_LIVRE) {
+    if (modo != MODO_INTEIRO) {
         memcpy(m, antes, SETOR);
         memcpy(m, sis.mbr, 440);
+        for (uint32_t i = 0; i < tab.n; i++)                  /* no editor: as excluídas somem da tabela */
+            if (tab.p[i].entrada <= 4 && excluida(i)) memset(m + 446 + (tab.p[i].entrada - 1) * 16, 0, 16);
         poe32(m + MBR_CAB, s_ini);
         uint32_t id = le32(antes + 440);
         while (!id) bytes_aleatorios(&id, sizeof id);
         poe32(m + 440, id);
         bool alguma_ativa = false;
-        for (int k = 0; k < 4; k++) if (antes[446 + k * 16] == 0x80) alguma_ativa = true;
+        for (int k = 0; k < 4; k++) if (m[446 + k * 16] == 0x80) alguma_ativa = true;
         entrada(m + 446 + vagas[0] * 16, 0xDA, !alguma_ativa, s_ini, s_n);
         entrada(m + 446 + vagas[1] * 16, 0x0C, false, d_ini, d_n);
     } else {
@@ -425,7 +453,7 @@ static int instalar(void)
         escrever(fd, t, (unsigned)tam_texto(t));
         fechar(fd);
     }
-    if (fd >= 0 && modo == MODO_LIVRE) {           /* o setor 0 de antes: com ele, o boot antigo volta */
+    if (fd >= 0 && modo != MODO_INTEIRO) {           /* o setor 0 de antes: com ele, o boot antigo volta */
         int g = abrir("/usb/.saguios/mbr-antes.bin", ABRIR_ESCREVER | ABRIR_CRIAR | ABRIR_TRUNCAR);
         if (g < 0 || escrever(g, antes, SETOR) != SETOR) fd = -1;
         if (g >= 0) fechar(g);
@@ -683,6 +711,29 @@ static int linhas_resumo(char l[5][120])
         formatar_texto(l[3], 120, "trocar o código de boot; as %u partições de hoje ficam", tab.n);
         return 4;
     }
+    if (modo == MODO_EDITAR) {
+        /* Todas as exclusões, sem cortar: as primárias pelo número, e as
+         * lógicas (que saem com a estendida) pelo intervalo. */
+        char lista[40] = "";
+        uint32_t lmin = 0, lmax = 0, ficam = 0, qtd = 0;
+        for (uint32_t i = 0; i < tab.n; i++) {
+            const particao_t *p = &tab.p[i];
+            if (!excluida(i)) { ficam++; continue; }
+            if (p->entrada >= 5) { if (!lmin || p->entrada < lmin) lmin = p->entrada; if (p->entrada > lmax) lmax = p->entrada; continue; }
+            char um[8];
+            formatar_texto(um, sizeof um, "%s%u", qtd++ ? ", " : "", p->entrada);
+            junta_texto(lista, um, sizeof lista);
+        }
+        if (lmin == lmax && lmin) formatar_texto(l[0], 120, "excluir %s %s de %s (e a lógica %u)", qtd > 1 ? "as partições" : "a partição", lista, n, lmin);
+        else if (lmin) formatar_texto(l[0], 120, "excluir %s %s de %s (e as lógicas %u a %u)", qtd > 1 ? "as partições" : "a partição", lista, n, lmin, lmax);
+        else if (qtd) formatar_texto(l[0], 120, "excluir %s %s de %s", qtd > 1 ? "as partições" : "a partição", lista, n);
+        else formatar_texto(l[0], 120, "não excluir nada; usar o espaço livre de %s", n);
+        formatar_texto(l[1], 120, "copiar o SaguiOS para uma partição de %u MB, em %u MB", s_n / MB, s_ini / MB);
+        formatar_texto(l[2], 120, "criar a partição dos seus arquivos: FAT32 \"SAGUIOS\", %u MB", d_n / MB);
+        if (ficam == 1) copia_texto(l[3], "trocar o código de boot; a outra partição fica", 120);
+        else formatar_texto(l[3], 120, "trocar o código de boot; as outras %u partições ficam", ficam);
+        return 4;
+    }
     unsigned logicas = 0;
     for (unsigned i = 0; tab_ok && i < tab.n; i++) if (tab.p[i].entrada >= 5) logicas++;
     if (tab_ok && tab.estado == TABELA_MBR && logicas)
@@ -705,7 +756,10 @@ static void desenhar_resumo(void)
     tx(X0, 42, "Confira. Ao clicar em Instalar, o sistema pede o nome do disco.", COR_TEXTO_FRACO);
     /* O aviso vai colado no rodapé, com a altura do texto; a lista usa o
      * que sobra entre os dois. */
-    const char *aviso = modo == MODO_LIVRE ?
+    const char *aviso = modo == MODO_EDITAR ?
+        "O que está nas partições a excluir se perde. As outras ficam, mas o código de boot do disco é trocado: "
+        "outro sistema que ligava por ele deixa de ligar. O setor 0 de antes fica em /usb/.saguios/mbr-antes.bin." :
+        modo == MODO_LIVRE ?
         "As partições de hoje ficam, mas o código de boot do disco é trocado: outro sistema que ligava por ele "
         "(o Windows, um Linux) deixa de ligar. O setor 0 de antes fica guardado em /usb/.saguios/mbr-antes.bin." :
         "Tudo o que está no disco hoje se perde, e outro sistema que ligava por ele "
@@ -733,23 +787,35 @@ static void desenhar_resumo(void)
     int n = linhas_resumo(l);
     for (int k = 0; k < n; k++) {
         formatar_texto(t, sizeof t, "- %c%s.", l[k][0] - 'a' + 'A', l[k] + 1);
-        if (y + 18 <= fim_lista) tx(X0 + 22, y, t, k == 0 && modo == MODO_INTEIRO ? COR_PERIGO : COR_TEXTO);
+        if (y + 18 <= fim_lista) tx(X0 + 22, y, t, k == 0 && modo != MODO_LIVRE ? COR_PERIGO : COR_TEXTO);
         y += passo_linha;
     }
+    if (modo == MODO_EDITAR)                      /* cada partição que sai, com o que há nela */
+        for (uint32_t i = 0; i < tab.n && y + 18 <= fim_lista; i++) {
+            const particao_t *p = &tab.p[i];
+            if (!excluida(i)) continue;
+            char tam2[24];
+            tamanho_texto(p->setores, tam2, sizeof tam2);
+            formatar_texto(t, sizeof t, "    partição %u: %s, %s, de %u MB a %u MB", p->entrada,
+                           eh_estendida(p->tipo) ? "estendida" : p->formato[0] ? p->formato : "formato desconhecido", tam2,
+                           p->inicio / MB, (uint32_t)(((uint64_t)p->inicio + p->setores) / MB));
+            tx(X0 + 22, y, t, COR_PERIGO);
+            y += passo_linha;
+        }
     lim = antes;
     cartao(X0, ay, CL, ah, COR_AVISO, 0xE8CF8A);
     if (!compacto) negrito(X0 + 18, ay + 12, "Atenção", 0x8A5A00);   /* na janela baixa, sem o título */
     paragrafo(X0 + 18, ay + (compacto ? 12 : 34), CL - 36, aviso, COR_TEXTO);
 }
 
-/* As duas opções do passo Partições e a lista do que há no disco. */
+/* As três opções do passo Partições e a lista do que há no disco. */
 #define MODO_Y(i) (72 + (i) * (compacto ? 52 : 66))
 #define MODO_A    (compacto ? 46 : 58)
 
 static void opcao(int i, const char *titulo, const char *texto, bool pode)
 {
     int y = MODO_Y(i);
-    bool sel = (i == 0 ? MODO_LIVRE : MODO_INTEIRO) == modo && pode;
+    bool sel = (i == 0 ? MODO_LIVRE : i == 1 ? MODO_INTEIRO : MODO_EDITAR) == modo && pode;
     cartao(X0, y, CL, MODO_A, !pode ? 0xF2F4F6 : sel ? COR_VERDE_CL : COR_CARTAO, sel ? COR_DESTAQUE : COR_LINHA);
     if (pode) radio(X0 + 22, y + MODO_A / 2, sel);
     negrito(X0 + 44, y + (compacto ? 6 : 10), titulo, pode ? COR_TEXTO : COR_TEXTO_FRACO);
@@ -767,18 +833,31 @@ static void linha_part(int y, const char *n, const char *o, uint32_t ini, uint32
     tx(X0 + CL - 16 - g_largura_texto(t), y, t, cor);
 }
 
+/* No editor, onde cada partição ficou na lista (para o clique). */
+static int linha_y[TABELA_MAX], linha_i[TABELA_MAX], qtd_linhas;
+
+static bool pode_editar(void) { return tab_ok && tab.estado == TABELA_MBR && tab.conferida && tab.n; }
+
 static void desenhar_modos(void)
 {
     char t[160];
     int antes = lim;
     lim = X0 + CL - 12;
-    if (livre_n && !livre_motivo[0]) formatar_texto(t, sizeof t, "%u MB livres a partir de %u MB. As partições de hoje ficam.", livre_n / MB, livre_ini / MB);
-    else formatar_texto(t, sizeof t, "Não dá: %s.", livre_motivo);
-    opcao(0, "Usar o espaço livre", t, !livre_motivo[0]);
+    qtd_linhas = 0;
+    if (pode_livre) formatar_texto(t, sizeof t, "%u MB livres a partir de %u MB. As partições de hoje ficam.", livre_n / MB, livre_ini / MB);
+    else formatar_texto(t, sizeof t, "Não dá: %s.", motivo_livre);
+    if (modo == MODO_EDITAR && pode_livre) formatar_texto(t, sizeof t, "As partições de hoje ficam.");
+    opcao(0, "Usar o espaço livre", t, pode_livre);
     formatar_texto(t, sizeof t, "Tudo o que está em %s se perde.", discos[escolhido].nome);
     opcao(1, "Apagar o disco inteiro", t, true);
+    if (!pode_editar()) formatar_texto(t, sizeof t, "Não dá: %s.", tab_ok && tab.problema[0] ? tab.problema : "o disco não tem uma tabela MBR com partições");
+    else if (modo != MODO_EDITAR) copia_texto(t, "Escolha na lista quais saem; o SaguiOS vai no lugar delas.", sizeof t);
+    else if (!excluir) copia_texto(t, "Clique na lista nas partições que vão sair.", sizeof t);
+    else if (livre_motivo[0]) formatar_texto(t, sizeof t, "Ainda não dá: %s.", livre_motivo);
+    else formatar_texto(t, sizeof t, "O SaguiOS vai em %u MB, a partir de %u MB.", livre_n / MB, livre_ini / MB);
+    opcao(2, "Excluir partições e usar o lugar delas", t, pode_editar());
     lim = antes;
-    int y0 = MODO_Y(2) + 4, fim = RODAPE_Y - 26;
+    int y0 = MODO_Y(3) + 4, fim = RODAPE_Y - 26;
     if (fim - y0 < 40) return;
     cartao(X0, y0, CL, fim - y0, COR_CARTAO, COR_LINHA);
     lim = X0 + CL - 12;
@@ -796,7 +875,7 @@ static void desenhar_modos(void)
             if (!(feito & (1u << i)) && (!p || tab.p[i].inicio < p->inicio)) p = &tab.p[i];
         uint32_t prox = p ? p->inicio : discos[escolhido].setores;
         uint32_t a = acima_mb(pos), b = prox / MB * MB;
-        if ((!p || p->entrada <= 4) && b > a) {          /* as lógicas ficam dentro da estendida: lá não há livre */
+        if ((!p || p->entrada <= 4) && b > a && modo != MODO_EDITAR) {   /* as lógicas ficam dentro da estendida: lá não há livre */
             linha_part(y, "", a == livre_ini && modo == MODO_LIVRE ? "livre: SaguiOS" : "livre", a, b - a,
                        a == livre_ini && modo == MODO_LIVRE ? COR_DESTAQUE : 0x8A949D);
             y += 20;
@@ -809,8 +888,11 @@ static void desenhar_modos(void)
         bool est = p->tipo == 0x05 || p->tipo == 0x0F || p->tipo == 0x85;
         static const char hex[] = "0123456789ABCDEF";
         char tipo[3] = { hex[(p->tipo >> 4) & 15], hex[p->tipo & 15], 0 };
-        formatar_texto(o, sizeof o, "%s (0x%s)", est ? "estendida" : p->formato[0] ? p->formato : "partição", tipo);
-        linha_part(y, n, o, p->inicio, p->setores, COR_TEXTO);
+        uint32_t idx = (uint32_t)(p - tab.p);
+        bool sai = modo == MODO_EDITAR && excluida(idx);
+        formatar_texto(o, sizeof o, "%s%s (0x%s)", sai ? "sai: " : "", est ? "estendida" : p->formato[0] ? p->formato : "partição", tipo);
+        linha_part(y, n, o, p->inicio, p->setores, sai ? COR_PERIGO : COR_TEXTO);
+        if (modo == MODO_EDITAR) { linha_y[qtd_linhas] = y; linha_i[qtd_linhas++] = (int)idx; }
         y += 20;
         if (p->entrada <= 4 && p->inicio + p->setores > pos) pos = p->inicio + p->setores;
     }
@@ -974,7 +1056,10 @@ static void continuar(void)
          * espaço livre. Com ele, a opção já vem marcada: é a que não apaga
          * nada de ninguém. */
         tab_ok = disco_tabela(discos[escolhido].nome, &tab) == 0;
-        bool livre = achar_livre();
+        excluir = 0;
+        modo = MODO_LIVRE;
+        bool livre = pode_livre = achar_livre();
+        copia_texto(motivo_livre, livre_motivo, sizeof motivo_livre);
         modo = livre ? MODO_LIVRE : MODO_INTEIRO;
         registrar("instalar: tabela de %s: estado %u, %u partições, conferida %u (%s)", discos[escolhido].nome,
                   tab.estado, tab.n, tab.conferida, tab.problema);
@@ -996,17 +1081,35 @@ static void clique(int x, int y)
                 return;
             }
         }
-    if (passo == P_MODO)
-        for (int i = 0; i < 2; i++) {
+    if (passo == P_MODO) {
+        for (int i = 0; i < 3; i++) {
             int cy = MODO_Y(i);
-            int m = i == 0 ? MODO_LIVRE : MODO_INTEIRO;
-            if (y >= cy && y < cy + MODO_A && x >= X0 && x < X0 + CL && (m == MODO_INTEIRO || !livre_motivo[0])) {
+            int m = i == 0 ? MODO_LIVRE : i == 1 ? MODO_INTEIRO : MODO_EDITAR;
+            bool pode = m == MODO_INTEIRO || (m == MODO_LIVRE && pode_livre) || (m == MODO_EDITAR && pode_editar());
+            if (y >= cy && y < cy + MODO_A && x >= X0 && x < X0 + CL && pode) {
                 modo = m;
-                registrar("instalar: modo %s", m == MODO_LIVRE ? "espaço livre" : "disco inteiro");
+                if (m != MODO_INTEIRO) achar_livre();
+                registrar("instalar: modo %s", m == MODO_LIVRE ? "espaço livre" : m == MODO_EDITAR ? "editor" : "disco inteiro");
                 desenhar();
                 return;
             }
         }
+        /* No editor, um clique numa partição a marca para sair, ou desmarca.
+         * Uma lógica não sai sozinha: sai a estendida, com todas as lógicas. */
+        for (int k = 0; modo == MODO_EDITAR && k < qtd_linhas; k++) {
+            if (y < linha_y[k] - 2 || y >= linha_y[k] + 18 || x < X0 || x >= X0 + CL) continue;
+            uint32_t i = (uint32_t)linha_i[k];
+            if (tab.p[i].entrada >= 5)
+                for (uint32_t e = 0; e < tab.n; e++) if (eh_estendida(tab.p[e].tipo) && tab.p[e].entrada <= 4) i = e;
+            excluir ^= 1u << i;
+            achar_livre();
+            registrar("instalar: partição %u %s", tab.p[i].entrada, (excluir >> i) & 1 ? "sai" : "fica");
+            if (livre_motivo[0]) registrar("instalar: editor: não dá (%s)", livre_motivo);
+            else registrar("instalar: editor: SaguiOS em %u MB, %u MB", livre_ini / MB, livre_n / MB);
+            desenhar();
+            return;
+        }
+    }
     switch (bt_em(x, y)) {
     case B_CONTINUAR:
         if (passo == P_RESUMO) instalar_confirmado();

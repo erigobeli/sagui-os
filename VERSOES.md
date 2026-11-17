@@ -78,6 +78,9 @@ Já no código (no `main`), ainda não lançado como imagem:
   sistema: as partições de hoje e o identificador do disco ficam byte a
   byte, e o setor 0 antigo fica guardado. O cabeçalho de boot saiu do setor
   1 e foi para dentro da partição do sistema (D067).
+- No instalador, dá para **excluir partições** e pôr o SaguiOS no lugar
+  delas. A estendida sai com todas as lógicas, e o resumo e a caixa do
+  kernel dizem cada exclusão (D068).
 
 ## Versões lançadas
 

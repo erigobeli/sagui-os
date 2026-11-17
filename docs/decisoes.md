@@ -2261,3 +2261,46 @@ sistema:
   não muda nada e cada disco fica byte a byte igual.
 - `h110` confere o cabeçalho no início da partição e o setor 1 zerado no
   modo disco inteiro.
+
+## D068. O editor de partições do instalador: excluir e usar o lugar
+
+**Contexto.** No #53, o editor tinha "Excluir", "Nova" e "Formatar para o
+SaguiOS". Excluir ou formatar a estendida apagava as lógicas sem a pessoa
+vê-las (B4). O resumo também podia omitir uma exclusão.
+
+**Decisão.**
+- **A terceira opção.** O passo Partições ganha "Excluir partições e usar o
+  lugar delas". Ela só aparece com tabela MBR conferida pelo kernel (D066).
+- **Marcar o que sai.** Um clique numa partição da lista a marca para sair,
+  e outro clique desmarca. Uma lógica não sai sozinha: o clique nela marca a
+  estendida, e a lista mostra a estendida e todas as lógicas como "sai".
+- **Onde vai o SaguiOS.** Na maior região livre, contando o lugar das
+  excluídas (a mesma conta da D067). Sem lugar, o Continuar não avança, e a
+  opção diz por quê.
+- **"Formatar para o SaguiOS" e "Nova" não existem como botões.** Formatar
+  é o mesmo que excluir e deixar o SaguiOS ir no lugar. Criar partição para
+  outro sistema não é trabalho do instalador.
+- **O resumo diz cada exclusão.** A primeira linha, que também vai para a
+  caixa do kernel, cita todas: as primárias pelo número e as lógicas pelo
+  intervalo ("excluir a partição 2 de hd1 (e as lógicas 5 a 6)"). A janela
+  lista cada uma com o formato, o tamanho e o lugar.
+- **O que é gravado.** As entradas das excluídas são zeradas, e as do
+  SaguiOS vão nelas ou nas vazias. Todo o resto do setor 0 segue a D067.
+- **Uma última conta antes de gravar.** O lugar do SaguiOS não pode encostar
+  em nenhuma partição que fica. Se encostar, nada é gravado.
+
+**Teste.** `h114_editor` usa um disco de 400 MB com uma FAT32 em 63 e uma
+estendida com duas lógicas, uma delas ext3. Só sobram 10 MB livres. O
+teste confere:
+- que o espaço livre é recusado;
+- que, sem nada marcado, o Continuar não avança;
+- que um clique marca e outro desmarca;
+- que o clique na lógica marca a estendida;
+- a linha da caixa do kernel com a estendida e as lógicas;
+- que o Esc deixa o disco igual;
+- depois de instalar: a entrada 1 e o identificador byte a byte, o SaguiOS
+  na entrada da estendida, a FAT32 de hoje e todo o disco fora do setor 0 e
+  da região do SaguiOS iguais, `fsck.vfat` nas duas FAT32, o
+  `mbr-antes.bin` e o boot só pelo disco.
+
+Sem as lógicas na linha do resumo, o teste falha.
