@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""H94 - disco-usado (du): mostra o espaço usado por arquivos e pastas.
+"""H117 - disco-usado (du): mostra o espaço usado por arquivos e pastas.
 
 Critério: du soma o tamanho dos arquivos de uma pasta (e de subpastas
 recursivamente) e imprime "TAMANHO\tCAMINHO" por linha. Arquivo inexistente
@@ -34,9 +34,9 @@ def codigo(m, programa):
 
 
 def main():
-    pen = criar_pendrive("h94-pen", rotulo="TEXTOS", arquivos=ARQUIVOS, pastas=PASTAS)
+    pen = criar_pendrive("h117-pen", rotulo="TEXTOS", arquivos=ARQUIVOS, pastas=PASTAS)
     extras = ["-device", "usb-ehci,id=ehci"] + pendrive_qemu(pen)
-    with Maquina("h94", "ide", extras=extras) as m:
+    with Maquina("h117", "ide", extras=extras) as m:
         m.esperar_serial("sagui:/$", 120)
         m.comando("montar")
         m.comando("cd /usb")

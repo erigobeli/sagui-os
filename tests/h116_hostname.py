@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""H93 - nome-maquina (hostname): mostra e muda o nome do computador.
+"""H116 - nome-maquina (hostname): mostra e muda o nome do computador.
 
 Critério: sem argumento mostra o nome atual (padrão "sagui"); com argumento
 muda o nome, guarda no pendrive (se houver) e aceita apenas letras, números
@@ -24,9 +24,9 @@ def codigo(m, programa):
 
 
 def main():
-    pen = criar_pendrive("h93-pen", rotulo="TEXTOS")
+    pen = criar_pendrive("h116-pen", rotulo="TEXTOS")
     extras = ["-device", "usb-ehci,id=ehci"] + pendrive_qemu(pen)
-    with Maquina("h93", "ide", extras=extras) as m:
+    with Maquina("h116", "ide", extras=extras) as m:
         m.esperar_serial("sagui:/$", 120)
 
         # Sem argumento: mostra o padrão.

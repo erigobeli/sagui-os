@@ -15,9 +15,14 @@
 #include "sagui.h"
 
 /* Soma o tamanho de "caminho". Se for pasta, entra nela e soma tudo dentro.
- * Devolve o total em bytes, ou -1 se não existir. */
-static int64_t tamanho_usado(const char *caminho)
+ * Devolve o total em bytes, ou -1 se não existir. "nivel" limita a descida:
+ * cada nível guarda um caminho na pilha, e pastas aninhadas demais (ou um
+ * caminho que não cabe no buffer) viram erro em vez de estourar a memória. */
+#define NIVEL_MAX 32
+
+static int64_t tamanho_usado(const char *caminho, int nivel)
 {
+    if (nivel > NIVEL_MAX) return -1;
     info_arquivo_t inf;
     if (info_arquivo(caminho, &inf) < 0) return -1;
 
@@ -35,11 +40,12 @@ static int64_t tamanho_usado(const char *caminho)
 
         /* Monta o caminho completo da entrada. */
         size_t nc = tam_texto(caminho);
+        if (nc + 1 + tam_texto(e.nome) + 1 > sizeof dentro) return -1;   /* não cabe */
         copia_texto(dentro, caminho, sizeof dentro);
         if (nc > 0 && dentro[nc - 1] != '/') dentro[nc++] = '/';
         copia_texto(dentro + nc, e.nome, sizeof dentro - nc);
 
-        int64_t t = tamanho_usado(dentro);
+        int64_t t = tamanho_usado(dentro, nivel + 1);
         if (t < 0) return -1;
         total += t;
         i++;
@@ -50,7 +56,7 @@ static int64_t tamanho_usado(const char *caminho)
 int principal(int argc, char **argv)
 {
     if (argc < 2) {
-        int64_t t = tamanho_usado(".");
+        int64_t t = tamanho_usado(".", 0);
         if (t < 0) { imprimir_em(ERROS, "du: não consigo ler a pasta atual\n"); return 1; }
         imprimir("%llu\t.\n", (unsigned long long)t);
         return 0;
@@ -58,7 +64,7 @@ int principal(int argc, char **argv)
 
     int erros = 0;
     for (int i = 1; i < argc; i++) {
-        int64_t t = tamanho_usado(argv[i]);
+        int64_t t = tamanho_usado(argv[i], 0);
         if (t < 0) {
             imprimir_em(ERROS, "du: %s: não consigo ler\n", argv[i]);
             erros = 1;

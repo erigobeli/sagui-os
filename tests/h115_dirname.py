@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""H92 - pasta-de (dirname): mostra o diretório de um caminho.
+"""H115 - pasta-de (dirname): mostra o diretório de um caminho.
 
 Critério: cada caminho de entrada dá o diretório esperado; erros saem em
 português e com código de saída diferente de zero quando não há argumento. """
@@ -29,9 +29,9 @@ def rodar(m, comando):
 
 
 def main():
-    pen = criar_pendrive("h92-pen", rotulo="TEXTOS")
+    pen = criar_pendrive("h115-pen", rotulo="TEXTOS")
     extras = ["-device", "usb-ehci,id=ehci"] + pendrive_qemu(pen)
-    with Maquina("h92", "ide", extras=extras) as m:
+    with Maquina("h115", "ide", extras=extras) as m:
         m.esperar_serial("sagui:/$", 120)
         for comando, esperado in CASOS:
             out = rodar(m, comando)
