@@ -2084,3 +2084,30 @@ programa com defeito, ou feito para isso, pularia a pergunta.
   destinos diz "disco interno" ou "pendrive USB" ao lado de cada nome.
 - `/testes/setores` (só na pasta de testes) chama as duas chamadas para o
   h109 conferir a trava.
+
+**O instalador visual (h110).**
+- Um assistente em cinco passos, no estilo claro do sistema: Boas-vindas,
+  Disco, Partições, Resumo e Instalação. Os discos aparecem em cartões com
+  ícone (disco rígido ou pendrive), modelo, tamanho e o que há neles. Ícones
+  novos no `tools/mkarte.py`: `disco` e `instalar_sistema`.
+- Ver as partições já é ler o disco, então a caixa do kernel aparece ao sair
+  do passo Disco. No passo Partições, uma barra e uma lista mostram as
+  partições e os espaços livres (tabela MBR; GPT só pode ser apagado
+  inteiro). Dá para excluir, criar uma FAT32 num espaço livre e formatar
+  como FAT32. Tudo fica só na memória até o botão Instalar do resumo.
+- Dois modos: apagar o disco inteiro, ou instalar num espaço livre e manter
+  as outras partições. Com partições no disco, o instalador já sugere o
+  maior espaço livre onde o SaguiOS cabe; apagar tudo é sempre escolha da
+  pessoa.
+- O sistema pode ficar em qualquer lugar do disco: o instalador copia o
+  estágio 2, o kernel e o ramdisk (o que o cabeçalho de boot descreve) para
+  o começo da região escolhida e grava no setor 1 um cabeçalho com os LBA
+  novos. O MBR do SaguiOS lê o cabeçalho no setor 1 e segue os LBA dele, sem
+  nada fixo além disso. A partição 0xDA cobre o sistema, e a FAT32 SAGUIOS
+  vem logo depois.
+- O MBR do disco passa a ter o código de boot do SaguiOS. Se outro sistema
+  ligava por esse disco, deixa de ligar sozinho; o resumo avisa.
+- O kernel lê da origem, sem liberação, os setores 0 e 1 e a partição do
+  sistema, onde ela estiver.
+- Com mais de uma FAT32 no disco, o kernel fica com a de rótulo SAGUIOS (a
+  de dados criada pelo instalador pode vir antes).

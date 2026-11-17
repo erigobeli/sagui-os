@@ -25,7 +25,8 @@ typedef struct disco {
     /* Para o instalador (D063): */
     uint32_t id_mbr;              /* identificador do disco no MBR (0x1B8) */
     bool     tem_sistema;         /* tem a partição do SaguiOS (0xDA)... */
-    uint32_t sistema_fim;         /* ...que acaba antes deste setor */
+    uint32_t sistema_ini;         /* ...que começa neste setor... */
+    uint32_t sistema_fim;         /* ...e acaba antes deste */
     int      liberado_pid;        /* processo que pode ler e gravar setores crus (0: nenhum) */
 } disco_t;
 

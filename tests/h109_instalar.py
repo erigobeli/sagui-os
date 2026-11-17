@@ -12,8 +12,8 @@ Critérios:
   - "instalar hd1 --sim" não existe mais;
   - o menu Iniciar acha e abre o instalador; ligado pelo disco instalado, o
     instalador não aparece mais no menu (a busca não acha);
-  - pela janela: clicar no hd1, digitar "hd1" na caixa do kernel, e o
-    instalador termina ("instalar: pronto em hd1");
+  - pelo assistente (Enter em cada passo), com "hd1" digitado na caixa do
+    kernel, o instalador termina ("instalar: pronto em hd1");
   - a tabela de partições do disco instalado: 0xDA (sistema) e 0x0C (FAT32,
     alinhada em 1 MB), identificador do MBR novo, e o fsck.vfat passa;
   - ligando só pelo disco instalado: a partição dos arquivos monta sozinha, e
@@ -114,15 +114,24 @@ def main():
         time.sleep(1)
         m.captura("H109-instalador")
         verificar(True, "o instalador oferece só o hd1 (o hd0 é a origem)")
-        w = janela(m.serial()[n:], "Instalar o SaguiOS")
-        m.clique(w["x"] + 120, w["y"] + 108 + 16)
+        # O assistente: Boas-vindas > Disco > (caixa do kernel) > Partições > Resumo > Instalar.
+        m.tecla("ret")
+        esperar(m, "instalar: passo 1 (Disco)", 10, n)
+        time.sleep(0.6)
+        m.tecla("ret")
         esperar(m, "[GUI] confirmacao do disco hd1 aberta", 20, n)
         time.sleep(0.8)
         m.digitar("hd1\n", 0.05)
+        esperar(m, "instalar: passo 2 (Partições)", 20, n)
+        time.sleep(0.6)
+        m.tecla("ret")
+        esperar(m, "instalar: passo 3 (Resumo)", 10, n)
+        time.sleep(0.6)
+        m.tecla("ret")
         esperar(m, "instalar: pronto em hd1", 240, n)
         verificar(True, "o instalador terminou depois da confirmação")
         time.sleep(1)
-        m.tecla("ret")   # fecha a mensagem de pronto
+        m.tecla("ret")   # Fechar
         time.sleep(1)
 
     mbr = open(hd, "rb").read(512)

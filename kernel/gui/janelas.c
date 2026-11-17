@@ -158,7 +158,7 @@ static void redesenhar_conf(void)
 {
     int x, y;
     conf_retangulo(&x, &y);
-    gui_redesenhar(x - 2, y - 2, CONF_L + 4, CONF_A + 4);
+    gui_redesenhar(x - 2, y - 2, CONF_L + 8, CONF_A + 8);
 }
 
 const void *gui_confirmacao_canal(void) { return &conf; }
@@ -224,22 +224,24 @@ static void desenhar_conf(void)
     if (!conf.aberta) return;
     int x, y;
     conf_retangulo(&x, &y);
-    sup_retangulo(&tela, x, y, CONF_L, CONF_A, 0x18202A);
-    sup_moldura(&tela, x, y, CONF_L, CONF_A, 0xE5484D);
-    sup_retangulo(&tela, x, y, 6, CONF_A, 0xE5484D);
-    sup_texto_forte(&tela, x + 22, y + 14, "Ler e gravar direto no disco?", 0xFFFFFF);
+    /* No estilo claro do sistema, com a borda e a faixa vermelhas de aviso. */
+    sup_retangulo(&tela, x + 3, y + 4, CONF_L, CONF_A, 0x9AA3AB);            /* sombra */
+    sup_retangulo(&tela, x, y, CONF_L, CONF_A, 0xFFFFFF);
+    sup_moldura(&tela, x, y, CONF_L, CONF_A, 0xD9443F);
+    sup_retangulo(&tela, x, y, CONF_L, 6, 0xD9443F);
+    sup_texto_forte(&tela, x + 22, y + 18, "Ler e gravar direto no disco?", 0x1E2328);
     for (int i = 0; i < 5; i++)
-        sup_texto(&tela, x + 22, y + 42 + i * 18, conf.linha[i], i == 4 ? 0xFFDF4A : 0xD8DEE4);
+        sup_texto(&tela, x + 22, y + 46 + i * 18, conf.linha[i], i == 4 ? 0xC4302B : 0x3A434C);
     char t[64];
     snformatar(t, sizeof t, "Para permitir, digite %s e aperte Enter.", conf.nome);
-    sup_texto(&tela, x + 22, y + 42 + 5 * 18 + 6, t, 0xFFFFFF);
+    sup_texto_forte(&tela, x + 22, y + 46 + 5 * 18 + 4, t, 0x1E2328);
     int cx = x + 22, cy = y + CONF_A - 44;
-    sup_retangulo(&tela, cx, cy, 180, 28, 0x0E141B);
-    sup_moldura(&tela, cx, cy, 180, 28, conf.errou ? 0xE5484D : 0x8A96A3);
-    sup_texto(&tela, cx + 8, cy + 6, conf.dig, 0xFFFFFF);
-    sup_retangulo(&tela, cx + 9 + texto_largura(conf.dig), cy + 5, 2, 18, 0xFFFFFF);
+    sup_retangulo(&tela, cx, cy, 180, 28, 0xF4F6F8);
+    sup_moldura(&tela, cx, cy, 180, 28, conf.errou ? 0xD9443F : 0x8A939C);
+    sup_texto(&tela, cx + 8, cy + 6, conf.dig, 0x1E2328);
+    sup_retangulo(&tela, cx + 9 + texto_largura(conf.dig), cy + 5, 2, 18, 0x0B7A3E);
     sup_texto(&tela, cx + 196, cy + 6, conf.errou ? "Nome diferente. Esc cancela." : "Esc cancela.",
-              conf.errou ? 0xFF8A8A : 0x8A96A3);
+              conf.errou ? 0xC4302B : 0x6A737C);
 }
 
 static int moldura_l(janela_t *j) { return j->larg + 2 * BORDA; }

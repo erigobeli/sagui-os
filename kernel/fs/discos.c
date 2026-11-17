@@ -109,7 +109,10 @@ static void reconhecer(disco_t *d)
          * caso no G470 (erro 18). Sem FAT32, o formato mostrado é o da
          * primeira partição usada. */
         bool achou_outro = false;
-        for (int p = 0; p < 4 && !d->fat32; p++) {
+        /* Com mais de uma FAT32 (o instalador pode deixar uma de dados antes
+         * da do SaguiOS), fica a de rótulo SAGUIOS; sem ela, a primeira. */
+        bool saguios = false;
+        for (int p = 0; p < 4; p++) {             /* todas: a 0xDA pode vir depois */
             const uint8_t *e = s + 446 + p * 16;
             uint8_t tipo = e[4];
             uint32_t ini = (uint32_t)e[8] | (uint32_t)e[9] << 8 | (uint32_t)e[10] << 16 | (uint32_t)e[11] << 24;
@@ -117,9 +120,13 @@ static void reconhecer(disco_t *d)
             if (tipo == 0x0B || tipo == 0x0C) {
                 uint8_t *v = kmalloc(512);
                 if (v && d->ler(d, ini, 1, v) == 0 && eh_fat32(v)) {
-                    d->part_inicio = ini;
-                    d->fat32 = true;
-                    copiar_rotulo(d, v + 71);
+                    bool esta = memcmp(v + 71, "SAGUIOS    ", 11) == 0;
+                    if (!d->fat32 || (esta && !saguios)) {
+                        saguios = esta;
+                        d->part_inicio = ini;
+                        d->fat32 = true;
+                        copiar_rotulo(d, v + 71);
+                    }
                 } else if (!achou_outro) {
                     txt_copia_n(d->formato, "FAT32 danificado: não suportado", sizeof d->formato);
                     achou_outro = true;
@@ -129,6 +136,7 @@ static void reconhecer(disco_t *d)
             }
             if (tipo == 0xDA) {
                 d->de_boot = d->tem_sistema = true;
+                d->sistema_ini = ini;
                 d->sistema_fim = ini + ((uint32_t)e[12] | (uint32_t)e[13] << 8 | (uint32_t)e[14] << 16 | (uint32_t)e[15] << 24);
             }
             if (achou_outro) continue;
@@ -350,7 +358,11 @@ int32_t sis_disco_setores(uint32_t pped, uint32_t b, uint32_t c, uint32_t dd, ui
      * instalador copia), e os pendrives. */
     bool liberado = d->liberado_pid == atual->pid;
     if (esc && !liberado) return ERRO_ACESSO;
-    if (!esc && d->interno && !liberado && !(disco_eh_origem(d) && lba + n <= d->sistema_fim)) return ERRO_ACESSO;
+    /* Da origem: o MBR e o cabeçalho de boot (setores 0 e 1) e a partição
+     * do sistema, onde ela estiver (o instalador pode pô-la depois de
+     * outras partições). */
+    bool do_sistema = disco_eh_origem(d) && (lba + n <= 2 || (lba >= d->sistema_ini && lba + n <= d->sistema_fim));
+    if (!esc && d->interno && !liberado && !do_sistema) return ERRO_ACESSO;
     if (esc && d->montado) return ERRO_OCUPADO;
     /* O buffer do programa pode não ser contíguo na memória física: passa
      * por um do kernel. */
@@ -374,7 +386,7 @@ int32_t sis_disco_reler(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uin
     if (d->liberado_pid != atual->pid) return ERRO_ACESSO;
     if (d->montado) return ERRO_OCUPADO;
     d->fat32 = d->de_boot = d->tem_sistema = false;
-    d->part_inicio = d->sistema_fim = 0;
+    d->part_inicio = d->sistema_ini = d->sistema_fim = 0;
     d->rotulo[0] = 0;
     reconhecer(d);
     klog("[DISCO] %s relido: %s, rotulo \"%s\"\n", d->nome, d->formato, d->rotulo);
