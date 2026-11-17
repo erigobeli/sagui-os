@@ -19,8 +19,11 @@ Aqui fora, no arquivo do disco:
   - a partição do sistema igual, byte a byte, à da origem, e o cabeçalho de
     boot apontando para ela;
   - a FAT32 passa no fsck.vfat.
+A instalação começa pelo menu Iniciar (a busca acha o instalador).
 Terceira máquina, ligando só pelo disco instalado: a partição dos arquivos
-monta sozinha, e um arquivo gravado nela continua lá depois de reiniciar.
+monta sozinha, o instalador some do menu e da área de trabalho (o Disco fica
+na coluna da direita), e um arquivo gravado nela continua lá depois de
+reiniciar.
 Capturas de cada passo, para a revisão a olho.
 """
 import hashlib
@@ -152,11 +155,21 @@ def main():
     verificar(hashlib.sha256(open(hd, "rb").read()).hexdigest() == original,
               "depois de Cancelar, Enter, nome errado e Esc, o disco inteiro está byte a byte igual")
 
-    # 2. A instalação.
+    # 2. A instalação, aberta pelo menu Iniciar.
     with Maquina("h110b", "ide", memoria="768M", extras=extras) as m:
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
-        inst, n = abrir(m)
+        n = len(m.serial())
+        m.clique(40, 12)
+        esperar(m, "[GUI] menu aberto", 10, n)
+        time.sleep(0.6)
+        m.digitar("instalar", 0.08)
+        esperar(m, '[GUI] menu: busca "instalar" (1 resultados)', 10, n)
+        m.digitar("\n", 0.05)
+        esperar(m, "instalar: passo 0 (Boas-vindas)", 20, n)
+        verificar(True, "o menu Iniciar acha e abre o instalador")
+        time.sleep(1)
+        inst = Instalador(m, janela(m.serial()[n:], "Instalar o SaguiOS"))
         ate_o_resumo(m, inst, n, capturar=True)
         m.captura("H110-3-resumo")
         inst.continuar()
@@ -171,7 +184,7 @@ def main():
         m.captura("H110-6-pronto")
         verificar("instalar: erro" not in m.serial()[n:], "o instalador terminou sem erro")
         m.tecla("ret")   # Enter na tela final fecha
-        esperar(m, "sagui:/$", 10, n)
+        esperar(m, "(instalar) terminou com codigo 0", 10, n)
 
     d = open(hd, "rb").read()
     o = open(IMAGEM, "rb").read()
@@ -202,6 +215,17 @@ def main():
     with Maquina("h110c", "ide", imagem=hd, memoria="768M", reiniciar=True) as m:
         m.esperar_serial("sagui:/$", 120)
         verificar("tem configuracoes do SaguiOS: montado sozinho" in m.serial(), "a partição dos arquivos monta sozinha no boot")
+        verificar("coluna da direita: instalador nao, 1 unidades" in m.serial(),
+                  "sem o instalador na área de trabalho, e o Disco na coluna da direita")
+        n = len(m.serial())
+        m.clique(40, 12)
+        esperar(m, "[GUI] menu aberto", 10, n)
+        time.sleep(0.6)
+        m.digitar("instalar", 0.08)
+        esperar(m, '[GUI] menu: busca "instalar" (0 resultados)', 10, n)
+        verificar(True, "ligado pelo disco instalado, o instalador não aparece no menu")
+        m.tecla("esc")
+        time.sleep(0.8)
         out = m.comando("cat /usb/.saguios/configuracoes.txt")
         verificar("sistema.instalado = sim" in out, "as configurações dizem que o sistema está instalado")
         n = len(m.serial())

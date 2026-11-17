@@ -67,6 +67,9 @@ Já no código (no `main`), ainda não lançado como imagem:
 - **Instalador do SaguiOS** (D064): um assistente que copia o sistema do
   pendrive para um disco, por enquanto apagando o disco inteiro, e cria a
   partição dos seus arquivos. Ligado pelo disco, ela monta sozinha.
+- O instalador e as unidades (pendrives e o Disco) ficam **no canto de cima
+  à direita da área de trabalho**, como no Linux, e o instalador entra no
+  menu Iniciar; depois de instalado, ele some dos dois (D065).
 
 ## Versões lançadas
 

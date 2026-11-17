@@ -36,7 +36,7 @@ bool area_icone_selecionado(int i);
 int  area_qtd_selecionados(void);
 int  area_icone_tipo(int i);              /* 0 sistema, 1 instalado, 2 pendrive */
 void area_icone_acao(int i, int acao);
-bool area_pendrive(bool presente, const char *rotulo);
+bool area_unidades(void);   /* o instalador e as unidades na coluna da direita; true se mudou */
 
 /* Gerenciador de janelas (janelas.c) */
 bool gui_iniciar(void);                    /* liga a área de trabalho e o gerenciador */

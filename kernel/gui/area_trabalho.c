@@ -46,14 +46,19 @@ static const icone_t icones[] = {
     { "Configurações", "/bin/configuracoes", arte_px_configuracoes, NULL, NULL },   /* H38 */
     { "Sobre",       "/bin/sobre-o-sistema",   arte_px_sobre, NULL, NULL },
     { "Lixeira",     "/bin/arquivos",    arte_px_lixeira, "/.lixeira", "lixeira" },   /* a lixeira do Arquivos */
-    { "Pendrive",    "/bin/arquivos",    arte_px_pendrive, NULL, NULL },   /* só aparece com um pendrive conectado (H34) */
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
-#define ICONE_PENDRIVE (QTD_ICONES - 1)
-#define ICONE_LIXEIRA  (QTD_ICONES - 2)
+#define ICONE_LIXEIRA  (QTD_ICONES - 1)
 static bool lixeira_cheia;   /* troca o desenho: com papéis saindo */
-static bool pendrive_visivel;
-static char nome_pendrive[24] = "Pendrive";
+
+/* A coluna da direita, no canto de cima, como no Linux: o instalador (até
+ * o sistema estar instalado) e as unidades (pendrives e o disco do
+ * SaguiOS), um ícone cada. Os índices vêm depois dos programas instalados:
+ * base_dir() é o instalador e base_dir() + 1 + k a unidade k. */
+#define MAX_UNIDADES 4
+static struct { char disco[8], nome[24]; bool interno; } unid[MAX_UNIDADES];
+static int qtd_unid;
+static bool mostrar_instalador;
 
 /* Programas instalados no pendrive (H39): /usb/programas, um ícone cada,
  * depois dos ícones do sistema. A pasta é conferida a cada 2 segundos. */
@@ -73,10 +78,12 @@ static const char *chave_icone(int i)
     return icones[i].chave ? icones[i].chave : icones[i].programa + 5;   /* depois de "/bin/" */
 }
 
+static int base_dir(void) { return QTD_ICONES + qtd_instalados; }
+
 static bool icone_visivel(int i)
 {
+    if (i >= base_dir()) return i == base_dir() ? mostrar_instalador : i - base_dir() - 1 < qtd_unid;
     if (i >= QTD_ICONES) return i - QTD_ICONES < qtd_instalados;
-    if (i == ICONE_PENDRIVE) return pendrive_visivel;
     return !oculto[i];
 }
 
@@ -85,7 +92,7 @@ static void ler_ocultos(void)
     const char *lista = config_obter("programas.ocultos");
     for (int i = 0; i < QTD_ICONES && i < 16; i++) {
         oculto[i] = false;
-        if (!lista || i == ICONE_PENDRIVE) continue;
+        if (!lista) continue;
         const char *nome = chave_icone(i);
         size_t n = txt_tamanho(nome);
         for (const char *p = lista; *p;) {
@@ -102,8 +109,9 @@ static void ler_ocultos(void)
 
 static const char *nome_icone(int i)
 {
+    if (i == base_dir()) return "Instalar o SaguiOS";
+    if (i > base_dir()) return unid[i - base_dir() - 1].nome;
     if (i >= QTD_ICONES) return instalados[i - QTD_ICONES];
-    if (i == ICONE_PENDRIVE) return nome_pendrive;
     /* Nome trocado pelo usuário (botão direito > Renomear): icone.<programa>. */
     char chave[48];
     snformatar(chave, sizeof chave, "icone.%s", chave_icone(i));
@@ -114,11 +122,12 @@ static const char *nome_icone(int i)
 const char *area_icone_nome(int i) { return nome_icone(i); }   /* o menu Iniciar */
 
 /* Que tipo de ícone é (para o menu do botão direito): 0 do sistema,
- * 1 programa instalado no pendrive, 2 o pendrive. */
+ * 1 programa instalado no pendrive, 2 uma unidade, 3 o instalador. */
 int area_icone_tipo(int i)
 {
-    if (i >= QTD_ICONES) return 1;
-    return i == ICONE_PENDRIVE ? 2 : 0;
+    if (i == base_dir()) return 3;
+    if (i > base_dir()) return 2;
+    return i >= QTD_ICONES ? 1 : 0;
 }
 
 /* Ações do menu do botão direito. Renomear e remover perguntam (texto ou
@@ -127,7 +136,12 @@ int area_icone_tipo(int i)
 void area_icone_acao(int i, int acao)
 {
     char caminho[NOME_MAX + 24], nome[48];
-    if (i < 0 || i >= QTD_ICONES + qtd_instalados) return;
+    if (i < 0 || i >= area_qtd_icones()) return;
+    if (i >= base_dir()) {                         /* instalador e unidades: só abrir e remover */
+        if (acao == ACAO_ABRIR) area_icone_abrir(i);
+        else if (acao == ACAO_DESMONTAR) area_icone_direito(i);
+        return;
+    }
     txt_copia_n(nome, nome_icone(i), sizeof nome);
     if (i >= QTD_ICONES) snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
     else snformatar(caminho, sizeof caminho, "/bin/%s", chave_icone(i));   /* /bin/icone usa o fim do caminho */
@@ -143,6 +157,8 @@ void area_icone_acao(int i, int acao)
 static const uint32_t *px_icone(int i)
 {
     if (i == ICONE_LIXEIRA && lixeira_cheia) return arte_px_lixeira_cheia;
+    if (i == base_dir()) return arte_px_instalar_sistema;
+    if (i > base_dir()) return unid[i - base_dir() - 1].interno ? arte_px_disco : arte_px_pendrive;
     return i >= QTD_ICONES ? arte_px_instalado : icones[i].px;
 }
 #define ICONE_X 20
@@ -152,7 +168,7 @@ static const uint32_t *px_icone(int i)
 #define ICONE_L 96
 #define ICONE_A 88
 
-int area_qtd_icones(void) { return QTD_ICONES + qtd_instalados; }
+int area_qtd_icones(void) { return base_dir() + 1 + qtd_unid; }
 
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
 {
@@ -163,6 +179,13 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
     /* A posição na tela conta só os ícones visíveis antes deste (um
      * programa oculto não deixa buraco). */
     int vaga = 0;
+    if (i >= base_dir()) {                         /* a coluna da direita, de cima para baixo */
+        for (int k = base_dir(); k < i; k++) if (icone_visivel(k)) vaga++;
+        *x = larg - ICONE_X - ICONE_L;
+        *y = ICONE_Y0 + vaga * (ICONE_PASSO + 16);   /* + 16: nomes em duas linhas */
+        *l = ICONE_L; *a = ICONE_A;
+        return;
+    }
     /* A Lixeira fica sempre por último, depois do pendrive e dos programas
      * instalados, como no fim da fila de ícones dos outros sistemas. */
     int ate = i == ICONE_LIXEIRA ? QTD_ICONES + qtd_instalados : i;
@@ -178,11 +201,12 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
  * (ramo area-lixeira, do código da 1.0), refeito para o código atual: os
  * ícones tocados pelo retângulo ficam marcados; um clique num ícone marca só
  * ele; clicar no vazio desmarca. */
-static bool selecionado[QTD_ICONES + MAX_INSTALADOS];
+#define MAX_ICONES (QTD_ICONES + MAX_INSTALADOS + 1 + MAX_UNIDADES)
+static bool selecionado[MAX_ICONES];
 
 void area_selecionar(int x, int y, int l, int a, bool somar)
 {
-    for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) {
+    for (int i = 0; i < area_qtd_icones(); i++) {
         if (!somar) selecionado[i] = false;
         if (!icone_visivel(i)) continue;
         int ix, iy, il, ia;
@@ -194,19 +218,19 @@ void area_selecionar(int x, int y, int l, int a, bool somar)
 bool area_limpar_selecao(void)
 {
     bool havia = false;
-    for (int i = 0; i < QTD_ICONES + MAX_INSTALADOS; i++) { havia |= selecionado[i]; selecionado[i] = false; }
+    for (int i = 0; i < MAX_ICONES; i++) { havia |= selecionado[i]; selecionado[i] = false; }
     return havia;
 }
 
 bool area_icone_selecionado(int i)
 {
-    return i >= 0 && i < QTD_ICONES + qtd_instalados && selecionado[i] && icone_visivel(i);
+    return i >= 0 && i < area_qtd_icones() && selecionado[i] && icone_visivel(i);
 }
 
 int area_qtd_selecionados(void)
 {
     int n = 0;
-    for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) n += area_icone_selecionado(i);
+    for (int i = 0; i < area_qtd_icones(); i++) n += area_icone_selecionado(i);
     return n;
 }
 
@@ -349,13 +373,25 @@ static void desenhar_fundo(void)
     }
     /* Ícones na coluna da esquerda, com o nome embaixo. */
     ler_ocultos();
-    for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) {
+    for (int i = 0; i < area_qtd_icones(); i++) {
         if (!icone_visivel(i)) continue;
         int x, y, l, a;
         area_icone_retangulo(i, &x, &y, &l, &a);
         sup_icone(&s, x + (l - ICONE_LADO) / 2, y, px_icone(i), ICONE_LADO);
+        /* Nome comprido ("Instalar o SaguiOS"): em duas linhas, quebrado
+         * no último espaço que cabe. */
         const char *nome = nome_icone(i);
-        texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 68, nome, 0xFFFFFF);
+        char l1[32];
+        txt_copia_n(l1, nome, sizeof l1);
+        const char *l2 = NULL;
+        if (texto_largura(l1) > l + 10)
+            for (int k = (int)txt_tamanho(l1) - 1; k > 0; k--)
+                if (l1[k] == ' ') {
+                    l1[k] = 0;
+                    if (texto_largura(l1) <= l + 10) { l2 = nome + k + 1; break; }
+                }
+        texto_com_sombra(&s, x + (l - texto_largura(l1)) / 2, y + 68, l1, 0xFFFFFF);
+        if (l2) texto_com_sombra(&s, x + (l - texto_largura(l2)) / 2, y + 84, l2, 0xFFFFFF);
     }
 }
 
@@ -538,7 +574,7 @@ void area_energia_abrir(void)
 
 int area_icone_em(int x, int y)
 {
-    for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) {
+    for (int i = 0; i < area_qtd_icones(); i++) {
         if (!icone_visivel(i)) continue;
         int ix, iy, l, a;
         area_icone_retangulo(i, &ix, &iy, &l, &a);
@@ -547,40 +583,77 @@ int area_icone_em(int x, int y)
     return -1;
 }
 
-/* Mostra ou esconde o ícone do pendrive (H34). Devolve true se mudou. */
-bool area_pendrive(bool presente, const char *rotulo)
+/* As unidades e o instalador da coluna da direita. Confere os discos a
+ * cada volta do gerenciador; devolve true se algo mudou. Entram os
+ * pendrives (menos o de boot, que é o próprio sistema) e, dos discos
+ * internos, só a partição do SaguiOS (os outros nem montam, D062). */
+bool area_unidades(void)
 {
-    char nome[24];
-    txt_copia_n(nome, rotulo && rotulo[0] ? rotulo : "Pendrive", sizeof nome);
-    if (presente == pendrive_visivel && txt_compara(nome, nome_pendrive) == 0) return false;
-    pendrive_visivel = presente;
-    txt_copia_n(nome_pendrive, nome, sizeof nome_pendrive);
+    typeof(unid) novo;
+    int n = 0;
+    memset(novo, 0, sizeof novo);
+    for (int i = 0; i < MAX_DISCOS && n < MAX_UNIDADES; i++) {
+        disco_t *d = disco_indice(i);
+        if (!d || !d->presente || d->de_boot) continue;
+        if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) continue;
+        txt_copia_n(novo[n].disco, d->nome, sizeof novo[n].disco);
+        txt_copia_n(novo[n].nome, d->interno ? "Disco" : d->rotulo[0] ? d->rotulo : "Pendrive", sizeof novo[n].nome);
+        novo[n].interno = d->interno;
+        n++;
+    }
+    /* O instalador some quando o sistema ligou pelo disco instalado. */
+    const char *inst = config_obter("sistema.instalado");
+    bool instalador = !(inst && txt_compara(inst, "sim") == 0) && vfs_achar("/bin/instalar") != NULL;
+    if (n == qtd_unid && instalador == mostrar_instalador && memcmp(novo, unid, sizeof unid) == 0) return false;
+    memcpy(unid, novo, sizeof unid);
+    qtd_unid = n;
+    mostrar_instalador = instalador;
+    klog("[GUI] coluna da direita: instalador %s, %d unidades\n", instalador ? "sim" : "nao", n);
     desenhar_fundo();
     return true;
 }
 
-static disco_t *primeiro_disco(void)
+static disco_t *disco_da_unidade(int i)
 {
-    for (int i = 0; i < MAX_DISCOS; i++) {
-        disco_t *d = disco_indice(i);
-        if (d && d->presente && !d->de_boot) return d;
-    }
-    return NULL;
+    int k = i - base_dir() - 1;
+    return k >= 0 && k < qtd_unid ? disco_por_nome(unid[k].disco) : NULL;
 }
 
-/* Botão direito num ícone: no pendrive, "remover com segurança". */
+/* Botão direito numa unidade: "remover com segurança". */
 void area_icone_direito(int i)
 {
-    if (i != ICONE_PENDRIVE) return;
-    disco_t *d = disco_montado();
-    if (d) disco_desmontar(d);
-    else gui_aviso("O pendrive não está montado: pode remover.");
+    disco_t *d = disco_da_unidade(i);
+    if (!d) return;
+    if (d->montado) disco_desmontar(d);
+    else gui_aviso(d->interno ? "O disco não está montado." : "O pendrive não está montado: pode remover.");
 }
 
 /* Abre o programa do ícone (H28). Ele não tem pai: ninguém espera por ele. */
 void area_icone_abrir(int i)
 {
-    if (i < 0 || i >= QTD_ICONES + qtd_instalados) return;
+    if (i < 0 || i >= area_qtd_icones()) return;
+    if (i == base_dir()) {
+        char *argv[] = { "instalar", NULL };
+        int pid = processo_executar("/bin/instalar", 1, argv, NULL);
+        klog("[GUI] icone Instalar o SaguiOS -> /bin/instalar (pid %d)\n", pid);
+        return;
+    }
+    if (i > base_dir()) {
+        disco_t *d = disco_da_unidade(i);
+        if (!d) return;
+        disco_t *m = disco_montado();
+        if (m && m != d) {                          /* só um disco fica em /usb por vez */
+            gui_aviso("Outra unidade está aberta em /usb. Remova-a com segurança antes.");
+            return;
+        }
+        int r = disco_montar(d);
+        if (r == ERRO_FORMATO) { gui_aviso("Esta unidade não está em FAT32: formato não suportado."); return; }
+        if (r < 0) { gui_aviso("Não consegui montar a unidade."); return; }
+        char *argv[] = { "arquivos", "/usb", NULL };
+        int pid = processo_executar("/bin/arquivos", 2, argv, NULL);
+        klog("[GUI] icone %s (%s) -> /bin/arquivos /usb (pid %d)\n", unid[i - base_dir() - 1].nome, d->nome, pid);
+        return;
+    }
     if (i >= QTD_ICONES) {
         char caminho[NOME_MAX + 24];
         snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
@@ -605,17 +678,6 @@ void area_icone_abrir(int i)
             pid = processo_executar("/bin/terminal", 3, argv, NULL);
         }
         klog("[GUI] icone instalado %s -> %s%s (pid %d)\n", instalados[i - QTD_ICONES], janela ? "" : "terminal -e ", caminho, pid);
-        return;
-    }
-    if (i == ICONE_PENDRIVE) {
-        disco_t *d = primeiro_disco();
-        if (!d) return;
-        int r = disco_montar(d);
-        if (r == ERRO_FORMATO) { gui_aviso("Este pendrive não está em FAT32: formato não suportado."); return; }
-        if (r < 0 && r != ERRO_OCUPADO) { gui_aviso("Não consegui montar o pendrive."); return; }
-        char *argv[] = { "arquivos", "/usb", NULL };
-        int pid = processo_executar("/bin/arquivos", 2, argv, NULL);
-        klog("[GUI] icone Pendrive -> /bin/arquivos /usb (pid %d)\n", pid);
         return;
     }
     char *argv[] = { (char *)icones[i].programa + 5, (char *)icones[i].arg, NULL };

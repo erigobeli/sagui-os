@@ -2123,3 +2123,23 @@ mudam um byte do disco; a instalação deixa o MBR, o primeiro MB, o fim do
 disco, o sistema (cópia exata da origem) e a FAT32 (fsck.vfat) como
 descrito; ligando pelo disco, a partição dos arquivos monta sozinha e
 guarda um arquivo depois de reiniciar.
+
+## D065. O instalador e as unidades na coluna da direita da área de trabalho
+
+**Contexto.** Com o instalador (D064), quem liga pelo pendrive precisa achá-lo
+sem abrir o terminal. Nos sistemas Linux, o instalador e as unidades
+(pendrives, discos) ficam no canto de cima à direita da área de trabalho.
+
+**Decisão.**
+- A área de trabalho tem uma coluna à direita: primeiro "Instalar o SaguiOS"
+  (só quando o sistema não ligou pelo disco instalado), depois as unidades
+  (os pendrives e o Disco do SaguiOS montado), até 4.
+- O botão direito no instalador tem só "Abrir"; numa unidade, "Abrir" e
+  "Remover com segurança" (o Disco não tem "Remover").
+- O menu Iniciar ganha "Instalar o SaguiOS" (Sistema). Ligado pelo disco
+  instalado (`sistema.instalado = sim` nas configurações), ele some do menu
+  e da área de trabalho.
+
+**Teste.** `h111_area_unidades` (a coluna, os menus do botão direito e os
+duplos cliques), `h34` (o ícone do pendrive conferido pelo pixel na posição
+nova) e `h110` (o menu abre o instalador; instalado, ele some).
