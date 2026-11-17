@@ -22,6 +22,12 @@ typedef struct disco {
     bool     de_boot;             /* o próprio pendrive de boot do SaguiOS: sem aviso nem ícone */
     bool     montado;
     bool     interno;             /* disco rígido (hd0), não pendrive */
+    /* Para o instalador (D063): */
+    uint32_t id_mbr;              /* identificador do disco no MBR (0x1B8) */
+    bool     tem_sistema;         /* tem a partição do SaguiOS (0xDA)... */
+    uint32_t sistema_ini;         /* ...que começa neste setor... */
+    uint32_t sistema_fim;         /* ...e acaba antes deste */
+    int      liberado_pid;        /* processo que pode ler e gravar setores crus (0: nenhum) */
 } disco_t;
 
 disco_t *disco_registrar(const char *fabricante, const char *produto, uint32_t setores, uint32_t tam_setor, void *dono,
@@ -37,6 +43,8 @@ disco_t *disco_indice(int i);
 int      disco_montar(disco_t *d);
 int      disco_desmontar(disco_t *d);
 disco_t *disco_montado(void);
+bool     disco_eh_origem(const disco_t *d);    /* o disco de onde o sistema ligou */
+void     discos_processo_terminou(int pid);   /* tira as liberações do processo */
 
 /* Avisos para a área de trabalho (H34). */
 #define AVISO_CONECTADO   1

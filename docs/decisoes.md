@@ -2000,14 +2000,14 @@ passar para a próxima da pasta e sem os papéis de parede (.sgi).
 - Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
   dentro. O `rm` do terminal continua apagando de vez, como no Unix.
 
-## D062. Discos internos (IDE/ATA), só leitura, e o que muda na ABI (issue #45)
+## D062. Discos internos (IDE/ATA) e o que muda na ABI (issue #45)
 
 **Contexto.** Até aqui o kernel só enxergava pendrives USB. O disco de onde o
 sistema ligou só era lido pela BIOS, no boot. Para instalar o SaguiOS num HD
 (#45), o kernel precisa enxergar os discos internos. Esse disco também guarda
 os dados de quem testa (o Windows, outro Linux), e a regra prd2 vale: nada
 grava nele sem que a pessoa escolha e confirme. Por isso o driver entra
-primeiro só lendo; a gravação vem depois, junto com a trava no kernel.
+primeiro só lendo; a gravação veio depois, junto com a trava no kernel (D063).
 
 **Decisão.**
 - Driver ATA em PIO nas portas clássicas (0x1F0/0x170, controle em
@@ -2015,8 +2015,9 @@ primeiro só lendo; a gravação vem depois, junto com a trava no kernel.
   até 3 tentativas com reset do canal. O modo AHCI fica para depois.
   Referência: ATA/ATAPI-6 (T13/1410D rev. 3a), com as seções citadas em
   `ata.c`.
-- **Só leitura.** O driver não tem os comandos de gravação: gravar num disco
-  interno devolve erro.
+- O driver grava (WRITE SECTOR(S) e FLUSH CACHE depois), mas gravar num
+  disco interno só acontece pelos setores crus, travados atrás da
+  confirmação de quem usa (D063).
 - Toda espera do driver tem limite de tempo, medido pelo contador do PIT
   (`cronometro_ms`, que anda com as interrupções desligadas): 5 s por
   comando e 1 s no IDENTIFY. Antes de escrever no Device register, o driver
@@ -2040,3 +2041,46 @@ primeiro só lendo; a gravação vem depois, junto com a trava no kernel.
 SaguiOS e um com a FAT32 de outro sistema) e um pendrive. Os discos são
 achados e lidos, nada monta, `montar` recusa, o pendrive continua montando e
 as imagens dos HDs saem byte a byte iguais.
+
+## D063. Setores crus travados no kernel atrás de uma confirmação (issue #45)
+
+**Contexto.** Um instalador precisa ler e gravar setores direto no disco: a
+tabela de partições, a cópia do sistema, a formatação. É também o jeito mais
+fácil de destruir os dados de quem testa. A regra prd2 diz que só se grava
+num disco que a pessoa escolheu e confirmou digitando o nome, nunca por
+padrão, e essa confirmação não pode depender do programa.
+
+**Decisão.**
+- Três chamadas novas: `SIS_DISCO_SETORES` (80) lê ou grava de 1 a 128
+  setores; `SIS_DISCO_RELER` (81) reconhece de novo o formato do disco
+  depois que o programa gravou uma tabela; `SIS_DISCO_LIBERAR` (82) pede a
+  confirmação.
+- `SIS_DISCO_LIBERAR (nome, resumo)` abre uma caixa desenhada pelo kernel,
+  por cima de tudo. Enquanto ela está aberta, teclado e mouse vão só para
+  ela (nem os atalhos passam). A caixa mostra o que o kernel sabe do disco
+  (nome, se é interno ou pendrive, modelo, tamanho e o que tem nele hoje) e,
+  separado, sob "O programa diz que vai:", o resumo que o programa mandou
+  (até 4 linhas). A pessoa digita o nome do disco e aperta Enter; nome
+  errado não libera, Esc cancela.
+- A liberação vale só para aquele disco, só para o processo que pediu e só
+  até ele terminar (`discos_processo_terminou`). O processo do kernel (pid 0)
+  nunca é liberado.
+- Sem a liberação: gravar dá ERRO_ACESSO em qualquer disco; ler um disco
+  interno também, exceto o que o instalador copia do disco de onde o sistema
+  ligou (setores 0 e 1 e a partição 0xDA). Ler um pendrive continua livre.
+  Gravar num disco montado dá ERRO_OCUPADO.
+- O disco de onde o sistema ligou (a origem) é achado pelo identificador do
+  MBR (bytes 0x1B8-0x1BB), que o estágio 2 copia para `info_boot.disco_id`.
+  Com dois discos de mesmo identificador e com a partição do sistema,
+  nenhum é a origem.
+- `SIS_DISCO_RELER` usa `usuario_texto`, como o `sis_montar`.
+
+**ABI (acréscimos).** As chamadas 80, 81 e 82; `pedido_setores_t`; o erro
+`ERRO_ES` (-18); o campo `origem` no fim de `info_disco_t` (os programas
+antigos continuam recebendo só o que cabe, D062); `info_boot_t.disco_id`
+(`BI_DISCO_ID`, byte 152 do bootinfo).
+
+**Teste.** `h109_trava_discos`, com `/testes/setores`: as recusas sem
+confirmação, a caixa (o que mostra, nome errado, Esc, nome certo), a
+liberação que acaba com o processo e, no fim, o disco conferido byte a byte:
+só o setor gravado depois da confirmação mudou.

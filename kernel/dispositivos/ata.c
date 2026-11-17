@@ -7,7 +7,8 @@
  * comando espera o disco ficar pronto lendo o registrador de estado.
  * Endereços LBA de 28 bits até 128 GB e de 48 bits acima disso.
  *
- * Por enquanto o driver só lê: gravar devolve erro (D062).
+ * Gravar num disco interno só acontece pela chamada de setores crus, que o
+ * kernel trava atrás da confirmação de quem usa (D063).
  *
  * As controladoras SATA que estão no modo IDE (compatível) aparecem aqui
  * também; o modo AHCI precisa de outro driver.
@@ -16,12 +17,14 @@
  *   7.7  Device register (7.7.3: só se escreve com BSY e DRQ em zero);
  *   7.8  Device Control register (nIEN e SRST);
  *   7.15 Status register (BSY, DRDY, DF, DRQ, ERR);
+ *   8.12 e 8.13 FLUSH CACHE (0xE7) e FLUSH CACHE EXT (0xEA);
  *   8.15 IDENTIFY DEVICE (0xEC): palavras 27-46 (modelo), 60-61 (setores
  *        em LBA28), 83 bit 10 (LBA48) e 100-103 (setores em LBA48);
  *   8.34 e 8.35 READ SECTOR(S) (0x20) e READ SECTOR(S) EXT (0x24);
+ *   8.62 e 8.63 WRITE SECTOR(S) (0x30) e WRITE SECTOR(S) EXT (0x34);
  *   9.2  protocolo do reset por software;
  *   9.3  barramento livre e seleção da unidade (estado HI2: Device_Select);
- *   9.4 e 9.5 protocolos sem dados e PIO de leitura.
+ *   9.4, 9.5 e 9.6 protocolos sem dados, PIO de leitura e PIO de gravação.
  *
  * Toda espera tem limite de tempo (medido pelo PIT, que anda com as
  * interrupções desligadas): um disco que não responde dá erro em poucos
@@ -100,7 +103,7 @@ static int esperar_livre(const ata_t *u, uint32_t limite)
     return 0;
 }
 
-static int selecionar(const ata_t *u, uint32_t lba, uint32_t n)
+static int selecionar(const ata_t *u, uint32_t lba, uint32_t n, bool escrever)
 {
     if (esperar_livre(u, LIMITE_MS) < 0) return -1;
     if (u->lba48) {
@@ -114,7 +117,7 @@ static int selecionar(const ata_t *u, uint32_t lba, uint32_t n)
         porta_escreve8(u->base + ATA_LBA0, (uint8_t)lba);
         porta_escreve8(u->base + ATA_LBA1, (uint8_t)(lba >> 8));
         porta_escreve8(u->base + ATA_LBA2, (uint8_t)(lba >> 16));
-        porta_escreve8(u->base + ATA_COMANDO, 0x24);
+        porta_escreve8(u->base + ATA_COMANDO, escrever ? 0x34 : 0x24);
         esperar_400ns(u);   /* o estado só vale 400 ns depois do comando */
     } else {
         porta_escreve8(u->base + ATA_UNIDADE, (uint8_t)(0xE0 | (u->escravo << 4) | ((lba >> 24) & 0x0F)));
@@ -123,7 +126,7 @@ static int selecionar(const ata_t *u, uint32_t lba, uint32_t n)
         porta_escreve8(u->base + ATA_LBA0, (uint8_t)lba);
         porta_escreve8(u->base + ATA_LBA1, (uint8_t)(lba >> 8));
         porta_escreve8(u->base + ATA_LBA2, (uint8_t)(lba >> 16));
-        porta_escreve8(u->base + ATA_COMANDO, 0x20);
+        porta_escreve8(u->base + ATA_COMANDO, escrever ? 0x30 : 0x20);
         esperar_400ns(u);
     }
     return 0;
@@ -145,6 +148,7 @@ static void reiniciar_canal(const ata_t *u)
 }
 
 static int ler_uma_vez(disco_t *d, uint32_t lba, uint32_t n, void *buf);
+static int escrever_uma_vez(disco_t *d, uint32_t lba, uint32_t n, const void *buf);
 
 /* Até 3 tentativas: um erro passageiro (visto no QEMU 11) não vira "erro de
  * leitura" do disco inteiro. */
@@ -158,12 +162,13 @@ static int ler(disco_t *d, uint32_t lba, uint32_t n, void *buf)
     return -1;
 }
 
-/* Só leitura, por enquanto: gravar num disco interno vem junto com a trava
- * no kernel que exige a confirmação de quem usa (D062). */
 static int escrever(disco_t *d, uint32_t lba, uint32_t n, const void *buf)
 {
-    (void)buf; (void)n;
-    klog("[ATA] %s: gravacao recusada (lba %u): driver so de leitura\n", d->nome, lba);
+    for (int t = 0; t < 3; t++) {
+        if (escrever_uma_vez(d, lba, n, buf) == 0) return 0;
+        klog("[ATA] nova tentativa (gravação, lba %u)\n", lba);
+        reiniciar_canal(d->dono);
+    }
     return -1;
 }
 
@@ -175,13 +180,40 @@ static int ler_uma_vez(disco_t *d, uint32_t lba, uint32_t n, void *buf)
         uint32_t k = n > POR_VEZ ? POR_VEZ : n;
         if (lba + k > u->setores || lba + k < lba) return -1;
         bool i = int_salva_desliga();
-        if (selecionar(u, lba, k) < 0) { int_restaura(i); klog("[ATA] disco ocupado demais (leitura, lba %u)\n", lba); return -1; }
+        if (selecionar(u, lba, k, false) < 0) { int_restaura(i); klog("[ATA] disco ocupado demais (leitura, lba %u)\n", lba); return -1; }
         for (uint32_t s = 0; s < k; s++) {
             if (esperar(u, true) < 0) { int_restaura(i); klog("[ATA] erro lendo lba %u (estado %x, erro %x, base %x, escravo %d, lba48 %d)\n", lba + s, porta_le8(u->base + ATA_ESTADO), porta_le8(u->base + ATA_ERRO), u->base, u->escravo, u->lba48); return -1; }
             for (int w = 0; w < 256; w++) *p++ = porta_le16(u->base + ATA_DADOS);
             esperar_400ns(u);
         }
         int_restaura(i);
+        lba += k; n -= k;
+    }
+    return 0;
+}
+
+static int escrever_uma_vez(disco_t *d, uint32_t lba, uint32_t n, const void *buf)
+{
+    ata_t *u = d->dono;
+    const uint16_t *p = buf;
+    while (n) {
+        uint32_t k = n > POR_VEZ ? POR_VEZ : n;
+        if (lba + k > u->setores || lba + k < lba) return -1;
+        bool i = int_salva_desliga();
+        if (selecionar(u, lba, k, true) < 0) { int_restaura(i); klog("[ATA] disco ocupado demais (gravação, lba %u)\n", lba); return -1; }
+        for (uint32_t s = 0; s < k; s++) {
+            if (esperar(u, true) < 0) { int_restaura(i); klog("[ATA] erro gravando lba %u\n", lba + s); return -1; }
+            for (int w = 0; w < 256; w++) porta_escreve16(u->base + ATA_DADOS, *p++);
+            esperar_400ns(u);
+        }
+        /* O disco pode guardar na própria memória: FLUSH CACHE garante que
+         * os dados estão no disco antes de dizer que gravou. */
+        if (esperar(u, false) < 0) { int_restaura(i); return -1; }
+        porta_escreve8(u->base + ATA_COMANDO, u->lba48 ? 0xEA : 0xE7);
+        esperar_400ns(u);
+        int r = esperar(u, false);
+        int_restaura(i);
+        if (r < 0) return -1;
         lba += k; n -= k;
     }
     return 0;

@@ -46,5 +46,13 @@ void gui_mostrar(void);
 void gui_aviso(const char *texto);   /* notificação no canto da tela por alguns segundos */
 struct processo;
 void janelas_do_processo_fechar(struct processo *p);
+/* Confirmação do disco (D063): a pessoa digita o nome do disco numa caixa
+ * do kernel. false se a interface não está no ar ou já há uma aberta. */
+#define CONF_LINHAS     10    /* linhas de texto na caixa */
+#define CONF_COLUNAS    69    /* letras por linha (600 pixels de caixa) */
+#define CONF_RESUMO_MAX 320   /* o resumo que o programa manda */
+bool gui_confirmar_disco(int pid, const char *nome, const char *const *linhas, int n);
+int  gui_confirmacao_resultado(int pid);   /* -2 sem pedido, 0 esperando, 1 sim, -1 não */
+const void *gui_confirmacao_canal(void);
 
 #endif

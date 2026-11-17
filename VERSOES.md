@@ -59,9 +59,11 @@ Já no código (no `main`), ainda não lançado como imagem:
   **captura de tela** com a tecla Print Screen (D060); a **Lixeira**, com
   restaurar e esvaziar (D061); e **cantos arredondados** com borda suavizada
   nas janelas e nos menus.
-- O kernel enxerga os **discos rígidos IDE/ATA** (`hd0`, `hd1`...), só
-  lendo (D062): nenhum disco interno é montado nem gravado. É a base do
-  instalador (issue #45).
+- O kernel enxerga os **discos rígidos IDE/ATA** (`hd0`, `hd1`...), sem
+  montar nenhum (D062). É a base do instalador (issue #45).
+- **Gravar direto no disco fica travado no kernel** (D063): só depois que a
+  pessoa digita o nome do disco numa caixa desenhada pelo próprio kernel,
+  que mostra o disco e o que o programa diz que vai fazer.
 
 ## Versões lançadas
 
