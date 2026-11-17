@@ -53,12 +53,25 @@ static int64_t tamanho_usado(const char *caminho, int nivel)
     return total;
 }
 
+/* O imprimir da libsagui não tem %llu (ele lê só 32 bits do número e o
+ * resto vira o próximo argumento). Acima de 4 GB, o total sai em duas
+ * partes: os bilhões, contados por subtração (sem a divisão de 64 bits,
+ * que precisaria da libgcc), e os 9 últimos algarismos. */
+static void imprimir_tamanho(int64_t t, const char *caminho)
+{
+    uint64_t u = (uint64_t)t;
+    if (u <= 0xFFFFFFFFu) { imprimir("%u\t%s\n", (unsigned)u, caminho); return; }
+    unsigned bilhoes = 0;
+    while (u >= 1000000000u) { u -= 1000000000u; bilhoes++; }
+    imprimir("%u%09u\t%s\n", bilhoes, (unsigned)u, caminho);
+}
+
 int principal(int argc, char **argv)
 {
     if (argc < 2) {
         int64_t t = tamanho_usado(".", 0);
         if (t < 0) { imprimir_em(ERROS, "du: não consigo ler a pasta atual\n"); return 1; }
-        imprimir("%llu\t.\n", (unsigned long long)t);
+        imprimir_tamanho(t, ".");
         return 0;
     }
 
@@ -69,7 +82,7 @@ int principal(int argc, char **argv)
             imprimir_em(ERROS, "du: %s: não consigo ler\n", argv[i]);
             erros = 1;
         } else {
-            imprimir("%llu\t%s\n", (unsigned long long)t, argv[i]);
+            imprimir_tamanho(t, argv[i]);
         }
     }
     return erros;

@@ -9,13 +9,14 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from h91_utilitarios import rodar as rodar_util  # noqa: E402
 from qemu import Maquina, verificar, criar_pendrive, pendrive_qemu, RAIZ  # noqa: E402
 
 
 def rodar(m, comando):
-    out = m.comando(comando)
-    out = out.split("\n", 1)[1] if "\n" in out else ""
-    return out[:out.rfind("sagui:")] if "sagui:" in out else out
+    """O que o comando escreveu, sem o eco, sem o prompt e sem as linhas de
+    registro do kernel ("[REDE] ...", "[GUI] ...") que saem na mesma serial."""
+    return rodar_util(m, comando)
 
 
 def codigo(m, programa):
@@ -40,13 +41,13 @@ def main():
         verificar(out == "meupc\n", f"nome-maquina agora mostra meupc (veio {out!r})")
 
         # Nome inválido: espaço não é permitido.
-        out = rodar(m, "nome-maquina meu pc")
-        verificar("use só letras, números e hífen" in out and codigo(m, "nome-maquina") == 1,
+        out = rodar(m, "nome-maquina \"meu pc\"")
+        verificar("use só letras, números e hífen" in out and codigo(m, "hostname") == 1,
                   "nome-maquina com espaço: erro em português e código 1")
 
         # Nome muito vazio.
-        out = rodar(m, "nome-maquina ''")
-        verificar("de 1 a 63 caracteres" in out and codigo(m, "nome-maquina") == 1,
+        out = rodar(m, "nome-maquina \"\"")
+        verificar("de 1 a 63 caracteres" in out and codigo(m, "hostname") == 1,
                   "nome-maquina vazio: erro e código 1")
 
         # Volta ao padrão para não poluir outros testes.

@@ -9,6 +9,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from h91_utilitarios import rodar as rodar_util  # noqa: E402
 from qemu import Maquina, verificar, criar_pendrive, pendrive_qemu, RAIZ  # noqa: E402
 
 # Arquivos com tamanhos conhecidos (bytes).
@@ -23,9 +24,9 @@ PASTAS = ("sub",)
 
 
 def rodar(m, comando):
-    out = m.comando(comando)
-    out = out.split("\n", 1)[1] if "\n" in out else ""
-    return out[:out.rfind("sagui:")] if "sagui:" in out else out
+    """O que o comando escreveu, sem o eco, sem o prompt e sem as linhas de
+    registro do kernel ("[REDE] ...", "[GUI] ...") que saem na mesma serial."""
+    return rodar_util(m, comando)
 
 
 def codigo(m, programa):

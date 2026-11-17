@@ -7,6 +7,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from h91_utilitarios import rodar as rodar_util  # noqa: E402
 from qemu import Maquina, verificar, criar_pendrive, pendrive_qemu, RAIZ  # noqa: E402
 
 # Casos: comando -> saída esperada. O último é um erro (sem argumento).
@@ -22,10 +23,9 @@ CASOS = (
 
 
 def rodar(m, comando):
-    out = m.comando(comando)
-    # remove o eco da linha digitada e o prompt seguinte
-    out = out.split("\n", 1)[1] if "\n" in out else ""
-    return out[:out.rfind("sagui:")] if "sagui:" in out else out
+    """O que o comando escreveu, sem o eco, sem o prompt e sem as linhas de
+    registro do kernel ("[REDE] ...", "[GUI] ...") que saem na mesma serial."""
+    return rodar_util(m, comando)
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
         verificar("uso: pasta-de CAMINHO" in out, "pasta-de sem argumento: uso em português")
         # código de saída (pelo log do kernel)
         import re
-        achados = re.findall(r"\(pasta-de\) terminou com codigo (-?\d+)", m.serial())
+        achados = re.findall(r"\(dirname\) terminou com codigo (-?\d+)", m.serial())
         verificar(achados and int(achados[-1]) == 1,
                   "pasta-de sem argumento: código de saída 1 (veio %s)" % (achados[-1] if achados else "nenhum"))
     return 0
