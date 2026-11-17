@@ -49,7 +49,7 @@
 #define SIS_PROXIMO_EVENTO 53   /* (id ou 0 = qualquer janela minha, &evento, esperar) -> 1 se houve */
 #define SIS_TITULO_JANELA  54   /* (id, titulo) */
 /* Dispositivos (fase 6) */
-#define SIS_LISTAR_DISCOS  55   /* (indice, &info_disco) -> 1 achou, 0 fim */
+#define SIS_LISTAR_DISCOS  55   /* (indice, &info_disco, tamanho) -> 1 achou, 0 fim; tamanho 0: estrutura sem "interno" (D062) */
 #define SIS_MONTAR         56   /* (nome, ex.: "usb0") -> monta em /usb */
 #define SIS_DESMONTAR      57   /* (nome) -> grava o que falta e libera para remover */
 /* Som (bônus B3) */

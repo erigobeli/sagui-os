@@ -10,15 +10,29 @@
  * As controladoras SATA que estão no modo IDE (compatível) aparecem aqui
  * também; o modo AHCI precisa de outro driver.
  *
- * Referência: ATA/ATAPI-6 (T13/1410D): IDENTIFY DEVICE (0xEC), READ
- * SECTORS (0x20) / EXT (0x24), WRITE SECTORS (0x30) / EXT (0x34), FLUSH
- * CACHE (0xE7) / EXT (0xEA); registradores de comando e de controle. */
+ * Referência: ATA/ATAPI-6, rascunho T13/1410D revisão 3a. Seções usadas:
+ *   7.7  Device register (7.7.3: só se escreve com BSY e DRQ em zero);
+ *   7.8  Device Control register (nIEN e SRST);
+ *   7.15 Status register (BSY, DRDY, DF, DRQ, ERR);
+ *   8.12 e 8.13 FLUSH CACHE (0xE7) e FLUSH CACHE EXT (0xEA);
+ *   8.15 IDENTIFY DEVICE (0xEC): palavras 27-46 (modelo), 60-61 (setores
+ *        em LBA28), 83 bit 10 (LBA48) e 100-103 (setores em LBA48);
+ *   8.34 e 8.35 READ SECTOR(S) (0x20) e READ SECTOR(S) EXT (0x24);
+ *   8.62 e 8.63 WRITE SECTOR(S) (0x30) e WRITE SECTOR(S) EXT (0x34);
+ *   9.2  protocolo do reset por software;
+ *   9.3  barramento livre e seleção da unidade (estado HI2: Device_Select);
+ *   9.4, 9.5 e 9.6 protocolos sem dados, PIO de leitura e PIO de gravação.
+ *
+ * Toda espera tem limite de tempo (medido pelo PIT, que anda com as
+ * interrupções desligadas): um disco que não responde dá erro em poucos
+ * segundos em vez de congelar a máquina. */
 #include "ata.h"
 #include "portas.h"
 #include "console.h"
 #include "disco.h"
 #include "cpu.h"
 #include "texto.h"
+#include "relogio.h"
 
 #define ATA_DADOS     0
 #define ATA_ERRO      1
@@ -51,23 +65,44 @@ static void esperar_400ns(const ata_t *u)
     for (int i = 0; i < 4; i++) (void)porta_le8(u->ctrl);   /* cada leitura do estado alternativo leva ~100 ns */
 }
 
-/* Espera BSY sair; com drq, espera também DRQ (ou erro). -1 em erro ou tempo esgotado. */
-static int esperar(const ata_t *u, bool drq)
+/* Limites de tempo. Um comando normal acaba em milissegundos; 5 s cobre um
+ * disco que estava parado e precisa girar de novo (o disco do QEMU no Mac,
+ * lendo de um arquivo, às vezes fica ocupado por centenas de milissegundos). */
+#define LIMITE_MS        5000
+#define LIMITE_IDENT_MS  1000   /* IDENTIFY de uma posição talvez vazia */
+
+/* Espera BSY sair; com drq, espera também DRQ (ou erro). -1 em erro ou
+ * tempo esgotado (7.15). */
+static int esperar_ms(const ata_t *u, bool drq, uint32_t limite)
 {
-    /* Cada leitura do estado é uma saída para a porta (~0,1 a 1 us). 100
-     * milhões de voltas dão vários segundos: o disco do QEMU no Mac, lendo de
-     * um arquivo, já passou de 4 milhões (estado d0 = ainda ocupado). */
-    for (uint32_t volta = 0; volta < 100000000; volta++) {
+    cronometro_t c;
+    cronometro_iniciar(&c);
+    for (;;) {
         uint8_t e = porta_le8(u->base + ATA_ESTADO);
-        if (e & EST_BSY) continue;
-        if (e & (EST_ERR | EST_DF)) return -1;
-        if (!drq || (e & EST_DRQ)) return 0;
+        if (!(e & EST_BSY)) {
+            if (e & (EST_ERR | EST_DF)) return -1;
+            if (!drq || (e & EST_DRQ)) return 0;
+        }
+        if (cronometro_ms(&c) >= limite) return -1;
     }
-    return -1;
 }
 
-static void selecionar(const ata_t *u, uint32_t lba, uint32_t n, bool escrever)
+static int esperar(const ata_t *u, bool drq) { return esperar_ms(u, drq, LIMITE_MS); }
+
+/* Antes de escrever no Device register, BSY e DRQ têm de estar em zero
+ * (7.7.3; estado HI2 de 9.3). */
+static int esperar_livre(const ata_t *u, uint32_t limite)
 {
+    cronometro_t c;
+    cronometro_iniciar(&c);
+    while (porta_le8(u->base + ATA_ESTADO) & (EST_BSY | EST_DRQ))
+        if (cronometro_ms(&c) >= limite) return -1;
+    return 0;
+}
+
+static int selecionar(const ata_t *u, uint32_t lba, uint32_t n, bool escrever)
+{
+    if (esperar_livre(u, LIMITE_MS) < 0) return -1;
     if (u->lba48) {
         porta_escreve8(u->base + ATA_UNIDADE, (uint8_t)(0x40 | (u->escravo << 4)));
         esperar_400ns(u);
@@ -91,6 +126,7 @@ static void selecionar(const ata_t *u, uint32_t lba, uint32_t n, bool escrever)
         porta_escreve8(u->base + ATA_COMANDO, escrever ? 0x30 : 0x20);
         esperar_400ns(u);
     }
+    return 0;
 }
 
 /* Até 128 setores por comando (cabe no contador de 8 bits do LBA28 e é
@@ -105,7 +141,7 @@ static void reiniciar_canal(const ata_t *u)
     for (int i = 0; i < 50; i++) esperar_400ns(u);
     porta_escreve8(u->ctrl, 0x02);
     for (int i = 0; i < 50; i++) esperar_400ns(u);
-    (void)esperar(u, false);
+    (void)esperar_ms(u, false, LIMITE_MS);   /* 9.2: o disco volta com BSY em zero */
 }
 
 static int ler_uma_vez(disco_t *d, uint32_t lba, uint32_t n, void *buf);
@@ -141,7 +177,7 @@ static int ler_uma_vez(disco_t *d, uint32_t lba, uint32_t n, void *buf)
         uint32_t k = n > POR_VEZ ? POR_VEZ : n;
         if (lba + k > u->setores) return -1;
         bool i = int_salva_desliga();
-        selecionar(u, lba, k, false);
+        if (selecionar(u, lba, k, false) < 0) { int_restaura(i); klog("[ATA] disco ocupado demais (leitura, lba %u)\n", lba); return -1; }
         for (uint32_t s = 0; s < k; s++) {
             if (esperar(u, true) < 0) { int_restaura(i); klog("[ATA] erro lendo lba %u (estado %x, erro %x, base %x, escravo %d, lba48 %d)\n", lba + s, porta_le8(u->base + ATA_ESTADO), porta_le8(u->base + ATA_ERRO), u->base, u->escravo, u->lba48); return -1; }
             for (int w = 0; w < 256; w++) *p++ = porta_le16(u->base + ATA_DADOS);
@@ -161,7 +197,7 @@ static int escrever_uma_vez(disco_t *d, uint32_t lba, uint32_t n, const void *bu
         uint32_t k = n > POR_VEZ ? POR_VEZ : n;
         if (lba + k > u->setores) return -1;
         bool i = int_salva_desliga();
-        selecionar(u, lba, k, true);
+        if (selecionar(u, lba, k, true) < 0) { int_restaura(i); klog("[ATA] disco ocupado demais (gravação, lba %u)\n", lba); return -1; }
         for (uint32_t s = 0; s < k; s++) {
             if (esperar(u, true) < 0) { int_restaura(i); klog("[ATA] erro gravando lba %u\n", lba + s); return -1; }
             for (int w = 0; w < 256; w++) porta_escreve16(u->base + ATA_DADOS, *p++);
@@ -185,6 +221,7 @@ static bool identificar(ata_t *u, char *modelo, int max)
 {
     if (porta_le8(u->base + ATA_ESTADO) == 0xFF) return false;     /* canal sem nada (barramento flutuando) */
     porta_escreve8(u->ctrl, 0x02);                                      /* nIEN: sem interrupções */
+    if (esperar_livre(u, LIMITE_IDENT_MS) < 0) return false;           /* 7.7.3 */
     porta_escreve8(u->base + ATA_UNIDADE, (uint8_t)(0xA0 | (u->escravo << 4)));
     esperar_400ns(u);
     porta_escreve8(u->base + ATA_QTD, 0);
@@ -193,12 +230,12 @@ static bool identificar(ata_t *u, char *modelo, int max)
     porta_escreve8(u->base + ATA_LBA2, 0);
     porta_escreve8(u->base + ATA_COMANDO, 0xEC);
     if (porta_le8(u->base + ATA_ESTADO) == 0) return false;        /* não existe */
-    for (uint32_t v = 0; v < 1000000; v++) {
-        uint8_t e = porta_le8(u->base + ATA_ESTADO);
-        if (!(e & EST_BSY)) break;
-    }
+    cronometro_t c;
+    cronometro_iniciar(&c);
+    while (porta_le8(u->base + ATA_ESTADO) & EST_BSY)
+        if (cronometro_ms(&c) >= LIMITE_IDENT_MS) return false;
     if (porta_le8(u->base + ATA_LBA1) || porta_le8(u->base + ATA_LBA2)) return false;   /* ATAPI ou SATA de outro tipo */
-    if (esperar(u, true) < 0) return false;
+    if (esperar_ms(u, true, LIMITE_IDENT_MS) < 0) return false;
     uint16_t id[256];
     for (int w = 0; w < 256; w++) id[w] = porta_le16(u->base + ATA_DADOS);
     u->lba48 = (id[83] & (1 << 10)) != 0;

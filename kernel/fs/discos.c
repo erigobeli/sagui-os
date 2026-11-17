@@ -159,6 +159,7 @@ static void reconhecer(disco_t *d)
 static bool montar_se_for_do_saguios(disco_t *d)
 {
     if (disco_montado()) return false;
+    if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) return false;   /* D062 */
     if (fat_montar(d) < 0) return false;
     if (!config_tem_arquivo()) { fat_desmontar(false); return false; }
     d->montado = true;
@@ -245,8 +246,20 @@ int disco_montar(disco_t *d)
     if (d->montado) return 0;
     if (!d->fat32) return ERRO_FORMATO;
     if (disco_montado()) return ERRO_OCUPADO;      /* um por vez em /usb */
+    /* Disco interno: só a partição que o instalador criou (rótulo SAGUIOS,
+     * com .saguios/configuracoes.txt). Qualquer outra FAT32 do HD é de quem
+     * testa (o Windows, por exemplo) e não é montada (D062). */
+    if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) {
+        klog("[DISCO] %s: disco interno sem a particao do SaguiOS, nao monta\n", d->nome);
+        return ERRO_ACESSO;
+    }
     int r = fat_montar(d);
     if (r < 0) return r;
+    if (d->interno && !config_tem_arquivo()) {
+        fat_desmontar(false);
+        klog("[DISCO] %s: disco interno sem a particao do SaguiOS, nao monta\n", d->nome);
+        return ERRO_ACESSO;
+    }
     d->montado = true;
     vfs_ponto_montagem(true);
     config_ao_montar();   /* as configurações guardadas nesse pendrive passam a valer (H37) */
@@ -277,9 +290,13 @@ int disco_desmontar(disco_t *d)
 
 int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t dd, uint32_t e)
 {
-    (void)c; (void)dd; (void)e;
+    (void)dd; (void)e;
     info_disco_t *inf = (info_disco_t *)pinfo;
-    if (!usuario_ok(inf, sizeof *inf, true)) return ERRO_ENDERECO;
+    /* Programas antigos passam 0 em c e têm a estrutura sem o campo
+     * "interno" (D062): escreve só o que cabe no tamanho pedido. */
+    bool com_interno = c >= sizeof *inf;
+    uint32_t tam = com_interno ? sizeof *inf : sizeof *inf - sizeof inf->interno;
+    if (!usuario_ok(inf, tam, true)) return ERRO_ENDERECO;
     int k = 0;
     for (int i = 0; i < MAX_DISCOS; i++) {
         disco_t *d = &discos[i];
@@ -293,7 +310,7 @@ int32_t sis_listar_discos(uint32_t indice, uint32_t pinfo, uint32_t c, uint32_t 
         inf->setores = d->setores;
         inf->montado = d->montado;
         inf->suportado = d->fat32;
-        inf->interno = d->interno;
+        if (com_interno) inf->interno = d->interno;
         return 1;
     }
     return 0;

@@ -1999,3 +1999,38 @@ passar para a próxima da pasta e sem os papéis de parede (.sgi).
   Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
 - Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
   dentro. O `rm` do terminal continua apagando de vez, como no Unix.
+
+## D062. Discos internos (IDE/ATA) e o que muda na ABI (issue #45)
+
+**Contexto.** Até aqui o kernel só enxergava pendrives USB. O disco de onde o
+sistema ligou só era lido pela BIOS, no boot. Para instalar o SaguiOS num HD
+(#45), o kernel precisa ler e gravar discos internos. Esse disco também guarda
+os dados de quem testa (o Windows, outro Linux), e a regra prd2 vale: nada
+grava nele sem que a pessoa escolha e confirme.
+
+**Decisão.**
+- Driver ATA em PIO nas portas clássicas (0x1F0/0x170, controle em
+  0x3F6/0x376), mestre e escravo, sem interrupções (nIEN), LBA28 e LBA48,
+  FLUSH CACHE depois de gravar e até 3 tentativas com reset do canal. O modo
+  AHCI fica para depois. Referência: ATA/ATAPI-6 (T13/1410D rev. 3a), com as
+  seções citadas em `ata.c`.
+- Toda espera do driver tem limite de tempo, medido pelo contador do PIT
+  (`cronometro_ms`, que anda com as interrupções desligadas): 5 s por
+  comando e 1 s no IDENTIFY. Antes de escrever no Device register, o driver
+  espera BSY e DRQ em zero (7.7.3).
+- Os discos internos se chamam `hd0`, `hd1`... e ficam na mesma lista dos
+  pendrives (`disco_registrar_interno`).
+- Um disco interno só é montado se for a partição que o instalador criou:
+  FAT32 com rótulo `SAGUIOS` e `.saguios/configuracoes.txt`. Fora isso,
+  `montar hdX` devolve ERRO_ACESSO, nada monta sozinho e o Arquivos não
+  oferece o disco. Montada, a partição fica em `/usb`, como o pendrive, para
+  não mexer nos programas, e não tem "Remover com segurança".
+- O autoteste `usb_setores`, que grava setores, só usa pendrive, nunca disco
+  interno.
+
+**ABI (acréscimos, nada muda de lugar).**
+- `info_disco_t` ganha o campo `interno` no fim (1 = disco interno).
+  `SIS_LISTAR_DISCOS` passa a receber, no terceiro argumento, o tamanho da
+  estrutura do programa (a libsagui manda `sizeof`). Programas antigos
+  mandavam 0: o kernel escreve só os campos de antes e não passa do fim da
+  estrutura deles, como no campo `bits` da H94.

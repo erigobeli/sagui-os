@@ -222,8 +222,12 @@ static bool atualizar_pendrive(void)
 {
     info_disco_t d;
     bool achou = false;
-    for (int i = 0; listar_discos(i, &d) == 1; i++)
+    for (int i = 0; listar_discos(i, &d) == 1; i++) {
+        /* Disco interno só se for a partição do SaguiOS: o resto do HD é de
+         * quem testa, e o kernel nem monta (D062). */
+        if (d.interno && compara_texto(d.rotulo, "SAGUIOS") != 0) continue;
         if (d.suportado) { achou = true; break; }
+    }
     bool mudou = achou != tem_pendrive || (achou && (d.montado != pendrive.montado || compara_texto(d.nome, pendrive.nome) != 0));
     tem_pendrive = achou;
     if (achou) pendrive = d;

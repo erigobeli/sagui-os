@@ -8,6 +8,9 @@ Critérios:
   - o SaguiOS lê um arquivo que foi gravado nele aqui fora;
   - um arquivo gravado pelo SaguiOS chega ao disco (conferido aqui fora com o
     mtools, depois de desmontar) e a FAT32 continua íntegra (fsck.vfat);
+  - um disco interno com uma FAT32 que não é a do SaguiOS (rótulo DADOS,
+    como a de outro sistema) não monta sozinho, "montar hd1" recusa e o
+    Arquivos não oferece o disco (D062);
   - captura para a revisão a olho (o ícone do disco se chama "Disco").
 """
 import os
@@ -41,6 +44,25 @@ def main():
                   f"desmontar fala de disco, não de pendrive ({out.strip()[-60:]!r})")
 
     local = os.path.join(SAIDA, "h105-novo.txt")
+    # Um HD com a FAT32 de outro sistema: não monta (nem sozinho, nem pedindo).
+    alheio = criar_pendrive("h105-alheio", 64, "DADOS", pastas=(".saguios",), arquivos={
+        ".saguios/configuracoes.txt": b"aparencia.efeitos = automatico\n",
+        "meu.txt": b"dados de quem testa\n",
+    })
+    extras = ["-drive", f"format=raw,file={alheio},if=ide,index=1"]
+    with Maquina("h105b", "ide", extras=extras, memoria="768M") as m:
+        m.esperar_serial("sagui:/$", 120)
+        s = m.serial()
+        verificar("[DISCO] hd1:" in s and "montado sozinho" not in s, "a FAT32 de outro sistema no HD não monta sozinha")
+        out = m.comando("montar hd1")
+        verificar("nao monta" in m.serial() and "montado em /usb" not in out,
+                  f"montar hd1 recusa o disco interno que não é do SaguiOS ({out.strip()[-60:]!r})")
+        # O Arquivos sem o botão do disco na lateral: conferido na captura.
+        m.digitar("arquivos\n", 0.04)
+        m.esperar_serial("arquivos: pasta /", 30)
+        time.sleep(1)
+        m.captura("H105-disco-alheio")
+
     mtools(hd, "mcopy", "-o", "p:/novo.txt", local)
     verificar(open(local, "rb").read().strip() == b"gravado pelo sagui", "o arquivo gravado pelo SaguiOS está no disco")
     fat = os.path.join(SAIDA, "h105-fat.img")
