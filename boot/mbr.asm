@@ -2,7 +2,7 @@
 ;
 ; A BIOS copia este setor (512 bytes) para 0x7C00 e salta para cá em modo real.
 ; O trabalho dele é pequeno de propósito: descobrir de qual disco viemos (DL),
-; ler o cabeçalho de boot no LBA 1 e, com as informações dele, trazer o
+; ler o cabeçalho de boot (no LBA guardado em 0x1B4) e, com ele, trazer o
 ; estágio 2 para 0x8000. Todo o resto (A20, memória, kernel, vídeo) fica no
 ; estágio 2, que não tem o limite de 512 bytes.
 ;
@@ -10,7 +10,10 @@
 ;   0x000-0x002  salto curto + NOP (formato esperado por BIOS que procuram BPB)
 ;   0x003-0x059  área de BPB falso, zerada. Algumas BIOS, ao dar boot por USB,
 ;                escrevem a geometria aqui. Por isso nenhum código fica nela.
-;   0x05A-0x1B7  código e mensagens
+;   0x05A-0x1B3  código e mensagens
+;   0x1B4-0x1B7  LBA do cabeçalho de boot: 1 na imagem; no disco instalado, o
+;                primeiro setor da partição do sistema, para não usar o setor
+;                1, onde costuma estar o carregador de outro sistema (D067)
 ;   0x1B8-0x1BD  identificador do disco
 ;   0x1BE-0x1FD  tabela de partições (preenchida pelo tools/mkimagem.py)
 ;   0x1FE-0x1FF  assinatura 0x55AA (exigida pela BIOS)
@@ -54,10 +57,11 @@ inicio:
         cmp bx, 0xAA55
         jne .sem_lba
 
-        ; Cabeçalho de boot (LBA 1) para 0x7E00, logo depois deste setor.
+        ; Cabeçalho de boot para 0x7E00, logo depois deste setor.
         mov word [dap_qtd], 1
         mov word [dap_destino], CAB_ENDERECO
-        mov dword [dap_lba], CAB_LBA
+        mov eax, [cab_lba]
+        mov [dap_lba], eax
         call ler_setores
         cmp dword [CAB_ENDERECO + CAB_ASSINATURA], CAB_ASSINATURA_VAL
         jne .sem_cabecalho
@@ -139,7 +143,8 @@ msg_sem_lba:    db "Erro: BIOS sem INT13 LBA", 0
 msg_cabecalho:  db "Erro: cabecalho invalido", 0
 msg_leitura:    db "Erro de leitura", 0
 
-        times 0x1B8 - ($ - $$) db 0     ; falha na montagem se o código passar do limite
+        times 0x1B4 - ($ - $$) db 0     ; falha na montagem se o código passar do limite
+cab_lba:        dd CAB_LBA              ; o instalador troca (D067)
 id_disco:       dd 0x53475549           ; 'IUGS' - identificador do disco
                 dw 0
 tabela_part:    times 64 db 0           ; preenchida pelo mkimagem.py

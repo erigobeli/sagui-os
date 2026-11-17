@@ -115,12 +115,18 @@ static void reconhecer(disco_t *d)
             uint32_t ini = (uint32_t)e[8] | (uint32_t)e[9] << 8 | (uint32_t)e[10] << 16 | (uint32_t)e[11] << 24;
             if (!tipo || (e[0] != 0 && e[0] != 0x80)) continue;
             if (tipo == 0x0B || tipo == 0x0C) {
-                if (d->fat32) continue;            /* fica a primeira FAT32 */
+                /* Fica a primeira FAT32; num disco interno, a do SaguiOS
+                 * ganha de outra que venha antes (instalado no espaço
+                 * livre, D067). */
                 uint8_t *v = kmalloc(512);
-                if (v && d->ler(d, ini, 1, v) == 0 && eh_fat32(v)) {
+                bool ok = v && d->ler(d, ini, 1, v) == 0 && eh_fat32(v);
+                bool do_saguios = ok && d->interno && memcmp(v + 71, "SAGUIOS    ", 11) == 0;
+                if (ok && (!d->fat32 || (do_saguios && txt_compara(d->rotulo, "SAGUIOS") != 0))) {
                     d->part_inicio = ini;
                     d->fat32 = true;
                     copiar_rotulo(d, v + 71);
+                } else if (ok || d->fat32) {
+                    ;                              /* uma FAT32 a mais: fica a escolhida */
                 } else if (!achou_outro) {
                     txt_copia_n(d->formato, "FAT32 danificado: não suportado", sizeof d->formato);
                     achou_outro = true;
