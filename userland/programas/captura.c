@@ -1,4 +1,4 @@
-/* captura - salva a tela num arquivo PNG (H87).
+/* captura - salva a tela num arquivo PNG (D060).
  *
  * A tecla Print Screen abre este programa (o gerenciador de janelas cuida da
  * tecla). Também roda pelo terminal: "captura" ou "captura arquivo.png".

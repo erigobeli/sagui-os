@@ -340,9 +340,9 @@ static void desenhar_doca(void)
     }
 }
 
-/* ------------------------------------------------------------ menu Iniciar (H75, H89) */
+/* ------------------------------------------------------------ menu Iniciar (H75, D056) */
 
-/* H89: o menu do sagui virou um menu Iniciar com todos os programas: uma
+/* D056: o menu do sagui virou um menu Iniciar com todos os programas: uma
  * caixa de busca no alto (o teclado vai para ela enquanto o menu está
  * aberto), as categorias logo abaixo e a grade de ícones. Embaixo, Sobre e
  * Desligar. Os programas instalados no pendrive entram em "Instalados". */
@@ -383,10 +383,19 @@ static const programa_menu_t catalogo[] = {
 #define MENU_X 4
 #define MENU_Y (BARRA_SUPERIOR + 4)
 #define MENU_L 620
-#define MENU_ALT 544
+/* A grade tem até 4 linhas; numa tela baixa (640x480), menos, e os
+ * programas que sobram vão para a página seguinte (setas no rodapé). */
+static int menu_linhas(void)
+{
+    int l = ((int)video_altura() - MENU_Y - 8 - 106 - 70) / 92;
+    return l < 1 ? 1 : l > 4 ? 4 : l;
+}
+#define MENU_ALT (106 + MENU_LINHAS * MENU_CEL_A + 70)
 #define MENU_ITEM 26          /* menu de contexto */
 #define MENU_COLUNAS 5
-#define MENU_LINHAS 4
+#define MENU_LINHAS menu_linhas()
+#define MENU_POR_PAG (MENU_COLUNAS * MENU_LINHAS)
+#define MENU_MAX 64
 #define MENU_CEL_L 108
 #define MENU_CEL_A 92
 #define MENU_GRADE_X (MENU_X + (MENU_L - MENU_COLUNAS * MENU_CEL_L) / 2)
@@ -398,14 +407,17 @@ static const programa_menu_t catalogo[] = {
 #define ALVO_CAT    1000      /* + categoria */
 #define ALVO_SOBRE  2000
 #define ALVO_DESLIGAR 2001
+#define ALVO_PAG_ANT  2002
+#define ALVO_PAG_PROX 2003
+#define MENU_PAG_X (MENU_X + 150)   /* "<", "1 de 2" e ">" no meio do rodapé */
 #define ALVO_BUSCA  2002
 
 static bool menu_aberto;
-static int menu_sob = -1, menu_sel, menu_cat;
+static int menu_sob = -1, menu_sel, menu_cat, menu_pag;
 static char menu_busca[40];
 /* A lista filtrada: índices do catálogo, ou -(1 + i) para o ícone i da área
  * de trabalho (programa instalado). */
-static int menu_res[MENU_COLUNAS * MENU_LINHAS], menu_qtd;
+static int menu_res[MENU_MAX], menu_qtd;
 
 static void abrir_programa(const char *caminho);
 
@@ -448,20 +460,23 @@ static void menu_filtrar(void)
 {
     menu_qtd = 0;
     bool buscando = menu_busca[0] != 0;
-    for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
+    for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_MAX; i++) {
         const programa_menu_t *p = &catalogo[i];
         if (!buscando && menu_cat != CAT_TODOS && p->cat != menu_cat) continue;
         if (buscando && !contem(p->nome, menu_busca) && !contem(p->palavras, menu_busca)) continue;
         menu_res[menu_qtd++] = i;
     }
-    for (int i = 0; i < area_qtd_icones() && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
+    for (int i = 0; i < area_qtd_icones() && menu_qtd < MENU_MAX; i++) {
         if (area_icone_tipo(i) != 1) continue;
         if (!buscando && menu_cat != CAT_TODOS && menu_cat != CAT_INSTALADOS) continue;
         if (buscando && !contem(area_icone_nome(i), menu_busca)) continue;
         menu_res[menu_qtd++] = -(1 + i);
     }
     if (menu_sel >= menu_qtd) menu_sel = menu_qtd ? menu_qtd - 1 : 0;
+    menu_pag = menu_sel / MENU_POR_PAG;          /* a página do escolhido */
 }
+
+static int menu_paginas(void) { return menu_qtd ? (menu_qtd + MENU_POR_PAG - 1) / MENU_POR_PAG : 1; }
 
 static bool ha_instalados(void)
 {
@@ -545,8 +560,10 @@ static void desenhar_menu(void)
     }
 
     /* Grade */
-    for (int k = 0; k < menu_qtd; k++) {
-        int cx = MENU_GRADE_X + (k % MENU_COLUNAS) * MENU_CEL_L, cy = MENU_GRADE_Y + (k / MENU_COLUNAS) * MENU_CEL_A;
+    if (menu_pag >= menu_paginas()) menu_pag = menu_paginas() - 1;   /* a tela mudou de tamanho */
+    int k0 = menu_pag * MENU_POR_PAG, k1 = k0 + MENU_POR_PAG < menu_qtd ? k0 + MENU_POR_PAG : menu_qtd;
+    for (int k = k0; k < k1; k++) {
+        int cx = MENU_GRADE_X + ((k - k0) % MENU_COLUNAS) * MENU_CEL_L, cy = MENU_GRADE_Y + ((k - k0) / MENU_COLUNAS) * MENU_CEL_A;
         bool sob = menu_sob == k, sel = menu_busca[0] && menu_sel == k;
         if (sob || sel)
             suave_ret(&sv, cx + 2, cy + 2, MENU_CEL_L - 4, MENU_CEL_A - 4, 12,
@@ -582,6 +599,16 @@ static void desenhar_menu(void)
     sup_retangulo(&tela, MENU_X + 16, MENU_RODAPE_Y - 6, MENU_L - 32, 1, cor_mistura(tema->topo, tema->topo_relogio, 1, 4));
     sup_icone(&tela, MENU_X + 22, MENU_RODAPE_Y + 9, arte_px_sobre_20, 20);
     sup_texto(&tela, MENU_X + 50, MENU_RODAPE_Y + 11, "SaguiOS", texto);
+    if (menu_paginas() > 1) {
+        for (int b = 0; b < 2; b++) {
+            int x = MENU_PAG_X + b * 92;
+            if (menu_sob == ALVO_PAG_ANT + b) suave_ret(&sv, x, MENU_RODAPE_Y + 4, 32, 32, 10, tema->destaque, tema->destaque, 256);
+            sup_texto(&tela, x + 12, MENU_RODAPE_Y + 12, b ? ">" : "<", menu_sob == ALVO_PAG_ANT + b ? 0xFFFFFF : texto);
+        }
+        char t[16];
+        snformatar(t, sizeof t, "%d de %d", menu_pag + 1, menu_paginas());
+        sup_texto(&tela, MENU_PAG_X + 62 - texto_largura(t) / 2, MENU_RODAPE_Y + 12, t, fraco);
+    }
     static const char *const rot[2] = { "Sobre", "Desligar" };
     for (int b = 0; b < 2; b++) {
         int l = 112, x = MENU_X + MENU_L - 16 - (2 - b) * (l + 8) + 8, y = MENU_RODAPE_Y + 4;
@@ -614,9 +641,12 @@ static int menu_alvo_em(int x, int y)
     }
     if (y >= MENU_GRADE_Y && y < MENU_GRADE_Y + MENU_LINHAS * MENU_CEL_A && x >= MENU_GRADE_X &&
         x < MENU_GRADE_X + MENU_COLUNAS * MENU_CEL_L) {
-        int k = (y - MENU_GRADE_Y) / MENU_CEL_A * MENU_COLUNAS + (x - MENU_GRADE_X) / MENU_CEL_L;
+        int k = menu_pag * MENU_POR_PAG + (y - MENU_GRADE_Y) / MENU_CEL_A * MENU_COLUNAS + (x - MENU_GRADE_X) / MENU_CEL_L;
         return k < menu_qtd ? k : -1;
     }
+    if (y >= MENU_RODAPE_Y + 4 && y < MENU_RODAPE_Y + 36 && menu_paginas() > 1)
+        for (int b = 0; b < 2; b++)
+            if (x >= MENU_PAG_X + b * 92 && x < MENU_PAG_X + b * 92 + 32) return ALVO_PAG_ANT + b;
     if (y >= MENU_RODAPE_Y + 4 && y < MENU_RODAPE_Y + 36)
         for (int b = 0; b < 2; b++) {
             int l = 112, bx = MENU_X + MENU_L - 16 - (2 - b) * (l + 8) + 8;
@@ -630,6 +660,7 @@ static void menu_abrir(bool abrir)
     menu_aberto = abrir;
     menu_sob = -1;
     menu_sel = 0;
+    menu_pag = 0;
     menu_busca[0] = 0;
     if (abrir) { menu_filtrar(); klog("[GUI] menu aberto\n"); }
     redesenhar_menu();
@@ -1423,6 +1454,13 @@ static void tratar_mouse(evento_mouse_t *m)
                 redesenhar_corpo_menu();
                 return;
             } else if (mi == ALVO_BUSCA) return;
+            else if (mi == ALVO_PAG_ANT || mi == ALVO_PAG_PROX) {
+                int p = menu_pag + (mi == ALVO_PAG_PROX ? 1 : -1);
+                if (p >= 0 && p < menu_paginas()) { menu_pag = p; menu_sel = p * MENU_POR_PAG; }
+                klog("[GUI] menu: pagina %d de %d\n", menu_pag + 1, menu_paginas());
+                redesenhar_corpo_menu();
+                return;
+            }
             else if (mi == ALVO_SOBRE || mi == ALVO_DESLIGAR) {
                 menu_abrir(false);
                 abrir_programa(mi == ALVO_SOBRE ? "/bin/sobre-o-sistema" : "/bin/energia");
@@ -1946,6 +1984,10 @@ int32_t sis_janela_opcoes(uint32_t id, uint32_t opcoes, uint32_t minimos, uint32
     if (!j) return ERRO_INVALIDO;
     if (!(opcoes & JAN_REDIMENSIONAVEL) || j->redimensionavel) return 0;
     uint32_t max_px = (uint32_t)(video_largura() * video_altura());
+    /* Nunca menor que a janela de agora: numa tela de 640x480, o Terminal
+     * já nasce com 760x480, e a reserva menor deixava o programa escrever
+     * além dela (falta de página). */
+    if (max_px < (uint32_t)(j->larg * j->alt)) max_px = (uint32_t)(j->larg * j->alt);
     if (max_px > ESPACO_JANELA / 4) max_px = ESPACO_JANELA / 4;
     uint32_t paginas = (max_px * 4 + PAGINA - 1) / PAGINA;
     uint32_t fis = memfisica_alocar_seguidas(paginas);

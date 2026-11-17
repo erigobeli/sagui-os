@@ -25,7 +25,7 @@ static char nomes[MAX_ITENS][64];
 static uint8_t tipos[MAX_ITENS];
 static uint32_t tamanhos[MAX_ITENS];
 static lista_t lista;
-static uint8_t marc[MAX_ITENS];   /* H91: itens marcados (laço, Ctrl, Shift) */
+static uint8_t marc[MAX_ITENS];   /* D058: itens marcados (laço, Ctrl, Shift) */
 static info_disco_t pendrive;
 static bool tem_pendrive;
 static botao_t bt_lado_raiz = { 8, 76, LATERAL - 16, 28, "SaguiOS", false };
@@ -318,7 +318,7 @@ static void abrir_item(int i)
     desenhar_rodape(msg);
 }
 
-/* ------------------------------------------------------------ criar e renomear na linha (H91)
+/* ------------------------------------------------------------ criar e renomear na linha (D058)
  *
  * Como nos outros sistemas: "Nova pasta" e "Novo arquivo de texto" criam o
  * item com um nome livre ("Nova pasta", "Nova pasta (2)"...) e já abrem a
@@ -650,7 +650,7 @@ static void abrir_lixeira(void)
     carregar();
 }
 
-/* ------------------------------------------------------------ menu do botão direito (H91)
+/* ------------------------------------------------------------ menu do botão direito (D058)
  *
  * Num item: abrir, abrir no Editor, renomear, apagar e os "Novo". No vazio:
  * só os "Novo", atualizar e voltar. Com vários marcados, o que vale para um
@@ -758,7 +758,7 @@ int principal(int argc, char **argv)
             registrar("arquivos: tamanho %dx%d", LARG, ALT);
             continue;
         }
-        /* H91: com um nome sendo editado na linha, o teclado e os cliques vão
+        /* D058: com um nome sendo editado na linha, o teclado e os cliques vão
          * primeiro para a lista (um clique fora termina a edição). */
         if (lista.editando && (e.tipo == EV_TECLA || e.tipo == EV_CLIQUE)) {
             int r = lista_tratar(j, &lista, &e);

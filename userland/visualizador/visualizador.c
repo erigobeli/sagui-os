@@ -1,4 +1,4 @@
-/* visualizador [imagem] - mostra imagens PNG, JPEG, GIF, WebP, BMP (H87) e o .sgi dos fundos (H92).
+/* visualizador [imagem] - mostra imagens PNG, JPEG, GIF, WebP, BMP e o .sgi dos fundos (D059).
  *
  * Os decodificadores são os do Cipó (userland/navegador/imagens.c, png.c,
  * jpeg.c e terceiros/libwebp-vp8), ligados a este programa pelo Makefile; o
@@ -85,7 +85,7 @@ static bool bmp_ler(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int
     return true;
 }
 
-/* ---------------------------------------------------------------- SGI1 (H92)
+/* ---------------------------------------------------------------- SGI1 (D059)
  *
  * O formato dos papéis de parede do SaguiOS (tools/mkfundo.py): "SGI1",
  * largura e altura em 16 bits, paleta de 256 cores RGB e os índices em RLE

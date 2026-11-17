@@ -52,6 +52,9 @@ static const icone_t icones[] = {
 #define ICONE_PENDRIVE (QTD_ICONES - 1)
 #define ICONE_LIXEIRA  (QTD_ICONES - 2)
 static bool lixeira_cheia;   /* troca o desenho: com papéis saindo */
+/* A pasta que o ícone abre: a do sistema, ou a do pendrive quando só ela tem
+ * coisas (senão o ícone cheio abriria uma lixeira vazia). */
+static const char *lixeira_abrir = "/.lixeira";
 static bool pendrive_visivel;
 static char nome_pendrive[24] = "Pendrive";
 
@@ -376,12 +379,22 @@ bool area_instalados_mudaram(void)
     conferido_em = relogio_tiques();
     /* A Lixeira está cheia? (o que o Arquivos pôs em /.lixeira ou /usb/.lixeira,
      * sem contar o .origens) */
-    bool cheia = false;
     static const char *const lixeiras[2] = { "/.lixeira", "/usb/.lixeira" };
-    for (int q = 0; q < 2 && !cheia; q++) {
+    bool tem[2] = { false, false };
+    for (int q = 0; q < 2; q++) {
         entrada_pasta_t e;
-        for (int k = 0; vfs_listar(lixeiras[q], k, &e) == 1; k++)
-            if (e.nome[0] != '.') { cheia = true; break; }
+        /* /usb não está na árvore da memória: o pendrive se lê pela FAT32. */
+        const char *rel;
+        bool usb = vfs_na_usb(lixeiras[q], &rel);
+        if (q == 1 && !usb) continue;
+        for (int k = 0; (usb ? fat_listar(rel, k, &e) : vfs_listar(lixeiras[q], k, &e)) == 1; k++)
+            if (e.nome[0] != '.') { tem[q] = true; break; }
+    }
+    bool cheia = tem[0] || tem[1];
+    const char *abrir = !tem[0] && tem[1] ? lixeiras[1] : lixeiras[0];
+    if (abrir != lixeira_abrir) {
+        lixeira_abrir = abrir;
+        klog("[GUI] lixeira abre %s\n", abrir);
     }
     if (cheia != lixeira_cheia) {
         lixeira_cheia = cheia;
@@ -618,7 +631,8 @@ void area_icone_abrir(int i)
         klog("[GUI] icone Pendrive -> /bin/arquivos /usb (pid %d)\n", pid);
         return;
     }
-    char *argv[] = { (char *)icones[i].programa + 5, (char *)icones[i].arg, NULL };
-    int pid = processo_executar(icones[i].programa, icones[i].arg ? 2 : 1, argv, NULL);
+    const char *arg = i == ICONE_LIXEIRA ? lixeira_abrir : icones[i].arg;
+    char *argv[] = { (char *)icones[i].programa + 5, (char *)arg, NULL };
+    int pid = processo_executar(icones[i].programa, arg ? 2 : 1, argv, NULL);
     klog("[GUI] icone %s -> %s (pid %d)\n", icones[i].nome, icones[i].programa, pid);
 }

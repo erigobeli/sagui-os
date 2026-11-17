@@ -1,4 +1,4 @@
-/* suave.h - formas com a borda suavizada (H88), usadas pelo kernel
+/* suave.h - formas com a borda suavizada, usadas pelo kernel
  * (desenho.c) e pelos programas (libsagui, gui.c).
  *
  * Cada pixel da borda é dividido em 4 x 4 amostras; a cor entra na
