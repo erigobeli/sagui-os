@@ -410,7 +410,7 @@ static int menu_linhas(void)
 #define ALVO_PAG_ANT  2002
 #define ALVO_PAG_PROX 2003
 #define MENU_PAG_X (MENU_X + 150)   /* "<", "1 de 2" e ">" no meio do rodapé */
-#define ALVO_BUSCA  2002
+#define ALVO_BUSCA  2004      /* fora de 2002 e 2003, que são o "<" e o ">" */
 
 static bool menu_aberto;
 static int menu_sob = -1, menu_sel, menu_cat, menu_pag;

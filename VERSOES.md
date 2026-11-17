@@ -59,6 +59,10 @@ Já no código (no `main`), ainda não lançado como imagem:
   **captura de tela** com a tecla Print Screen (D060); a **Lixeira**, com
   restaurar e esvaziar (D061); e **cantos arredondados** com borda suavizada
   nas janelas e nos menus.
+- Menu Iniciar em telas de 640x480, com páginas ("<" e ">"); o ícone da
+  Lixeira fica cheio também quando só a lixeira do pendrive tem coisas; o
+  kernel não escreve mais além da memória da janela quando um programa
+  muda as opções de uma janela maior que a tela.
 
 ## Versões lançadas
 

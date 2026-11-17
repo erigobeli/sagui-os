@@ -57,6 +57,14 @@ def main():
         verificar(paginas >= 2, f"os programas que não cabem vão para a página 2 (de {paginas})")
         time.sleep(0.6)
         m.captura("H107-menu-pagina2")
+        # "<" volta para a página 1, e ">" de novo leva à 2.
+        n = len(m.serial())
+        m.clique(MENU_X + 150 + 16, rodape + 20)               # "<"
+        esperar(m, "[GUI] menu: pagina 1 de", 10, n)
+        verificar(True, "\"<\" volta para a página 1")
+        n = len(m.serial())
+        m.clique(MENU_X + 150 + 92 + 16, rodape + 20)          # ">"
+        esperar(m, "[GUI] menu: pagina 2 de", 10, n)
         n = len(m.serial())
         m.clique(GRADE_X + 54, GRADE_Y + 40)                   # o 1º ícone da página 2
         esperar(m, "[GUI] menu: ", 10, n)
