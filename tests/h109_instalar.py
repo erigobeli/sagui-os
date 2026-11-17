@@ -152,6 +152,8 @@ def main():
     with Maquina("h109b", "ide", imagem=hd, memoria="768M", reiniciar=True) as m:
         m.esperar_serial("sagui:/$", 120)
         verificar("tem configuracoes do SaguiOS: montado sozinho" in m.serial(), "a partição dos arquivos monta sozinha no boot")
+        verificar("coluna da direita: instalador nao, 1 unidades" in m.serial(),
+                  "ligado pelo disco instalado: sem o instalador na área de trabalho, e o Disco na coluna da direita")
         # Já instalado: o instalador some do menu (a busca não acha).
         n = len(m.serial())
         m.clique(40, 12)

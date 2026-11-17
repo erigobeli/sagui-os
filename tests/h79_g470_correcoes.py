@@ -59,8 +59,9 @@ def main():
         antes = len(m.serial())
         esperar(m, "programas instalados no pendrive: 1", 30, 0)
         time.sleep(3)
-        # Ícones: 8 do sistema + o pendrive + o instalado (10º): coluna 2, linha 3.
-        x, y = 20 + 110 + 48, 24 + 16 + 2 * 92 + 30
+        # Ícones: 8 do sistema + o instalado (9º): coluna 2, linha 2. O
+        # pendrive fica na coluna da direita, com o instalador.
+        x, y = 20 + 110 + 48, 24 + 16 + 1 * 92 + 30
         m.captura("H79-1-icone-instalado")
         antes = len(m.serial())
         m.clique(x, y, duplo=True)

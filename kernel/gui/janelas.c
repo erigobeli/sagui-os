@@ -492,7 +492,7 @@ static const programa_menu_t catalogo[] = {
     { "Sagui Code", "/bin/saguicode-janela", NULL, CAT_DESENVOLVIMENTO, arte_px_saguicode_40, "ia agente programar codigo" },
     { "Sagui Code (terminal)", "/bin/terminal", "/bin/saguicode", CAT_DESENVOLVIMENTO, arte_px_terminal_40, "ia agente programar codigo terminal" },
     { "Componentes", "/bin/componentes", NULL, CAT_DESENVOLVIMENTO, arte_px_componentes_40, "demonstracao botoes interface libsagui" },
-    { "Instalar o SaguiOS", "/bin/instalar", NULL, CAT_SISTEMA, arte_px_instalado_40, "instalar disco hd gravar instalacao particao" },
+    { "Instalar o SaguiOS", "/bin/instalar", NULL, CAT_SISTEMA, arte_px_instalar_sistema_40, "instalar disco hd gravar instalacao particao" },
 };
 #define QTD_CATALOGO (int)(sizeof catalogo / sizeof catalogo[0])
 #define MENU_X 4
@@ -842,7 +842,7 @@ static void abrir_ctx(int icone, int x, int y)
     int tipo = area_icone_tipo(icone);
     ctx_item("Abrir", ACAO_ABRIR);
     if (tipo == 2) ctx_item("Remover com segurança", ACAO_DESMONTAR);
-    else {
+    else if (tipo != 3) {                         /* o instalador: só abrir */
         ctx_item("Renomear...", ACAO_RENOMEAR);
         if (tipo == 1) ctx_item("Remover do pendrive...", ACAO_REMOVER);
         else ctx_item("Esconder o ícone", ACAO_ESCONDER);
@@ -1819,10 +1819,8 @@ static void tarefa_gerenciador(void *arg)
         char texto[96];
         while (disco_proximo_aviso(&tipo, texto, sizeof texto))
             gui_aviso(texto);
-        disco_t *pd = NULL;
-        for (int k = 0; k < MAX_DISCOS && !pd; k++) { disco_t *d = disco_indice(k); if (d && d->presente && !d->de_boot && (!d->interno || d->montado)) pd = d; }   /* HD sem montar não é pendrive */
-        if (area_pendrive(pd != NULL, pd ? (pd->interno ? "Disco" : pd->rotulo[0] ? pd->rotulo : "Pendrive") : NULL))
-            gui_redesenhar(0, BARRA_SUPERIOR, 140, (int)video_altura() - BARRA_SUPERIOR);
+        if (area_unidades())                      /* o instalador e as unidades, na coluna da direita */
+            gui_redesenhar(0, BARRA_SUPERIOR, (int)video_largura(), (int)video_altura() - BARRA_SUPERIOR);
         if (aviso_ate && (int32_t)(relogio_tiques() - aviso_ate) >= 0) {
             aviso_ate = 0;
             int x, y;

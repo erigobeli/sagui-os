@@ -24,15 +24,22 @@ def janela(serial, titulo):
 
 
 POR_COLUNA = (768 - 40) // 92   # os ícones continuam numa segunda coluna (H38)
-PENDRIVE = 8                    # o último ícone
+# As unidades ficam na coluna da direita, no canto de cima, como no Linux:
+# primeiro "Instalar o SaguiOS" (o sistema ligou pela imagem, não está
+# instalado), depois o pendrive.
+PENDRIVE = "direita-1"
 
 
 def icone(i):
+    if i == PENDRIVE:
+        return 1024 - 20 - 96 + 64, 40 + 1 * 108 + 32        # à direita do Terminal
     return 20 + (i // POR_COLUNA) * 110 + 48, 40 + (i % POR_COLUNA) * 92 + 32
 
 
 def canto_icone(i):
     """Canto de cima à esquerda do desenho do ícone (64x64)."""
+    if i == PENDRIVE:
+        return 1024 - 20 - 96 + 16, 40 + 1 * 108
     return 20 + (i // POR_COLUNA) * 110 + 16, 40 + (i % POR_COLUNA) * 92
 
 
@@ -56,10 +63,9 @@ def main():
         time.sleep(0.6)
         png = m.captura("H34-1-pendrive-conectado")
         verificar(True, "ao espetar: notificação 'Pendrive conectado: MEUPEN (64 MB)'")
-        # Ícone 64x64 suavizado (H81): o corpo azul do pendrive.
-        ponto_icone = (canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 12 + 1)
-        cor_icone = cor_do_pixel(png, *ponto_icone)
-        verificar(cor_icone[2] > 150 and cor_icone[0] < 110, f"ícone do pendrive apareceu na área de trabalho {cor_icone}")
+        # O ícone entra na coluna da direita (o Terminal pode cobrir parte
+        # dela, como qualquer janela cobre os ícones).
+        verificar("coluna da direita: instalador sim, 1 unidades" in m.serial(), "ícone do pendrive apareceu na área de trabalho")
 
         m.clique(*icone(PENDRIVE), duplo=True)
         m.esperar_serial("arquivos: pasta /usb", 15)
@@ -97,7 +103,9 @@ def main():
         m.esperar_serial("notificacao: Pendrive removido.", 15)
         time.sleep(0.6)
         png = m.captura("H34-5-pendrive-removido")
-        verificar(cor_do_pixel(png, *ponto_icone) != cor_icone, "removido: o ícone some")
+        verificar(m.serial().rstrip().count("coluna da direita: instalador sim, 0 unidades") >= 2 or
+                  "coluna da direita: instalador sim, 0 unidades" in m.serial()[m.serial().rfind("1 unidades"):],
+                  "removido: o ícone some")
 
         # Espeta de novo, monta pelo ícone e arranca sem desmontar.
         espetar(m, pen, "p2")
