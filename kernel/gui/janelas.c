@@ -499,6 +499,12 @@ static void nome_cortado(char *saida, int tam, const char *nome, int l)
     }
 }
 
+/* O retângulo toca o recorte do quadro que está sendo desenhado? */
+static bool no_recorte(int x, int y, int l, int a)
+{
+    return x < tela.cx1 && x + l > tela.cx0 && y < tela.cy1 && y + a > tela.cy0;
+}
+
 static void desenhar_menu(void)
 {
     if (!menu_aberto) return;
@@ -532,6 +538,7 @@ static void desenhar_menu(void)
         for (int c = 0; c < QTD_CATS; c++) {
             if (c == CAT_INSTALADOS && !ha_instalados()) continue;
             int l = chip_largura(c);
+            if (!no_recorte(x, MENU_CHIPS_Y, l, 26)) { x += l + CHIP_VAO; continue; }   /* fora do que se redesenha */
             bool ativo = c == menu_cat, sob = menu_sob == ALVO_CAT + c;
             uint32_t fundo = ativo ? tema->destaque : sob ? cor_mistura(caixa, tema->destaque, 1, 3) : caixa;
             suave_ret(&sv, x, MENU_CHIPS_Y, l, 26, 13, fundo, fundo, 256);
@@ -547,6 +554,9 @@ static void desenhar_menu(void)
     /* Grade */
     for (int k = 0; k < menu_qtd; k++) {
         int cx = MENU_GRADE_X + (k % MENU_COLUNAS) * MENU_CEL_L, cy = MENU_GRADE_Y + (k / MENU_COLUNAS) * MENU_CEL_A;
+        /* Célula fora do que se redesenha (o mouse passando muda só uma ou
+         * duas): nada a fazer, nem o nome. */
+        if (!no_recorte(cx, cy, MENU_CEL_L, MENU_CEL_A)) continue;
         bool sob = menu_sob == k, sel = menu_busca[0] && menu_sel == k;
         if (sob || sel)
             suave_ret(&sv, cx + 2, cy + 2, MENU_CEL_L - 4, MENU_CEL_A - 4, 12,
