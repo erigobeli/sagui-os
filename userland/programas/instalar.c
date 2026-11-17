@@ -169,6 +169,7 @@ typedef struct {
     uint8_t  tipo;          /* 0: entrada vazia */
     uint32_t ini, n;
     bool     nova, formatar, excluida;
+    bool     saguios;       /* formatada para o SaguiOS: o sistema vai no lugar dela */
     char     rotulo[12];
 } part_t;
 
@@ -328,9 +329,11 @@ static uint32_t precisa(void) { return sistema_mb() + DADOS_MIN; }
 static const char *motivo_livre(void)
 {
     if (gpt) return "GPT: só MBR por enquanto";
-    if (sel_reg < 0 || reg[sel_reg].p >= 0) return "escolha um espaço livre";
-    if (reg[sel_reg].n < precisa()) return "espaço livre pequeno demais";
-    if (entradas_livres() < 2) return "sem entrada livre na tabela";
+    if (sel_reg < 0) return "escolha um espaço livre";
+    bool alvo = reg[sel_reg].p >= 0 && parts[reg[sel_reg].p].saguios;
+    if (reg[sel_reg].p >= 0 && !alvo) return "escolha um espaço livre";
+    if (reg[sel_reg].n < precisa()) return alvo ? "partição pequena demais" : "espaço livre pequeno demais";
+    if (entradas_livres() + (alvo ? 1 : 0) < 2) return "sem entrada livre na tabela";
     return NULL;
 }
 
@@ -362,8 +365,9 @@ static int instalar(void)
         r_ini = MB;
         r_n = (total - MB) / MB * MB;
     } else {
-        r_ini = reg[livre_inst].ini;
-        r_n = reg[livre_inst].n;
+        r_ini = acima_mb(reg[livre_inst].ini);
+        r_n = (reg[livre_inst].ini + reg[livre_inst].n - r_ini) / MB * MB;
+        if (reg[livre_inst].p >= 0) parts[reg[livre_inst].p].excluida = true;   /* formatada para o SaguiOS */
     }
     uint32_t s_ini = r_ini, s_n = sistema_mb();
     uint32_t d_ini = s_ini + s_n, d_n = r_ini + r_n - d_ini;
@@ -631,7 +635,7 @@ static void desenhar_particoes(void)
         if (x + w > X0 + CL - 2) w = X0 + CL - 2 - x;
         if (w <= 2) break;
         bool livre = reg[r].p < 0;
-        uint32_t c = livre ? 0xF7F9FA : cor_tipo(parts[reg[r].p].tipo);
+        uint32_t c = livre ? 0xF7F9FA : (parts[reg[r].p].saguios ? COR_DESTAQUE : cor_tipo(parts[reg[r].p].tipo));
         g_ret_redondo(j, x, BARRA_Y + 2, w - 2, 36, 7, c, livre ? c : (c & 0xFEFEFE) >> 1 | (c & 0xFEFEFE) >> 2);
         if (livre) g_contorno_redondo(j, x, BARRA_Y + 2, w - 2, 36, 7, 0xC2CAD2);
         if (!modo_inteiro && r == livre_inst) g_ret_redondo(j, x + 3, BARRA_Y + 5, w - 8, 30, 5, COR_VERDE_CL, 0xC9E8D4);
@@ -663,7 +667,7 @@ static void desenhar_particoes(void)
         int y = LISTA_Y + r * LINHA_A;
         if (r == sel_reg) g_ret_redondo(j, X0 + 4, y, CL - 8, LINHA_A, 7, 0xDCE8F8, 0xDCE8F8);
         bool livre = reg[r].p < 0;
-        uint32_t c = livre ? 0xF7F9FA : cor_tipo(parts[reg[r].p].tipo);
+        uint32_t c = livre ? 0xF7F9FA : (parts[reg[r].p].saguios ? COR_DESTAQUE : cor_tipo(parts[reg[r].p].tipo));
         g_ret_redondo(j, X0 + 14, y + 7, 14, 14, 4, c, c);
         if (livre) g_contorno_redondo(j, X0 + 14, y + 7, 14, 14, 4, 0xB8C2CB);
         tamanho_texto(reg[r].n, tam, sizeof tam);
@@ -676,10 +680,12 @@ static void desenhar_particoes(void)
         const part_t *p = &parts[reg[r].p];
         formatar_texto(t, sizeof t, "Partição %u%s", reg[r].p + 1, p->nova ? " (nova)" : "");
         g_texto(j, X0 + 38, y + 6, t, COR_TEXTO);
-        formatar_texto(t, sizeof t, "%s%s", nome_tipo(p->tipo), p->formatar && !p->nova ? " (formatar)" : "");
-        g_texto(j, X0 + 170, y + 6, t, p->formatar && !p->nova ? COR_PERIGO : COR_TEXTO);
+        if (p->saguios) copia_texto(t, "SaguiOS (formatar)", sizeof t);
+        else formatar_texto(t, sizeof t, "%s%s", nome_tipo(p->tipo), p->formatar && !p->nova ? " (formatar)" : "");
+        g_texto(j, X0 + 170, y + 6, t, (p->formatar && !p->nova) || p->saguios ? COR_PERIGO : COR_TEXTO);
         g_texto(j, X0 + 362, y + 6, tam, COR_TEXTO);
-        g_texto(j, X0 + 440, y + 6, p->rotulo, COR_TEXTO_FRACO);
+        if (p->saguios && !modo_inteiro && r == livre_inst) negrito(X0 + 440, y + 6, "SaguiOS aqui", COR_DESTAQUE);
+        else g_texto(j, X0 + 440, y + 6, p->rotulo, COR_TEXTO_FRACO);
     }
     if (!qtd_reg && !gpt) g_texto(j, X0 + 16, LISTA_Y + 6, "O disco não tem espaço utilizável.", COR_TEXTO_FRACO);
 
@@ -693,7 +699,9 @@ static void desenhar_particoes(void)
         int bx = X0 + k * (CL / 2 + 6), bl = CL / 2 - 6;
         cartao(bx, oy, bl, 56, sel ? COR_VERDE_CL : COR_CARTAO, sel ? COR_DESTAQUE : COR_LINHA);
         radio(bx + 22, oy + 19, sel);
-        negrito(bx + 42, oy + 10, k == 0 ? "Apagar o disco e instalar" : "No espaço livre", ok ? COR_TEXTO : 0xA5AEB6);
+        bool na_part = livre_inst >= 0 && reg[livre_inst].p >= 0;
+        negrito(bx + 42, oy + 10, k == 0 ? "Apagar o disco e instalar" : na_part ? "Na partição formatada" : "No espaço livre",
+                ok ? COR_TEXTO : 0xA5AEB6);
         const char *sub = k == 0 ? "Todas as partições somem." : ok ? "As outras partições ficam." : mot;
         g_texto(j, bx + 42, oy + 30, sub, k == 0 ? COR_PERIGO : ok ? COR_TEXTO_FRACO : 0xA5AEB6);
         bts[k == 0 ? B_MODO_INTEIRO : B_MODO_LIVRE] = (bt_t){ bx, oy, bl, 56, "", false, true, false };
@@ -759,7 +767,8 @@ static void desenhar_resumo(void)
             const part_t *p = &parts[k];
             if (!p->tipo) continue;
             uint32_t c = COR_PERIGO;
-            if (p->excluida) formatar_texto(t, sizeof t, "- Exclui a partição %d (%s).", k + 1, nome_tipo(p->tipo));
+            if (p->saguios && !p->nova) formatar_texto(t, sizeof t, "- Formata a partição %d (%s) para o SaguiOS: o que há nela se perde.", k + 1, nome_tipo(p->tipo));
+            else if (p->excluida) formatar_texto(t, sizeof t, "- Exclui a partição %d (%s).", k + 1, nome_tipo(p->tipo));
             else if (p->nova) { formatar_texto(t, sizeof t, "- Cria a partição %d: FAT32 \"%s\", %u MB.", k + 1, p->rotulo, p->n / MB); c = COR_TEXTO; }
             else if (p->formatar) formatar_texto(t, sizeof t, "- Formata a partição %d como FAT32 (o que há nela se perde).", k + 1);
             else continue;
@@ -841,7 +850,7 @@ static void desenhar(void)
         int by = LISTA_Y + LINHAS * LINHA_A + 14;
         bt(B_EXCLUIR, X0, by, 104, "Excluir", false, parte && !gpt);
         bt(B_NOVA, X0 + 112, by, 144, "Nova partição", false, livre && !gpt && entradas_livres() > 0);
-        bt(B_FORMATAR, X0 + 264, by, 104, "Formatar", false, parte && !gpt && parts[reg[sel_reg].p].tipo != 0xDA);
+        bt(B_FORMATAR, X0 + 264, by, 104, "Formatar", false, parte && !gpt);
         bt(B_TUDO, X0 + CL - 124, by, 124, "Apagar tudo", false, !modo_inteiro || gpt);
         break;
     }
@@ -948,15 +957,19 @@ static void nova(void)
 
 static void formatar(void)
 {
-    part_t *p = &parts[reg[sel_reg].p];
-    char perg[120];
-    formatar_texto(perg, sizeof perg, "Formatar a partição %d como FAT32? O que há nela se perde (só ao instalar).", reg[sel_reg].p + 1);
-    if (!confirmar("Formatar", perg)) return;
-    p->tipo = 0x0C;
-    p->formatar = true;
-    copia_texto(p->rotulo, "DADOS", sizeof p->rotulo);
-    registrar("instalar: formatar %s%d", discos[escolhido].nome, reg[sel_reg].p + 1);
+    int r = sel_reg;
+    part_t *p = &parts[reg[r].p];
+    char perg[160];
+    formatar_texto(perg, sizeof perg, "Formatar a partição %d para o SaguiOS? O sistema e os seus arquivos vão nela, "
+                   "e o que há nela hoje se perde (só ao instalar).", reg[r].p + 1);
+    if (!confirmar("Formatar para o SaguiOS", perg)) return;
+    for (int k = 0; k < 4; k++) parts[k].saguios = false;   /* uma só */
+    p->saguios = true;
     modo_inteiro = false;
+    livre_inst = !motivo_livre() ? r : -1;
+    registrar("instalar: formatar %s%d para o SaguiOS (%s)", discos[escolhido].nome, reg[r].p + 1,
+              livre_inst >= 0 ? "instala nela" : motivo_livre());
+    if (livre_inst < 0) mensagem("Formatar para o SaguiOS", motivo_livre());
 }
 
 static void apagar_tudo(void)
