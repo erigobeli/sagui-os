@@ -25,9 +25,8 @@ static botao_t botoes_abas[QTD_ABAS];
 
 static void mostrar_mensagem(const char *fmt, int r)
 {
-    /* r: 1 guardado no pendrive, 0 só até desligar, <0 erro */
+    /* r: 1 guardado no pendrive, 0 só até desligar (sem aviso), <0 erro */
     if (r == 1) formatar_texto(recado, sizeof recado, "%s Guardado no pendrive.", fmt);
-    else if (r == 0) formatar_texto(recado, sizeof recado, "%s Sem pendrive: vale até desligar.", fmt);
     else formatar_texto(recado, sizeof recado, "%s", fmt);
     g_retangulo(j, X0, A - 36, L - X0 - 10, LETRA_A, COR_FUNDO);
     g_texto(j, X0, A - 36, recado, r < 0 && r != -100 ? 0xB03030 : COR_DESTAQUE);
