@@ -59,6 +59,8 @@ Já no código (no `main`), ainda não lançado como imagem:
   **captura de tela** com a tecla Print Screen (D060); a **Lixeira**, com
   restaurar e esvaziar (D061); e **cantos arredondados** com borda suavizada
   nas janelas e nos menus.
+- Três comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
+  (`nome-maquina`) e `du` (`disco-usado`).
 
 ## Versões lançadas
 
