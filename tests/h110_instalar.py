@@ -136,6 +136,8 @@ def main():
         verificar("disco interno" in caixa and "NTFS" in caixa, "a caixa mostra o disco e o que tem nele hoje (do kernel)")
         verificar("O programa diz que vai:" in caixa and "apagar todas as parti" in caixa and "copiar o SaguiOS" in caixa,
                   "a caixa mostra o resumo do instalador")
+        verificar("hd1 (2) e tudo o que" in caixa and "Tabela MBR: 2 parti" in caixa,
+                  "o resumo conta as partições que o kernel leu na tabela (D066)")
         time.sleep(0.8)
         m.captura("H110-4-confirmacao")
         m.digitar("hd0\n", 0.05)

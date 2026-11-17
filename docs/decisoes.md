@@ -2143,3 +2143,49 @@ sem abrir o terminal. Nos sistemas Linux, o instalador e as unidades
 **Teste.** `h111_area_unidades` (a coluna, os menus do botão direito e os
 duplos cliques), `h34` (o ícone do pendrive conferido pelo pixel na posição
 nova) e `h110` (o menu abre o instalador; instalado, ele some).
+
+## D066. A tabela de partições lida e conferida pelo kernel
+
+**Contexto.** Na revisão do #53 (B3 a B5), o instalador lia o setor 0 sozinho
+e confiava demais nele. Bastava a assinatura 0x55AA para os bytes 446 a 509
+virarem partições, mesmo num disco com FAT32 ou NTFS gravado no disco
+inteiro. Entradas que passavam do fim eram cortadas, entradas sem tamanho
+sumiam, as lógicas da estendida ficavam invisíveis e um GPT sem a entrada
+0xEE aparecia como "sem partições". Com isso, o instalador poderia gravar
+por cima de uma partição de outra pessoa.
+
+**Decisão.**
+- A leitura fica no kernel (`kernel/fs/tabela.c`), numa chamada nova,
+  `SIS_DISCO_TABELA` (83). Ela não precisa de liberação: lê só o setor 0, os
+  setores 1 e o último (procurando "EFI PART"), os EBRs e o primeiro setor
+  de cada partição (o formato).
+- O estado é um de: vazio, MBR, GPT, VBR (o setor 0 é um volume, sem
+  tabela), desconhecido (sem 0x55AA) ou erro de leitura. O VBR é
+  reconhecido pelo BPB e pela assinatura do formato, não pelo salto 0xEB,
+  porque o código de boot de um MBR (o do GRUB, por exemplo) também começa
+  com ele.
+- GPT é reconhecida pela entrada 0xEE e também pelo cabeçalho no setor 1 ou
+  no último setor.
+- As lógicas são lidas seguindo a cadeia de EBRs, que tem de andar sempre
+  para a frente e ficar dentro da estendida.
+- As entradas voltam como estão no disco, sem cortar e sem descartar, junto
+  com o maior fim visto em todas elas.
+- A tabela só é "conferida" se nada for estranho. Contam como estranho:
+  status diferente de 0x00 e 0x80, entrada sem tamanho, entrada começando
+  antes do setor 2, entrada passando do fim do disco, primárias ou lógicas
+  sobrepostas, lógica fora do seu lugar na estendida, mais de uma
+  estendida, cadeia de EBRs em laço ou longa demais. O primeiro problema
+  vai junto, em texto. Com uma tabela não conferida, o instalador não
+  oferece o espaço livre (parte 6).
+- A caixa de confirmação do kernel ganha uma linha com essa leitura
+  ("Tabela MBR: 4 partições (2 lógicas)", ou o problema), e o resumo do
+  instalador conta as partições que vai apagar.
+
+**Teste.** `h112_tabela` liga pelo pendrive com 15 discos, 3 por máquina:
+ext, partição em 63, estendida com duas lógicas, partição além do fim,
+sobrepostas, GPT com e sem 0xEE, FAT32 e NTFS no disco inteiro, setor 0
+zerado, sem assinatura, status inválido, entrada no setor 1, lógica fora da
+estendida e cadeia em laço. Para cada um, confere o estado, o problema, o
+maior fim e cada partição com os números exatos. Confere também a linha na
+caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
+confere a contagem no resumo.

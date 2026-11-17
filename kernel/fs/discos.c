@@ -500,6 +500,12 @@ int32_t sis_disco_liberar(uint32_t pnome, uint32_t presumo, uint32_t c, uint32_t
         linha_curta(l[k++], sizeof l[0], t, CONF_COLUNAS);
         snformatar(t, sizeof t, "O que tem nele hoje: %s%s%s%s", d->formato, d->rotulo[0] ? " \"" : "", d->rotulo, d->rotulo[0] ? "\"" : "");
         linha_curta(l[k++], sizeof l[0], t, CONF_COLUNAS);
+        tabela_disco_t *tab = kmalloc(sizeof *tab);       /* o que o kernel leu da tabela (D066) */
+        if (tab && tabela_ler(d, tab) == 0) {
+            tabela_resumo(tab, t, sizeof t);
+            linha_curta(l[k++], sizeof l[0], t, CONF_COLUNAS);
+        }
+        if (tab) kfree(tab);
         if (resumo[0]) {
             linha_curta(l[k++], sizeof l[0], "O programa diz que vai:", CONF_COLUNAS);
             const char *q = resumo;

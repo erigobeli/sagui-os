@@ -537,10 +537,20 @@ static bool pode_continuar(void)
 
 /* As linhas do resumo: as mesmas vão para a janela e, as quatro primeiras,
  * para a caixa de confirmação do kernel. */
+static tabela_disco_t tab;                /* o que o kernel leu da tabela do disco escolhido (D066) */
+static bool tab_ok;
+
 static int linhas_resumo(char l[5][120])
 {
     const char *n = discos[escolhido].nome;
-    formatar_texto(l[0], 120, "apagar todas as partições e tudo o que está em %s", n);
+    unsigned logicas = 0;
+    for (unsigned i = 0; tab_ok && i < tab.n; i++) if (tab.p[i].entrada >= 5) logicas++;
+    if (tab_ok && tab.estado == TABELA_MBR && logicas)
+        formatar_texto(l[0], 120, "apagar todas as partições de %s (%u, sendo %u lógicas)", n, tab.n, logicas);
+    else if (tab_ok && tab.estado == TABELA_MBR)
+        formatar_texto(l[0], 120, "apagar todas as partições de %s (%u) e tudo o que há nele", n, tab.n);
+    else
+        formatar_texto(l[0], 120, "apagar todas as partições e tudo o que está em %s", n);
     formatar_texto(l[1], 120, "copiar o SaguiOS para uma partição de %u MB", s_n / MB);
     formatar_texto(l[2], 120, "criar a partição dos seus arquivos: FAT32 \"SAGUIOS\", %u MB", d_n / MB);
     copia_texto(l[3], "trocar o código de boot, a tabela e o identificador do disco", 120);
@@ -698,6 +708,11 @@ static void desenhar(void)
 static void ir(int p)
 {
     passo = p;
+    if (p == P_RESUMO) {                      /* a tabela, lida e conferida pelo kernel: não precisa de liberação */
+        tab_ok = disco_tabela(discos[escolhido].nome, &tab) == 0;
+        registrar("instalar: tabela de %s: estado %u, %u partições, conferida %u (%s)", discos[escolhido].nome,
+                  tab.estado, tab.n, tab.conferida, tab.problema);
+    }
     registrar("instalar: passo %d (%s)", p, p < 4 ? nomes_passos[p] : p == P_PRONTO ? "pronto" : "erro");
     desenhar();
 }

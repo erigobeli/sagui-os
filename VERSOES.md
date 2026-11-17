@@ -70,6 +70,10 @@ Já no código (no `main`), ainda não lançado como imagem:
 - O instalador e as unidades (pendrives e o Disco) ficam **no canto de cima
   à direita da área de trabalho**, como no Linux, e o instalador entra no
   menu Iniciar; depois de instalado, ele some dos dois (D065).
+- O kernel lê e confere a **tabela de partições** de cada disco: MBR com as
+  partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
+  ou passando do fim. A caixa de confirmação e o instalador mostram o que
+  ele leu (D066).
 
 ## Versões lançadas
 

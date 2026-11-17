@@ -2,6 +2,7 @@
 #ifndef SAGUI_DISCO_H
 #define SAGUI_DISCO_H
 #include "tipos.h"
+#include "abi.h"
 
 #define MAX_DISCOS 4
 
@@ -45,6 +46,8 @@ int      disco_desmontar(disco_t *d);
 disco_t *disco_montado(void);
 bool     disco_eh_origem(const disco_t *d);    /* o disco de onde o sistema ligou */
 void     discos_processo_terminou(int pid);   /* tira as liberações do processo */
+int      tabela_ler(disco_t *d, tabela_disco_t *t);              /* a tabela de partições, conferida (D066) */
+void     tabela_resumo(const tabela_disco_t *t, char *l, size_t tam); /* uma linha para a caixa */
 
 /* Avisos para a área de trabalho (H34). */
 #define AVISO_CONECTADO   1
