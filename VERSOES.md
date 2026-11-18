@@ -64,6 +64,9 @@ Já no código (no `main`), ainda não lançado como imagem:
   kernel não escreve mais além da memória da janela quando um programa
   muda as opções de uma janela maior que a tela.
 
+- Três comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
+  (`nome-maquina`) e `du` (`disco-usado`).
+
 ## Versões lançadas
 
 ### 2.1 (novembro de 2026): a primeira com a comunidade
