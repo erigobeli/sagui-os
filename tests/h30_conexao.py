@@ -37,7 +37,8 @@ def main():
         m.esperar_serial("[USB] removido", 15)
         verificar("Pendrive removido" in m.serial(), "a remoção gera o evento na serial")
         out = m.comando("discos")
-        verificar("Nenhum pendrive" in out, "depois de remover, discos não mostra mais nada")
+        # O HD do sistema (hd0, D062) continua na lista: o que some é o pendrive.
+        verificar("QUENTE" not in out and "usb0" not in out, "depois de remover, discos não mostra mais o pendrive")
         # Conecta de novo, para ver que o ciclo se repete.
         m.monitor(f"drive_add 0 if=none,id=quente2,format=raw,file={pen}")
         m.monitor("device_add usb-storage,bus=ehci.0,drive=quente2,id=pen-quente2,removable=on")

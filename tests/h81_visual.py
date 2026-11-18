@@ -77,7 +77,7 @@ def main():
         config(m, "aparencia.tema", "mata")
         config(m, "aparencia.fundo", "mata-atlantica")
         antes = len(m.serial())
-        m.clique(990, 120, botao=2)
+        m.clique(990, 450, botao=2)                         # vazio (no alto à direita ficam o instalador e as unidades, D065)
         esperar(m, "menu aberto (tipo 1, 4 itens)", 10, antes)
         m.captura("H81-6-menu-area")
         m.clique(980, 740)                                   # fora: fecha
