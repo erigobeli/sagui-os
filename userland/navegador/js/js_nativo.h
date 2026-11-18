@@ -873,8 +873,11 @@ static val n_buf_slice(val este, val *a, int n)
     if (este.t != OB || este.o->cl != C_BUF) erro("TypeError", "not an ArrayBuffer", NULL);
     obj *b = este.o; int t = b->mem_n;
     int i = n > 0 && a[0].t != U ? to_i(a[0]) : 0, f = n > 1 && a[1].t != U ? to_i(a[1]) : t;
-    if (i < 0) i += t; if (f < 0) f += t;
-    if (i < 0) i = 0; if (f > t) f = t; if (f < i) f = i;
+    if (i < 0) i += t;
+    if (f < 0) f += t;
+    if (i < 0) i = 0;
+    if (f > t) f = t;
+    if (f < i) f = i;
     obj *r = buf_novo(f - i, vO(b->proto));
     memcpy(r->mem, b->mem + i, (size_t)(f - i));
     return vO(r);

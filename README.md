@@ -229,6 +229,14 @@ IA (trazida no pull request #1). A lista completa, com os dados e as fontes de l
 | `terceiros/ffmpeg-h264-tabelas/` | tabelas CABAC/CAVLC do FFmpeg | LGPL 2.1 ou posterior | tocador de vídeo |
 | `terceiros/faad2-aac-huffman/` | livros de Huffman do FAAD2 (Code from FAAD2 is copyright (c) Nero AG, www.nero.com) | GPL 2 ou posterior | tocador de vídeo |
 
+## Segurança
+
+Achou uma vulnerabilidade? **Não abra uma issue pública**: relate de forma
+privada pela aba **Security** do GitHub (**Report a vulnerability**). O que
+conta como vulnerabilidade, os prazos e as versões que recebem correção estão
+em [`SECURITY.md`](SECURITY.md). As respostas do projeto para o selo OpenSSF
+Best Practices estão em [`docs/openssf.md`](docs/openssf.md).
+
 ## Licença
 
 O SaguiOS é software livre, distribuído sob a **GNU General Public License, versão 3**

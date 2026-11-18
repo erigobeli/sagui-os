@@ -171,7 +171,7 @@ static int janela_creditos(void)
     if (!j) return 1;
     g_retangulo(j, 0, 0, L, A, COR_FUNDO);
     int qtd = ler_indice();
-    lista_t lista = { 10, 10, 270, A - 60, itens, qtd, 0, 0, NULL };
+    lista_t lista = { .x = 10, .y = 10, .l = 270, .a = A - 60, .itens = itens, .qtd = qtd, .sel = 0, .topo = 0, .icone = NULL };
     area_t area;
     if (!area_iniciar(&area, 290, 10, L - 300, A - 60)) return 1;
     area.somente_leitura = true;   /* dá para selecionar e copiar, não para mudar */

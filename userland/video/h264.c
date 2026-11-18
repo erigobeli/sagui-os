@@ -535,6 +535,7 @@ static void janela_deslizante(h264_t *h)
         quadro_t *velho = NULL;
         for (int i = 0; i < N_QUADROS; i++)
             if (h->q[i].ref && (!velho || h->q[i].pic_num < velho->pic_num)) velho = &h->q[i];
+        if (!velho) break;   /* não acontece (max_ref >= 1), mas um vídeo estragado não derruba o programa */
         velho->ref = false;
         n--;
     }

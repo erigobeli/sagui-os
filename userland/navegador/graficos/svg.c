@@ -412,8 +412,10 @@ typedef struct { int t; double mx, my, Mx, My, cx, cy; } caixa;   /* caixa delim
 static void cx_ponto(caixa *b, double x, double y)
 {
     if (!b->t) { b->mx = b->Mx = x; b->my = b->My = y; b->t = 1; return; }
-    if (x < b->mx) b->mx = x; if (x > b->Mx) b->Mx = x;
-    if (y < b->my) b->my = y; if (y > b->My) b->My = y;
+    if (x < b->mx) b->mx = x;
+    if (x > b->Mx) b->Mx = x;
+    if (y < b->my) b->my = y;
+    if (y > b->My) b->My = y;
 }
 static int T_;   /* tela em uso */
 static void P_mover(caixa *b, double x, double y) { tela2d_mover(T_, x, y); cx_ponto(b, x, y); }
@@ -549,7 +551,9 @@ static int gradiente(const char *id, const caixa *b, double op)
             estilo s; memset(&s, 0, sizeof s);
             const char *o = at_de(c, "offset");
             double off = 0; if (o) { int ok; num(o, &off, &ok); if (acha_char(o, '%')) off /= 100; }
-            if (off < ult) off = ult; if (off > 1) off = 1; ult = off;
+            if (off < ult) off = ult;
+            if (off > 1) off = 1;
+            ult = off;
             const char *sc = at_de(c, "stop-color"), *so = at_de(c, "stop-opacity");
             const char *st = at_de(c, "style");
             char cor[64] = "black", opv[16] = "1";
@@ -659,8 +663,11 @@ static void forma(el *e, const estilo *st)
         if (w <= 0 || h <= 0) return;
         const char *arx = at_de(e, "rx"), *ary = at_de(e, "ry");
         double rx = medida(arx, 100, -1), ry = medida(ary, 100, -1);
-        if (rx < 0) rx = ry; if (ry < 0) ry = rx; if (rx < 0) rx = ry = 0;
-        if (rx > w / 2) rx = w / 2; if (ry > h / 2) ry = h / 2;
+        if (rx < 0) rx = ry;
+        if (ry < 0) ry = rx;
+        if (rx < 0) rx = ry = 0;
+        if (rx > w / 2) rx = w / 2;
+        if (ry > h / 2) ry = h / 2;
         if (rx > 0 && ry > 0) {
             P_mover(&b, x + rx, y); P_linha(&b, x + w - rx, y);
             P_arco(&b, x + w - rx, y, rx, ry, 0, 0, 1, x + w, y + ry); P_linha(&b, x + w, y + h - ry);

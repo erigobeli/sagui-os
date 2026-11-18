@@ -2248,3 +2248,80 @@ formadas e têm todos os comandos da ajuda; no shell, troca para `es` e `en`
 com `config` e confere a `ajuda`, `ajuda ls`, a mensagem de comando
 desconhecido, um erro e um shell novo; nas Configurações, troca a língua
 pelos botões e confere o título da janela reaberta.
+
+## D074. Segurança: SECURITY.md, análise estática no CI e build sem avisos (issue #17)
+
+**Contexto.** A issue #17 sugeriu o selo OpenSSF Best Practices. O nível
+"passing" pede, entre outras coisas, um jeito publicado e privado de relatar
+vulnerabilidades, uma ferramenta de análise estática além dos avisos do
+compilador, e que os avisos do compilador sejam tratados. O `make` mostrava
+21 avisos (inicializadores incompletos de `lista_t`, indentação enganosa,
+funções e parâmetros sem uso), todos em `userland/`.
+
+**Decisão.**
+- **`SECURITY.md`** na raiz: relatos só pelo "Private vulnerability
+  reporting" do GitHub (nenhum e-mail), o que conta como vulnerabilidade no
+  SaguiOS (memória do kernel, disco gravado sem a confirmação digitada,
+  vazamento da chave da IA, TLS/SSH aceitando o que não deviam), resposta em
+  até 14 dias, correção das falhas médias e graves em até 60 dias, correção
+  só na última versão, e o pedido de não publicar antes da correção. Resumo
+  em inglês no fim. Links no README e no CONTRIBUTING.
+- **Análise estática com o analisador do GCC** (`-fanalyzer`), em
+  `tools/analise_estatica.py`: o script pede ao Makefile os comandos de
+  compilação (`make -Bn`) e roda cada um de novo com `-fanalyzer`, então
+  cada arquivo é analisado com as opções reais do build. `terceiros/` fica
+  de fora. O cppcheck foi considerado, mas o `-fanalyzer` não precisa de
+  nada além do GCC que o build já usa e entende as mesmas opções.
+- **Job novo no CI**, "Análise estática (gcc -fanalyzer)", separado do job
+  obrigatório (que continua com o mesmo nome), com `contents: read`, sem
+  segredos e só com as ações oficiais já usadas. Por enquanto é
+  informativo: publica o resumo na página da execução e o relatório como
+  artefato, e só falha se o gcc não conseguir analisar um arquivo. Para
+  torná-lo obrigatório: zerar (ou justificar) os achados, rodar com
+  `--estrito` e marcá-lo como verificação obrigatória na proteção da `main`.
+  Um limite de tempo por arquivo (30 min) impede que um arquivo enorme
+  segure o job; o mais lento hoje é `userland/navegador/js/js.c` (uns 9 min
+  sozinho numa máquina de 8 núcleos; a análise inteira leva uns 10 min).
+- **Build sem nenhum aviso**: os inicializadores de `lista_t` passam a dar
+  nome aos campos; as linhas com dois ou mais `if` passam a ter um `if` por
+  linha; as funções sem uso (`udiv` no JavaScript, `maiuscula` e `ler_peso`
+  no motor) saem; os parâmetros sem uso ficam marcados com `(void)`. Nas 12
+  indentações enganosas (`svg.c`, `webgl.c`, `js_nativo.h`, `motor.c`) o
+  código fazia o que parecia: eram `if (a) x; if (b) y;` independentes
+  numa linha só, inclusive o `ult = off;` do gradiente SVG, que deve
+  acontecer sempre (a posição de cada parada não pode voltar, SVG 1.1,
+  seção 13.2.4). Nenhum defeito ali. O CONTRIBUTING pede que continue assim.
+- **Respostas do selo** em `docs/openssf.md`, critério por critério.
+
+**Achados da primeira análise.** 15 avisos, nenhum no kernel. Nenhum é um
+defeito alcançável hoje:
+- `compilador/base.c` (8, `va-list-exhausted`): o analisador não lê o
+  texto do formato e acha que um `%s` pode pedir um argumento que não veio;
+  as chamadas com zero argumentos têm formatos sem `%`.
+- `navegador/fontes/fonte.c:174` (valor não inicializado): `s[0..6]` são
+  todos preenchidos pelo laço anterior, ou a função já saiu.
+- `navegador/js/js.c:103` (ponteiro nulo): um pedaço da lista de livres está
+  sempre dentro de um bloco do coletor, então `bloco_de` não devolve NULL.
+- `navegador/graficos/webgl.c:184` (ponteiro nulo): `c->fb` só guarda um
+  framebuffer válido; mesmo assim, a chamada do `checkFramebufferStatus`
+  ganhou a mesma guarda que a outra chamada já tinha.
+- `video/h264.c:538` (ponteiro nulo): com `max_ref >= 1` sempre há um
+  quadro de referência a tirar; ganhou uma guarda, porque o valor vem do
+  arquivo de vídeo e a invariante fica longe dali.
+- `programas/sagsh.c:590` (valor não inicializado): `separar` preenche
+  `op` de todo token que devolve.
+- `programas/configuracoes.c:524` (tamanho do buffer): o nome do processador
+  tem 49 bytes e é escrito como 12 palavras de 4 bytes; só os 48 primeiros
+  são usados, o último é o zero.
+- `programas/falha.c:21` (ponteiro nulo): de propósito; é o programa que
+  provoca falhas para testar o kernel.
+
+Com as duas guardas, a análise fica com 13 achados, todos acima e todos
+explicados; o próximo passo para o job virar obrigatório é calá-los no
+próprio código (por exemplo, inicializando `s[]` e `tok[]`) ou aceitar a
+lista conhecida.
+
+**Teste.** O build limpo (`rm -rf build && make`) sem nenhum aviso;
+`python3 tools/analise_estatica.py` com os achados acima; os testes que
+tocam no que mudou (`h16`, `h20`, `h22`, `h61`, `h82`, `h82_video`, `h87`,
+`h89`, `h94_sobre`).

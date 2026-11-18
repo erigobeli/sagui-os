@@ -199,14 +199,6 @@ static void *novo(unsigned n)
 }
 
 /* ------------------------------------------------------------ números */
-static u64 udiv(u64 a, u64 b, u64 *resto)
-{
-    if (!(a >> 32) && !(b >> 32)) { unsigned x = (unsigned)a, y = (unsigned)b; if (resto) *resto = x % y; return x / y; }
-    u64 q = 0, r = 0;
-    for (int i = 63; i >= 0; i--) { r = (r << 1) | ((a >> i) & 1); q <<= 1; if (r >= b) { r -= b; q |= 1; } }
-    if (resto) *resto = r;
-    return q;
-}
 #include "js_num.h"
 /* ToInt32 (sem divisão de 64 bits): parte inteira módulo 2^32 */
 static int para_i32(double d)

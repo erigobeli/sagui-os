@@ -240,3 +240,50 @@ jobs:
             build/h68/capturas/*.png
           retention-days: 14
           if-no-files-found: warn
+
+  # Análise estática (D074): o analisador do GCC (-fanalyzer) passa por todo
+  # o C de kernel/ e userland/ (terceiros/ fica de fora), com as mesmas
+  # opções do build. É um job separado para não atrasar o de cima, que é o
+  # obrigatório nos pull requests.
+  #
+  # Por enquanto é informativo: o script sai com 0 mesmo com achados (só
+  # falha se o gcc não conseguir analisar um arquivo), e o resumo aparece na
+  # página da execução e no artefato "saguios-analise-...". Para torná-lo
+  # obrigatório: zerar os achados, trocar a linha do script por
+  # "python3 tools/analise_estatica.py --estrito" e marcar o job
+  # "Análise estática (gcc -fanalyzer)" como verificação obrigatória na
+  # proteção da main (Settings > Branches).
+  analise:
+    name: Análise estática (gcc -fanalyzer)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar o compilador
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc gcc-multilib make python3
+
+      - name: Rodar o analisador
+        run: |
+          set -eu
+          set -o pipefail
+          gcc --version | head -n 1
+          python3 tools/analise_estatica.py -j "$(nproc)"
+
+      - name: Publicar o relatório
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: saguios-analise-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            build/analise/relatorio.txt
+            build/analise/resumo.md
+          retention-days: 14
+          if-no-files-found: warn

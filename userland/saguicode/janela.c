@@ -1134,7 +1134,7 @@ int principal(int argc, char **argv)
     j = jan_abrir("Sagui Code", 920, 540);
     if (!j) return 1;
     jan_redimensionavel(j, 660, 440);
-    lista = (lista_t){ 8, TOPO_A + 68, LATERAL_L - 16, 100, nomes_lista, 0, -1, 0, NULL };
+    lista = (lista_t){ .x = 8, .y = TOPO_A + 68, .l = LATERAL_L - 16, .a = 100, .itens = nomes_lista, .qtd = 0, .sel = -1, .topo = 0, .icone = NULL };
     if (!area_iniciar(&entrada, 0, 0, 100, ENTRADA_A)) return 1;
     entrada.foco = true;
     agente_nova_conversa(&ag);

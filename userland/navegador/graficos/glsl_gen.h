@@ -40,6 +40,7 @@ static int cte1(comp *c, double x) { return constante(c, &x, 1); }
 
 static void registrar_var(comp *c, glsl_var **lista, int *n, sim *s)
 {
+    (void)c;   /* mesma assinatura das outras funções do gerador */
     glsl_var *nv = aloca((unsigned)(*n + 1) * sizeof(glsl_var));
     if (!nv) return;
     if (*n) { memcpy(nv, *lista, (size_t)*n * sizeof(glsl_var)); libera(*lista); }

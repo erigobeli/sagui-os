@@ -333,7 +333,7 @@ int principal(int argc, char **argv)
     b_prox  = (botao_t){ 264, 132, 70, 28, ">>", false };
     b_menos = (botao_t){ LARG - 20 - 70, 132, 32, 28, "-", false };
     b_mais  = (botao_t){ LARG - 20 - 32, 132, 32, 28, "+", false };
-    lista = (lista_t){ 12, 206, LARG - 24, ALT - 206 - 12, musicas, 0, -1, 0, NULL };
+    lista = (lista_t){ .x = 12, .y = 206, .l = LARG - 24, .a = ALT - 206 - 12, .itens = musicas, .qtd = 0, .sel = -1, .topo = 0, .icone = NULL };
     fonte = som_abrir();
     if (fonte < 0) copia_texto(erro, "Sem placa de som HD Audio: não dá para tocar.", sizeof erro);
     /* "tocador arquivo": a pasta dele vira a lista; senão, /usb (ou /sons). */
