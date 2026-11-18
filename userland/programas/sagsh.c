@@ -118,6 +118,9 @@ static const comando_t comandos[] = {
     { "chip8asm", NULL, false, false, "montador CHIP-8", "chip8asm fonte.asm [-o saida.ch8]", "Monta um programa de CHIP-8 escrito em texto (exemplos em /jogos/chip8)." },
     { "triangulos", NULL, false, true, "teste de desenho", "triangulos", "Triângulos girando em 3D, com os quadros por segundo: mede a velocidade do desenho. +/- muda a quantidade." },
     { "chuva", NULL, false, true, "chuva de letras", "chuva", "Abre uma janela com letras verdes caindo. Espaço pausa; Esc fecha." },
+    { "dirname", "pasta-de", false, false, "pasta do caminho", "dirname <caminho>", "Mostra a pasta de um caminho (ex.: dirname /a/b/c.txt mostra /a/b)." },
+    { "hostname", "nome-maquina", false, false, "nome do computador", "hostname [novo]", "Mostra ou muda o nome do computador (guarda nas configurações)." },
+    { "du", "disco-usado", false, false, "espaço usado", "du [caminho...]", "Mostra o espaço usado por arquivos e pastas (soma recursivamente)." },
 };
 #define QTD_COMANDOS (int)(sizeof comandos / sizeof comandos[0])
 
