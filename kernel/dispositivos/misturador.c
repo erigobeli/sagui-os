@@ -163,6 +163,20 @@ void misturador_tique(void)
         static bool andou;
         if (!andou) { andou = true; klog("[HDA] o fluxo voltou a andar (posicao %u)\n", pos); }
     }
+    /* Apaga o que a placa já leu do anel (D070). Se o misturador ficar sem
+     * rodar (uma chamada de sistema longa, com as interrupções desligadas),
+     * o DMA dá a volta no anel e tocaria de novo o som velho, em loop
+     * (issue #27); apagado, ele toca o pouco que estava à frente e depois
+     * silêncio. O trecho [pos, escrito) é o som novo e nunca é apagado: se o
+     * DMA passou de escrito, aquele som também já é velho. */
+    static uint32_t apagado_ate;
+    uint8_t *bytes = hda_anel();
+    while (apagado_ate != pos) {
+        uint32_t fim = pos > apagado_ate ? pos : HDA_ANEL;
+        memset(bytes + apagado_ate, 0, fim - apagado_ate);
+        hda_descarregar(apagado_ate, fim - apagado_ate);
+        apagado_ate = fim % HDA_ANEL;
+    }
     uint32_t frente = (escrito - pos + HDA_ANEL) % HDA_ANEL;
     if (frente > HDA_ANEL / 2) {          /* o DMA passou de nós (pausa longa): recomeça logo à frente */
         escrito = (pos + 1920) % HDA_ANEL;

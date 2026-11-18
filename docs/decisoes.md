@@ -2370,3 +2370,59 @@ antigo sem mexer em mais nada, e o teste pode ser corrigido com calma.
 **Teste.** `rodar_todos.py --listar` com os 6 pedaços dá os 120 testes, sem
 repetição; o pedaço 1 rodou inteiro na máquina de desenvolvimento (TCG). O
 KVM e o job final só podem ser conferidos no próprio GitHub Actions.
+
+## D070. O Tocador lê a música em pedaços e limpa o som ao trocar (issue #27)
+
+**Contexto.** No G470, abrir um WAV do pendrive travava a tela por alguns
+segundos, e trocar de música repetia um pedaço da anterior ("loop") até a
+nova começar. O Tocador lia o arquivo inteiro num `ler()` só. Uma chamada de
+sistema roda com as interrupções desligadas (a porta 0x80 é de interrupção,
+D007) e o kernel não é interrompido no meio dela. Então, durante a leitura
+de vários MB do pendrive, o relógio parava. Sem o relógio, a tela e o mouse
+não andavam e o misturador não enchia o anel da placa. O DMA do HD Audio
+seguia tocando o anel de 64 KB (~340 ms) em volta, com o som velho. Além
+disso, ao trocar de música, a fila da fonte (~340 ms) ainda tinha o fim da
+anterior.
+
+**Decisão.**
+- O Tocador abre o arquivo, reserva o espaço do tamanho dele e lê **um
+  pedaço de 32 KB por volta do laço**, entre os eventos da janela. A música
+  começa assim que o cabeçalho chega: o WAV toca até onde já chegou e espera
+  o resto, e o MP3 é decodificado quadro a quadro do que já está na memória.
+  Pular na barra só vai até onde o arquivo já chegou. Enquanto falta ler, o
+  laço não dorme.
+- O decodificador de MP3 ganha `mp3_abrir_fluxo` e `mp3_chegou`. Com o
+  arquivo incompleto, um quadro que passa do que chegou não é aceito nem
+  pulado: o decodificador devolve 0 e quem chama sabe, por `mp3_completo`,
+  que não é o fim. A duração sem quadro Xing é estimada pelo tamanho do
+  primeiro quadro e contada direito quando o arquivo termina de chegar. A
+  saída é igual, amostra por amostra, à da leitura inteira (conferido no PC
+  com pedaços de 1 KB, 4 KB e 32 KB e com uma etiqueta ID3v2 grande).
+- Quando a pessoa troca de música (botões, lista) ou aperta Parar, o Tocador
+  **fecha a fonte de som e abre outra**: o misturador zera a fila de uma
+  fonte nova, e o fim da música velha não toca. No fim natural de uma
+  música, a fila fica, porque é o finzinho dela. Não precisou de chamada nova.
+- No kernel, duas mudanças pequenas:
+  - o misturador **apaga a parte do anel que a placa já leu** (do ponto em
+    que parou da última vez até a posição atual). Se ele ficar sem rodar por
+    qualquer chamada longa, a placa toca o pouco que estava à frente e
+    depois silêncio, em vez de repetir o anel. O trecho à frente da posição
+    nunca é apagado;
+  - o `fat_ler` junta **clusters vizinhos no disco** num pedido só, de até
+    64 KB. Antes, cada cluster era um comando SCSI. Num pendrive formatado no
+    Windows, com clusters de 4 KB, 32 KB eram 8 comandos, e agora são 1. A
+    cadeia continua sendo seguida na FAT, então um arquivo picado só junta o
+    que está mesmo em seguida.
+- O que ficou de fora: deixar as interrupções ligadas durante a leitura USB.
+  O kernel não é preemptível dentro de uma chamada de sistema, e ligar as
+  interrupções ali deixaria o escalonador trocar de processo no meio do
+  FAT32. Não é uma mudança pequena. Com pedaços de 32 KB, cada chamada
+  segura as interrupções por poucos milissegundos.
+
+**Teste.** `h120_tocador_fluxo` usa um pendrive de 300 MB (clusters de 4 KB)
+com um WAV de 7 MB (440 Hz), outro de 5 MB (660 Hz) e um MP3. Confere que a
+música começa antes de o arquivo terminar de ser lido e que o botão de
+volume responde durante a leitura. No som gravado pelo QEMU, confere que o
+440 Hz dura só o tempo em que tocou até o clique em ">>" (com folga de
+0,35 s) e não volta depois do 660 Hz. Confere também que o 660 Hz para no
+">>" seguinte e que o MP3 toca depois.

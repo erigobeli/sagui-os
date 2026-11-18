@@ -92,6 +92,10 @@ Já no código (no `main`), ainda não lançado como imagem:
   as mensagens do shell e as próprias Configurações já saem traduzidas. As
   traduções são arquivos de texto em `/sistema/idiomas`, fáceis de completar.
   A ideia veio do fork SaguiOS-Extended de Alejandro Anuncibay.
+- O **Tocador não trava mais a tela** ao abrir uma música do pendrive: lê o
+  arquivo aos poucos enquanto toca, e ao trocar de música o som da anterior
+  para na hora, sem ficar repetindo um pedaço (issue #27, D070). Ler do
+  pendrive ficou mais rápido quando o arquivo está em clusters seguidos.
 
 ## Versões lançadas
 
