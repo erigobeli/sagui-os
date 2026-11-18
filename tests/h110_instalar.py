@@ -99,7 +99,14 @@ def ate_o_resumo(m, inst, n, capturar=False):
     if capturar:
         m.captura("H110-2-disco")
     inst.continuar()
-    esperar(m, "instalar: passo 2 (Resumo)", 10, n)
+    esperar(m, "instalar: passo 2 (Partições)", 10, n)
+    time.sleep(0.6)
+    verificar("instalar: espaço livre: não (o maior espaço livre tem 55 MB" in m.serial()[n:],
+              "no disco com NTFS e Linux, o espaço livre (55 MB) não basta: fica marcado o disco inteiro")
+    if capturar:
+        m.captura("H110-2b-particoes")
+    inst.continuar()
+    esperar(m, "instalar: passo 3 (Resumo)", 10, n)
     time.sleep(0.6)
 
 
@@ -145,7 +152,7 @@ def main():
         m.tecla("esc")
         esperar(m, "instalar: liberar hd1 -> -14", 10, n)
         time.sleep(0.5)
-        verificar("instalar: passo 3" not in m.serial()[n:], "nome errado e Esc: volta ao resumo, sem instalar")
+        verificar("instalar: passo 4" not in m.serial()[n:], "nome errado e Esc: volta ao resumo, sem instalar")
         k = len(m.serial())
         inst.continuar()
         esperar(m, "[GUI] confirmacao do disco hd1 aberta", 20, k)
@@ -178,7 +185,7 @@ def main():
         esperar(m, "[GUI] confirmacao do disco hd1 aberta", 20, n)
         time.sleep(0.5)
         m.digitar("hd1\n", 0.05)
-        esperar(m, "instalar: passo 3 (Instalação)", 20, n)
+        esperar(m, "instalar: passo 4 (Instalação)", 20, n)
         time.sleep(2)
         m.captura("H110-5-instalando")
         esperar(m, "instalar: pronto em hd1", 240, n)
@@ -191,20 +198,21 @@ def main():
     d = open(hd, "rb").read()
     o = open(IMAGEM, "rb").read()
     mbr = d[:512]
-    verificar(mbr[:440] == o[:440] and mbr[510:512] == b"\x55\xaa", "o MBR tem o código de boot do SaguiOS e a assinatura")
+    verificar(mbr[:0x1B4] == o[:0x1B4] and mbr[510:512] == b"\x55\xaa", "o MBR tem o código de boot do SaguiOS e a assinatura")
+    verificar(struct.unpack_from("<I", mbr, 0x1B4)[0] == MB, "o MBR aponta o cabeçalho de boot no início da partição do sistema (D067)")
     verificar(mbr[440:444] not in (b"\0\0\0\0", o[440:444]), f"o identificador do disco é novo ({mbr[440:444].hex()})")
     e = [struct.unpack_from("<BBBBBBBBII", mbr, 446 + k * 16) for k in range(4)]
     verificar(e[0][0] == 0x80 and e[0][4] == 0xDA and e[0][8] == MB, f"entrada 1: o sistema (0xDA, ativa) em 1 MB ({e[0]})")
     verificar(e[1][4] == 0x0C and e[1][8] % MB == 0 and e[1][8] == e[0][8] + e[0][9], f"entrada 2: a FAT32 logo depois, alinhada em 1 MB ({e[1]})")
     verificar(mbr[478:510] == bytes(32), "as entradas 3 e 4 estão vazias (as partições antigas sumiram)")
-    verificar(d[1024:MB * 512] == bytes(MB * 512 - 1024), "o resto do primeiro MB está zerado (sem restos de GPT ou carregador)")
+    verificar(d[512:MB * 512] == bytes(MB * 512 - 512), "o resto do primeiro MB, o setor 1 inclusive, está zerado (sem restos de GPT ou carregador)")
     verificar(d[-33 * 512:] == bytes(33 * 512), "os 33 setores do fim (a cópia da GPT) estão zerados")
-    cab_o, cab_d = o[512:1024], d[512:1024]
+    cab_o, cab_d = o[512:1024], d[MB * 512:(MB + 1) * 512]
     sis_ini, fim = struct.unpack_from("<I", cab_o, 8)[0], struct.unpack_from("<I", cab_o, 48)[0]
     sis_n = fim - sis_ini
-    verificar(d[MB * 512:(MB + sis_n) * 512] == o[sis_ini * 512:fim * 512], f"o sistema ({sis_n} setores) é a cópia exata da origem")
+    verificar(d[(MB + 1) * 512:(MB + 1 + sis_n) * 512] == o[sis_ini * 512:fim * 512], f"o sistema ({sis_n} setores) é a cópia exata da origem, depois do cabeçalho")
     for campo in (8, 16, 32):
-        verificar(struct.unpack_from("<I", cab_d, campo)[0] == struct.unpack_from("<I", cab_o, campo)[0] - sis_ini + MB,
+        verificar(struct.unpack_from("<I", cab_d, campo)[0] == struct.unpack_from("<I", cab_o, campo)[0] - sis_ini + MB + 1,
                   f"o cabeçalho de boot aponta para o lugar novo (campo {campo})")
     fat = os.path.join(SAIDA, "h110-fat.img")
     with open(fat, "wb") as g:

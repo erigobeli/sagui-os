@@ -83,6 +83,10 @@ Já no código (no `main`), ainda não lançado como imagem:
   partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
   ou passando do fim. A caixa de confirmação e o instalador mostram o que
   ele leu (D066).
+- O instalador também instala **no espaço livre**, ao lado de outro
+  sistema: as partições de hoje e o identificador do disco ficam byte a
+  byte, e o setor 0 antigo fica guardado. O cabeçalho de boot saiu do setor
+  1 e foi para dentro da partição do sistema (D067).
 
 ## Versões lançadas
 

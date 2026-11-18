@@ -1,12 +1,21 @@
 /* instalar - o instalador do SaguiOS: um assistente em passos (boas-vindas,
  * disco, resumo, instalação), como os de outros sistemas.
  *
- * Por enquanto ele só instala apagando o disco inteiro. O que fica no disco
- * escolhido:
- *   - o MBR do SaguiOS no setor 0 (código de boot, um identificador de
- *     disco novo e a tabela de partições) e o cabeçalho de boot no setor 1;
- *   - a partição do sistema (tipo 0xDA), a partir de 1 MB, com o estágio 2,
- *     o kernel e o ramdisk copiados do disco de onde o SaguiOS ligou;
+ * Ele instala de dois jeitos (D067):
+ *   - no espaço livre: as partições que já estão no disco ficam como estão,
+ *     byte a byte, e o SaguiOS vai para a maior região sem partição. Só é
+ *     oferecido com uma tabela MBR conferida pelo kernel (D066) e duas
+ *     entradas vazias;
+ *   - apagando o disco inteiro.
+ * O que fica no disco escolhido:
+ *   - o código de boot do SaguiOS no setor 0, com o LBA do cabeçalho de boot
+ *     (0x1B4); no espaço livre, o resto do setor (o identificador e as
+ *     entradas de hoje) fica como estava, e o setor 0 antigo é guardado em
+ *     /usb/.saguios/mbr-antes.bin;
+ *   - a partição do sistema (tipo 0xDA): o cabeçalho de boot no primeiro
+ *     setor dela e, depois, o estágio 2, o kernel e o ramdisk copiados do
+ *     disco de onde o SaguiOS ligou. O setor 1 do disco não é usado: nele
+ *     costuma estar o carregador de outro sistema (o core.img do GRUB);
  *   - uma partição FAT32 (tipo 0x0C) com o rótulo SAGUIOS e o arquivo de
  *     configurações: no boot pelo disco, o kernel a monta em /usb sozinho, e
  *     o que você guardar ali continua depois de desligar.
@@ -29,6 +38,7 @@ extern const uint32_t arte_px_disco_40[], arte_px_pendrive_40[], arte_px_instala
 #define MB         2048u                  /* setores num MB */
 #define DADOS_MIN  (64u * MB)             /* 64 MB para os arquivos, no mínimo */
 #define GPT_FIM    33                     /* a cópia da GPT no fim do disco: cabeçalho e 32 setores de entradas */
+#define MBR_CAB    0x1B4                  /* no MBR: o LBA do cabeçalho de boot (boot/mbr.asm) */
 
 static uint8_t *buf, *volta;              /* POR_VEZ setores cada */
 static char erro[120];
@@ -191,7 +201,12 @@ static bool ler_sistema(void)
 {
     if (origem < 0) return false;
     const char *o = discos[origem].nome;
-    if (setores(o, 0, 1, sis.mbr, false) < 0 || setores(o, 1, 1, sis.cab, false) < 0) return false;
+    if (setores(o, 0, 1, sis.mbr, false) < 0) return false;
+    uint32_t cab_lba = le32(sis.mbr + MBR_CAB);                /* 1 no pendrive; dentro da partição 0xDA no disco instalado */
+    if (!cab_lba || cab_lba >= discos[origem].setores || setores(o, cab_lba, 1, sis.cab, false) < 0) {
+        copia_texto(erro, "não deu para ler o cabeçalho de boot da origem", sizeof erro);
+        return false;
+    }
     if (le32(sis.cab) != 0x44484753) { copia_texto(erro, "o cabeçalho de boot da origem não é do SaguiOS", sizeof erro); return false; }
     sis.ini = le32(sis.cab + CAB_E2_LBA);
     uint32_t fim = le32(sis.cab + CAB_IMG_SET);
@@ -200,18 +215,85 @@ static bool ler_sistema(void)
     return true;
 }
 
-static uint32_t sistema_mb(void) { return acima_mb(sis.n); }   /* em setores, arredondado em MB */
+static uint32_t sistema_mb(void) { return acima_mb(sis.n + 1); }   /* o cabeçalho e o sistema, em setores, arredondado em MB */
 
 /* Onde vai cada coisa no disco escolhido. */
 static uint32_t s_ini, s_n, d_ini, d_n;
 
+enum { MODO_INTEIRO, MODO_LIVRE };
+static int modo = MODO_INTEIRO;
+static tabela_disco_t tab;                /* o que o kernel leu da tabela do disco escolhido (D066) */
+static bool tab_ok;
+static uint32_t livre_ini, livre_n;       /* a maior região sem partição, alinhada em MB */
+static int vagas[4], qtd_vagas;           /* as entradas vazias da tabela */
+static char livre_motivo[120];            /* por que o espaço livre não é oferecido */
+
+/* A maior região livre. As primárias (a estendida conta inteira, com as
+ * lógicas dentro) são percorridas pelo início, e a região livre começa no
+ * MAIOR fim visto até ali, não no fim da última: com uma partição dentro
+ * de outra, o fim da menor cai no meio da maior (B2 da revisão do #53). */
+static bool achar_livre(void)
+{
+    livre_ini = livre_n = 0;
+    qtd_vagas = 0;
+    livre_motivo[0] = 0;
+    if (!tab_ok) { copia_texto(livre_motivo, "não deu para ler a tabela de partições", sizeof livre_motivo); return false; }
+    if (tab.estado == TABELA_VAZIO) { copia_texto(livre_motivo, "o disco não tem partições: use o disco inteiro", sizeof livre_motivo); return false; }
+    if (tab.estado != TABELA_MBR || !tab.conferida) {
+        formatar_texto(livre_motivo, sizeof livre_motivo, "%s", tab.problema[0] ? tab.problema : "a tabela não é MBR");
+        return false;
+    }
+    bool usada[4] = { false, false, false, false };
+    uint32_t ini[4], fim[4];
+    int n = 0;
+    for (uint32_t i = 0; i < tab.n; i++) {
+        const particao_t *p = &tab.p[i];
+        if (p->entrada < 1 || p->entrada > 4) continue;
+        usada[p->entrada - 1] = true;
+        int k = n++;
+        while (k > 0 && ini[k - 1] > p->inicio) { ini[k] = ini[k - 1]; fim[k] = fim[k - 1]; k--; }
+        ini[k] = p->inicio;
+        fim[k] = p->inicio + p->setores;      /* conferida: não passa do disco */
+    }
+    for (int k = 0; k < 4; k++) if (!usada[k]) vagas[qtd_vagas++] = k;
+    if (qtd_vagas < 2) {
+        formatar_texto(livre_motivo, sizeof livre_motivo, "a tabela já tem %d partições primárias; o SaguiOS precisa de 2 entradas vazias", 4 - qtd_vagas);
+        return false;
+    }
+    uint32_t pos = MB, total = discos[escolhido].setores;
+    for (int k = 0; k <= n; k++) {
+        uint32_t prox = k < n ? ini[k] : total;
+        uint32_t a = acima_mb(pos), b = prox / MB * MB;
+        if (b > a && b - a > livre_n) { livre_ini = a; livre_n = b - a; }
+        if (k < n && fim[k] > pos) pos = fim[k];
+    }
+    if (livre_n < sistema_mb() + DADOS_MIN) {
+        formatar_texto(livre_motivo, sizeof livre_motivo, "o maior espaço livre tem %u MB; o SaguiOS precisa de %u MB",
+                       livre_n / MB, (sistema_mb() + DADOS_MIN) / MB);
+        return false;
+    }
+    return true;
+}
+
+static bool cabe_inteiro(void)
+{
+    uint32_t fim = (discos[escolhido].setores - GPT_FIM) / MB * MB;      /* longe da cópia da GPT, que é apagada */
+    return fim >= MB + sistema_mb() + DADOS_MIN;
+}
+
 static bool planejar(void)
 {
-    uint32_t total = discos[escolhido].setores;
-    s_ini = MB;
     s_n = sistema_mb();
+    if (modo == MODO_LIVRE) {
+        if (!livre_n) return false;
+        s_ini = livre_ini;
+        d_ini = s_ini + s_n;
+        d_n = livre_ini + livre_n > d_ini ? livre_ini + livre_n - d_ini : 0;
+        return d_n >= DADOS_MIN;
+    }
+    uint32_t fim = (discos[escolhido].setores - GPT_FIM) / MB * MB;
+    s_ini = MB;
     d_ini = s_ini + s_n;
-    uint32_t fim = (total - GPT_FIM) / MB * MB;      /* longe da cópia da GPT, que é apagada */
     d_n = fim > d_ini ? fim - d_ini : 0;
     return d_n >= DADOS_MIN;
 }
@@ -233,24 +315,52 @@ static void entrada(uint8_t *e, uint8_t tipo, bool ativa, uint32_t ini, uint32_t
     poe32(e + 12, n);
 }
 
+static uint8_t antes[SETOR];               /* o setor 0 do disco escolhido, antes da instalação */
+
 static int instalar(void)
 {
     const char *dest = discos[escolhido].nome;
     uint32_t total = discos[escolhido].setores;
-    registrar("instalar: %s -> %s: sistema em %u (%u setores), arquivos em %u (%u MB), disco inteiro",
-              discos[origem].nome, dest, s_ini, sis.n, d_ini, d_n / MB);
+    if (!planejar()) { copia_texto(erro, "não há lugar para o SaguiOS neste disco", sizeof erro); return -1; }
+    registrar("instalar: %s -> %s: sistema em %u (%u setores), arquivos em %u (%u MB), %s",
+              discos[origem].nome, dest, s_ini, sis.n, d_ini, d_n / MB, modo == MODO_LIVRE ? "espaço livre" : "disco inteiro");
 
-    /* 1. Apaga o que diz como o disco era: o primeiro MB (MBR, a GPT e o
-     * que um carregador de boot deixa ali) e a cópia da GPT no fim. Sem
-     * isso, um disco que era GPT continuaria parecendo GPT para outros
-     * sistemas. */
-    progresso(2, "Apagando a tabela de partições antiga");
-    if (zerar(dest, 0, MB) < 0 || zerar(dest, total - GPT_FIM, GPT_FIM) < 0) return -1;
+    /* 0. O disco tem de estar como no resumo: a tabela que o kernel lê
+     * agora é comparada com a do resumo, e, no espaço livre, cada entrada
+     * de hoje é conferida no próprio setor 0. Se algo mudou, nada é gravado. */
+    static tabela_disco_t agora;
+    if (disco_tabela(dest, &agora) < 0 || memcmp(&agora, &tab, sizeof tab) != 0) {
+        formatar_texto(erro, sizeof erro, "a tabela de %s mudou depois do resumo; nada foi gravado", dest);
+        return -1;
+    }
+    if (setores(dest, 0, 1, antes, false) < 0) return -1;
+    if (modo == MODO_LIVRE) {
+        for (uint32_t i = 0; i < tab.n; i++) {
+            const particao_t *p = &tab.p[i];
+            const uint8_t *e = antes + 446 + (p->entrada - 1) * 16;
+            if (p->entrada > 4) continue;
+            if (e[4] != p->tipo || le32(e + 8) != p->inicio || le32(e + 12) != p->setores) {
+                formatar_texto(erro, sizeof erro, "a entrada %u do setor 0 não é a que o kernel leu; nada foi gravado", p->entrada);
+                return -1;
+            }
+        }
+        for (int k = 0; k < 2; k++)
+            if (antes[446 + vagas[k] * 16 + 4]) { copia_texto(erro, "a entrada vazia não está vazia; nada foi gravado", sizeof erro); return -1; }
+    }
 
-    /* 2. O sistema, da origem para o lugar novo, conferido. */
+    /* 1. Disco inteiro: apaga o que diz como o disco era, o primeiro MB
+     * (MBR, a GPT e o que um carregador de boot deixa ali) e a cópia da GPT
+     * no fim. Sem isso, um disco que era GPT continuaria parecendo GPT para
+     * outros sistemas. No espaço livre, nada disso é tocado. */
+    if (modo == MODO_INTEIRO) {
+        progresso(2, "Apagando a tabela de partições antiga");
+        if (zerar(dest, 0, MB) < 0 || zerar(dest, total - GPT_FIM, GPT_FIM) < 0) return -1;
+    }
+
+    /* 2. O sistema, da origem para o lugar novo (depois do cabeçalho), conferido. */
     for (uint32_t k = 0; k < sis.n; ) {
         uint32_t q = sis.n - k > POR_VEZ ? POR_VEZ : sis.n - k;
-        if (setores(discos[origem].nome, sis.ini + k, q, buf, false) < 0 || gravar_conferindo(dest, s_ini + k, q, buf) < 0) return -1;
+        if (setores(discos[origem].nome, sis.ini + k, q, buf, false) < 0 || gravar_conferindo(dest, s_ini + 1 + k, q, buf) < 0) return -1;
         k += q;
         progresso(5 + (int)(k * 65 / sis.n), "Copiando o sistema");
     }
@@ -259,25 +369,44 @@ static int instalar(void)
     progresso(72, "Criando a partição dos seus arquivos");
     if (formatar_fat32(dest, d_ini, d_n, "SAGUIOS") < 0) return -1;
 
-    /* 4. O cabeçalho de boot no setor 1, com os LBA do lugar novo. */
+    /* 4. O cabeçalho de boot no primeiro setor da partição do sistema, com
+     * os LBA do lugar novo. O setor 1 do disco fica como está. */
     static const int campos[3] = { CAB_E2_LBA, CAB_K_LBA, CAB_R_LBA };
     uint8_t cab[SETOR];
     memcpy(cab, sis.cab, SETOR);
-    for (int c = 0; c < 3; c++) poe32(cab + campos[c], le32(sis.cab + campos[c]) - sis.ini + s_ini);
-    poe32(cab + CAB_IMG_SET, s_ini + sis.n);
+    for (int c = 0; c < 3; c++) poe32(cab + campos[c], le32(sis.cab + campos[c]) - sis.ini + s_ini + 1);
+    poe32(cab + CAB_IMG_SET, s_ini + 1 + sis.n);
     progresso(85, "Gravando o setor de boot");
-    if (gravar_conferindo(dest, 1, 1, cab) < 0) return -1;
+    if (gravar_conferindo(dest, s_ini, 1, cab) < 0) return -1;
 
-    /* 5. Por último, o MBR: o código de boot do SaguiOS, um identificador
-     * novo e a tabela com o sistema (ativa) e os arquivos. */
+    /* 5. Por último, o setor 0: o código de boot do SaguiOS, com o LBA do
+     * cabeçalho. Disco inteiro: identificador novo e só as duas partições
+     * do SaguiOS (o sistema ativo). Espaço livre: o identificador e as
+     * entradas de hoje ficam byte a byte; as do SaguiOS vão nas vazias. A
+     * troca do identificador quebraria o boot do Windows (BCD) e o
+     * PARTUUID do Linux. */
     uint8_t m[SETOR];
-    memset(m, 0, sizeof m);
-    memcpy(m, sis.mbr, 440);
-    uint32_t id = 0;
-    while (!id || id == le32(sis.mbr + 440)) bytes_aleatorios(&id, sizeof id);
-    poe32(m + 440, id);
-    entrada(m + 446, 0xDA, true, s_ini, s_n);
-    entrada(m + 446 + 16, 0x0C, false, d_ini, d_n);
+    if (modo == MODO_LIVRE) {
+        memcpy(m, antes, SETOR);
+        memcpy(m, sis.mbr, 440);
+        poe32(m + MBR_CAB, s_ini);
+        uint32_t id = le32(antes + 440);
+        while (!id) bytes_aleatorios(&id, sizeof id);
+        poe32(m + 440, id);
+        bool alguma_ativa = false;
+        for (int k = 0; k < 4; k++) if (antes[446 + k * 16] == 0x80) alguma_ativa = true;
+        entrada(m + 446 + vagas[0] * 16, 0xDA, !alguma_ativa, s_ini, s_n);
+        entrada(m + 446 + vagas[1] * 16, 0x0C, false, d_ini, d_n);
+    } else {
+        memset(m, 0, sizeof m);
+        memcpy(m, sis.mbr, 440);
+        poe32(m + MBR_CAB, s_ini);
+        uint32_t id = 0;
+        while (!id || id == le32(sis.mbr + 440)) bytes_aleatorios(&id, sizeof id);
+        poe32(m + 440, id);
+        entrada(m + 446, 0xDA, true, s_ini, s_n);
+        entrada(m + 446 + 16, 0x0C, false, d_ini, d_n);
+    }
     m[510] = 0x55; m[511] = 0xAA;
     progresso(90, "Gravando a tabela de partições");
     if (gravar_conferindo(dest, 0, 1, m) < 0) return -1;
@@ -295,6 +424,11 @@ static int instalar(void)
         const char *t = "# SaguiOS instalado neste disco\nsistema.instalado = sim\n";
         escrever(fd, t, (unsigned)tam_texto(t));
         fechar(fd);
+    }
+    if (fd >= 0 && modo == MODO_LIVRE) {           /* o setor 0 de antes: com ele, o boot antigo volta */
+        int g = abrir("/usb/.saguios/mbr-antes.bin", ABRIR_ESCREVER | ABRIR_CRIAR | ABRIR_TRUNCAR);
+        if (g < 0 || escrever(g, antes, SETOR) != SETOR) fd = -1;
+        if (g >= 0) fechar(g);
     }
     desmontar(dest);
     if (fd < 0) { copia_texto(erro, "não deu para criar o arquivo de configurações", sizeof erro); return -1; }
@@ -319,8 +453,9 @@ static bool compacto;                     /* janela baixa (640x480) */
 #define COR_AVISO    0xFFF4D6
 #define COR_PERIGO   0xC4302B
 
-enum { P_BOAS_VINDAS, P_DISCO, P_RESUMO, P_INSTALANDO, P_PRONTO, P_ERRO };
-static const char *const nomes_passos[4] = { "Boas-vindas", "Disco", "Resumo", "Instalação" };
+enum { P_BOAS_VINDAS, P_DISCO, P_MODO, P_RESUMO, P_INSTALANDO, P_PRONTO, P_ERRO };
+#define QTD_PASSOS 5
+static const char *const nomes_passos[QTD_PASSOS] = { "Boas-vindas", "Disco", "Partições", "Resumo", "Instalação" };
 
 static jan_t *j;
 static int passo;
@@ -443,8 +578,8 @@ static void desenhar_lado(void)
     g_imagem(j, 22, 22, arte_px_sobre_40, 40, 40);
     negrito(72, 26, "SaguiOS", COR_TEXTO);
     tx(72, 44, "Instalação", COR_TEXTO_FRACO);
-    int atual = passo >= P_INSTALANDO ? 3 : passo;
-    for (int k = 0; k < 4; k++) {
+    int atual = passo >= P_INSTALANDO ? P_INSTALANDO : passo;
+    for (int k = 0; k < QTD_PASSOS; k++) {
         int y = 104 + k * 44, cx = 34, cy = y + 8;
         bool feito = k < atual || passo == P_PRONTO, agora = k == atual && passo != P_PRONTO;
         if (agora) g_ret_redondo(j, 12, y - 8, LADO - 24, 34, 9, 0xD6E9DE, 0xD6E9DE);
@@ -529,7 +664,8 @@ static bool pode_continuar(void)
 {
     switch (passo) {
     case P_BOAS_VINDAS: return origem >= 0 && sis_ok;
-    case P_DISCO:       return escolhido >= 0 && escolhido != origem && planejar();
+    case P_DISCO:       return escolhido >= 0 && escolhido != origem && cabe_inteiro();
+    case P_MODO:        return planejar();
     case P_RESUMO:      return true;
     default:            return false;
     }
@@ -537,12 +673,16 @@ static bool pode_continuar(void)
 
 /* As linhas do resumo: as mesmas vão para a janela e, as quatro primeiras,
  * para a caixa de confirmação do kernel. */
-static tabela_disco_t tab;                /* o que o kernel leu da tabela do disco escolhido (D066) */
-static bool tab_ok;
-
 static int linhas_resumo(char l[5][120])
 {
     const char *n = discos[escolhido].nome;
+    if (modo == MODO_LIVRE) {
+        formatar_texto(l[0], 120, "usar o espaço livre de %s: %u MB, a partir de %u MB", n, livre_n / MB, livre_ini / MB);
+        formatar_texto(l[1], 120, "copiar o SaguiOS para uma partição de %u MB", s_n / MB);
+        formatar_texto(l[2], 120, "criar a partição dos seus arquivos: FAT32 \"SAGUIOS\", %u MB", d_n / MB);
+        formatar_texto(l[3], 120, "trocar o código de boot; as %u partições de hoje ficam", tab.n);
+        return 4;
+    }
     unsigned logicas = 0;
     for (unsigned i = 0; tab_ok && i < tab.n; i++) if (tab.p[i].entrada >= 5) logicas++;
     if (tab_ok && tab.estado == TABELA_MBR && logicas)
@@ -565,8 +705,11 @@ static void desenhar_resumo(void)
     tx(X0, 42, "Confira. Ao clicar em Instalar, o sistema pede o nome do disco.", COR_TEXTO_FRACO);
     /* O aviso vai colado no rodapé, com a altura do texto; a lista usa o
      * que sobra entre os dois. */
-    const char *aviso = "Tudo o que está no disco hoje se perde, e outro sistema que ligava por ele "
-                        "(o Windows, um Linux) deixa de ligar. Confira se é o disco certo.";
+    const char *aviso = modo == MODO_LIVRE ?
+        "As partições de hoje ficam, mas o código de boot do disco é trocado: outro sistema que ligava por ele "
+        "(o Windows, um Linux) deixa de ligar. O setor 0 de antes fica guardado em /usb/.saguios/mbr-antes.bin." :
+        "Tudo o que está no disco hoje se perde, e outro sistema que ligava por ele "
+        "(o Windows, um Linux) deixa de ligar. Confira se é o disco certo.";
     int por_linha = (CL - 36) / 8, linhas_aviso = ((int)tam_texto(aviso) + por_linha - 1) / por_linha;
     if (linhas_aviso < 1) linhas_aviso = 1;
     int ah = (compacto ? 24 : 44) + linhas_aviso * 20, ay = RODAPE_Y - 14 - 12 - ah;
@@ -590,13 +733,88 @@ static void desenhar_resumo(void)
     int n = linhas_resumo(l);
     for (int k = 0; k < n; k++) {
         formatar_texto(t, sizeof t, "- %c%s.", l[k][0] - 'a' + 'A', l[k] + 1);
-        if (y + 18 <= fim_lista) tx(X0 + 22, y, t, k == 0 ? COR_PERIGO : COR_TEXTO);
+        if (y + 18 <= fim_lista) tx(X0 + 22, y, t, k == 0 && modo == MODO_INTEIRO ? COR_PERIGO : COR_TEXTO);
         y += passo_linha;
     }
     lim = antes;
     cartao(X0, ay, CL, ah, COR_AVISO, 0xE8CF8A);
     if (!compacto) negrito(X0 + 18, ay + 12, "Atenção", 0x8A5A00);   /* na janela baixa, sem o título */
     paragrafo(X0 + 18, ay + (compacto ? 12 : 34), CL - 36, aviso, COR_TEXTO);
+}
+
+/* As duas opções do passo Partições e a lista do que há no disco. */
+#define MODO_Y(i) (72 + (i) * (compacto ? 52 : 66))
+#define MODO_A    (compacto ? 46 : 58)
+
+static void opcao(int i, const char *titulo, const char *texto, bool pode)
+{
+    int y = MODO_Y(i);
+    bool sel = (i == 0 ? MODO_LIVRE : MODO_INTEIRO) == modo && pode;
+    cartao(X0, y, CL, MODO_A, !pode ? 0xF2F4F6 : sel ? COR_VERDE_CL : COR_CARTAO, sel ? COR_DESTAQUE : COR_LINHA);
+    if (pode) radio(X0 + 22, y + MODO_A / 2, sel);
+    negrito(X0 + 44, y + (compacto ? 6 : 10), titulo, pode ? COR_TEXTO : COR_TEXTO_FRACO);
+    tx(X0 + 44, y + (compacto ? 24 : 32), texto, pode ? COR_TEXTO_FRACO : 0x8A949D);
+}
+
+static void linha_part(int y, const char *n, const char *o, uint32_t ini, uint32_t q, uint32_t cor)
+{
+    char t[40];
+    tx(X0 + 16, y, n, cor);
+    tx(X0 + 70, y, o, cor);
+    formatar_texto(t, sizeof t, "%u MB a %u MB", ini / MB, (uint32_t)(((uint64_t)ini + q) / MB));
+    tx(X0 + CL / 2, y, t, cor);
+    tamanho_texto(q, t, sizeof t);
+    tx(X0 + CL - 16 - g_largura_texto(t), y, t, cor);
+}
+
+static void desenhar_modos(void)
+{
+    char t[160];
+    int antes = lim;
+    lim = X0 + CL - 12;
+    if (livre_n && !livre_motivo[0]) formatar_texto(t, sizeof t, "%u MB livres a partir de %u MB. As partições de hoje ficam.", livre_n / MB, livre_ini / MB);
+    else formatar_texto(t, sizeof t, "Não dá: %s.", livre_motivo);
+    opcao(0, "Usar o espaço livre", t, !livre_motivo[0]);
+    formatar_texto(t, sizeof t, "Tudo o que está em %s se perde.", discos[escolhido].nome);
+    opcao(1, "Apagar o disco inteiro", t, true);
+    lim = antes;
+    int y0 = MODO_Y(2) + 4, fim = RODAPE_Y - 26;
+    if (fim - y0 < 40) return;
+    cartao(X0, y0, CL, fim - y0, COR_CARTAO, COR_LINHA);
+    lim = X0 + CL - 12;
+    int y = y0 + 12;
+    if (!tab_ok || tab.estado != TABELA_MBR) {
+        tx(X0 + 16, y, tab_ok && tab.estado == TABELA_VAZIO ? "Nenhuma partição: o setor 0 está zerado." : tab.problema, COR_TEXTO_FRACO);
+        lim = antes;
+        return;
+    }
+    /* As partições e as regiões livres, em ordem de início. */
+    uint32_t feito = 0, pos = MB;
+    for (uint32_t c = 0; c <= tab.n && y + 18 <= fim - 8; c++) {
+        const particao_t *p = NULL;
+        for (uint32_t i = 0; i < tab.n; i++)
+            if (!(feito & (1u << i)) && (!p || tab.p[i].inicio < p->inicio)) p = &tab.p[i];
+        uint32_t prox = p ? p->inicio : discos[escolhido].setores;
+        uint32_t a = acima_mb(pos), b = prox / MB * MB;
+        if ((!p || p->entrada <= 4) && b > a) {          /* as lógicas ficam dentro da estendida: lá não há livre */
+            linha_part(y, "", a == livre_ini && modo == MODO_LIVRE ? "livre: SaguiOS" : "livre", a, b - a,
+                       a == livre_ini && modo == MODO_LIVRE ? COR_DESTAQUE : 0x8A949D);
+            y += 20;
+            if (y + 18 > fim - 8) break;
+        }
+        if (!p) break;
+        feito |= 1u << (p - tab.p);
+        char n[8], o[40];
+        formatar_texto(n, sizeof n, p->entrada >= 5 ? "  %u" : "%u", p->entrada);
+        bool est = p->tipo == 0x05 || p->tipo == 0x0F || p->tipo == 0x85;
+        static const char hex[] = "0123456789ABCDEF";
+        char tipo[3] = { hex[(p->tipo >> 4) & 15], hex[p->tipo & 15], 0 };
+        formatar_texto(o, sizeof o, "%s (0x%s)", est ? "estendida" : p->formato[0] ? p->formato : "partição", tipo);
+        linha_part(y, n, o, p->inicio, p->setores, COR_TEXTO);
+        y += 20;
+        if (p->entrada <= 4 && p->inicio + p->setores > pos) pos = p->inicio + p->setores;
+    }
+    lim = antes;
 }
 
 static void desenhar(void)
@@ -637,7 +855,7 @@ static void desenhar(void)
     }
     case P_DISCO: {
         negrito(X0, 22, "Onde instalar?", COR_TEXTO);
-        tx(X0, 42, "Escolha o disco. Tudo o que estiver nele vai ser apagado.", COR_TEXTO_FRACO);
+        tx(X0, 42, "Escolha o disco. No próximo passo, você vê o que há nele.", COR_TEXTO_FRACO);
         int outros = 0;
         for (int i = 0; i < qtd_discos; i++) {
             desenhar_disco_cartao(i, i == escolhido);
@@ -648,11 +866,18 @@ static void desenhar(void)
             cartao(X0, y, CL, 58, COR_AVISO, 0xE8CF8A);
             negrito(X0 + 18, y + 10, "Nenhum outro disco para instalar.", COR_TEXTO);
             tx(X0 + 18, y + 30, "Conecte um disco rígido (IDE) ou um pendrive e abra de novo.", COR_TEXTO_FRACO);
-        } else if (escolhido >= 0 && escolhido != origem && !planejar()) {
+        } else if (escolhido >= 0 && escolhido != origem && !cabe_inteiro()) {
             formatar_texto(t, sizeof t, "%s é pequeno demais: o SaguiOS precisa de %u MB.", discos[escolhido].nome,
                            (MB + sistema_mb() + DADOS_MIN + GPT_FIM) / MB + 1);
             tx(X0, y, t, COR_PERIGO);
         }
+        break;
+    }
+    case P_MODO: {
+        formatar_texto(t, sizeof t, "Como instalar em %s?", discos[escolhido].nome);
+        negrito(X0, 22, t, COR_TEXTO);
+        tx(X0, 42, "As partições abaixo são as que o sistema leu do disco.", COR_TEXTO_FRACO);
+        desenhar_modos();
         break;
     }
     case P_RESUMO:
@@ -708,12 +933,7 @@ static void desenhar(void)
 static void ir(int p)
 {
     passo = p;
-    if (p == P_RESUMO) {                      /* a tabela, lida e conferida pelo kernel: não precisa de liberação */
-        tab_ok = disco_tabela(discos[escolhido].nome, &tab) == 0;
-        registrar("instalar: tabela de %s: estado %u, %u partições, conferida %u (%s)", discos[escolhido].nome,
-                  tab.estado, tab.n, tab.conferida, tab.problema);
-    }
-    registrar("instalar: passo %d (%s)", p, p < 4 ? nomes_passos[p] : p == P_PRONTO ? "pronto" : "erro");
+    registrar("instalar: passo %d (%s)", p, p < QTD_PASSOS ? nomes_passos[p] : p == P_PRONTO ? "pronto" : "erro");
     desenhar();
 }
 
@@ -749,7 +969,19 @@ static void continuar(void)
 {
     if (!pode_continuar()) return;
     if (passo == P_BOAS_VINDAS) ir(P_DISCO);
-    else if (passo == P_DISCO) ir(P_RESUMO);
+    else if (passo == P_DISCO) {
+        /* A tabela, lida e conferida pelo kernel (sem liberação), e o
+         * espaço livre. Com ele, a opção já vem marcada: é a que não apaga
+         * nada de ninguém. */
+        tab_ok = disco_tabela(discos[escolhido].nome, &tab) == 0;
+        bool livre = achar_livre();
+        modo = livre ? MODO_LIVRE : MODO_INTEIRO;
+        registrar("instalar: tabela de %s: estado %u, %u partições, conferida %u (%s)", discos[escolhido].nome,
+                  tab.estado, tab.n, tab.conferida, tab.problema);
+        if (livre) registrar("instalar: espaço livre: %u MB em %u", livre_n / MB, livre_ini);
+        else registrar("instalar: espaço livre: não (%s)", livre_motivo);
+        ir(P_MODO);
+    } else if (passo == P_MODO) ir(P_RESUMO);
 }
 
 static void clique(int x, int y)
@@ -760,6 +992,17 @@ static void clique(int x, int y)
             if (y >= cy && y < cy + 74 && x >= X0 && x < X0 + CL && i != origem) {
                 escolhido = i;
                 registrar("instalar: disco %s escolhido", discos[i].nome);
+                desenhar();
+                return;
+            }
+        }
+    if (passo == P_MODO)
+        for (int i = 0; i < 2; i++) {
+            int cy = MODO_Y(i);
+            int m = i == 0 ? MODO_LIVRE : MODO_INTEIRO;
+            if (y >= cy && y < cy + MODO_A && x >= X0 && x < X0 + CL && (m == MODO_INTEIRO || !livre_motivo[0])) {
+                modo = m;
+                registrar("instalar: modo %s", m == MODO_LIVRE ? "espaço livre" : "disco inteiro");
                 desenhar();
                 return;
             }
