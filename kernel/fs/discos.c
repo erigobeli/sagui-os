@@ -172,7 +172,10 @@ static bool liberado_para_atual(const disco_t *d);
 static bool montar_se_for_do_saguios(disco_t *d)
 {
     if (disco_montado()) return false;
-    if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) return false;   /* disco interno: só a partição do SaguiOS (D064) */
+    /* Disco interno: só a partição que o instalador criou, ou seja, rótulo
+     * SAGUIOS *e* a partição do sistema (0xDA) no mesmo disco. O rótulo
+     * sozinho qualquer FAT32 pode ter (D064). */
+    if (d->interno && (!d->tem_sistema || txt_compara(d->rotulo, "SAGUIOS") != 0)) return false;
     if (fat_montar(d) < 0) return false;
     if (!config_tem_arquivo()) { fat_desmontar(false); return false; }
     d->montado = true;
@@ -264,7 +267,7 @@ int disco_montar(disco_t *d)
      * .saguios/configuracoes.txt. O instalador, liberado para esse disco
      * (D063), monta a partição recém-formatada para gravar esse arquivo
      * (D064). */
-    if (d->interno && txt_compara(d->rotulo, "SAGUIOS") != 0) {
+    if (d->interno && !liberado_para_atual(d) && (!d->tem_sistema || txt_compara(d->rotulo, "SAGUIOS") != 0)) {
         klog("[DISCO] %s: disco interno, nao monta\n", d->nome);
         return ERRO_ACESSO;
     }
@@ -475,7 +478,7 @@ int32_t sis_disco_liberar(uint32_t pnome, uint32_t presumo, uint32_t c, uint32_t
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
     if (!atual->pid) return ERRO_ACESSO;
     if (liberado_para_atual(d)) return 0;
-    int res = gui_confirmacao_resultado(atual->pid);
+    int res = gui_confirmacao_resultado(atual->pid, d->nome);
     if (res == 1) {
         d->liberado_pid = atual->pid;
         klog("[DISCO] %s liberado para o processo %d (%s)\n", d->nome, atual->pid, atual->nome);

@@ -13,7 +13,14 @@
  * Qualquer coisa estranha (entrada sem tamanho, antes do setor 2, passando
  * do fim do disco, sobreposta a outra, lógica fora da estendida, cadeia em
  * laço) marca a tabela como não conferida, com o primeiro problema achado.
- * Com uma tabela não conferida, o instalador não oferece o espaço livre. */
+ * Com uma tabela não conferida, o instalador não oferece o espaço livre.
+ *
+ * De onde veio: a especificação UEFI (capítulo 5, "GUID Partition Table":
+ * o MBR legado, o MBR protetor com a entrada 0xEE e o cabeçalho "EFI PART")
+ * e a especificação FAT32 da Microsoft (o BPB do setor de boot de um
+ * volume). As partições lógicas seguem a convenção do MBR estendido: cada
+ * EBR traz a lógica com o início relativo a ele e o próximo EBR com o
+ * início relativo à estendida. */
 #include "disco.h"
 #include "abi.h"
 #include "console.h"
@@ -84,7 +91,10 @@ static void ler_logicas(disco_t *d, tabela_disco_t *t, uint8_t *s, uint32_t base
             if (s[k]) { problema(t, "o EBR no setor %u tem entradas a mais", l, 0); break; }
         const uint8_t *e = s + 446, *prox = s + 462;
         if (e[4]) {
-            uint32_t ini = l + le32(e + 8), n = le32(e + 12);
+            /* O início é relativo ao EBR: a soma em 64 bits, para um valor
+             * enorme não dar a volta e cair "dentro" da estendida. */
+            uint64_t ini64 = (uint64_t)l + le32(e + 8);
+            uint32_t ini = (uint32_t)ini64, n = le32(e + 12);
             particao_t *p = nova(t);
             if (!p) return;
             p->entrada = num;
@@ -93,13 +103,14 @@ static void ler_logicas(disco_t *d, tabela_disco_t *t, uint8_t *s, uint32_t base
             p->inicio = ini;
             p->setores = n;
             if (e[0] != 0 && e[0] != 0x80) problema(t, "a lógica %u tem o status 0x%x", num, e[0]);
-            if (le32(e + 8) == 0 || (uint64_t)ini + n > ext_fim) problema(t, "a lógica %u sai do seu lugar na estendida", num, 0);
+            if (le32(e + 8) == 0 || ini64 + n > ext_fim || ini64 < l) problema(t, "a lógica %u sai do seu lugar na estendida", num, 0);
             ver_fim(t, d, num, ini, n);
         }
         if (!prox[4]) return;
         if (!eh_estendida(prox[4])) { problema(t, "o EBR no setor %u aponta para o tipo 0x%x", l, prox[4]); return; }
-        uint32_t seg = base + le32(prox + 8);
-        if (seg <= l) { problema(t, "a cadeia das lógicas volta para trás no setor %u", l, 0); return; }
+        uint64_t seg64 = (uint64_t)base + le32(prox + 8);
+        uint32_t seg = (uint32_t)seg64;
+        if (seg64 <= l || seg64 >= ext_fim) { problema(t, "a cadeia das lógicas volta para trás no setor %u", l, 0); return; }
         l = seg;
     }
     problema(t, "a cadeia das lógicas tem mais de %u EBRs", 64, 0);

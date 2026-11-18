@@ -57,7 +57,7 @@ void janelas_do_processo_fechar(struct processo *p);
 #define CONF_COLUNAS    69    /* letras por linha (600 pixels de caixa) */
 #define CONF_RESUMO_MAX 320   /* o resumo que o programa manda */
 bool gui_confirmar_disco(int pid, const char *nome, const char *const *linhas, int n);
-int  gui_confirmacao_resultado(int pid);   /* -2 sem pedido, 0 esperando, 1 sim, -1 não */
+int  gui_confirmacao_resultado(int pid, const char *disco);   /* -2 sem pedido, 0 esperando, 1 sim, -1 não */
 const void *gui_confirmacao_canal(void);
 
 #endif

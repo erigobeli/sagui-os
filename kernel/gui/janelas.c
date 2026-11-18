@@ -188,11 +188,14 @@ bool gui_confirmar_disco(int pid, const char *nome, const char *const *linhas, i
 
 /* -2: nenhum pedido desse processo; 0: esperando; 1: confirmou; -1: cancelou.
  * O resultado só é entregue uma vez. */
-int gui_confirmacao_resultado(int pid)
+int gui_confirmacao_resultado(int pid, const char *disco)
 {
+    /* O "sim" vale só para o disco cujo nome foi digitado: um pedido para
+     * outro disco, do mesmo processo, não aproveita a resposta. */
     if (conf.pid != pid || !pid) return -2;
     if (conf.aberta) return 0;
     conf.pid = 0;
+    if (conf.resultado == 1 && txt_compara(conf.nome, disco) != 0) return -1;
     return conf.resultado;
 }
 

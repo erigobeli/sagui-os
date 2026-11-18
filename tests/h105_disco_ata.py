@@ -8,6 +8,8 @@ Critérios:
     monta sozinha, sem o aviso de "pendrive";
   - a FAT32 de outro sistema num HD não monta: "montar hd2" recusa
     (ERRO_ACESSO), e esse HD sai byte a byte igual ao que entrou;
+  - nem uma FAT32 com rótulo SAGUIOS sem a partição do sistema (0xDA) ao
+    lado: "montar hd3" recusa, e o disco sai igual;
   - um pendrive USB ao lado continua montando como antes;
   - captura para a revisão a olho.
 """
@@ -35,12 +37,22 @@ def main():
         ".saguios/configuracoes.txt": b"aparencia.efeitos = automatico\n",
         "nota.txt": "escrito aqui fora\n".encode(),
     })
+    # Como o instalador deixa o disco: a partição do sistema (0xDA) ao lado
+    # da FAT32. Só com as duas, rótulo SAGUIOS e 0xDA, um disco interno
+    # monta; o rótulo sozinho qualquer FAT32 pode ter.
+    with open(hd, "r+b") as f:
+        f.seek(446 + 16)
+        f.write(bytes([0, 0, 0, 0, 0xDA, 0, 0, 0]) + (64).to_bytes(4, "little") + (1984).to_bytes(4, "little"))
+    # E um HD com uma FAT32 SAGUIOS sem a 0xDA: não pode montar.
+    falso = criar_pendrive("h105-falso", 64, "SAGUIOS", pastas=(".saguios",), arquivos={
+        ".saguios/configuracoes.txt": b"aparencia.efeitos = automatico\n"})
     alheio = criar_pendrive("h105-alheio", 64, "DADOS", arquivos={"meu.txt": b"dados de quem testa\n"})
     pen = criar_pendrive("h105-pen", 64, "MEUPEN", arquivos={"oi.txt": b"pendrive\n"})
-    antes = {p: soma(p) for p in (hd, alheio)}
+    antes = {p: soma(p) for p in (hd, alheio, falso)}
 
     extras = ["-drive", f"format=raw,file={hd},if=ide,index=1",
               "-drive", f"format=raw,file={alheio},if=ide,index=2",
+              "-drive", f"format=raw,file={falso},if=ide,index=3",
               "-device", "usb-ehci,id=ehci"] + pendrive_qemu(pen)
     with Maquina("h105", "ide", extras=extras, memoria="768M") as m:
         m.esperar_serial("sagui:/$", 120)
@@ -58,6 +70,9 @@ def main():
         out = m.comando("montar hd2")
         verificar("hd2: disco interno, nao monta" in m.serial() and "montado em /usb" not in out,
                   f"montar hd2 recusa a FAT32 de outro sistema ({out.strip()[-60:]!r})")
+        out = m.comando("montar hd3")
+        verificar("montado em /usb" not in out,
+                  f"montar hd3 recusa uma FAT32 SAGUIOS sem a partição do sistema ({out.strip()[-60:]!r})")
         out = m.comando("montar usb0")
         verificar("montado em /usb" in out, f"o pendrive USB ainda monta ({out.strip()[-60:]!r})")
         out = m.comando("cat /usb/oi.txt")
@@ -69,6 +84,7 @@ def main():
         m.captura("H105-disco")
 
     verificar(soma(alheio) == antes[alheio], "o HD de outro sistema saiu byte a byte igual")
+    verificar(soma(falso) == antes[falso], "o HD com só o rótulo SAGUIOS saiu byte a byte igual")
 
 
 if __name__ == "__main__":
