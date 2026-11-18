@@ -785,6 +785,18 @@ int fat_ler(fat_arq_t *f, uint32_t pos, void *buf, uint32_t n)
         if (parte > n - feito) parte = n - feito;
         uint32_t s0 = setor_do_cluster(cl) + no_cluster / 512, d0 = no_cluster % 512;
         if (d0 == 0 && parte % 512 == 0) {
+            /* Clusters vizinhos no disco viram um pedido só, de até 64 KB
+             * (D070). Num pendrive com clusters de 512 bytes, cada cluster
+             * era um comando SCSI (três transferências USB): ler 32 KB eram
+             * 64 comandos. A cadeia é seguida na FAT, então um arquivo
+             * picado só junta os pedaços que estão mesmo em seguida. */
+            if (no_cluster == 0)
+                while (parte + v.bytes_cluster <= n - feito && parte + v.bytes_cluster <= 64 * 1024) {
+                    uint32_t prox = fat_ler_entrada(cl);
+                    if (prox != cl + 1 || !cluster_valido(prox)) break;
+                    cl = prox;
+                    parte += v.bytes_cluster;
+                }
             if (ler_direto(s0, parte / 512, destino + feito) < 0) break;
         } else {
             for (uint32_t k = 0; k < parte;) {
