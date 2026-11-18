@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""H115 - renomear devagar, no lugar: um segundo clique, sem pressa, no nome
+"""H118 - renomear devagar, no lugar: um segundo clique, sem pressa, no nome
 de um ícone ou arquivo que já estava marcado abre a edição do nome ali mesmo,
 sem janela de diálogo.
 
@@ -47,7 +47,7 @@ def devagar(m, x, y, limpar=VAZIO):
 
 
 def main():
-    with Maquina("h115", "ide", memoria="768M") as m:
+    with Maquina("h118", "ide", memoria="768M") as m:
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
 
@@ -56,13 +56,13 @@ def main():
         devagar(m, *TERMINAL)
         esperar(m, "renomear no lugar: icone 1 (Terminal)", 10, n)
         time.sleep(0.5)
-        m.captura("H115-1-caixa-no-icone")
+        m.captura("H118-1-caixa-no-icone")
         verificar("criada por" not in m.serial()[n:], "nenhuma janela abriu para pedir o nome")
         m.digitar("Console\n", 0.05)
         esperar(m, "icone renomeado: terminal agora se chama Console", 10, n)
         verificar(True, "clique devagar no Terminal marcado, digitar e Enter: virou Console")
         time.sleep(0.8)
-        m.captura("H115-2-renomeado")
+        m.captura("H118-2-renomeado")
 
         # Esc desiste.
         n = len(m.serial())
@@ -107,7 +107,7 @@ def main():
         devagar(m, *linha, limpar=vazio)
         esperar(m, "arquivos: renomeando notas.txt", 10, n)
         time.sleep(0.4)
-        m.captura("H115-3-arquivos-na-linha")
+        m.captura("H118-3-arquivos-na-linha")
         m.digitar("diario\n", 0.05)
         esperar(m, "renomeado /tmp/r/notas.txt -> /tmp/r/diario.txt", 10, n)
         verificar(True, "Arquivos: clique devagar no nome e Enter: notas.txt virou diario.txt")

@@ -64,6 +64,9 @@ Já no código (no `main`), ainda não lançado como imagem:
   kernel não escreve mais além da memória da janela quando um programa
   muda as opções de uma janela maior que a tela.
 
+- Renomear no lugar: um segundo clique, devagar, no nome de um ícone ou de um
+  arquivo abre a edição ali mesmo (Robson). A interface ficou mais leve: o
+  menu redesenha só o que muda, e o vidro e as sombras custam menos.
 - Três comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
   (`nome-maquina`) e `du` (`disco-usado`).
 

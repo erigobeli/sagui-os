@@ -255,11 +255,19 @@ void area_editar_terminar(bool gravar)
         char de[NOME_MAX + 16], para[64];
         snformatar(de, sizeof de, "programas/%s", instalados[i - QTD_ICONES]);
         snformatar(para, sizeof para, "programas/%s", ed_texto);
-        bool barra = false;
+        /* Sem "/" e sem começar com ponto ("." e ".." são as pastas; com
+         * ponto, o programa some da lista). E nunca por cima de outro: o
+         * fat_renomear substitui um arquivo com o nome novo, e com o nome de
+         * uma pasta move o programa para dentro dela. */
+        bool barra = ed_texto[0] == '.';
         for (const char *c = ed_texto; *c; c++) barra |= *c == '/';
-        int r = barra ? ERRO_INVALIDO : disco_montado() ? fat_renomear(de, para) : ERRO_NAO_EXISTE;
+        info_arquivo_t ja;
+        int r = barra ? ERRO_INVALIDO : !disco_montado() ? ERRO_NAO_EXISTE
+              : fat_info(para, &ja) == 0 ? ERRO_JA_EXISTE : fat_renomear(de, para);
         if (r == 0) txt_copia_n(instalados[i - QTD_ICONES], ed_texto, NOME_MAX);
-        else gui_aviso(r == ERRO_INVALIDO ? "O nome não pode ter /." : "Não consegui renomear o programa.");
+        else gui_aviso(r == ERRO_INVALIDO ? "O nome não pode ter / nem começar com ponto."
+                       : r == ERRO_JA_EXISTE ? "Já existe um programa ou pasta com esse nome."
+                       : "Não consegui renomear o programa.");
         klog("[GUI] icone renomeado: /usb/%s -> /usb/%s (%d)\n", de, para, r);
     } else {
         char chave[48];
