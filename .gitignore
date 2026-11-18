@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 *.swp
 .vscode/
+# Imagens geradas (ficam nas Releases do GitHub; entrega/LEIA-ME.md explica)
+/entrega/*
+!/entrega/LEIA-ME.md

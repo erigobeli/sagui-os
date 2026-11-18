@@ -48,7 +48,7 @@ void desligar(void)                   { chamar(SIS_DESLIGAR, 0, 0, 0); }
 int  modo_terminal(int m)             { return chamar(SIS_MODO_TERMINAL, (unsigned)m, 0, 0); }
 int  limpar_tela(void)                { return chamar(SIS_LIMPAR_TELA, 0, 0, 0); }
 int  registrar_texto(const char *t)   { return chamar(SIS_REGISTRAR, (unsigned)t, 0, 0); }
-int  listar_discos(int i, info_disco_t *d) { return chamar(SIS_LISTAR_DISCOS, (unsigned)i, (unsigned)d, 0); }
+int  listar_discos(int i, info_disco_t *d) { return chamar(SIS_LISTAR_DISCOS, (unsigned)i, (unsigned)d, sizeof *d); }
 int  montar(const char *nome)         { return chamar(SIS_MONTAR, (unsigned)nome, 0, 0); }
 int  desmontar(const char *nome)      { return chamar(SIS_DESMONTAR, (unsigned)nome, 0, 0); }
 int  tocar(const nota_t *notas, int n, int modo) { return chamar(SIS_BIP, (unsigned)notas, (unsigned)n, (unsigned)modo); }
@@ -65,7 +65,12 @@ int  fechar_janela(int id)            { return chamar(SIS_FECHAR_JANELA, (unsign
 int  atualizar_janela(int id, const retangulo_t *r) { return chamar(SIS_ATUALIZAR_JANELA, (unsigned)id, (unsigned)r, 0); }
 int  proximo_evento(int id, evento_t *e, bool esperar) { return chamar(SIS_PROXIMO_EVENTO, (unsigned)id, (unsigned)e, esperar); }
 int  titulo_janela(int id, const char *t) { return chamar(SIS_TITULO_JANELA, (unsigned)id, (unsigned)t, 0); }
+int  disco_setores(pedido_setores_t *p) { return chamar(SIS_DISCO_SETORES, (unsigned)p, 0, 0); }
+int  disco_reler(const char *nome) { return chamar(SIS_DISCO_RELER, (unsigned)nome, 0, 0); }
+int  disco_liberar(const char *nome, const char *resumo) { return chamar(SIS_DISCO_LIBERAR, (unsigned)nome, (unsigned)resumo, 0); }
+int  disco_tabela(const char *nome, tabela_disco_t *t) { return chamar(SIS_DISCO_TABELA, (unsigned)nome, (unsigned)t, sizeof *t); }
 int  area_copia_gravar(const char *t, unsigned n) { return chamar(SIS_AREA_COPIA, 0, (unsigned)t, n); }
 int  area_copia_ler(char *buf, unsigned max) { return chamar(SIS_AREA_COPIA, 1, (unsigned)buf, max); }
 int  menu_janela(int id, int x, int y, const char *itens) { return chamar(SIS_MENU_JANELA, (unsigned)id, (unsigned)(x | (y << 16)), (unsigned)itens); }
 int  janela_opcoes(int id, int opcoes, int larg_min, int alt_min) { return chamar(SIS_JANELA_OPCOES, (unsigned)id, (unsigned)opcoes, (unsigned)(larg_min | (alt_min << 16))); }
+int  ler_tela(uint32_t *px, unsigned bytes) { return chamar(SIS_LER_TELA, (unsigned)px, bytes, 0); }

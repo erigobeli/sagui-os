@@ -1,4 +1,4 @@
-/* gdt.c - tabela de segmentos e TSS do kernel de 64 bits (3.0, D055).
+/* gdt.c - tabela de segmentos e TSS do kernel de 64 bits (3.0, D077).
  *
  * No modo longo a segmentação quase some: base e limite são ignorados nos
  * segmentos de código e dados de 64 bits (Intel SDM vol. 3A, 3.2.4). Mas a

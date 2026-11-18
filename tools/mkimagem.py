@@ -96,7 +96,7 @@ def main():
     r_lba = k_lba + setores(len(kern))
     total = r_lba + setores(len(rd))
 
-    # Kernel ELF64 (3.0, D054): o estágio 2 entra no modo longo antes de
+    # Kernel ELF64 (3.0, D076): o estágio 2 entra no modo longo antes de
     # saltar para ele. A classe vem do byte 4 do cabeçalho ELF (1 = 32 bits,
     # 2 = 64 bits), como diz a especificação ELF.
     with open(a.kernel_elf, "rb") as f:

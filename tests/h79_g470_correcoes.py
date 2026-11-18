@@ -8,7 +8,7 @@ Critérios:
   - instalado no pendrive, o ícone dele abre um Terminal rodando o programa
     (antes rodava escondido e "nada acontecia");
   - botão direito num ícone abre o menu (Abrir, Renomear...); Renomear troca
-    o nome do programa no pendrive;
+    o nome do programa no pendrive (no lugar, embaixo do ícone);
   - o diário do som registra os pinos do codec e o estado do fluxo.
 """
 import os
@@ -59,8 +59,9 @@ def main():
         antes = len(m.serial())
         esperar(m, "programas instalados no pendrive: 1", 30, 0)
         time.sleep(3)
-        # Ícones: 8 do sistema + o pendrive + o instalado (10º): coluna 2, linha 3.
-        x, y = 20 + 110 + 48, 24 + 16 + 2 * 92 + 30
+        # Ícones: 8 do sistema + o instalado (9º): coluna 2, linha 2. O
+        # pendrive fica na coluna da direita, com o instalador.
+        x, y = 20 + 110 + 48, 24 + 16 + 1 * 92 + 30
         m.captura("H79-1-icone-instalado")
         antes = len(m.serial())
         m.clique(x, y, duplo=True)
@@ -77,17 +78,19 @@ def main():
         esperar(m, "menu do icone", 10, antes)
         time.sleep(0.5)
         m.captura("H79-3-menu-do-icone")
-        m.clique(x + 20, y + 4 + 26 + 12)                  # o segundo item: Renomear...
-        esperar(m, '"Renomear"', 20, antes)
-        time.sleep(0.8)
-        for _ in range(10):
-            m.tecla("backspace", 0.03)
-        m.digitar("saudacao\n", 0.05)
-        esperar(m, "icone: /usb/programas/teste -> /usb/programas/saudacao (0)", 20, antes)
+        m.clique(x + 20, y + 4 + 26 + 12)                  # o segundo item: Renomear (no lugar, sem janela)
+        esperar(m, "renomear no lugar: icone", 20, antes)
+        time.sleep(0.5)
+        m.digitar("saudacao\n", 0.05)                     # o nome vem todo marcado: digitar substitui
+        esperar(m, "icone renomeado: /usb/programas/teste -> /usb/programas/saudacao (0)", 20, antes)
         verificar(True, "botão direito > Renomear trocou o nome do programa no pendrive")
-        esperar(m, "programas instalados no pendrive", 30, antes)
         time.sleep(1)
         m.captura("H79-4-renomeado")
+        # O ícone troca de nome na hora e abre o programa com o nome novo.
+        antes = len(m.serial())
+        m.clique(x, y, duplo=True)
+        esperar(m, "icone instalado saudacao -> terminal -e /usb/programas/saudacao", 20, antes)
+        verificar(True, "o ícone renomeado abre o programa pelo nome novo")
     return 0
 
 

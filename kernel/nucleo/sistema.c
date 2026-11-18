@@ -45,6 +45,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_DESMONTAR] = sis_desmontar,
     [SIS_BIP] = sis_bip,
     [SIS_TECLAS_SEGURADAS] = sis_teclas_seguradas,
+    [SIS_LER_TELA]      = sis_ler_tela,
     [SIS_DESLIGAR] = sis_desligar,
     [SIS_CONFIG_LER] = sis_config_ler,   [SIS_CONFIG_GRAVAR] = sis_config_gravar,
     [SIS_AJUSTAR_DATA] = sis_ajustar_data,
@@ -57,6 +58,8 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_ALEATORIO] = sis_aleatorio,
     [SIS_JANELA_OPCOES] = sis_janela_opcoes,
     [SIS_MENU_JANELA]   = sis_menu_janela,
+    [SIS_DISCO_SETORES] = sis_disco_setores,  [SIS_DISCO_RELER] = sis_disco_reler,
+    [SIS_DISCO_LIBERAR] = sis_disco_liberar, [SIS_DISCO_TABELA] = sis_disco_tabela,
     [SIS_AREA_COPIA]    = sis_area_copia,
 };
 

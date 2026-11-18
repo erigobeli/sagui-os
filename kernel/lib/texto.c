@@ -9,11 +9,14 @@ void *memcpy(void *dst, const void *src, size_t n)
 {
     uint8_t *d = dst;
     const uint8_t *s = src;
-    if ((((uintptr_t)d | (uintptr_t)s) & 3) == 0) {
-        while (n >= 4) {
-            *(uint32_t *)d = *(const uint32_t *)s;
-            d += 4; s += 4; n -= 4;
-        }
+    if ((((uintptr_t)d | (uintptr_t)s) & 3) == 0 && n >= 4) {
+        /* Alinhados: a cópia de 4 em 4 bytes do próprio processador (rep
+         * movsd), bem mais rápida que um laço (as telas são copiadas linha a
+         * linha a cada quadro). A direção (DF) é sempre para a frente aqui:
+         * a convenção do C garante DF = 0 na entrada de uma função. */
+        size_t q = n / 4;
+        __asm__ volatile("rep movsl" : "+D"(d), "+S"(s), "+c"(q) : : "memory");
+        n &= 3;
     }
     while (n--)
         *d++ = *s++;

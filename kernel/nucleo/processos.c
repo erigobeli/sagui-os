@@ -12,6 +12,7 @@
  * próximo processo pronto na tabela, a partir do atual, dando a volta. O
  * processo 0 ("ocioso") só roda quando ninguém mais está pronto. */
 #include "processo.h"
+#include "disco.h"
 #include "console.h"
 #include "memoria.h"
 #include "relogio.h"
@@ -184,6 +185,7 @@ void processo_encerrar(processo_t *p, int codigo, const char *motivo)
     p->codigo_saida = codigo;
     if (motivo) txt_copia_n(p->motivo, motivo, sizeof p->motivo);
     arquivos_fechar_todos(p);
+    discos_processo_terminou(p->pid);   /* a liberação de setores crus (D063) acaba aqui */
     janelas_do_processo_fechar(p);   /* antes de destruir o espaço: as páginas das janelas são do gerenciador */
     if (p->usuario && p->espaco != espaco_kernel()) {
         espaco_destruir(p->espaco);   /* troca o CR3 para o do kernel se for o atual */
@@ -289,7 +291,7 @@ void processo_preparar_usuario(processo_t *p, uint32_t entrada, uint32_t pilha)
 {
     /* No kernel de 64 bits, o CS do usuário (SEL_UCODIGO) é um segmento de
      * 32 bits: o iretq com ele leva a CPU para o modo de compatibilidade, e
-     * o programa ELF32 roda exatamente como rodava na 2.x (D057). */
+     * o programa ELF32 roda exatamente como rodava na 2.x (D079). */
     quadro_t *q = (quadro_t *)(uintptr_t)(p->pilha_kernel + PILHA_KERNEL - sizeof(quadro_t));
     memset(q, 0, sizeof *q);
     q->ds = q->es = q->fs = q->gs = SEL_UDADOS;

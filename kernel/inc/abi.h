@@ -49,7 +49,7 @@
 #define SIS_PROXIMO_EVENTO 53   /* (id ou 0 = qualquer janela minha, &evento, esperar) -> 1 se houve */
 #define SIS_TITULO_JANELA  54   /* (id, titulo) */
 /* Dispositivos (fase 6) */
-#define SIS_LISTAR_DISCOS  55   /* (indice, &info_disco) -> 1 achou, 0 fim */
+#define SIS_LISTAR_DISCOS  55   /* (indice, &info_disco, tamanho) -> 1 achou, 0 fim; tamanho 0: estrutura sem "interno" (D062) */
 #define SIS_MONTAR         56   /* (nome, ex.: "usb0") -> monta em /usb */
 #define SIS_DESMONTAR      57   /* (nome) -> grava o que falta e libera para remover */
 /* Som (bônus B3) */
@@ -77,6 +77,11 @@
 #define SIS_JANELA_OPCOES  76   /* (id, opções, larg_min | alt_min << 16) -> 0 (H78) */
 #define SIS_AREA_COPIA     78   /* (0, &texto, n) copia; (1, &buffer, max) cola -> tamanho guardado */
 #define SIS_MENU_JANELA    77   /* (id, x | y << 16, "Item|Item|Item") -> abre um menu na janela; a escolha chega em EV_MENU (H81) */
+#define SIS_LER_TELA       79   /* (&pixels, bytes) -> largura | altura << 16; copia a tela (0x00RRGGBB) se couber */
+#define SIS_DISCO_SETORES  80   /* (&pedido_setores) -> 0; lê ou grava setores crus; gravar só com SIS_DISCO_LIBERAR (D063) */
+#define SIS_DISCO_RELER    81   /* (nome) -> 0; reconhece de novo o formato do disco liberado (depois de gravar a tabela) */
+#define SIS_DISCO_LIBERAR  82   /* (nome, resumo) -> 0 se a pessoa digitou o nome do disco na caixa do kernel; ERRO_ACESSO se não (D063) */
+#define SIS_DISCO_TABELA   83   /* (nome, &tabela_disco_t, tamanho) -> 0; a tabela de partições lida e conferida pelo kernel (D066) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -97,6 +102,7 @@
 #define ERRO_OCUPADO      -15
 #define ERRO_REDE         -16   /* sem rede configurada, ou o destino não responde */
 #define ERRO_FIM          -17   /* a conexão terminou: o outro lado não manda mais nada */
+#define ERRO_ES           -18   /* o disco não leu ou não gravou */
 
 /* Modos de abrir */
 #define ABRIR_LER       1
@@ -194,6 +200,11 @@ typedef struct {
     unsigned int imagem_bytes;   /* tamanho útil da imagem de boot */
     unsigned int segundos_ligado;
     unsigned int largura, altura;
+    /* H94: 32 ou 64, a largura das palavras do kernel. Foi acrescentado no
+     * fim, e só é preenchido quando o programa pede o tamanho novo: um
+     * programa compilado antes (que pede 48 bytes) continua recebendo só os
+     * campos que conhece, sem ter memória escrita além da sua variável. */
+    unsigned int bits;
 } info_versao_t;
 
 typedef struct {
@@ -214,7 +225,47 @@ typedef struct {
     unsigned int setores;          /* de 512 bytes */
     unsigned int montado;
     unsigned int suportado;
+    unsigned int interno;          /* disco rígido (hd0...), não pendrive */
+    unsigned int origem;           /* o disco de onde o sistema ligou (D063) */
 } info_disco_t;
+
+/* SIS_DISCO_SETORES: setores de 512 bytes, até 128 por chamada. Não
+ * grava num disco montado (a FAT dele está em uso). */
+typedef struct {
+    char         nome[8];          /* "hd1" */
+    unsigned int lba;
+    unsigned int n;
+    unsigned int escrever;         /* 0 = ler para buf, 1 = gravar buf */
+    void        *buf;
+} pedido_setores_t;
+
+/* SIS_DISCO_TABELA: o que o kernel achou no setor 0 e na cadeia das
+ * partições lógicas, já conferido (D066). */
+#define TABELA_VAZIO        0   /* setor 0 todo zerado */
+#define TABELA_MBR          1   /* tabela de partições MBR */
+#define TABELA_GPT          2   /* GPT (com ou sem a entrada protetora 0xEE) */
+#define TABELA_VBR          3   /* o setor 0 é o setor de boot de um volume, sem tabela */
+#define TABELA_DESCONHECIDA 4   /* sem a assinatura 0x55AA, e não está zerado */
+#define TABELA_ERRO         5   /* o disco não leu */
+#define TABELA_MAX         24
+
+typedef struct {
+    unsigned int  entrada;         /* 1 a 4: primária; 5 em diante: lógica */
+    unsigned int  tipo;            /* o byte de tipo (0x07, 0x83, 0x05...) */
+    unsigned int  ativa;
+    unsigned int  inicio, setores; /* como estão na tabela, sem cortar */
+    char          formato[16];     /* do setor de boot da partição: "NTFS", "FAT32", "ext"... ou "" */
+} particao_t;
+
+typedef struct {
+    unsigned int  estado;          /* TABELA_* */
+    unsigned int  conferida;       /* 1: nada estranho; 0: ver "problema" */
+    char          problema[80];    /* o primeiro problema achado */
+    unsigned int  id_mbr;          /* o identificador do disco (0x1B8) */
+    unsigned int  maior_fim;       /* o maior fim de todas as entradas, inclusive as que passam do disco */
+    unsigned int  n;               /* partições em p[] */
+    particao_t    p[TABELA_MAX];
+} tabela_disco_t;
 
 /* SIS_TECLAS_SEGURADAS: posição de algumas teclas no mapa (código de
  * varredura do conjunto 1; 128 + código para as teclas estendidas E0). */
@@ -275,7 +326,15 @@ typedef struct {
 #define TECLA_PGDN      0x107
 #define TECLA_INSERT    0x108
 #define TECLA_DELETE    0x109
+#define TECLA_F1        0x10A   /* F1 a F12 seguem em ordem (H92: F2 = partida nova nos jogos) */
+#define TECLA_F2        0x10B
+#define TECLA_F3        0x10C
+#define TECLA_F4        0x10D
+#define TECLA_F5        0x10E
+#define TECLA_F12       0x115
 #define TECLA_ESC       0x116
+#define TECLA_SUPER     0x117   /* tecla Windows: fica no gerenciador de janelas */
+#define TECLA_IMPRIMIR  0x118   /* Print Screen: o gerenciador de janelas abre o /bin/captura */
 #endif
 
 #define JANELA_LARG_MAX 1000

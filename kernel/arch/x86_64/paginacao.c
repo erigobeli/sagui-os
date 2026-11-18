@@ -1,11 +1,11 @@
-/* paginacao.c - paginação de 4 níveis do kernel de 64 bits (3.0, D056).
+/* paginacao.c - paginação de 4 níveis do kernel de 64 bits (3.0, D078).
  *
  * No modo longo a tradução de endereços sempre tem 4 níveis (Intel SDM
  * vol. 3A, 5.5 "4-Level Paging"; AMD APM vol. 2, 5.3): PML4 (cada entrada
  * cobre 512 GB) -> PDPT (1 GB) -> diretório (2 MB) -> tabela (4 KB) ->
  * página. Cada tabela tem 512 entradas de 8 bytes e ocupa uma página.
  *
- * O SaguiOS mantém, na 3.0, o mesmo mapa de memória da 2.x (D010, D054),
+ * O SaguiOS mantém, na 3.0, o mesmo mapa de memória da 2.x (D010, D076),
  * todo abaixo de 4 GB:
  *     0          - 896 MB   kernel: endereço virtual = físico
  *     896 MB     - 1 GB     janelas do kernel para dispositivos (MMIO)

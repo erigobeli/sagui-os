@@ -2,7 +2,7 @@
 #
 # Alvos principais:
 #   make            -> gera build/saguios.img (imagem para pendrive), com o
-#                      kernel em 64 bits (3.0, D054)
+#                      kernel em 64 bits (3.0, D076)
 #   make ARQ=32     -> a imagem com o kernel de 32 bits da 2.x, em build32/
 #                      (fica até a 3.0 ser aprovada no G470)
 #   make vdi        -> gera também build/saguios.vdi (VirtualBox)
@@ -38,7 +38,7 @@ ARQ_DIR   := x86_64
 # -mno-red-zone: no modo longo a CPU empilha o quadro da interrupção logo
 # abaixo do RSP, por cima dos 128 bytes que a ABI deixaria a função usar
 # sem mexer no RSP ("zona vermelha"); no kernel ela não pode existir.
-# -mcmodel=kernel não serve: o kernel fica em 1 MB (D054), endereços baixos,
+# -mcmodel=kernel não serve: o kernel fica em 1 MB (D076), endereços baixos,
 # e o modelo "small" (tudo abaixo de 2 GB) é o certo para isso.
 KARQ      := -m64 -march=x86-64 -mcmodel=small -mno-red-zone
 KLD_ARQ   := -m elf_x86_64 -z max-page-size=4096
@@ -111,6 +111,12 @@ NAVEGADOR_C   := $(wildcard userland/navegador/*.c userland/navegador/*/*.c) \
 NAVEGADOR_OBJ := $(patsubst %.c,$(B)/nav/%.o,$(NAVEGADOR_C))
 NAVEGADOR_HDR := $(wildcard userland/navegador/*.h userland/navegador/*/*.h terceiros/*/*.h) $(B)/gerado/js_base.h
 PROGRAMAS += $(B)/userland/bin/navegador $(B)/userland/bin/cipo
+# O visualizador de imagens usa os decodificadores do Cipó (PNG, JPEG, GIF e
+# WebP); o DEFLATE vem da libsagui.
+IMAGENS_OBJ := $(patsubst %.c,$(B)/nav/%.o,userland/navegador/imagens.c userland/navegador/png.c \
+                 userland/navegador/jpeg.c terceiros/libwebp-vp8/vp8.c)
+VISUALIZADOR_OBJ := $(B)/nav/userland/visualizador/visualizador.o $(IMAGENS_OBJ)
+PROGRAMAS += $(B)/userland/bin/visualizador
 # O tocador de vídeo (H82): MP4 com H.264 e AAC, do pull request #6.
 VIDEO_OBJ := $(patsubst %.c,$(B)/nav/%.o,$(wildcard userland/video/*.c))
 PROGRAMAS += $(B)/userland/bin/video
@@ -133,6 +139,14 @@ COMPILADOR_OBJ := $(patsubst userland/compilador/%.c,$(B)/userland/compilador/%.
 PROGRAMAS += $(B)/userland/bin/cc
 CC_LIB := $(B)/userland/libsagui.o
 CC_INC := userland/inc/sagui.h userland/inc/gui.h userland/inc/http.h kernel/inc/abi.h
+# Os jogos com vários arquivos (H92): cada pasta de userland/jogos/ vira um
+# programa com o nome dela. As regras de cada jogo ficam num arquivo à parte,
+# que os testes também compilam no computador de desenvolvimento.
+JOGOS := $(notdir $(wildcard userland/jogos/*))
+PROGRAMAS += $(addprefix $(B)/userland/bin/,$(JOGOS))
+# O visor de JClic usa o DEFLATE e as imagens (PNG, JPEG) do Cipó.
+JOGO_EXTRA_jclic := $(B)/nav/userland/navegador/png.o $(B)/nav/userland/navegador/jpeg.o
+JCLIC_EXEMPLO := $(wildcard userland/jogos/jclic/exemplo/*)
 PROG_TESTE := $(patsubst userland/testes/%.c,$(B)/userland/testes/%,$(wildcard userland/testes/*.c))
 
 .PHONY: all vazio vdi test rodar run entrega limpar dashboard
@@ -200,6 +214,35 @@ $(B)/userland/bin/%: $(B)/userland/programas/%.o $(LIBSAGUI_OBJ) userland/progra
 	$(LD) $(ULDFLAGS) -o $@.elf $< $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
+# O lançador de jogos (H92) mostra os mesmos ícones da área de trabalho: o C
+# gerado por tools/mkarte.py entra nele (só os ícones usados, --gc-sections).
+$(B)/userland/arte_icones.o: $(B)/gerado/arte_icones.c kernel/inc/arte.h
+	@mkdir -p $(dir $@)
+	$(CC) $(UCFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/jogos: $(B)/userland/programas/jogos.o $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $< $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
+# O instalador mostra os ícones dos discos (D064).
+$(B)/userland/bin/instalar: $(B)/userland/programas/instalar.o $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $< $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
+$(B)/userland/jogos/%.o: userland/jogos/%.c $(wildcard userland/jogos/*/*.h) $(USER_HDR)
+	@mkdir -p $(dir $@)
+	$(CC) $(UCFLAGS) -c -o $@ $<
+
+define REGRA_JOGO
+$(B)/userland/bin/$(1): $$(patsubst %.c,$(B)/%.o,$$(wildcard userland/jogos/$(1)/*.c)) $$(JOGO_EXTRA_$(1)) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $$(dir $$@)
+	$(LD) $(ULDFLAGS) -o $$@.elf $$(filter %.o,$$^)
+	objcopy --strip-all $$@.elf $$@
+endef
+$(foreach j,$(JOGOS),$(eval $(call REGRA_JOGO,$(j))))
+
 $(B)/userland/sagui3d/%.o: userland/sagui3d/%.c userland/sagui3d/jogo.h $(USER_HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(UCFLAGS) -c -o $@ $<
@@ -229,6 +272,15 @@ $(B)/userland/bin/navegador: $(NAVEGADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.
 $(B)/nav/userland/video/%.o: userland/video/%.c $(wildcard userland/video/*.h terceiros/*/*.h) $(USER_HDR)
 	@mkdir -p $(dir $@)
 	$(CC) $(NAV_CFLAGS) -c -o $@ $<
+
+$(B)/nav/userland/visualizador/%.o: userland/visualizador/%.c $(USER_HDR) userland/inc/compactar.h $(wildcard userland/video/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(NAV_CFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/visualizador: $(VISUALIZADOR_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $(VISUALIZADOR_OBJ) $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
 
 $(B)/userland/bin/video: $(VIDEO_OBJ) $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)
@@ -294,16 +346,34 @@ $(B)/userland/testes/%: $(B)/userland/testes/%.o $(LIBSAGUI_OBJ) userland/progra
 # ---------- ramdisk (SGFS) ----------
 # O ramdisk é montado a partir de uma cópia do rootfs/ com os programas em
 # /bin e os programas de teste em /testes.
-$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs/c-do-sagui.md tools/mksgfs.py
+# H94: as licenças vão para /sistema/licencas, copiadas dos lugares onde já
+# estão no repositório (tools/mklicencas.py), e o histórico de versões para
+# /sistema/ajuda/versoes.md (o botão "Histórico" da janela Sobre).
+LICENCAS_FONTES := LICENSE CONTRIBUIDORES.md CREDITOS.md VERSOES.md $(shell find terceiros -type f | sort) \
+                   userland/navegador/motor/LICENCA-Unicode.txt tools/mklicencas.py docs/licencas/MPL-2.0.txt
+
+$(B)/ramdisk.sgfs: $(ROOTFS) $(PROGRAMAS) $(PROG_TESTE) $(CC_LIB) $(CC_INC) docs/c-do-sagui.md tools/mksgfs.py $(B)/host/chip8asm $(JCLIC_EXEMPLO) tools/mkzip.py $(LICENCAS_FONTES)
 	rm -rf $(B)/rootfs
 	cp -r rootfs $(B)/rootfs
+	for f in rootfs/jogos/chip8/*.asm; do $(B)/host/chip8asm $$f $(B)/rootfs/jogos/chip8/$$(basename $$f .asm).ch8 || exit 1; done
+	mkdir -p $(B)/rootfs/jogos/jclic
+	$(PY) tools/mkzip.py $(B)/rootfs/jogos/jclic/sagui.jclic.zip $(JCLIC_EXEMPLO)
 	$(if $(PROGRAMAS),cp $(PROGRAMAS) $(B)/rootfs/bin/)
 	$(if $(PROG_TESTE),mkdir -p $(B)/rootfs/testes && cp $(PROG_TESTE) $(B)/rootfs/testes/)
 	mkdir -p $(B)/rootfs/sistema/lib $(B)/rootfs/sistema/inc $(B)/rootfs/sistema/ajuda
 	cp $(CC_LIB) $(B)/rootfs/sistema/lib/libsagui.o
 	cp $(CC_INC) $(B)/rootfs/sistema/inc/
 	cp docs/c-do-sagui.md $(B)/rootfs/sistema/ajuda/   # o manual que o Sagui Code manda para a IA (H71)
+	cp VERSOES.md $(B)/rootfs/sistema/ajuda/versoes.md
+	$(PY) tools/mklicencas.py . $(B)/rootfs/sistema/licencas
 	$(PY) tools/mksgfs.py $(B)/rootfs $@
+
+# O montador de CHIP-8 (H92) também roda aqui, no computador de
+# desenvolvimento: as ROMs de exemplo de /jogos/chip8 saem dos .asm de
+# rootfs/jogos/chip8 na hora do build (nenhum binário pronto no repositório).
+$(B)/host/chip8asm: tools/chip8asm.c userland/jogos/chip8asm/montador.c userland/jogos/chip8asm/montador.h
+	@mkdir -p $(dir $@)
+	gcc -O2 -Wall -Wextra -DTESTE_HOSPEDEIRO -Iuserland/jogos/chip8asm -o $@ tools/chip8asm.c userland/jogos/chip8asm/montador.c
 
 # ---------- imagem final ----------
 $(B)/saguios.img: $(B)/boot/mbr.bin $(B)/boot/estagio2.bin $(B)/kernel.bin $(B)/ramdisk.sgfs tools/mkimagem.py

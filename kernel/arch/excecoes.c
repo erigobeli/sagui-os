@@ -46,7 +46,7 @@ SEM_RETORNO void excecao_fatal(quadro_t *q)
     console_cor(COR_BRANCO, COR_VERMELHO);
     kprintf("  Código de erro: 0x%08x\n\n", (uint32_t)q->erro);
 #ifdef __x86_64__
-    /* Kernel de 64 bits: todo endereço do SaguiOS fica abaixo de 4 GB (D054),
+    /* Kernel de 64 bits: todo endereço do SaguiOS fica abaixo de 4 GB (D076),
      * então a metade baixa de cada registrador já diz tudo e a tela continua
      * com o formato da 2.x (EIP=, EAX=...), que cabe em 80 colunas. A metade
      * alta, quando não é zero, aparece numa linha à parte. */

@@ -40,10 +40,36 @@ static void atualizar_titulo(void)
     registrar("editor: titulo %s\n", t);
 }
 
+/* "Compilar e rodar" e "Instalar" só aparecem para programas em C: para um
+ * texto qualquer (uma nota, um chaves.txt) o Editor é um editor de texto
+ * simples, e os botões de compilar só confundiriam. */
+static botao_t bt[6] = {
+    { 8, 7, 64, 26, "Novo", false }, { 78, 7, 64, 26, "Abrir", false },
+    { 148, 7, 70, 26, "Salvar", false }, { 224, 7, 104, 26, "Salvar como", false },
+    { 340, 7, 142, 26, "Compilar e rodar", false }, { 488, 7, 80, 26, "Instalar", false },
+};
+
+static bool eh_programa_c(void)
+{
+    size_t n = tam_texto(caminho);
+    return n > 2 && caminho[n - 2] == '.' && (caminho[n - 1] == 'c' || caminho[n - 1] == 'C');
+}
+
+static void desenhar_barra(void)
+{
+    g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
+    g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
+    int botoes = eh_programa_c() ? 6 : 4;
+    if (LARG >= 690) rotulo(j, botoes == 6 ? 580 : 340, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
+    for (int i = 0; i < botoes; i++) botao_desenhar(j, &bt[i]);
+}
+
 static void forcar_titulo(void)
 {
     modificado_mostrado = !area.modificado;
     atualizar_titulo();
+    desenhar_barra();
+    jan_mostrar_area(j, 0, 0, LARG, BARRA);
 }
 
 static bool abrir_arquivo(const char *c)
@@ -222,16 +248,8 @@ int principal(int argc, char **argv)
 {
     j = jan_abrir("Editor - sem nome", LARG, ALT);
     if (!j || !area_iniciar(&area, 6, BARRA + 4, LARG - 12, ALT - BARRA - 10)) return 1;
-    botao_t bt[6] = {
-        { 8, 7, 64, 26, "Novo", false }, { 78, 7, 64, 26, "Abrir", false },
-        { 148, 7, 70, 26, "Salvar", false }, { 224, 7, 104, 26, "Salvar como", false },
-        { 340, 7, 142, 26, "Compilar e rodar", false }, { 488, 7, 80, 26, "Instalar", false },
-    };
     jan_redimensionavel(j, 580, 200);
-    g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
-    g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
-    if (LARG >= 690) rotulo(j, 580, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
-    for (int i = 0; i < 6; i++) botao_desenhar(j, &bt[i]);
+    desenhar_barra();
     area.foco = true;
     if (argc > 1) abrir_arquivo(argv[1]);
     else forcar_titulo();
@@ -251,10 +269,7 @@ int principal(int argc, char **argv)
             larg_jan = j->larg;
             alt_jan = j->alt;
             g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
-            g_retangulo(j, 0, 0, LARG, BARRA, 0xE6E9EC);
-            g_retangulo(j, 0, BARRA - 1, LARG, 1, COR_BORDA);
-            if (LARG >= 690) rotulo(j, 580, 12, "Ctrl+S salva", COR_TEXTO_FRACO);
-            for (int i = 0; i < 6; i++) botao_desenhar(j, &bt[i]);
+            desenhar_barra();
             area.l = LARG - 12;
             area.a = ALT - BARRA - 10;
             area_desenhar(j, &area);
@@ -278,12 +293,14 @@ int principal(int argc, char **argv)
         }
         if (botao_tratar(j, &bt[2], &e)) salvar();
         if (botao_tratar(j, &bt[3], &e)) salvar_como();
-        if (botao_tratar(j, &bt[4], &e)) { compilar(false); area.foco = true; area_desenhar(j, &area); continue; }
-        if (botao_tratar(j, &bt[5], &e)) { compilar(true); area.foco = true; area_desenhar(j, &area); continue; }
-        if (e.tipo == EV_TECLA && e.tecla == 18 && (e.modificadores & 2)) { compilar(false); continue; }   /* Ctrl+R */
+        bool c = eh_programa_c();
+        if (c && botao_tratar(j, &bt[4], &e)) { compilar(false); area.foco = true; area_desenhar(j, &area); continue; }
+        if (c && botao_tratar(j, &bt[5], &e)) { compilar(true); area.foco = true; area_desenhar(j, &area); continue; }
+        if (c && e.tipo == EV_TECLA && e.tecla == 18 && (e.modificadores & 2)) { compilar(false); continue; }   /* Ctrl+R */
         /* Botão direito: menu do Editor (H81). */
         if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {
-            jan_menu(j, e.x, e.y, "Salvar (Ctrl+S)|Salvar como...|Compilar e rodar (Ctrl+R)|Instalar no pendrive");
+            jan_menu(j, e.x, e.y, c ? "Salvar (Ctrl+S)|Salvar como...|Compilar e rodar (Ctrl+R)|Instalar no pendrive"
+                                    : "Salvar (Ctrl+S)|Salvar como...");
             continue;
         }
         if (e.tipo == EV_MENU) {

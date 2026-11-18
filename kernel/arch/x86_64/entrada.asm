@@ -1,7 +1,7 @@
 ; entrada.asm - primeira instrução do kernel de 64 bits do SaguiOS (3.0).
 ;
 ; O estágio 2 chega aqui já no modo longo (64 bits), com a paginação ligada
-; e os primeiros 4 GB mapeados com endereço virtual = físico (D054), e com
+; e os primeiros 4 GB mapeados com endereço virtual = físico (D076), e com
 ; os dois valores do carregador nos registradores dos dois primeiros
 ; argumentos da convenção System V AMD64: RDI = assinatura do carregador,
 ; RSI = endereço da boot_info. Antes de qualquer código C:

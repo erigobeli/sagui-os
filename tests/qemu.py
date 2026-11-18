@@ -25,7 +25,7 @@ IMAGEM = os.environ.get("SAGUI_IMAGEM") or os.path.join(RAIZ, "build", "saguios.
 SAIDA = os.path.join(RAIZ, "build", "testes")
 CAPTURAS = os.environ.get("SAGUI_CAPTURAS") or os.path.join(RAIZ, "docs", "capturas")
 TEMPO_MAX = 180
-# SAGUI_QEMU: qual QEMU usar. A 3.0 tem o kernel de 64 bits (D054), que só
+# SAGUI_QEMU: qual QEMU usar. A 3.0 tem o kernel de 64 bits (D076), que só
 # roda no qemu-system-x86_64; ele também roda a imagem de 32 bits (make
 # ARQ=32), então é o padrão. "qemu-system-i386" testa a imagem de 32 bits
 # numa CPU sem 64 bits, como era na 2.x.

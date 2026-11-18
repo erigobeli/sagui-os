@@ -2,7 +2,14 @@
  *
  * Mostra uma pasta como lista com ícones (pastas primeiro). Duplo clique:
  * pasta entra, arquivo de texto abre no Editor, programa executa. Botões
- * para voltar, criar pasta e apagar (com confirmação). */
+ * para voltar, criar pasta e apagar (com confirmação).
+ *
+ * Lixeira (issue #25, parte 5): "Apagar" move para a lixeira em vez de apagar
+ * de vez. Cada disco tem a sua, porque mover entre a memória e o pendrive não
+ * é renomear: /.lixeira e /usb/.lixeira. O arquivo .origens de cada lixeira
+ * guarda, por linha, "nome na lixeira<TAB>caminho original", para restaurar.
+ * Nomes que começam com ponto não aparecem na lista. Na lixeira, os botões
+ * viram Restaurar, Apagar de vez e Esvaziar. Shift+Delete apaga de vez. */
 #include "sagui.h"
 #include "gui.h"
 
@@ -18,10 +25,21 @@ static char nomes[MAX_ITENS][64];
 static uint8_t tipos[MAX_ITENS];
 static uint32_t tamanhos[MAX_ITENS];
 static lista_t lista;
+/* Renomear devagar: o item clicado e quando; a edição abre se o segundo
+ * clique de um duplo clique não vier nesse tempo (o do kernel é 450 ms). */
+#define DEVAGAR_MS 500
+static int devagar_i = -1;
+static unsigned devagar_ms;
+static uint8_t marc[MAX_ITENS];   /* D058: itens marcados (laço, Ctrl, Shift) */
 static info_disco_t pendrive;
 static bool tem_pendrive;
 static botao_t bt_lado_raiz = { 8, 76, LATERAL - 16, 28, "SaguiOS", false };
 static botao_t bt_lado_pen = { 8, 112, LATERAL - 16, 28, "Pendrive", false };
+static botao_t bt_lixeira = { 8, 0, LATERAL - 16, 28, "Lixeira", false };   /* y no pé da lateral */
+static botao_t bt[4] = {
+    { 8, 7, 90, 26, "Voltar", false }, { 106, 7, 110, 26, "Nova pasta", false },
+    { 224, 7, 90, 26, "Apagar", false }, { 330, 7, 110, 26, "Esvaziar", false },
+};
 static botao_t bt_remover = { 8, 148, LATERAL - 16, 44, "", false };
 
 /* Ícones 16x16 em pixel art. */
@@ -140,6 +158,8 @@ static void desenhar_rodape(const char *msg)
     jan_mostrar_area(j, 0, ALT - 24, LARG, 24);
 }
 
+static void desenhar_botoes(void);
+
 /* Lê a pasta: primeiro as pastas, depois o resto (o kernel já devolve em
  * ordem alfabética). */
 static void carregar(void)
@@ -148,6 +168,7 @@ static void carregar(void)
     int n = 0;
     for (int passo = 0; passo < 2; passo++)
         for (int i = 0; n < MAX_ITENS && listar(pasta, i, &e) == 1; i++) {
+            if (e.nome[0] == '.') continue;   /* escondidos: a lixeira e o .origens */
             bool eh_pasta = e.tipo == TIPO_PASTA;
             if ((passo == 0) != eh_pasta) continue;
             copia_texto(nomes[n], e.nome, 64);
@@ -157,6 +178,10 @@ static void carregar(void)
         }
     lista.qtd = n;
     lista.sel = n ? 0 : -1;
+    for (int i = 0; i < MAX_ITENS; i++) marc[i] = 0;
+    if (n) marc[0] = 1;
+    lista.editando = lista.laco = false;
+    desenhar_botoes();
     lista.topo = 0;
     desenhar_topo();
     lista_desenhar(j, &lista);
@@ -182,16 +207,18 @@ static void desenhar_lateral(void)
     botao_desenhar(j, &bt_lado_raiz);
     if (tem_pendrive) {
         static char rotulo[24];
-        copia_texto(rotulo, pendrive.rotulo[0] ? pendrive.rotulo : "Pendrive", sizeof rotulo);
+        copia_texto(rotulo, pendrive.interno ? "Disco" : pendrive.rotulo[0] ? pendrive.rotulo : "Pendrive", sizeof rotulo);
         bt_lado_pen.texto = rotulo;
         botao_desenhar(j, &bt_lado_pen);
-        if (pendrive.montado) {
+        if (pendrive.montado && !pendrive.interno) {   /* o disco local não sai */
             bt_remover.texto = "";
             botao_desenhar(j, &bt_remover);
             g_texto(j, 8 + 12, 148 + 6, "Remover com", COR_TEXTO);
             g_texto(j, 8 + 20, 148 + 22, "segurança", COR_TEXTO);
         }
     }
+    bt_lixeira.y = ALT - 24 - 38;
+    botao_desenhar(j, &bt_lixeira);
     jan_mostrar_area(j, 0, 66, LATERAL, ALT - 66 - 24);
 }
 
@@ -200,8 +227,12 @@ static bool atualizar_pendrive(void)
 {
     info_disco_t d;
     bool achou = false;
-    for (int i = 0; listar_discos(i, &d) == 1; i++)
+    for (int i = 0; listar_discos(i, &d) == 1; i++) {
+        /* Disco interno só se for a partição do SaguiOS: o resto do HD é de
+         * quem testa, e o kernel nem monta (D062). */
+        if (d.interno && compara_texto(d.rotulo, "SAGUIOS") != 0) continue;
         if (d.suportado) { achou = true; break; }
+    }
     bool mudou = achou != tem_pendrive || (achou && (d.montado != pendrive.montado || compara_texto(d.nome, pendrive.nome) != 0));
     tem_pendrive = achou;
     if (achou) pendrive = d;
@@ -235,8 +266,9 @@ static const char *programa_para(const char *nome)
     static const struct { const char *ext, *prog; } tabela[] = {
         { ".wav", "/bin/tocador" }, { ".mp3", "/bin/tocador" },
         { ".html", "/bin/cipo" }, { ".htm", "/bin/cipo" },
-        { ".png", "/bin/cipo" }, { ".jpg", "/bin/cipo" }, { ".jpeg", "/bin/cipo" }, { ".gif", "/bin/cipo" },
-        { ".webp", "/bin/cipo" }, { ".svg", "/bin/cipo" }, { ".mp4", "/bin/video" },
+        { ".png", "/bin/visualizador" }, { ".jpg", "/bin/visualizador" }, { ".jpeg", "/bin/visualizador" },
+        { ".gif", "/bin/visualizador" }, { ".webp", "/bin/visualizador" }, { ".bmp", "/bin/visualizador" },
+        { ".sgi", "/bin/visualizador" }, { ".svg", "/bin/cipo" }, { ".mp4", "/bin/video" },
     };
     for (unsigned k = 0; k < sizeof tabela / sizeof tabela[0]; k++)
         if (termina_com(nome, tabela[k].ext)) return tabela[k].prog;
@@ -295,47 +327,408 @@ static void abrir_item(int i)
     desenhar_rodape(msg);
 }
 
-static void nova_pasta(void)
+/* ------------------------------------------------------------ criar e renomear na linha (D058)
+ *
+ * Como nos outros sistemas: "Nova pasta" e "Novo arquivo de texto" criam o
+ * item com um nome livre ("Nova pasta", "Nova pasta (2)"...) e já abrem a
+ * edição do nome na própria linha da lista, com o nome (sem a extensão)
+ * marcado. Renomear (menu ou F2) usa a mesma edição. */
+
+static void caminho_nome(const char *nome, char *saida, size_t max)
 {
-    char nome[64] = "";
-    if (!pedir_texto("Nova pasta", "Nome da nova pasta:", nome, sizeof nome) || !nome[0]) return;
+    copia_texto(saida, pasta, max);
+    if (compara_texto(pasta, "/") != 0) junta_texto(saida, "/", max);
+    junta_texto(saida, nome, max);
+}
+
+static bool existe(const char *nome)
+{
     char c[200];
-    copia_texto(c, pasta, sizeof c);
-    if (compara_texto(pasta, "/") != 0) junta_texto(c, "/", sizeof c);
-    junta_texto(c, nome, sizeof c);
-    int r = criar_pasta(c);
-    if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui criar a pasta:\n%s", nome_erro(r)); mensagem("Arquivos", m); return; }
-    registrar("arquivos: pasta criada %s", c);
+    info_arquivo_t inf;
+    caminho_nome(nome, c, sizeof c);
+    return info_arquivo(c, &inf) == 0;
+}
+
+/* "Nova pasta", "Nova pasta (2)"... ou "Novo arquivo.txt", "Novo arquivo (2).txt". */
+static void nome_livre(const char *base, const char *ext, char *saida, int max)
+{
+    formatar_texto(saida, (size_t)max, "%s%s", base, ext);
+    for (int n = 2; existe(saida) && n < 1000; n++) formatar_texto(saida, (size_t)max, "%s (%d)%s", base, n, ext);
+}
+
+static int indice_de(const char *nome)
+{
+    for (int i = 0; i < lista.qtd; i++) if (compara_texto(nomes[i], nome) == 0) return i;
+    return -1;
+}
+
+/* Marca só o item i (depois de recarregar a pasta). */
+static void selecionar(int i)
+{
+    if (i < 0) return;
+    for (int k = 0; k < lista.qtd; k++) marc[k] = 0;
+    marc[i] = 1;
+    lista.sel = i;
+    lista_desenhar(j, &lista);
+}
+
+/* Quantos caracteres marcar ao editar: o nome sem a extensão (nas pastas, tudo). */
+static int parte_do_nome(int i)
+{
+    if (tipos[i] == TIPO_PASTA) return (int)tam_texto(nomes[i]);
+    char *ponto = acha_ultimo_char(nomes[i], '.');
+    return ponto && ponto != nomes[i] ? (int)(ponto - nomes[i]) : (int)tam_texto(nomes[i]);
+}
+
+static void renomear_na_linha(int i)
+{
+    if (i < 0 || i >= lista.qtd) return;
+    registrar("arquivos: renomeando %s", nomes[i]);
+    desenhar_rodape("Digite o nome. Enter confirma, Esc desiste.");
+    lista_editar(j, &lista, i, parte_do_nome(i));
+}
+
+enum { NOVO_PASTA, NOVO_TEXTO, NOVO_PAGINA };
+
+static void criar_novo(int tipo)
+{
+    char nome[64], c[200];
+    nome_livre(tipo == NOVO_PASTA ? "Nova pasta" : tipo == NOVO_TEXTO ? "Novo arquivo" : "Nova página",
+               tipo == NOVO_PASTA ? "" : tipo == NOVO_TEXTO ? ".txt" : ".html", nome, sizeof nome);
+    caminho_nome(nome, c, sizeof c);
+    int r;
+    if (tipo == NOVO_PASTA) r = criar_pasta(c);
+    else {
+        r = abrir(c, ABRIR_ESCREVER | ABRIR_CRIAR);
+        if (r >= 0) {
+            if (tipo == NOVO_PAGINA)
+                escrever_texto(r, "<!doctype html>\n<html>\n<head><meta charset=\"utf-8\"><title>Nova página</title></head>\n"
+                                  "<body>\n<h1>Nova página</h1>\n</body>\n</html>\n");
+            fechar(r);
+            r = 0;
+        }
+    }
+    if (r < 0) {
+        char m[200];
+        formatar_texto(m, sizeof m, "Não consegui criar %s:\n%s", nome, nome_erro(r));
+        mensagem("Arquivos", m);
+        return;
+    }
+    registrar("arquivos: criado %s", c);
+    carregar();
+    renomear_na_linha(indice_de(nome));
+}
+
+/* O nome editado na linha chegou: renomeia, se mudou e se pode. */
+static void terminar_renomear(void)
+{
+    int i = lista.ed_item;
+    if (i < 0 || i >= lista.qtd) return;
+    char novo[64];
+    copia_texto(novo, lista.ed_texto, sizeof novo);
+    /* tira os espaços das pontas */
+    int n = (int)tam_texto(novo);
+    while (n > 0 && novo[n - 1] == ' ') novo[--n] = 0;
+    char *ini = novo;
+    while (*ini == ' ') ini++;
+    if (!*ini || compara_texto(ini, nomes[i]) == 0) { lista_desenhar(j, &lista); return; }
+    char m[240];
+    if (compara_texto(ini, ".") == 0 || compara_texto(ini, "..") == 0 || ini[0] == '.') {
+        mensagem("Arquivos", "O nome não pode começar com ponto\n(esses ficam escondidos).");
+        renomear_na_linha(i);
+        return;
+    }
+    if (existe(ini)) {
+        formatar_texto(m, sizeof m, "Já existe \"%s\" nesta pasta.", ini);
+        mensagem("Arquivos", m);
+        renomear_na_linha(i);
+        return;
+    }
+    char de[200], para[200];
+    caminho_de(i, de, sizeof de);
+    caminho_nome(ini, para, sizeof para);
+    int r = renomear(de, para);
+    if (r < 0) {
+        formatar_texto(m, sizeof m, "Não consegui renomear:\n%s", nome_erro(r));
+        mensagem("Arquivos", m);
+        lista_desenhar(j, &lista);
+        return;
+    }
+    registrar("arquivos: renomeado %s -> %s", de, para);
+    char guardado[64];
+    copia_texto(guardado, ini, sizeof guardado);
+    carregar();
+    selecionar(indice_de(guardado));
+}
+
+/* ------------------------------------------------------------ lixeira (issue #25, parte 5) */
+
+/* A lixeira do disco de "caminho": /usb/.lixeira no pendrive, /.lixeira no resto. */
+static const char *lixeira_de(const char *caminho)
+{
+    return comeca_com(caminho, "/usb/") || compara_texto(caminho, "/usb") == 0 ? "/usb/.lixeira" : "/.lixeira";
+}
+
+static bool na_lixeira(void)
+{
+    return compara_texto(pasta, "/.lixeira") == 0 || compara_texto(pasta, "/usb/.lixeira") == 0;
+}
+
+/* Botões do topo: na lixeira são outros. */
+static void desenhar_botoes(void)
+{
+    g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
+    g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
+    bool lx = na_lixeira();
+    bt[1].texto = lx ? "Restaurar" : "Nova pasta";
+    bt[2].texto = lx ? "Apagar de vez" : "Apagar";
+    bt[2].l = lx ? 130 : 90;
+    bt[3].x = bt[2].x + bt[2].l + 8;
+    int n = lx ? 4 : 3;
+    for (int i = 0; i < n; i++) botao_desenhar(j, &bt[i]);
+    jan_mostrar_area(j, 0, 0, LARG, 40);
+}
+
+/* Apaga um arquivo ou uma pasta com tudo dentro. */
+static int apagar_tudo(const char *c, int nivel)
+{
+    info_arquivo_t inf;
+    int r = info_arquivo(c, &inf);
+    if (r < 0) return r;
+    if (inf.tipo != TIPO_PASTA) return apagar(c);
+    if (nivel > 32) return ERRO_LIMITE;
+    entrada_pasta_t e;
+    char filho[200];
+    while (listar(c, 0, &e) == 1) {   /* sempre o primeiro: a lista encolhe */
+        copia_texto(filho, c, sizeof filho);
+        junta_texto(filho, "/", sizeof filho);
+        junta_texto(filho, e.nome, sizeof filho);
+        r = apagar_tudo(filho, nivel + 1);
+        if (r < 0) return r;
+    }
+    return remover_pasta(c);
+}
+
+/* Procura "nome" no .origens da lixeira; devolve o caminho original. */
+static bool origem_de(const char *lix, const char *nome, char *orig, int max)
+{
+    char arq[200], linha[260];
+    formatar_texto(arq, sizeof arq, "%s/.origens", lix);
+    int fd = abrir(arq, ABRIR_LER);
+    if (fd < 0) return false;
+    bool achou = false;
+    while (ler_linha(fd, linha, sizeof linha) >= 0) {
+        char *tab = acha_char(linha, '\t');
+        if (!tab) continue;
+        *tab = 0;
+        if (compara_texto(linha, nome) == 0) { copia_texto(orig, tab + 1, (size_t)max); achou = true; }   /* a última vale */
+    }
+    fechar(fd);
+    return achou;
+}
+
+static void mover_para_lixeira(int i, const char *c)
+{
+    const char *lix = lixeira_de(c);
+    criar_pasta(lix);
+    char destino[200];
+    info_arquivo_t inf;
+    formatar_texto(destino, sizeof destino, "%s/%s", lix, nomes[i]);
+    for (int n = 2; info_arquivo(destino, &inf) == 0 && n < 1000; n++)   /* já tem um com esse nome */
+        formatar_texto(destino, sizeof destino, "%s/%s~%d", lix, nomes[i], n);
+    int r = renomear(c, destino);
+    if (r < 0) {
+        char m[240];
+        formatar_texto(m, sizeof m, "Não consegui pôr na lixeira:\n%s", nome_erro(r));
+        mensagem("Arquivos", m);
+        registrar("arquivos: lixeira falhou %s (%d)", c, r);
+        return;
+    }
+    char arq[200], linha[300];
+    formatar_texto(arq, sizeof arq, "%s/.origens", lix);
+    int fd = abrir(arq, ABRIR_ESCREVER | ABRIR_CRIAR | ABRIR_ACRESCENTAR);
+    if (fd >= 0) {
+        formatar_texto(linha, sizeof linha, "%s\t%s\n", acha_ultimo_char(destino, '/') + 1, c);
+        escrever_texto(fd, linha);
+        fechar(fd);
+    }
+    registrar("arquivos: apagado %s (para a lixeira: %s)", c, destino);
+}
+
+/* Os itens a que uma ação se aplica: os marcados ou, sem nenhum, o da
+ * seleção. */
+static int alvos(int *saida)
+{
+    int n = 0;
+    for (int i = 0; i < lista.qtd; i++) if (marc[i]) saida[n++] = i;
+    if (!n && lista.sel >= 0 && lista.sel < lista.qtd) saida[n++] = lista.sel;
+    return n;
+}
+
+/* O pendrive inteiro (/usb) e os programas e arquivos do sistema (/bin,
+ * /sistema) não são apagados pelo Arquivos: marcar "usb" na raiz e apagar
+ * de vez levaria tudo o que há no pendrive. */
+static bool protegido(const char *c)
+{
+    static const char *const raizes[] = { "/usb", "/bin", "/sistema" };
+    for (unsigned k = 0; k < sizeof raizes / sizeof raizes[0]; k++) {
+        size_t n = tam_texto(raizes[k]);
+        if (compara_texto_n(c, raizes[k], n) == 0 && (c[n] == 0 || (c[n] == '/' && k > 0))) return true;
+    }
+    return compara_texto(c, "/") == 0;
+}
+
+static void apagar_item_modo(bool de_vez)
+{
+    static int itens[MAX_ITENS];
+    int n = alvos(itens);
+    if (!n) return;
+    char pergunta[240];
+    de_vez = de_vez || na_lixeira();
+    if (n == 1) {
+        int i = itens[0];
+        if (de_vez) formatar_texto(pergunta, sizeof pergunta, "Apagar de vez\n%s%s?\nNão dá para desfazer.", nomes[i], tipos[i] == TIPO_PASTA ? "/" : "");
+        else formatar_texto(pergunta, sizeof pergunta, "Tem certeza que quer apagar\n%s%s?\nVai para a Lixeira.", nomes[i], tipos[i] == TIPO_PASTA ? "/" : "");
+    } else if (de_vez) formatar_texto(pergunta, sizeof pergunta, "Apagar de vez os %d itens marcados?\nNão dá para desfazer.", n);
+    else formatar_texto(pergunta, sizeof pergunta, "Tem certeza que quer apagar\nos %d itens marcados?\nVão para a Lixeira.", n);
+    if (!confirmar("Apagar", pergunta)) return;
+    for (int k = 0; k < n; k++) {
+        int i = itens[k];
+        char c[200];
+        caminho_de(i, c, sizeof c);
+        if (protegido(c)) { char m[200]; formatar_texto(m, sizeof m, "%s é do sistema ou é o pendrive:\nnão dá para apagar daqui.", c); mensagem("Arquivos", m); continue; }
+        if (!de_vez) { mover_para_lixeira(i, c); continue; }
+        int r = apagar_tudo(c, 0);
+        if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui apagar %s:\n%s", nomes[i], nome_erro(r)); mensagem("Arquivos", m); continue; }
+        registrar("arquivos: apagado de vez %s", c);
+    }
     carregar();
 }
 
-static void apagar_item(void)
+static void apagar_item(void) { apagar_item_modo(false); }
+
+static void restaurar_um(int i)
 {
-    int i = lista.sel;
-    if (i < 0 || i >= lista.qtd) return;
-    char c[200], pergunta[200];
+    char c[200], orig[200];
     caminho_de(i, c, sizeof c);
-    formatar_texto(pergunta, sizeof pergunta, "Tem certeza que quer apagar\n%s%s?", nomes[i], tipos[i] == TIPO_PASTA ? "/" : "");
-    if (!confirmar("Apagar", pergunta)) return;
-    int r = tipos[i] == TIPO_PASTA ? remover_pasta(c) : apagar(c);
-    if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui apagar:\n%s", nome_erro(r)); mensagem("Arquivos", m); return; }
-    registrar("arquivos: apagado %s", c);
+    if (!origem_de(pasta, nomes[i], orig, sizeof orig)) {   /* sem registro: volta para a raiz do disco */
+        formatar_texto(orig, sizeof orig, "%s/%s", compara_texto(pasta, "/.lixeira") == 0 ? "" : "/usb", nomes[i]);
+    }
+    info_arquivo_t inf;
+    if (info_arquivo(orig, &inf) == 0) {
+        char m[260];
+        formatar_texto(m, sizeof m, "Já existe %s.\nApague ou renomeie antes de restaurar.", orig);
+        mensagem("Arquivos", m);
+        return;
+    }
+    char pai[200];   /* a pasta de origem pode ter sido apagada: recria */
+    copia_texto(pai, orig, sizeof pai);
+    for (char *k = pai + 1; *k; k++) if (*k == '/') { *k = 0; criar_pasta(pai); *k = '/'; }
+    int r = renomear(c, orig);
+    if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui restaurar:\n%s", nome_erro(r)); mensagem("Arquivos", m); return; }
+    registrar("arquivos: restaurado %s -> %s", c, orig);
+}
+
+static void restaurar_item(void)
+{
+    static int itens[MAX_ITENS];
+    if (!na_lixeira()) return;
+    int n = alvos(itens);
+    for (int k = 0; k < n; k++) restaurar_um(itens[k]);
+    if (n) carregar();
+}
+
+static void esvaziar_lixeira(void)
+{
+    if (!na_lixeira() || lista.qtd == 0) return;
+    if (!confirmar("Esvaziar lixeira", "Apagar de vez tudo o que está na lixeira?")) return;
+    char lix[32];
+    copia_texto(lix, pasta, sizeof lix);
+    int r = apagar_tudo(lix, 0);
+    criar_pasta(lix);
+    registrar("arquivos: lixeira esvaziada %s (%d)", lix, r);
     carregar();
+}
+
+static void abrir_lixeira(void)
+{
+    const char *lix = comeca_com(pasta, "/usb") && !na_lixeira() ? "/usb/.lixeira" : "/.lixeira";
+    if (na_lixeira()) lix = pasta;
+    criar_pasta(lix);
+    copia_texto(pasta, lix, sizeof pasta);
+    carregar();
+}
+
+/* ------------------------------------------------------------ menu do botão direito (D058)
+ *
+ * Num item: abrir, abrir no Editor, renomear, apagar e os "Novo". No vazio:
+ * só os "Novo", atualizar e voltar. Com vários marcados, o que vale para um
+ * só (abrir, renomear) some. A escolha volta pelo índice; "acoes" diz qual é. */
+enum { AC_ABRIR, AC_EDITOR, AC_RENOMEAR, AC_APAGAR, AC_PASTA, AC_TEXTO, AC_PAGINA, AC_ATUALIZAR, AC_VOLTAR,
+       AC_RESTAURAR, AC_APAGAR_VEZ, AC_ESVAZIAR };
+static int acoes[16], qtd_acoes;
+
+static void acao(char *itens, size_t max, const char *texto, int a)
+{
+    if (qtd_acoes) junta_texto(itens, "|", max);
+    junta_texto(itens, texto, max);
+    acoes[qtd_acoes++] = a;
+}
+
+static void menu_de_contexto(int x, int y)
+{
+    static char itens[300];
+    itens[0] = 0;
+    qtd_acoes = 0;
+    int marcados = lista_qtd_marcados(&lista);
+    bool no_item = lista.sel >= 0 && lista.sel < lista.qtd && marcados > 0;
+    if (na_lixeira()) {
+        if (no_item) {
+            acao(itens, sizeof itens, marcados > 1 ? "Restaurar os marcados" : "Restaurar", AC_RESTAURAR);
+            acao(itens, sizeof itens, "Apagar de vez...", AC_APAGAR_VEZ);
+        }
+        acao(itens, sizeof itens, "Esvaziar lixeira...", AC_ESVAZIAR);
+        acao(itens, sizeof itens, "Voltar", AC_VOLTAR);
+        jan_menu(j, x, y, itens);
+        return;
+    }
+    if (no_item && marcados == 1) {
+        /* O primeiro item diz com que programa abre (pela extensão). */
+        const char *n = nomes[lista.sel];
+        bool arquivo = tipos[lista.sel] != TIPO_PASTA && tipos[lista.sel] != TIPO_PROGRAMA;
+        const char *prog = arquivo ? programa_para(n) : NULL;
+        const char *primeiro = !prog ? "Abrir"
+            : compara_texto(prog, "/bin/tocador") == 0 ? "Abrir no Tocador"
+            : compara_texto(prog, "/bin/cipo") == 0 ? "Abrir no Cipó"
+            : compara_texto(prog, "/bin/visualizador") == 0 ? "Abrir no Visualizador"
+            : compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor";
+        acao(itens, sizeof itens, primeiro, AC_ABRIR);
+        if (arquivo && compara_texto(primeiro, "Abrir no Editor") != 0) acao(itens, sizeof itens, "Abrir no Editor", AC_EDITOR);
+        acao(itens, sizeof itens, "Renomear", AC_RENOMEAR);
+        acao(itens, sizeof itens, "Apagar...", AC_APAGAR);
+    } else if (no_item) {
+        char t[40];
+        formatar_texto(t, sizeof t, "Apagar os %d itens...", marcados);
+        acao(itens, sizeof itens, t, AC_APAGAR);
+    }
+    acao(itens, sizeof itens, "Nova pasta", AC_PASTA);
+    acao(itens, sizeof itens, "Novo arquivo de texto", AC_TEXTO);
+    acao(itens, sizeof itens, "Nova página HTML", AC_PAGINA);
+    if (!no_item) acao(itens, sizeof itens, "Atualizar", AC_ATUALIZAR);
+    acao(itens, sizeof itens, "Voltar", AC_VOLTAR);
+    jan_menu(j, x, y, itens);
 }
 
 int principal(int argc, char **argv)
 {
     if (argc > 1) copia_texto(pasta, argv[1], sizeof pasta);
+    if (na_lixeira()) criar_pasta(pasta);   /* o ícone da Lixeira abre aqui antes de ela existir */
     j = jan_abrir("Arquivos", LARG, ALT);
     if (!j) return 1;
-    botao_t bt[3] = {
-        { 8, 7, 90, 26, "Voltar", false }, { 106, 7, 110, 26, "Nova pasta", false }, { 224, 7, 90, 26, "Apagar", false },
-    };
     jan_redimensionavel(j, 480, 300);
-    g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
-    g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
-    for (int i = 0; i < 3; i++) botao_desenhar(j, &bt[i]);
-    lista = (lista_t){ LATERAL + 6, 70, LARG - LATERAL - 14, ALT - 70 - 30, nomes, 0, -1, 0, icone };
+    lista = (lista_t){ .x = LATERAL + 6, .y = 70, .l = LARG - LATERAL - 14, .a = ALT - 70 - 30, .itens = nomes,
+                       .qtd = 0, .sel = -1, .topo = 0, .icone = icone, .marc = marc };
+
     atualizar_pendrive();
     desenhar_lateral();
     carregar();
@@ -345,6 +738,13 @@ int principal(int argc, char **argv)
     evento_t e;
     unsigned ultimo = tempo_ms();
     for (;;) {
+        /* Clique devagar no nome já marcado: se o duplo clique não veio,
+         * abre o nome para editar na linha (como o F2). */
+        if (devagar_i >= 0 && tempo_ms() - devagar_ms >= DEVAGAR_MS) {
+            int i = devagar_i;
+            devagar_i = -1;
+            if (i == lista.sel && !lista.editando && !na_lixeira() && lista_qtd_marcados(&lista) == 1) renomear_na_linha(i);
+        }
         if (proximo_evento(j->id, &e, false) != 1) {
             /* Sem evento: de vez em quando confere se um pendrive entrou ou saiu. */
             if (tempo_ms() - ultimo > 700) {
@@ -358,6 +758,7 @@ int principal(int argc, char **argv)
             dormir(50);
             continue;
         }
+        if (e.tipo == EV_CLIQUE) devagar_i = -1;   /* outro clique (o segundo do duplo, inclusive) cancela */
         int c;
         while (recolher(&c) > 0) ;   /* programas abertos daqui que já terminaram */
         if (e.tipo == EV_FECHAR) break;
@@ -366,9 +767,6 @@ int principal(int argc, char **argv)
             larg_jan = j->larg;
             alt_jan = j->alt;
             g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO);
-            g_retangulo(j, 0, 0, LARG, 40, 0xE6E9EC);
-            g_retangulo(j, 0, 39, LARG, 1, COR_BORDA);
-            for (int i = 0; i < 3; i++) botao_desenhar(j, &bt[i]);
             lista.l = LARG - LATERAL - 14;
             lista.a = ALT - 70 - 30;
             desenhar_lateral();
@@ -377,13 +775,23 @@ int principal(int argc, char **argv)
             registrar("arquivos: tamanho %dx%d", LARG, ALT);
             continue;
         }
+        /* D058: com um nome sendo editado na linha, o teclado e os cliques vão
+         * primeiro para a lista (um clique fora termina a edição). */
+        bool fechou_edicao = false;   /* o clique que fecha uma edição não abre outra */
+        if (lista.editando && (e.tipo == EV_TECLA || e.tipo == EV_CLIQUE)) {
+            int r = lista_tratar(j, &lista, &e);
+            fechou_edicao = r == LISTA_EDITOU;
+            if (r == LISTA_EDITOU) terminar_renomear();
+            else if (r == LISTA_DESISTIU) desenhar_rodape("Nome mantido.");
+            if (e.tipo == EV_TECLA || r == LISTA_NADA) continue;
+        }
         if (botao_tratar(j, &bt_lado_raiz, &e)) { copia_texto(pasta, "/", sizeof pasta); carregar(); }
         if (tem_pendrive && botao_tratar(j, &bt_lado_pen, &e)) {
             int r = pendrive.montado ? 0 : montar(pendrive.nome);
             if (r < 0) { char m[120]; formatar_texto(m, sizeof m, "Não consegui montar o pendrive:\n%s", nome_erro(r)); mensagem("Arquivos", m); }
             else { atualizar_pendrive(); desenhar_lateral(); copia_texto(pasta, "/usb", sizeof pasta); carregar(); registrar("arquivos: pendrive aberto"); }
         }
-        if (tem_pendrive && pendrive.montado && botao_tratar(j, &bt_remover, &e)) {
+        if (tem_pendrive && pendrive.montado && !pendrive.interno && botao_tratar(j, &bt_remover, &e)) {
             int r = desmontar(pendrive.nome);
             registrar("arquivos: remover com seguranca -> %d", r);
             if (comeca_com(pasta, "/usb")) { copia_texto(pasta, "/", sizeof pasta); carregar(); }
@@ -392,34 +800,47 @@ int principal(int argc, char **argv)
             mensagem("Arquivos", r < 0 ? "Não consegui desmontar o pendrive." : "Pode remover o pendrive.");
         }
         if (botao_tratar(j, &bt[0], &e)) voltar();
-        if (botao_tratar(j, &bt[1], &e)) nova_pasta();
+        if (botao_tratar(j, &bt_lixeira, &e)) abrir_lixeira();
+        bool lx = na_lixeira();
+        if (botao_tratar(j, &bt[1], &e)) { if (lx) restaurar_item(); else criar_novo(NOVO_PASTA); }
         if (botao_tratar(j, &bt[2], &e)) apagar_item();
+        if (lx && botao_tratar(j, &bt[3], &e)) esvaziar_lixeira();
         if (e.tipo == EV_TECLA && e.tecla == '\b') { voltar(); continue; }
-        if (e.tipo == EV_TECLA && e.tecla == TECLA_DELETE) { apagar_item(); continue; }
-        if (e.tipo == EV_MENU) {                            /* menu do botão direito (H81) */
+        if (e.tipo == EV_TECLA && e.tecla == TECLA_DELETE) { apagar_item_modo(e.modificadores & 1); continue; }
+        if (e.tipo == EV_TECLA && e.tecla == TECLA_F2) { renomear_na_linha(lista.sel); continue; }
+        if (e.tipo == EV_MENU) {                            /* menu do botão direito (H81; Novo e Renomear: issue #25, parte 4) */
             registrar("arquivos: menu %u", e.tecla);
-            if (e.tecla == 0 && lista.sel >= 0) abrir_item(lista.sel);
-            else if (e.tecla == 1 && lista.sel >= 0 && tipos[lista.sel] != TIPO_PASTA) abrir_com(lista.sel, "/bin/editor");
-            else if (e.tecla == 2) apagar_item();
-            else if (e.tecla == 3) nova_pasta();
-            else if (e.tecla == 4) voltar();
+            if (e.tecla < (unsigned)qtd_acoes) {
+                int a = acoes[e.tecla];
+                if (a == AC_ABRIR && lista.sel >= 0) abrir_item(lista.sel);
+                else if (a == AC_EDITOR && lista.sel >= 0) abrir_com(lista.sel, "/bin/editor");
+                else if (a == AC_RENOMEAR) renomear_na_linha(lista.sel);
+                else if (a == AC_APAGAR) apagar_item();
+                else if (a == AC_PASTA) criar_novo(NOVO_PASTA);
+                else if (a == AC_TEXTO) criar_novo(NOVO_TEXTO);
+                else if (a == AC_PAGINA) criar_novo(NOVO_PAGINA);
+                else if (a == AC_ATUALIZAR) carregar();
+                else if (a == AC_VOLTAR) voltar();
+                else if (a == AC_RESTAURAR) restaurar_item();
+                else if (a == AC_APAGAR_VEZ) apagar_item_modo(true);
+                else if (a == AC_ESVAZIAR) esvaziar_lixeira();
+            }
             continue;
         }
         int r = lista_tratar(j, &lista, &e);
         if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {
-            /* O primeiro item diz com que programa abre (pela extensão). */
-            static char itens[160];
-            const char *prog = lista.sel >= 0 && tipos[lista.sel] != TIPO_PASTA && tipos[lista.sel] != TIPO_PROGRAMA
-                             ? programa_para(nomes[lista.sel]) : NULL;
-            formatar_texto(itens, sizeof itens, "%s|Abrir no Editor|Apagar...|Nova pasta...|Voltar",
-                           !prog ? "Abrir" : compara_texto(prog, "/bin/tocador") == 0 ? "Abrir no Tocador" :
-                           compara_texto(prog, "/bin/cipo") == 0 ? "Abrir no Cipó" :
-                           compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor");
-            jan_menu(j, e.x, e.y, itens);
+            menu_de_contexto(e.x, e.y);
             continue;
         }
+        if (r == LISTA_EDITOU) { terminar_renomear(); continue; }
+        if (r == LISTA_DEVAGAR) { if (!fechou_edicao) { devagar_i = lista.sel; devagar_ms = tempo_ms(); } continue; }
         if (r == LISTA_ATIVOU) abrir_item(lista.sel);
-        else if (r == LISTA_SELECIONOU && lista.sel >= 0) {
+        else if (r == LISTA_SELECIONOU && lista_qtd_marcados(&lista) > 1) {
+            char msg[64];
+            formatar_texto(msg, sizeof msg, "%d itens marcados.", lista_qtd_marcados(&lista));
+            desenhar_rodape(msg);
+            registrar("arquivos: %d marcados", lista_qtd_marcados(&lista));
+        } else if (r == LISTA_SELECIONOU && lista.sel >= 0) {
             char msg[100];
             if (tipos[lista.sel] == TIPO_PASTA) formatar_texto(msg, sizeof msg, "%s/ (pasta)", nomes[lista.sel]);
             else formatar_texto(msg, sizeof msg, "%s: %u bytes%s", nomes[lista.sel], tamanhos[lista.sel],

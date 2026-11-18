@@ -25,7 +25,7 @@
  * endereço mais baixo para o mais alto. O C recebe um ponteiro para isto e
  * devolve o quadro a retomar, que pode ser de outro processo (fase 3). */
 #ifdef __x86_64__
-/* Kernel de 64 bits (D055): os registradores têm 64 bits, mas os programas
+/* Kernel de 64 bits (D077): os registradores têm 64 bits, mas os programas
  * da fase 1 são de 32 bits e só enxergam a metade baixa. Cada registrador
  * tem por isso dois nomes que ocupam o mesmo lugar (union): rax para o
  * valor inteiro e eax para a metade baixa (little-endian: os 4 primeiros

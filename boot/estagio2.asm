@@ -11,7 +11,7 @@
 ;   [5/6] vídeo             (INT 10h VBE: escolher modo; trocar só se pedido)
 ;   [6/6] modo protegido    (GDT própria e salto para o kernel)
 ;         ou modo longo     (kernel de 64 bits, 3.0: confere a CPU, monta as
-;                            tabelas de página e liga o IA-32e; D054)
+;                            tabelas de página e liga o IA-32e; D076)
 ;
 ; Cada etapa mostra uma linha na tela. No G470 não há serial: se travar, a
 ; foto da tela mostra em qual etapa parou.
@@ -39,7 +39,7 @@ SEL_CODIGO      equ 0x08
 SEL_DADOS       equ 0x10
 SEL_CODIGO64    equ 0x18
 
-; Tabelas de página provisórias do modo longo (D054): 7 páginas a partir de
+; Tabelas de página provisórias do modo longo (D076): 7 páginas a partir de
 ; 0x20000, uma área livre da memória baixa (o buffer de leitura do disco
 ; termina em 0x18000 e o kernel não usa nada abaixo de 1 MB). O kernel monta
 ; as tabelas definitivas dele logo no começo e esquece estas.
@@ -75,6 +75,11 @@ inicio:
         rep movsb
         movzx eax, word [CAB_ENDERECO + CAB_OPCOES]
         mov [BOOTINFO + BI_OPCOES], eax
+        ; O identificador do disco, do MBR que a BIOS deixou em 0x7C00 (a
+        ; pilha cresce para baixo de 0x7C00 e não chega nele): o kernel acha
+        ; por ele o disco de onde o sistema ligou (o instalador copia dele).
+        mov eax, [0x7C00 + 0x1B8]
+        mov [BOOTINFO + BI_DISCO_ID], eax
 
         mov si, msg_titulo
         call escrever

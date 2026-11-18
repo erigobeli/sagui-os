@@ -28,9 +28,20 @@ void area_icone_direito(int i);
 #define ACAO_REMOVER    3
 #define ACAO_ESCONDER   4
 #define ACAO_DESMONTAR  5
+const char *area_icone_nome(int i);      /* o nome embaixo do ícone */
+/* Seleção de ícones pelo laço (somar: mantém os já marcados). */
+void area_selecionar(int x, int y, int l, int a, bool somar);
+bool area_limpar_selecao(void);            /* true se havia algo marcado */
+bool area_icone_selecionado(int i);
+int  area_qtd_selecionados(void);
 int  area_icone_tipo(int i);              /* 0 sistema, 1 instalado, 2 pendrive */
 void area_icone_acao(int i, int acao);
-bool area_pendrive(bool presente, const char *rotulo);
+bool area_editando(void);                  /* renomeando um ícone no lugar */
+bool area_editar(int i);
+void area_editar_terminar(bool gravar);
+bool area_editar_tecla(int t);
+int  area_editar_estado(const char **texto, int *cur, bool *tudo);   /* o ícone, ou -1 */
+bool area_unidades(void);   /* o instalador e as unidades na coluna da direita; true se mudou */
 
 /* Gerenciador de janelas (janelas.c) */
 bool gui_iniciar(void);                    /* liga a área de trabalho e o gerenciador */
@@ -40,5 +51,13 @@ void gui_mostrar(void);
 void gui_aviso(const char *texto);   /* notificação no canto da tela por alguns segundos */
 struct processo;
 void janelas_do_processo_fechar(struct processo *p);
+/* Confirmação do disco (D063): a pessoa digita o nome do disco numa caixa
+ * do kernel. false se a interface não está no ar ou já há uma aberta. */
+#define CONF_LINHAS     10    /* linhas de texto na caixa */
+#define CONF_COLUNAS    69    /* letras por linha (600 pixels de caixa) */
+#define CONF_RESUMO_MAX 320   /* o resumo que o programa manda */
+bool gui_confirmar_disco(int pid, const char *nome, const char *const *linhas, int n);
+int  gui_confirmacao_resultado(int pid, const char *disco);   /* -2 sem pedido, 0 esperando, 1 sim, -1 não */
+const void *gui_confirmacao_canal(void);
 
 #endif
