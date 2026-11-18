@@ -7,6 +7,8 @@
  *   - no meio, a conversa: os pedidos, as respostas e cada ferramenta usada
  *     num bloco compacto ("Lendo x.c" e o resultado numa linha); erros em
  *     vermelho;
+ *     o texto da conversa se seleciona arrastando o mouse (Ctrl+A pega
+ *     tudo) e Ctrl+C copia para a área de cópia do sistema (H123);
  *   - embaixo, a caixa do pedido (Enter manda, Shift+Enter quebra a linha) e
  *     os botões Enviar e Parar;
  *   - em cima, o modelo, o gasto da conversa e o total, e um botão que abre a
@@ -141,6 +143,16 @@ static bool assistente_aberto; /* o último bloco é a resposta que está chegan
 static utf8_t dec_resposta;
 static unsigned ultimo_desenho;
 
+/* Seleção do texto da conversa (H123): duas pontas, cada uma um bloco e uma
+ * posição no texto dele. "ancora" é onde o arrasto começou e "ponta" onde o
+ * mouse está; a ordem real sai de comparar as duas. */
+typedef struct { int bloco, pos; } ponto_t;
+static ponto_t sel_ancora, sel_ponta;
+static bool sel_ativa;         /* há texto selecionado (ou sendo marcado) */
+static bool sel_arrastando;    /* botão apertado: mover o mouse estende */
+static bool foco_conversa;     /* o último clique foi na conversa: Ctrl+C e Ctrl+A são dela */
+static int desenho_s0 = -1, desenho_s1 = -1;   /* trecho selecionado do bloco sendo desenhado */
+
 static bloco_t *novo_bloco(int tipo)
 {
     if (qtd_blocos == cap_blocos) {
@@ -163,6 +175,7 @@ static void limpar_blocos(void)
     rolagem = 0;
     seguir = true;
     assistente_aberto = false;
+    sel_ativa = sel_arrastando = false;
 }
 
 static bloco_t *bloco_latin1(int tipo, const char *latin1)
@@ -227,13 +240,25 @@ static void texto_cortado(int x, int y, const char *t, int n, uint32_t cor)
     if (y >= vis0 && y + LETRA_A <= vis1) g_texto_n(j, x, y, t, n, cor);
 }
 
+/* Uma linha de texto que começa na posição p do bloco: se parte dela está
+ * selecionada (desenho_s0..desenho_s1), essa parte ganha fundo azul e letras
+ * brancas, como na caixa de texto. */
+static void linha_com_selecao(int x, int y, const char *t, int p, int k, uint32_t cor)
+{
+    texto_cortado(x, y, t + p, k, cor);
+    int i0 = desenho_s0 > p ? desenho_s0 - p : 0, i1 = desenho_s1 < p + k ? desenho_s1 - p : k;
+    if (desenho_s0 < 0 || i0 >= i1 || y < vis0 || y + LETRA_A > vis1) return;
+    g_retangulo(j, x + i0 * LETRA_L, y, (i1 - i0) * LETRA_L, LETRA_A, COR_SELECAO);
+    g_texto_n(j, x + i0 * LETRA_L, y, t + p + i0, i1 - i0, COR_BRANCO);
+}
+
 static void linhas_desenhar(const char *t, int n, int x, int y, int cols, uint32_t cor)
 {
     int p = 0;
     do {
         int prox, k = proxima_linha(t, p, n, cols, &prox);
         if (y >= vis1) return;
-        texto_cortado(x, y, t + p, k, cor);
+        linha_com_selecao(x, y, t, p, k, cor);
         y += LH;
         p = prox;
     } while (p < n);
@@ -301,7 +326,7 @@ static void desenhar_bloco(const bloco_t *b, int sy)
         uint32_t marca = b->estado == F_FALHOU ? COR_ERRO : b->estado == F_OK ? COR_DESTAQUE : COR_AZUL;
         ret_cortado(x + 8, sy + 8, 8, 8, marca);
         int k = n < cols - 2 ? n : cols - 2;
-        texto_cortado(x + 24, sy + 4, t, k, COR_TEXTO);
+        linha_com_selecao(x + 24, sy + 4, t, 0, k, COR_TEXTO);
         const char *r = b->estado == F_RODANDO ? "rodando..." : b->resumo;
         int kr = (int)tam_texto(r);
         if (kr > cols - 2) kr = cols - 2;
@@ -320,6 +345,90 @@ static void desenhar_bloco(const bloco_t *b, int sy)
         linhas_desenhar(t, n, x + 10, sy + 2, cols, COR_TEXTO_FRACO);
         break;
     }
+}
+
+/* ------------------------------------------------------------ seleção */
+
+static int ponto_cmp(ponto_t a, ponto_t b)
+{
+    return a.bloco != b.bloco ? a.bloco - b.bloco : a.pos - b.pos;
+}
+
+/* As pontas da seleção em ordem; false se não há nada selecionado. */
+static bool sel_ordem(ponto_t *ini, ponto_t *fim)
+{
+    if (!sel_ativa || ponto_cmp(sel_ancora, sel_ponta) == 0) return false;
+    bool antes = ponto_cmp(sel_ancora, sel_ponta) < 0;
+    *ini = antes ? sel_ancora : sel_ponta;
+    *fim = antes ? sel_ponta : sel_ancora;
+    return true;
+}
+
+/* O trecho [s0, s1) do bloco i que está selecionado, se houver. */
+static bool sel_no_bloco(int i, int *s0, int *s1)
+{
+    ponto_t a, b;
+    if (!sel_ordem(&a, &b) || i < a.bloco || i > b.bloco) return false;
+    *s0 = i == a.bloco ? a.pos : 0;
+    *s1 = i == b.bloco ? b.pos : (int)blocos[i].t.n;
+    return *s1 > *s0;
+}
+
+/* Onde começa a primeira linha de texto de cada tipo de bloco (a mesma
+ * conta do desenhar_bloco: os blocos com rótulo têm uma linha a mais). */
+static int texto_dy(int tipo)
+{
+    switch (tipo) {
+    case B_USUARIO:    return 6 + LH;
+    case B_ASSISTENTE: return 2 + LH;
+    case B_FERRAMENTA: return 4;
+    case B_ERRO: case B_AVISO: return 6;
+    default:           return 2;
+    }
+}
+
+/* A posição do texto sob o ponto (x, y) da janela. Fora dos blocos (no
+ * espaço entre eles, acima ou abaixo da conversa) vale o começo do bloco
+ * seguinte ou o fim do último, para o arrasto funcionar em qualquer lugar. */
+static bool ponto_em(int x, int y, ponto_t *r)
+{
+    if (qtd_blocos == 0) return false;
+    altura_total();
+    int cy = y - conv_y - 1 + rolagem;
+    for (int i = 0; i < qtd_blocos; i++) {
+        bloco_t *b = &blocos[i];
+        if (cy < b->y) { r->bloco = i; r->pos = 0; return true; }
+        if (cy >= b->y + b->a) continue;
+        int bx, l;
+        caixa_do_bloco(b, &bx, &l);
+        int cols = (l - 20) / LETRA_L;
+        if (cols < 8) cols = 8;
+        const char *t = b->t.d ? b->t.d : "";
+        int n = (int)b->t.n, dy = cy - b->y - texto_dy(b->tipo);
+        int tx = bx + (b->tipo == B_FERRAMENTA ? 24 : 10);
+        r->bloco = i;
+        if (dy < 0) { r->pos = 0; return true; }
+        int lin = dy / LH, p = 0, k, prox;
+        if (b->tipo == B_FERRAMENTA) {
+            /* Uma linha só (a descrição); a de baixo, o resultado, conta como o fim. */
+            k = n < cols - 2 ? n : cols - 2;
+            if (lin > 0) { r->pos = n; return true; }
+        } else {
+            for (;;) {
+                k = proxima_linha(t, p, n, cols, &prox);
+                if (lin == 0) break;
+                if (prox >= n) { r->pos = n; return true; }   /* abaixo da última linha */
+                p = prox;
+                lin--;
+            }
+        }
+        int col = (x - tx + LETRA_L / 2) / LETRA_L;
+        r->pos = p + (col < 0 ? 0 : col > k ? k : col);
+        return true;
+    }
+    r->bloco = qtd_blocos - 1;
+    r->pos = (int)blocos[qtd_blocos - 1].t.n;
+    return true;
 }
 
 static int max_rolagem(int total)
@@ -343,8 +452,10 @@ static void desenhar_conversa(void)
         int sy = conv_y + 1 + blocos[i].y - rolagem;
         if (sy + blocos[i].a < vis0) continue;
         if (sy >= vis1) break;
+        if (!sel_no_bloco(i, &desenho_s0, &desenho_s1)) desenho_s0 = desenho_s1 = -1;
         desenhar_bloco(&blocos[i], sy);
     }
+    desenho_s0 = desenho_s1 = -1;
     /* Barra de rolagem: o "polegar" mostra que parte da conversa está à vista. */
     int bx = conv_x + conv_l - BARRA_L, trilho = conv_a - 4;
     g_retangulo(j, bx, conv_y + 1, BARRA_L - 1, conv_a - 2, 0xE4E7EA);
@@ -957,6 +1068,31 @@ static void copiar_blocos(int de, int ate)
     libera(t.d);
 }
 
+/* Ctrl+C na conversa: o trecho selecionado, com uma linha em branco entre
+ * um bloco e outro. Só o texto (sem "Você:" e afins), como aparece na tela. */
+static void copiar_selecao(void)
+{
+    ponto_t a, b;
+    if (!sel_ordem(&a, &b)) return;
+    texto_t t = { 0, 0, 0 };
+    for (int i = a.bloco; i <= b.bloco; i++) {
+        int s0, s1;
+        if (i > a.bloco) tx_texto(&t, "\n\n");
+        if (sel_no_bloco(i, &s0, &s1)) tx_por(&t, blocos[i].t.d + s0, (unsigned)(s1 - s0));
+    }
+    area_copia_gravar(t.d ? t.d : "", t.n);
+    registrar("saguicode-janela: copiou a selecao (%u letras)", t.n);
+    mudar_situacao("Copiado. Cole com Ctrl+V.", COR_TEXTO_FRACO);
+    libera(t.d);
+}
+
+static void limpar_selecao(void)
+{
+    if (!sel_ativa) return;
+    sel_ativa = sel_arrastando = false;
+    desenhar_conversa();
+}
+
 /* ------------------------------------------------------------ janela */
 
 static void desenhar_tudo(void)
@@ -1029,6 +1165,7 @@ int principal(int argc, char **argv)
                 } else if (menu == MENU_CONVERSA) {
                     if (e.tecla == 0 && menu_alvo >= 0 && menu_alvo < qtd_blocos) copiar_blocos(menu_alvo, menu_alvo + 1);
                     else if (e.tecla == 1 && qtd_blocos) copiar_blocos(0, qtd_blocos);
+                    else if (e.tecla == 2) copiar_selecao();
                 }
                 menu = MENU_NENHUM;
                 continue;
@@ -1046,7 +1183,24 @@ int principal(int argc, char **argv)
                 if (e.tecla == TECLA_PGUP) { rolar(-(conv_a - 3 * LH)); continue; }
                 if (e.tecla == TECLA_PGDN) { rolar(conv_a - 3 * LH); continue; }
                 if (e.tecla == TECLA_ESC && ag.ocupado) { agente_parar(&ag); mudar_situacao("Parando depois deste passo...", COR_AVISO); continue; }
-                if (!entrada.foco) entrada.foco = true;      /* a caixa do pedido é quem recebe o teclado */
+                /* Depois de um clique na conversa, Ctrl+C copia a seleção dela e
+                 * Ctrl+A seleciona a conversa inteira; a caixa do pedido não vê
+                 * essas teclas (e a seleção dela fica como estava). */
+                if (foco_conversa && e.tecla == 3) { copiar_selecao(); continue; }
+                if (foco_conversa && e.tecla == 1 && qtd_blocos) {
+                    sel_ancora = (ponto_t){ 0, 0 };
+                    sel_ponta = (ponto_t){ qtd_blocos - 1, (int)blocos[qtd_blocos - 1].t.n };
+                    sel_ativa = true;
+                    sel_arrastando = false;
+                    desenhar_conversa();
+                    continue;
+                }
+                if (foco_conversa) {
+                    /* Qualquer outra tecla volta para a caixa do pedido. */
+                    foco_conversa = false;
+                    limpar_selecao();
+                }
+                if (!entrada.foco) { entrada.foco = true; desenhar_entrada(); }   /* a caixa do pedido é quem recebe o teclado */
                 area_tratar(j, &entrada, &e);
                 continue;
             }
@@ -1073,13 +1227,51 @@ int principal(int argc, char **argv)
                 }
                 int bi = bloco_em(e.x, e.y);
                 if ((e.botoes & 2) && bi >= 0) {
+                    ponto_t a, b;
                     menu = MENU_CONVERSA;
                     menu_alvo = bi;
-                    jan_menu(j, e.x, e.y, "Copiar esta mensagem|Copiar a conversa inteira");
+                    jan_menu(j, e.x, e.y, sel_ordem(&a, &b) ? "Copiar esta mensagem|Copiar a conversa inteira|Copiar a seleção (Ctrl+C)"
+                                                            : "Copiar esta mensagem|Copiar a conversa inteira");
                     continue;
                 }
-                if (e.x >= entrada.x && e.x < entrada.x + entrada.l && e.y >= entrada.y && e.y < entrada.y + entrada.a)
+                /* Botão esquerdo na conversa: começa a marcar um trecho. O
+                 * teclado passa a ser da conversa (Ctrl+C, Ctrl+A) e a caixa
+                 * do pedido perde o foco e a seleção dela, para nunca haver
+                 * duas seleções disputando o Ctrl+C. */
+                if ((e.botoes & 1) && e.x >= conv_x && e.x < conv_x + conv_l && e.y >= conv_y && e.y < conv_y + conv_a) {
+                    ponto_t p;
+                    if (entrada.foco || entrada.sel) { entrada.foco = false; entrada.sel = 0; desenhar_entrada(); }
+                    foco_conversa = true;
+                    sel_ativa = false;
+                    if (ponto_em(e.x, e.y, &p)) {
+                        sel_ancora = sel_ponta = p;
+                        sel_ativa = sel_arrastando = true;
+                    }
+                    desenhar_conversa();
+                    continue;
+                }
+                if (e.x >= entrada.x && e.x < entrada.x + entrada.l && e.y >= entrada.y && e.y < entrada.y + entrada.a) {
+                    foco_conversa = false;
+                    limpar_selecao();
                     area_tratar(j, &entrada, &e);
+                }
+                continue;
+            }
+            if (e.tipo == EV_MOVER && sel_arrastando && (e.botoes & 1)) {
+                /* Arrastando acima ou abaixo da conversa, ela rola junto. */
+                if (e.y < conv_y) rolar(-LH);
+                else if (e.y >= conv_y + conv_a) rolar(LH);
+                ponto_t p;
+                if (ponto_em(e.x, e.y, &p) && ponto_cmp(p, sel_ponta) != 0) { sel_ponta = p; desenhar_conversa(); }
+                continue;
+            }
+            if (e.tipo == EV_SOLTOU && sel_arrastando) {
+                ponto_t p;
+                sel_arrastando = false;
+                if (ponto_em(e.x, e.y, &p)) sel_ponta = p;
+                if (ponto_cmp(sel_ancora, sel_ponta) == 0) sel_ativa = false;   /* só um clique */
+                desenhar_conversa();
+                registrar("saguicode-janela: selecao %s", sel_ativa ? "marcada" : "vazia");
                 continue;
             }
             area_tratar(j, &entrada, &e);       /* arrastar para selecionar e soltar */

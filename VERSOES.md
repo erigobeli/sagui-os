@@ -83,6 +83,10 @@ Já no código (no `main`), ainda não lançado como imagem:
   partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
   ou passando do fim. A caixa de confirmação e o instalador mostram o que
   ele leu (D066).
+- No **Sagui Code** (janela), o texto da conversa se seleciona arrastando o
+  mouse, com destaque azul, e **Ctrl+C copia** o trecho; depois de um clique
+  na conversa, Ctrl+A seleciona tudo. A caixa do pedido continua com o seu
+  próprio Ctrl+C/Ctrl+V (H123).
 
 ## Versões lançadas
 
