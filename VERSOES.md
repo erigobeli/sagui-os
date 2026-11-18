@@ -83,6 +83,11 @@ Já no código (no `main`), ainda não lançado como imagem:
   partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
   ou passando do fim. A caixa de confirmação e o instalador mostram o que
   ele leu (D066).
+- **SaguiOS em espanhol e em inglês** (primeira parte, D073): a aba "Idioma e
+  teclado" das Configurações escolhe a língua (`sistema.idioma`); a `ajuda` e
+  as mensagens do shell e as próprias Configurações já saem traduzidas. As
+  traduções são arquivos de texto em `/sistema/idiomas`, fáceis de completar.
+  A ideia veio do fork SaguiOS-Extended de Alejandro Anuncibay.
 
 ## Versões lançadas
 

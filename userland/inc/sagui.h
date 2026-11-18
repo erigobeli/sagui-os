@@ -168,6 +168,14 @@ int      ler_arquivo_inteiro(const char *caminho, uint8_t **dados);   /* tamanho
 uint32_t data_para_unix(const data_t *d);   /* segundos desde 1/1/1970 (tar, gzip) */
 uint32_t data_para_dos(const data_t *d);    /* hora << 16 | data, como no MS-DOS (zip) */
 
+/* ---- idioma (D073; idioma.c) ----
+ * tr("texto em português") devolve o texto na língua de "sistema.idioma"
+ * (pt, es ou en), tirado de /sistema/idiomas/<língua>.txt, ou o próprio texto
+ * se não houver tradução. A língua é lida no primeiro uso. */
+const char *tr(const char *texto_pt);
+const char *idioma(void);          /* "pt", "es" ou "en" */
+void        idioma_recarregar(void);   /* relê a configuração (vale a escolha mais recente) */
+
 int principal(int argc, char **argv);
 int  ler_tela(uint32_t *pixels, unsigned bytes);   /* largura | altura << 16; bytes = 0 só mede */
 
