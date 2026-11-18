@@ -37,6 +37,11 @@ int  area_qtd_selecionados(void);
 int  area_icone_tipo(int i);              /* 0 sistema, 1 instalado, 2 pendrive */
 void area_icone_acao(int i, int acao);
 bool area_pendrive(bool presente, const char *rotulo);
+bool area_editando(void);                  /* renomeando um ícone no lugar */
+bool area_editar(int i);
+void area_editar_terminar(bool gravar);
+bool area_editar_tecla(int t);
+int  area_editar_estado(const char **texto, int *cur, bool *tudo);   /* o ícone, ou -1 */
 
 /* Gerenciador de janelas (janelas.c) */
 bool gui_iniciar(void);                    /* liga a área de trabalho e o gerenciador */

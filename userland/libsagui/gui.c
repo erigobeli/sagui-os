@@ -810,6 +810,10 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
             lista_desenhar(j, l);
             return LISTA_SELECIONOU;
         }
+        /* Clique simples no nome do item que já era o único marcado: pode ser
+         * o começo de um "renomear devagar" (o programa espera o duplo clique
+         * não vir antes de abrir a edição). */
+        bool era_unico = !ctrl && !shift && e->cliques < 2 && l->sel == i && l->marc[i] && lista_qtd_marcados(l) == 1;
         if (ctrl) l->marc[i] = !l->marc[i];
         else if (shift && l->sel >= 0) {
             int a = l->sel < i ? l->sel : i, b = l->sel < i ? i : l->sel;
@@ -818,6 +822,7 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
         } else { lista_desmarcar(l); l->marc[i] = 1; }
         if (!shift) l->sel = i;
         lista_desenhar(j, l);
+        if (era_unico) return LISTA_DEVAGAR;
         return e->cliques >= 2 && !ctrl && !shift ? LISTA_ATIVOU : LISTA_SELECIONOU;
     }
     if (e->tipo != EV_TECLA || l->qtd == 0) return LISTA_NADA;
