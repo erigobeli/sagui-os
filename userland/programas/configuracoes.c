@@ -7,7 +7,7 @@
  * área de trabalho, por exemplo). As fases seguintes acrescentam abas
  * (Som, Rede, IA, Programas).
  *
- * Os textos passam por tr() (D073): saem na língua de "sistema.idioma",
+ * Os textos passam por traduzir() (D073): saem na língua de "sistema.idioma",
  * escolhida na aba "Idioma e teclado". Os nomes das abas em português
  * continuam valendo no argumento (configuracoes teclado) e no log. */
 #include "sagui.h"
@@ -30,8 +30,8 @@ static botao_t botoes_abas[QTD_ABAS];
 static void mostrar_mensagem(const char *fmt, int r)
 {
     /* r: 1 guardado no pendrive, 0 só até desligar (sem aviso), <0 erro */
-    if (r == 1) formatar_texto(recado, sizeof recado, "%s %s", tr(fmt), tr("Guardado no pendrive."));
-    else formatar_texto(recado, sizeof recado, "%s", tr(fmt));
+    if (r == 1) formatar_texto(recado, sizeof recado, "%s %s", traduzir(fmt), traduzir("Guardado no pendrive."));
+    else formatar_texto(recado, sizeof recado, "%s", traduzir(fmt));
     g_retangulo(j, X0, A - 36, L - X0 - 10, LETRA_A, COR_FUNDO);
     g_texto(j, X0, A - 36, recado, r < 0 && r != -100 ? 0xB03030 : COR_DESTAQUE);
     jan_mostrar_area(j, X0, A - 36, L - X0 - 10, LETRA_A);
@@ -39,7 +39,7 @@ static void mostrar_mensagem(const char *fmt, int r)
 
 static void titulo(const char *t)
 {
-    g_texto(j, X0, 16, tr(t), COR_TEXTO);
+    g_texto(j, X0, 16, traduzir(t), COR_TEXTO);
     g_retangulo(j, X0, 36, L - X0 - 20, 1, COR_BORDA);
 }
 
@@ -60,7 +60,7 @@ static void relogio_agora(void)
     data_t d;
     ler_data(&d);
     char t[48];
-    formatar_texto(t, sizeof t, tr("Agora: %02u/%02u/%u  %02u:%02u:%02u"), d.dia, d.mes, d.ano, d.hora, d.minuto, d.segundo);
+    formatar_texto(t, sizeof t, traduzir("Agora: %02u/%02u/%u  %02u:%02u:%02u"), d.dia, d.mes, d.ano, d.hora, d.minuto, d.segundo);
     g_retangulo(j, X0, 52, 320, LETRA_A, COR_FUNDO);
     g_texto(j, X0, 52, t, COR_TEXTO);
     jan_mostrar_area(j, X0, 52, 320, LETRA_A);
@@ -72,7 +72,7 @@ static void relogio_desenhar(void)
     relogio_agora();
     data_t d;
     ler_data(&d);
-    g_texto(j, X0, 92, tr("Dia    Mês    Ano        Hora   Minuto"), COR_TEXTO_FRACO);
+    g_texto(j, X0, 92, traduzir("Dia    Mês    Ano        Hora   Minuto"), COR_TEXTO_FRACO);
     c_dia = (caixa_t){ .x = X0, .y = 112, .l = 40 };            numero_em(&c_dia, d.dia, 2);
     c_mes = (caixa_t){ .x = X0 + 56, .y = 112, .l = 40 };       numero_em(&c_mes, d.mes, 2);
     c_ano = (caixa_t){ .x = X0 + 112, .y = 112, .l = 56 };      numero_em(&c_ano, d.ano, 4);
@@ -80,23 +80,23 @@ static void relogio_desenhar(void)
     c_min = (caixa_t){ .x = X0 + 256, .y = 112, .l = 40 };      numero_em(&c_min, d.minuto, 2);
     caixa_desenhar(j, &c_dia); caixa_desenhar(j, &c_mes); caixa_desenhar(j, &c_ano);
     caixa_desenhar(j, &c_hora); caixa_desenhar(j, &c_min);
-    b_aplicar = (botao_t){ X0, 150, 150, 28, tr("Acertar o relógio"), false };
+    b_aplicar = (botao_t){ X0, 150, 150, 28, traduzir("Acertar o relógio"), false };
     botao_desenhar(j, &b_aplicar);
 
-    g_texto(j, X0, 210, tr("Fuso horário (horas a partir de UTC):"), COR_TEXTO);
-    g_texto(j, X0, 230, tr("Brasília = -3. Usado pelo relógio automático"), COR_TEXTO_FRACO);
-    g_texto(j, X0, 248, tr("pela internet."), COR_TEXTO_FRACO);
+    g_texto(j, X0, 210, traduzir("Fuso horário (horas a partir de UTC):"), COR_TEXTO);
+    g_texto(j, X0, 230, traduzir("Brasília = -3. Usado pelo relógio automático"), COR_TEXTO_FRACO);
+    g_texto(j, X0, 248, traduzir("pela internet."), COR_TEXTO_FRACO);
     char fuso[16];
     if (config_ler("relogio.fuso", fuso, sizeof fuso) < 0) copia_texto(fuso, "-3", sizeof fuso);
     c_fuso = (caixa_t){ .x = X0, .y = 274, .l = 60 };
     caixa_definir(&c_fuso, fuso);
     caixa_desenhar(j, &c_fuso);
-    b_fuso = (botao_t){ X0 + 76, 272, 110, 28, tr("Salvar fuso"), false };
+    b_fuso = (botao_t){ X0 + 76, 272, 110, 28, traduzir("Salvar fuso"), false };
     botao_desenhar(j, &b_fuso);
     char aut[8];
     bool automatico = config_ler("relogio.automatico", aut, sizeof aut) >= 0 && compara_texto(aut, "sim") == 0;
-    b_automatico = (botao_t){ X0, 320, 220, 28, tr(automatico ? "Automático: desligar" : "Acertar sozinho pela rede"), false };
-    b_internet_agora = (botao_t){ X0 + 230, 320, 150, 28, tr("Acertar agora"), false };
+    b_automatico = (botao_t){ X0, 320, 220, 28, traduzir(automatico ? "Automático: desligar" : "Acertar sozinho pela rede"), false };
+    b_internet_agora = (botao_t){ X0 + 230, 320, 150, 28, traduzir("Acertar agora"), false };
     botao_desenhar(j, &b_automatico);
     botao_desenhar(j, &b_internet_agora);
 }
@@ -179,14 +179,14 @@ static void aparencia_desenhar(void)
     titulo("Aparência");
     char atual[16];
     if (config_ler("aparencia.fundo", atual, sizeof atual) < 0) copia_texto(atual, "brasil", sizeof atual);
-    g_texto(j, X0, 52, tr("Fundo da área de trabalho:"), COR_TEXTO);
+    g_texto(j, X0, 52, traduzir("Fundo da área de trabalho:"), COR_TEXTO);
     for (int i = 0; i < QTD_FUNDOS; i++) {
         int x = X0 + (i % 4) * 100, y = 76 + (i / 4) * 84;
         for (int k = 0; k < 3; k++) g_retangulo(j, x, y + k * 14, 90, 14, amostras[i][k]);
         bool escolhido = compara_texto(atual, fundos[i]) == 0;
         g_moldura(j, x - 2, y - 2, 94, 46, escolhido ? COR_SELECAO : COR_BORDA);
         if (escolhido) g_moldura(j, x - 3, y - 3, 96, 48, COR_SELECAO);
-        b_fundos[i] = (botao_t){ x, y + 48, 90, 24, tr(nomes_fundos[i]), false };
+        b_fundos[i] = (botao_t){ x, y + 48, 90, 24, traduzir(nomes_fundos[i]), false };
         botao_desenhar(j, &b_fundos[i]);
     }
     /* O sagui, o tema e a doca ou a barra de tarefas, lado a lado. */
@@ -194,21 +194,21 @@ static void aparencia_desenhar(void)
     bool mostra = config_ler("aparencia.sagui", v, sizeof v) < 0 || compara_texto(v, "nao") != 0;
     bool tarefas = config_ler("aparencia.barra", v, sizeof v) >= 0 && compara_texto(v, "tarefas") == 0;
     static char rot_tema[24];
-    formatar_texto(rot_tema, sizeof rot_tema, tr("%s (trocar)"), tr(nomes_temas[tema_atual()]));
-    g_texto(j, X0, 252, tr("O sagui:"), COR_TEXTO);
-    g_texto(j, X0 + 135, 252, tr("Tema:"), COR_TEXTO);
-    g_texto(j, X0 + 270, 252, tr("Embaixo:"), COR_TEXTO);
-    b_sagui = (botao_t){ X0, 274, 125, 28, tr(mostra ? "Mostrando" : "Escondido"), false };
+    formatar_texto(rot_tema, sizeof rot_tema, traduzir("%s (trocar)"), traduzir(nomes_temas[tema_atual()]));
+    g_texto(j, X0, 252, traduzir("O sagui:"), COR_TEXTO);
+    g_texto(j, X0 + 135, 252, traduzir("Tema:"), COR_TEXTO);
+    g_texto(j, X0 + 270, 252, traduzir("Embaixo:"), COR_TEXTO);
+    b_sagui = (botao_t){ X0, 274, 125, 28, traduzir(mostra ? "Mostrando" : "Escondido"), false };
     b_tema = (botao_t){ X0 + 135, 274, 125, 28, rot_tema, false };
-    b_barra = (botao_t){ X0 + 270, 274, 125, 28, tr(tarefas ? "Barra em cima" : "Doca"), false };
+    b_barra = (botao_t){ X0 + 270, 274, 125, 28, traduzir(tarefas ? "Barra em cima" : "Doca"), false };
     botao_desenhar(j, &b_sagui);
     botao_desenhar(j, &b_tema);
     botao_desenhar(j, &b_barra);
     char efeitos[12];
     if (config_ler("aparencia.efeitos", efeitos, sizeof efeitos) < 0) copia_texto(efeitos, "auto", sizeof efeitos);
-    g_texto(j, X0, 318, tr("Efeitos (vidro, sombras, animações):"), COR_TEXTO);
+    g_texto(j, X0, 318, traduzir("Efeitos (vidro, sombras, animações):"), COR_TEXTO);
     b_efeitos = (botao_t){ X0, 340, 395, 28,
-                           tr(compara_texto(efeitos, "leves") == 0 ? "Leves (rápido): trocar para automático" :
+                           traduzir(compara_texto(efeitos, "leves") == 0 ? "Leves (rápido): trocar para automático" :
                            compara_texto(efeitos, "completos") == 0 ? "Completos: trocar para leves" :
                            "Automático (pela velocidade): trocar para completos"), false };
     botao_desenhar(j, &b_efeitos);
@@ -275,12 +275,12 @@ static void som_desenhar(void)
     titulo("Som");
     int vol = som_volume(-1);
     if (vol < 0) {
-        g_texto(j, X0, 56, tr("Nenhuma placa de som HD Audio encontrada."), COR_TEXTO);
-        g_texto(j, X0, 76, tr("Os sons saem pelo alto-falante do PC (bip)."), COR_TEXTO_FRACO);
+        g_texto(j, X0, 56, traduzir("Nenhuma placa de som HD Audio encontrada."), COR_TEXTO);
+        g_texto(j, X0, 76, traduzir("Os sons saem pelo alto-falante do PC (bip)."), COR_TEXTO_FRACO);
         return;
     }
     char t[32];
-    g_texto(j, X0, 56, tr("Volume:"), COR_TEXTO);
+    g_texto(j, X0, 56, traduzir("Volume:"), COR_TEXTO);
     b_menos = (botao_t){ X0, 80, 36, 28, "-", false };
     b_mais = (botao_t){ X0 + 260, 80, 36, 28, "+", false };
     botao_desenhar(j, &b_menos);
@@ -291,10 +291,10 @@ static void som_desenhar(void)
     g_texto(j, X0 + 306, 86, t, COR_TEXTO);
     char sis[8];
     bool ligados = config_ler("som.sistema", sis, sizeof sis) < 0 || compara_texto(sis, "nao") != 0;
-    g_texto(j, X0, 136, tr("Sons do sistema (início, avisos):"), COR_TEXTO);
-    b_sistema = (botao_t){ X0, 158, 200, 28, tr(ligados ? "Ligados: desligar" : "Desligados: ligar"), false };
+    g_texto(j, X0, 136, traduzir("Sons do sistema (início, avisos):"), COR_TEXTO);
+    b_sistema = (botao_t){ X0, 158, 200, 28, traduzir(ligados ? "Ligados: desligar" : "Desligados: ligar"), false };
     botao_desenhar(j, &b_sistema);
-    b_testar = (botao_t){ X0, 210, 140, 28, tr("Testar o som"), false };
+    b_testar = (botao_t){ X0, 210, 140, 28, traduzir("Testar o som"), false };
     botao_desenhar(j, &b_testar);
 }
 
@@ -348,19 +348,19 @@ static void rede_estado_desenhar(void)
     info_rede_t r;
     char t[64], ip[16];
     g_retangulo(j, X0, 52, L - X0 - 10, 40, COR_FUNDO);
-    if (rede_info(&r) < 0) { g_texto(j, X0, 52, tr("Nenhuma placa de rede com driver."), COR_TEXTO); return; }
+    if (rede_info(&r) < 0) { g_texto(j, X0, 52, traduzir("Nenhuma placa de rede com driver."), COR_TEXTO); return; }
     g_texto_n(j, X0, 52, r.placa, 44, COR_TEXTO);
     ip_para_texto(r.ip, ip);
-    if (!r.cabo) copia_texto(t, tr("Cabo desligado."), sizeof t);
-    else if (!r.configurado) copia_texto(t, tr("Pedindo endereço ao roteador..."), sizeof t);
-    else formatar_texto(t, sizeof t, tr("Conectado: %s"), ip);
+    if (!r.cabo) copia_texto(t, traduzir("Cabo desligado."), sizeof t);
+    else if (!r.configurado) copia_texto(t, traduzir("Pedindo endereço ao roteador..."), sizeof t);
+    else formatar_texto(t, sizeof t, traduzir("Conectado: %s"), ip);
     g_texto(j, X0, 72, t, r.configurado ? COR_DESTAQUE : COR_TEXTO_FRACO);
     jan_mostrar_area(j, X0, 52, L - X0 - 10, 40);
 }
 
 static void caixa_com_rotulo(caixa_t *c, int y, const char *rotulo, const char *chave, unsigned padrao)
 {
-    g_texto(j, X0, y + 4, tr(rotulo), rede_manual ? COR_TEXTO : COR_TEXTO_FRACO);
+    g_texto(j, X0, y + 4, traduzir(rotulo), rede_manual ? COR_TEXTO : COR_TEXTO_FRACO);
     *c = (caixa_t){ .x = X0 + 110, .y = y, .l = 150 };
     char v[24];
     if (config_ler(chave, v, sizeof v) < 0) ip_para_texto(padrao, v);
@@ -374,7 +374,7 @@ static void rede_desenhar(void)
     rede_estado_desenhar();
     char modo[12];
     rede_manual = config_ler("rede.modo", modo, sizeof modo) >= 0 && compara_texto(modo, "manual") == 0;
-    b_modo = (botao_t){ X0, 104, 270, 28, tr(rede_manual ? "Manual: usar automático (DHCP)" : "Automático (DHCP): usar manual"), false };
+    b_modo = (botao_t){ X0, 104, 270, 28, traduzir(rede_manual ? "Manual: usar automático (DHCP)" : "Automático (DHCP): usar manual"), false };
     botao_desenhar(j, &b_modo);
     info_rede_t r;
     if (rede_info(&r) < 0) memset(&r, 0, sizeof r);
@@ -382,7 +382,7 @@ static void rede_desenhar(void)
     caixa_com_rotulo(&c_masc, 180, "Máscara:", "rede.mascara", r.mascara);
     caixa_com_rotulo(&c_rot, 212, "Roteador:", "rede.roteador", r.roteador);
     caixa_com_rotulo(&c_dns, 244, "DNS:", "rede.dns", r.dns);
-    b_aplicar_rede = (botao_t){ X0, 284, 140, 28, tr("Aplicar"), false };
+    b_aplicar_rede = (botao_t){ X0, 284, 140, 28, traduzir("Aplicar"), false };
     if (rede_manual) botao_desenhar(j, &b_aplicar_rede);
 }
 
@@ -450,25 +450,25 @@ static bool esta_oculto(const char *nome)
 static void programas_desenhar(void)
 {
     titulo("Programas");
-    g_texto(j, X0, 52, tr("Instalados no pendrive (/usb/programas):"), COR_TEXTO);
+    g_texto(j, X0, 52, traduzir("Instalados no pendrive (/usb/programas):"), COR_TEXTO);
     qtd_inst = 0;
     entrada_pasta_t e;
     for (int i = 0; qtd_inst < MAX_INST && listar("/usb/programas", i, &e) == 1; i++)
         if (e.tipo != TIPO_PASTA) copia_texto(inst[qtd_inst++], e.nome, NOME_MAX);
     int y = 76;
-    if (qtd_inst == 0) { g_texto(j, X0 + 10, y, tr("Nenhum. Copie um programa para lá."), COR_TEXTO_FRACO); y += 24; }
+    if (qtd_inst == 0) { g_texto(j, X0 + 10, y, traduzir("Nenhum. Copie um programa para lá."), COR_TEXTO_FRACO); y += 24; }
     for (int i = 0; i < qtd_inst; i++, y += 30) {
         g_texto(j, X0 + 10, y + 5, inst[i], COR_TEXTO);
-        b_remover[i] = (botao_t){ X0 + 220, y, 90, 26, tr("Remover"), false };
+        b_remover[i] = (botao_t){ X0 + 220, y, 90, 26, traduzir("Remover"), false };
         botao_desenhar(j, &b_remover[i]);
     }
     y += 10;
-    g_texto(j, X0, y, tr("Do sistema (o ícone pode ser escondido):"), COR_TEXTO);
+    g_texto(j, X0, y, traduzir("Do sistema (o ícone pode ser escondido):"), COR_TEXTO);
     y += 22;
     for (int i = 0; i < QTD_SIST; i++) {
         int x = X0 + (i % 2) * 200, yy = y + (i / 2) * 30;
-        g_texto(j, x + 4, yy + 5, tr(nomes_sist[i]), COR_TEXTO);
-        b_ocultar[i] = (botao_t){ x + 104, yy, 84, 26, tr(esta_oculto(sist[i]) ? "Mostrar" : "Esconder"), false };
+        g_texto(j, x + 4, yy + 5, traduzir(nomes_sist[i]), COR_TEXTO);
+        b_ocultar[i] = (botao_t){ x + 104, yy, 84, 26, traduzir(esta_oculto(sist[i]) ? "Mostrar" : "Esconder"), false };
         botao_desenhar(j, &b_ocultar[i]);
     }
 }
@@ -485,8 +485,8 @@ static void programas_tratar(const evento_t *e)
     for (int i = 0; i < qtd_inst; i++)
         if (botao_tratar(j, &b_remover[i], e)) {
             char pergunta[96], caminho[NOME_MAX + 20];
-            formatar_texto(pergunta, sizeof pergunta, tr("Remover o programa %s do pendrive?"), inst[i]);
-            if (!confirmar(tr("Remover programa"), pergunta)) { registrar("configuracoes: remover %s cancelado", inst[i]); return; }
+            formatar_texto(pergunta, sizeof pergunta, traduzir("Remover o programa %s do pendrive?"), inst[i]);
+            if (!confirmar(traduzir("Remover programa"), pergunta)) { registrar("configuracoes: remover %s cancelado", inst[i]); return; }
             formatar_texto(caminho, sizeof caminho, "/usb/programas/%s", inst[i]);
             int r = apagar(caminho);
             registrar("configuracoes: removido %s -> %d", inst[i], r);
@@ -545,14 +545,14 @@ static void sobre_desenhar(void)
     registrar("configuracoes: processador %s, memoria %u MB", cpu, m.ram_total_kb / 1024);
     int y = 52;
     formatar_texto(t, sizeof t, "SaguiOS %s", v.versao);                       g_texto(j, X0, y, t, COR_TEXTO); y += 22;
-    g_texto(j, X0, y, tr("Processador:"), COR_TEXTO_FRACO);                         g_texto(j, X0 + 112, y, cpu, COR_TEXTO); y += 22;
-    formatar_texto(t, sizeof t, tr("%u MB no total, %u MB livres"), m.ram_total_kb / 1024, m.livre_kb / 1024);
-    g_texto(j, X0, y, tr("Memória:"), COR_TEXTO_FRACO);                             g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 22;
+    g_texto(j, X0, y, traduzir("Processador:"), COR_TEXTO_FRACO);                         g_texto(j, X0 + 112, y, cpu, COR_TEXTO); y += 22;
+    formatar_texto(t, sizeof t, traduzir("%u MB no total, %u MB livres"), m.ram_total_kb / 1024, m.livre_kb / 1024);
+    g_texto(j, X0, y, traduzir("Memória:"), COR_TEXTO_FRACO);                             g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 22;
     formatar_texto(t, sizeof t, "%ux%u", v.largura, v.altura);
-    g_texto(j, X0, y, tr("Tela:"), COR_TEXTO_FRACO);                                g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 22;
+    g_texto(j, X0, y, traduzir("Tela:"), COR_TEXTO_FRACO);                                g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 22;
     formatar_texto(t, sizeof t, "%u min", v.segundos_ligado / 60);
-    g_texto(j, X0, y, tr("Ligado há:"), COR_TEXTO_FRACO);                           g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 30;
-    g_texto(j, X0, y, tr("Dispositivos (comando pci para detalhes):"), COR_TEXTO_FRACO); y += 22;
+    g_texto(j, X0, y, traduzir("Ligado há:"), COR_TEXTO_FRACO);                           g_texto(j, X0 + 112, y, t, COR_TEXTO); y += 30;
+    g_texto(j, X0, y, traduzir("Dispositivos (comando pci para detalhes):"), COR_TEXTO_FRACO); y += 22;
     static char pci[8192];
     int n = info_sistema(INFO_PCI, pci, sizeof pci - 1);
     if (n < 0) n = 0;
@@ -601,21 +601,21 @@ static void ia_desenhar(void)
 {
     titulo("IA (Sagui Code)");
     char v[128];
-    g_texto(j, X0, 56, tr("Modelo (do OpenRouter):"), COR_TEXTO);
+    g_texto(j, X0, 56, traduzir("Modelo (do OpenRouter):"), COR_TEXTO);
     c_modelo = (caixa_t){ .x = X0, .y = 76, .l = 360 };
     caixa_definir(&c_modelo, config_ler("ia.modelo", v, sizeof v) > 0 ? v : "anthropic/claude-sonnet-4.5");
     caixa_desenhar(j, &c_modelo);
-    g_texto(j, X0, 116, tr("Limite de gasto por sessão (centavos de dólar):"), COR_TEXTO);
+    g_texto(j, X0, 116, traduzir("Limite de gasto por sessão (centavos de dólar):"), COR_TEXTO);
     c_limite = (caixa_t){ .x = X0, .y = 136, .l = 100 };
     caixa_definir(&c_limite, config_ler("ia.limite_centavos", v, sizeof v) > 0 ? v : "100");
     caixa_desenhar(j, &c_limite);
-    g_texto(j, X0, 176, tr(chave_guardada() ? "Chave: guardada no pendrive. Para trocar, cole outra:" : "Chave: ainda não há. Cole a chave do OpenRouter:"), COR_TEXTO);
+    g_texto(j, X0, 176, traduzir(chave_guardada() ? "Chave: guardada no pendrive. Para trocar, cole outra:" : "Chave: ainda não há. Cole a chave do OpenRouter:"), COR_TEXTO);
     c_chave = (caixa_t){ .x = X0, .y = 196, .l = 360 };
     chave_digitada[0] = 0;
     caixa_definir(&c_chave, "");
     caixa_desenhar(j, &c_chave);
-    g_texto(j, X0, 226, tr("(a chave nunca aparece na tela nem no log)"), COR_TEXTO_FRACO);
-    b_salvar_ia = (botao_t){ X0, 256, 120, 28, tr("Guardar"), false };
+    g_texto(j, X0, 226, traduzir("(a chave nunca aparece na tela nem no log)"), COR_TEXTO_FRACO);
+    b_salvar_ia = (botao_t){ X0, 256, 120, 28, traduzir("Guardar"), false };
     botao_desenhar(j, &b_salvar_ia);
 }
 
@@ -715,20 +715,20 @@ static void teclado_desenhar(void)
 {
     titulo("Idioma e teclado");
     bool es = teclado_es();
-    g_texto(j, X0, 56, tr("Layout do teclado:"), COR_TEXTO);
-    b_abnt2 = (botao_t){ X0, 80, 300, 28, tr("Português do Brasil (ABNT2)"), !es };
-    b_es = (botao_t){ X0, 116, 300, 28, tr("Espanhol (ES)"), es };
+    g_texto(j, X0, 56, traduzir("Layout do teclado:"), COR_TEXTO);
+    b_abnt2 = (botao_t){ X0, 80, 300, 28, traduzir("Português do Brasil (ABNT2)"), !es };
+    b_es = (botao_t){ X0, 116, 300, 28, traduzir("Espanhol (ES)"), es };
     botao_desenhar(j, &b_abnt2);
     botao_desenhar(j, &b_es);
-    g_texto(j, X0, 166, tr(es ? "ñ à direita do L; ´ ¨ ` ^ são teclas mortas;" : "ç à direita do L; ´ ` ~ ^ ¨ são teclas mortas;"), COR_TEXTO_FRACO);
-    g_texto(j, X0, 186, tr(es ? "AltGr+2 = @, AltGr+4 = ~ (morta)." : "AltGr+Q = /, AltGr+W = ?."), COR_TEXTO_FRACO);
-    g_texto(j, X0, 216, tr("No Terminal: teclado [es | abnt2]"), COR_TEXTO_FRACO);
-    g_texto(j, X0, 256, tr("Idioma do sistema:"), COR_TEXTO);
+    g_texto(j, X0, 166, traduzir(es ? "ñ à direita do L; ´ ¨ ` ^ são teclas mortas;" : "ç à direita do L; ´ ` ~ ^ ¨ são teclas mortas;"), COR_TEXTO_FRACO);
+    g_texto(j, X0, 186, traduzir(es ? "AltGr+2 = @, AltGr+4 = ~ (morta)." : "AltGr+Q = /, AltGr+W = ?."), COR_TEXTO_FRACO);
+    g_texto(j, X0, 216, traduzir("No Terminal: teclado [es | abnt2]"), COR_TEXTO_FRACO);
+    g_texto(j, X0, 256, traduzir("Idioma do sistema:"), COR_TEXTO);
     for (int i = 0; i < QTD_IDIOMAS; i++) {
         b_idiomas[i] = (botao_t){ X0 + i * 128, 280, 120, 28, nomes_idiomas[i], compara_texto(idioma(), idiomas[i]) == 0 };
         botao_desenhar(j, &b_idiomas[i]);
     }
-    g_texto(j, X0, 322, tr("Vale para os programas abertos depois."), COR_TEXTO_FRACO);
+    g_texto(j, X0, 322, traduzir("Vale para os programas abertos depois."), COR_TEXTO_FRACO);
 }
 
 static void teclado_tratar(const evento_t *e)
@@ -764,7 +764,7 @@ static void desenhar_tudo(void)
     for (int i = 0; i < QTD_ABAS; i++) {
         /* A aba Teclado ganhou o idioma; o nome curto continua no argumento e no log. */
         const char *rotulo = i == ABA_TECLADO ? "Idioma e teclado" : nomes_abas[i];
-        botoes_abas[i] = (botao_t){ 10, 16 + i * 40, LATERAL - 20, 30, tr(rotulo), i == aba };
+        botoes_abas[i] = (botao_t){ 10, 16 + i * 40, LATERAL - 20, 30, traduzir(rotulo), i == aba };
         botao_desenhar(j, &botoes_abas[i]);
     }
     if (aba == ABA_RELOGIO) relogio_desenhar();
@@ -777,14 +777,14 @@ static void desenhar_tudo(void)
     else sobre_desenhar();
     char p[8];
     config_ler("sistema.persistente", p, sizeof p);
-    g_texto(j, 10, A - 54, tr(compara_texto(p, "sim") == 0 ? "Guardando no" : "Sem pendrive:"), COR_TEXTO_FRACO);
-    g_texto(j, 10, A - 36, tr(compara_texto(p, "sim") == 0 ? "pendrive." : "até desligar."), COR_TEXTO_FRACO);
+    g_texto(j, 10, A - 54, traduzir(compara_texto(p, "sim") == 0 ? "Guardando no" : "Sem pendrive:"), COR_TEXTO_FRACO);
+    g_texto(j, 10, A - 36, traduzir(compara_texto(p, "sim") == 0 ? "pendrive." : "até desligar."), COR_TEXTO_FRACO);
     jan_mostrar(j);
 }
 
 int principal(int argc, char **argv)
 {
-    j = jan_abrir(tr("Configurações"), L, A);
+    j = jan_abrir(traduzir("Configurações"), L, A);
     if (!j) return 1;
     if (argc > 1) {
         for (int i = 0; i < QTD_ABAS; i++)

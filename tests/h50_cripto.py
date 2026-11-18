@@ -553,7 +553,7 @@ def testar_rsa_openssl():
 def testar_rsa_fabricadas():
     """Com uma chave feita aqui temos o expoente privado: dá para assinar blocos
     montados de propósito com defeito, como faria quem tenta forjar."""
-    for bits, e in ((1024, 3), (1537, 65537)):
+    for bits, e in ((2048, 3), (2049, 65537)):
         n, d = gerar_rsa(bits, e)
         k = (bits + 7) // 8
         nh, eh = nbytes(n).hex(), nbytes(e).hex()
@@ -617,12 +617,17 @@ def testar_rsa_fabricadas():
         conferir(bons, f"RSA {bits} bits, e={e}: blocos montados pela RFC 8017 em Python são aceitos")
         conferir(ruins, f"RSA {bits} bits, e={e}: blocos com defeito de formato assinados de verdade são recusados")
 
-    n, d = gerar_rsa(1016, 65537)
     resumo = hashlib.sha256(b"x").digest()
-    s = pow(int.from_bytes(bloco_pkcs1("sha256", resumo, 127), "big"), d, n).to_bytes(127, "big").hex()
-    conferir([(f"rsa_pkcs1 sha256 {nbytes(n).hex()} 010001 {resumo.hex()} {s}", "FALHA"),
-              (f"rsa_pkcs1 sha256 {nbytes(n).hex()} 01 {resumo.hex()} {bloco_pkcs1('sha256', resumo, 127).hex()}", "FALHA")],
-             "RSA recusa chave menor que 1024 bits e expoente 1")
+    casos = []
+    # Abaixo de 2048 bits (NIST SP 800-57): recusada mesmo com a assinatura certa.
+    for bits in (1024, 2040):
+        n, d = gerar_rsa(bits, 65537)
+        k = (bits + 7) // 8
+        s = pow(int.from_bytes(bloco_pkcs1("sha256", resumo, k), "big"), d, n).to_bytes(k, "big").hex()
+        casos.append((f"rsa_pkcs1 sha256 {nbytes(n).hex()} 010001 {resumo.hex()} {s}", "FALHA"))
+    n, d = gerar_rsa(2048, 65537)
+    casos.append((f"rsa_pkcs1 sha256 {nbytes(n).hex()} 01 {resumo.hex()} {bloco_pkcs1('sha256', resumo, 256).hex()}", "FALHA"))
+    conferir(casos, "RSA recusa chave menor que 2048 bits e expoente 1")
 
 
 # ------------------------------------------------------------ ECDSA

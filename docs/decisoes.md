@@ -2190,7 +2190,7 @@ maior fim e cada partição com os números exatos. Confere também a linha na
 caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
 confere a contagem no resumo.
 
-## D073. Textos em várias línguas: tr() e tabelas de texto (H124)
+## D073. Textos em várias línguas: traduzir() e tabelas de texto (H124)
 
 O SaguiOS fala português, e o código também. A ideia de mostrar o sistema em
 espanhol e em inglês veio do fork SaguiOS-Extended de Alejandro Anuncibay
@@ -2203,7 +2203,7 @@ Configurações.
   "Teclado"; o argumento `teclado` e o nome no log continuam os mesmos, e
   `idioma` também abre a aba) ou com `config sistema.idioma es`.
 - **O texto em português é a chave.** Os programas continuam escritos com as
-  frases em português e passam cada uma por `tr()`, da libsagui
+  frases em português e passam cada uma por `traduzir()`, da libsagui
   (`idioma.c`). Sem tradução, sai o próprio português; uma tradução que falta
   nunca quebra nada. Assim o código continua legível e não há números de
   mensagem para manter em dia.
@@ -2217,7 +2217,7 @@ Configurações.
   tiver as mesmas marcas, na mesma ordem, ela é ignorada e o problema vai
   para o log: uma tradução errada não pode fazer o programa ler um argumento
   que não existe. O teste h124 confere o mesmo no build.
-- **Lida uma vez por programa**, no primeiro `tr()`. Trocar a língua vale
+- **Lida uma vez por programa**, no primeiro `traduzir()`. Trocar a língua vale
   para os programas abertos depois; quem quer perceber antes chama
   `idioma_recarregar()`, que relê a configuração e só relê o arquivo se a
   língua mudou. O shell faz isso a cada comando (uma leitura de
@@ -2229,12 +2229,12 @@ Configurações.
   português. `ajuda ls` mostra o apelido numa linha à parte. Nenhum apelido
   novo foi inventado: os comandos continuam os mesmos em todas as línguas.
   As descrições curtas traduzidas cabem na coluna de 17 letras (o teste
-  confere). Os nomes dos erros (`nome_erro`) também passam por `tr()` no
+  confere). Os nomes dos erros (`nome_erro`) também passam por `traduzir()` no
   shell.
 - **A busca é linear**, comparando o texto inteiro: a tabela tem algumas
   centenas de linhas e a ajuda faz menos de duzentas buscas, nada que se
   perceba. Se as tabelas crescerem muito, dá para trocar por uma tabela de
-  espalhamento sem mudar quem chama `tr()`.
+  espalhamento sem mudar quem chama `traduzir()`.
 
 **O que fica para a segunda parte:** o kernel (área de trabalho, menu
 Iniciar, barra de cima, nomes dos ícones, caixas de confirmação do kernel),

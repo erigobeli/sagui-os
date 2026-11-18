@@ -2,7 +2,7 @@
  *
  * O código do SaguiOS é escrito em português, e os textos que aparecem para
  * quem usa também. Para mostrá-los em outra língua, o programa passa o texto
- * por tr(): tr("Relógio") devolve "Reloj" com o espanhol escolhido, "Clock"
+ * por traduzir(): traduzir("Relógio") devolve "Reloj" com o espanhol escolhido, "Clock"
  * com o inglês e o próprio "Relógio" com o português (ou quando a frase ainda
  * não foi traduzida). Assim o texto em português continua no código, legível,
  * e serve de chave para a tradução.
@@ -24,7 +24,7 @@
  * que não existe. Por isso uma tradução assim é ignorada (vale o português) e
  * o problema vai para o log do sistema.
  *
- * O arquivo é lido uma vez, no primeiro tr() do programa; trocar a língua nas
+ * O arquivo é lido uma vez, no primeiro traduzir() do programa; trocar a língua nas
  * Configurações vale para os programas abertos depois. Quem quiser perceber a
  * troca sem reabrir (o shell, a cada comando) chama idioma_recarregar(). */
 #include "sagui.h"
@@ -148,7 +148,7 @@ void idioma_recarregar(void)
     carregar();
 }
 
-const char *tr(const char *texto_pt)
+const char *traduzir(const char *texto_pt)
 {
     idioma();
     for (int i = 0; i < qtd; i++)

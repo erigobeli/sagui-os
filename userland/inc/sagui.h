@@ -169,10 +169,10 @@ uint32_t data_para_unix(const data_t *d);   /* segundos desde 1/1/1970 (tar, gzi
 uint32_t data_para_dos(const data_t *d);    /* hora << 16 | data, como no MS-DOS (zip) */
 
 /* ---- idioma (D073; idioma.c) ----
- * tr("texto em português") devolve o texto na língua de "sistema.idioma"
+ * traduzir("texto em português") devolve o texto na língua de "sistema.idioma"
  * (pt, es ou en), tirado de /sistema/idiomas/<língua>.txt, ou o próprio texto
  * se não houver tradução. A língua é lida no primeiro uso. */
-const char *tr(const char *texto_pt);
+const char *traduzir(const char *texto_pt);
 const char *idioma(void);          /* "pt", "es" ou "en" */
 void        idioma_recarregar(void);   /* relê a configuração (vale a escolha mais recente) */
 

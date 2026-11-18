@@ -11,7 +11,7 @@
  * A linha é editada pelo próprio shell, com o terminal em modo bruto, para
  * ter histórico (setas) e completar nomes com Tab.
  *
- * As mensagens e a ajuda passam por tr() (D073): saem na língua de
+ * As mensagens e a ajuda passam por traduzir() (D073): saem na língua de
  * "sistema.idioma", com as traduções de /sistema/idiomas/. */
 #include "sagui.h"
 
@@ -150,7 +150,7 @@ static void dizer(const char *fmt_pt, ...)
     char buf[256];
     va_list ap;
     va_start(ap, fmt_pt);
-    formatar_lista(buf, sizeof buf - 1, tr(fmt_pt), ap);
+    formatar_lista(buf, sizeof buf - 1, traduzir(fmt_pt), ap);
     va_end(ap);
     junta_texto(buf, "\n", sizeof buf);
     mostrar(buf);
@@ -437,9 +437,9 @@ static void interno_ajuda(int argc, char **argv)
     if (argc > 1) {
         const comando_t *c = achar_comando(argv[1]);
         if (!c) { dizer("ajuda: não conheço o comando %s", argv[1]); return; }
-        imprimir("%s %s\n%s\n", tr("Uso:"), c->uso, tr(c->explicacao));
+        imprimir("%s %s\n%s\n", traduzir("Uso:"), c->uso, traduzir(c->explicacao));
         if (c->apelido) dizer("Apelido em português: %s", c->apelido);
-        imprimir("%s %s\n", tr("Tipo:"), tr(c->interno ? "comando interno do shell" : "programa em /bin"));
+        imprimir("%s %s\n", traduzir("Tipo:"), traduzir(c->interno ? "comando interno do shell" : "programa em /bin"));
         return;
     }
     /* Em português, cada comando aparece com os dois nomes (Unix/apelido); nas
@@ -452,7 +452,7 @@ static void interno_ajuda(int argc, char **argv)
         formatar_texto(nome, sizeof nome, "%s%s%s", comandos[i].nome, apelido ? "/" : "", apelido ? comandos[i].apelido : "");
         /* Duas colunas de 39 caracteres: a linha nunca chega a 80 (a tela
          * pularia uma linha a mais). */
-        imprimir("  %-20s%-17s%s", nome, tr(comandos[i].curta), (i % 2 == 1 || i == QTD_COMANDOS - 1) ? "\n" : "");
+        imprimir("  %-20s%-17s%s", nome, traduzir(comandos[i].curta), (i % 2 == 1 || i == QTD_COMANDOS - 1) ? "\n" : "");
     }
     dizer("Arquivo: cmd > arq, >> arq, < arq   Pipe: cmd1 | cmd2   Segundo plano: cmd &");
     dizer("ajuda <comando> explica um comando. Setas: histórico. Tab: completa nomes.");
@@ -463,7 +463,7 @@ static bool executar_interno(const comando_t *c, int argc, char **argv)
     const char *n = c->nome;
     if (compara_texto(n, "cd") == 0) {
         int r = mudar_pasta(argc > 1 ? argv[1] : "/");
-        if (r < 0) imprimir("cd: %s: %s\n", argc > 1 ? argv[1] : "/", tr(nome_erro(r)));
+        if (r < 0) imprimir("cd: %s: %s\n", argc > 1 ? argv[1] : "/", traduzir(nome_erro(r)));
     } else if (compara_texto(n, "pwd") == 0) {
         char p[128];
         pasta_atual(p, sizeof p);
@@ -523,7 +523,7 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
         /* Entrada desta etapa. */
         if (i == 0 && et[i].entrada) {
             int fd = abrir(et[i].entrada, ABRIR_LER);
-            if (fd < 0) { imprimir_em(ERROS, "sagsh: %s: %s\n", et[i].entrada, tr(nome_erro(fd))); ok = false; break; }
+            if (fd < 0) { imprimir_em(ERROS, "sagsh: %s: %s\n", et[i].entrada, traduzir(nome_erro(fd))); ok = false; break; }
             duplicar(fd, ENTRADA);
             fechar(fd);
         } else if (leitura_anterior >= 0) {
@@ -545,7 +545,7 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
             int fd = abrir(et[i].saida, modo);
             if (fd < 0) {
                 duplicar(guarda1, SAIDA);
-                imprimir("sagsh: %s: %s\n", et[i].saida, tr(nome_erro(fd)));
+                imprimir("sagsh: %s: %s\n", et[i].saida, traduzir(nome_erro(fd)));
                 ok = false;
                 break;
             }
@@ -563,7 +563,7 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
             if (erro == ERRO_NAO_EXISTE)
                 dizer("sagsh: comando não encontrado: %s (digite ajuda)", et[i].argv[0]);
             else
-                imprimir("sagsh: %s: %s\n", et[i].argv[0], tr(nome_erro(erro)));
+                imprimir("sagsh: %s: %s\n", et[i].argv[0], traduzir(nome_erro(erro)));
         }
     }
     if (leitura_anterior >= 0) fechar(leitura_anterior);
