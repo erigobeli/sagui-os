@@ -35,3 +35,4 @@ BI_VESA_CORES       equ 72         ; 6 bytes: tam/pos do vermelho, verde, azul
 BI_SETORES_LIDOS    equ 80
 BI_OPCOES           equ 148        ; u32 cópia de CAB_OPCOES
 BI_TESTE            equ 84         ; char[64] copiado de CAB_TESTE (até o byte 148)
+BI_DISCO_ID         equ 152        ; u32 identificador do disco (MBR, bytes 0x1B8-0x1BB) de onde ligou

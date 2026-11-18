@@ -1999,3 +1999,193 @@ passar para a próxima da pasta e sem os papéis de parede (.sgi).
   Restaurar, Apagar de vez e Esvaziar, e o menu do botão direito também.
 - Shift+Delete apaga de vez. Apagar de vez e Esvaziar apagam pastas com tudo
   dentro. O `rm` do terminal continua apagando de vez, como no Unix.
+
+## D062. Discos internos (IDE/ATA) e o que muda na ABI (issue #45)
+
+**Contexto.** Até aqui o kernel só enxergava pendrives USB. O disco de onde o
+sistema ligou só era lido pela BIOS, no boot. Para instalar o SaguiOS num HD
+(#45), o kernel precisa enxergar os discos internos. Esse disco também guarda
+os dados de quem testa (o Windows, outro Linux), e a regra prd2 vale: nada
+grava nele sem que a pessoa escolha e confirme. Por isso o driver entra
+primeiro só lendo; a gravação veio depois, junto com a trava no kernel (D063).
+
+**Decisão.**
+- Driver ATA em PIO nas portas clássicas (0x1F0/0x170, controle em
+  0x3F6/0x376), mestre e escravo, sem interrupções (nIEN), LBA28 e LBA48 e
+  até 3 tentativas com reset do canal. O modo AHCI fica para depois.
+  Referência: ATA/ATAPI-6 (T13/1410D rev. 3a), com as seções citadas em
+  `ata.c`.
+- O driver grava (WRITE SECTOR(S) e FLUSH CACHE depois), mas gravar num
+  disco interno só acontece pelos setores crus, travados atrás da
+  confirmação de quem usa (D063).
+- Toda espera do driver tem limite de tempo, medido pelo contador do PIT
+  (`cronometro_ms`, que anda com as interrupções desligadas): 5 s por
+  comando e 1 s no IDENTIFY. Antes de escrever no Device register, o driver
+  espera BSY e DRQ em zero (7.7.3).
+- Os discos internos se chamam `hd0`, `hd1`... e ficam na mesma lista dos
+  pendrives (`disco_registrar_interno`). O kernel lê o setor 0 de cada um
+  para mostrar o formato e o rótulo.
+- **Nenhum disco interno é montado**, nem sozinho, nem com `montar hdX`
+  (ERRO_ACESSO), e o Arquivos e a área de trabalho não oferecem o disco.
+- O autoteste `usb_setores`, que grava setores, só usa pendrive, nunca disco
+  interno.
+
+**ABI (acréscimos, nada muda de lugar).**
+- `info_disco_t` ganha o campo `interno` no fim (1 = disco interno).
+  `SIS_LISTAR_DISCOS` passa a receber, no terceiro argumento, o tamanho da
+  estrutura do programa (a libsagui manda `sizeof`). Programas antigos
+  mandavam 0: o kernel escreve só os campos até `interno` (`offsetof`) e não
+  passa do fim da estrutura deles, como no campo `bits` da H94.
+
+**Teste.** `h105_disco_ata`: três discos IDE (o do sistema, um com a FAT32 do
+SaguiOS e um com a FAT32 de outro sistema) e um pendrive. Os discos são
+achados e lidos, nada monta, `montar` recusa, o pendrive continua montando e
+as imagens dos HDs saem byte a byte iguais.
+
+## D063. Setores crus travados no kernel atrás de uma confirmação (issue #45)
+
+**Contexto.** Um instalador precisa ler e gravar setores direto no disco: a
+tabela de partições, a cópia do sistema, a formatação. É também o jeito mais
+fácil de destruir os dados de quem testa. A regra prd2 diz que só se grava
+num disco que a pessoa escolheu e confirmou digitando o nome, nunca por
+padrão, e essa confirmação não pode depender do programa.
+
+**Decisão.**
+- Três chamadas novas: `SIS_DISCO_SETORES` (80) lê ou grava de 1 a 128
+  setores; `SIS_DISCO_RELER` (81) reconhece de novo o formato do disco
+  depois que o programa gravou uma tabela; `SIS_DISCO_LIBERAR` (82) pede a
+  confirmação.
+- `SIS_DISCO_LIBERAR (nome, resumo)` abre uma caixa desenhada pelo kernel,
+  por cima de tudo. Enquanto ela está aberta, teclado e mouse vão só para
+  ela (nem os atalhos passam). A caixa mostra o que o kernel sabe do disco
+  (nome, se é interno ou pendrive, modelo, tamanho e o que tem nele hoje) e,
+  separado, sob "O programa diz que vai:", o resumo que o programa mandou
+  (até 4 linhas). A pessoa digita o nome do disco e aperta Enter; nome
+  errado não libera, Esc cancela.
+- A liberação vale só para aquele disco, só para o processo que pediu e só
+  até ele terminar (`discos_processo_terminou`). O processo do kernel (pid 0)
+  nunca é liberado.
+- Sem a liberação: gravar dá ERRO_ACESSO em qualquer disco; ler um disco
+  interno também, exceto o que o instalador copia do disco de onde o sistema
+  ligou (setores 0 e 1 e a partição 0xDA). Ler um pendrive continua livre.
+  Gravar num disco montado dá ERRO_OCUPADO.
+- O disco de onde o sistema ligou (a origem) é achado pelo identificador do
+  MBR (bytes 0x1B8-0x1BB), que o estágio 2 copia para `info_boot.disco_id`.
+  Com dois discos de mesmo identificador e com a partição do sistema,
+  nenhum é a origem.
+- `SIS_DISCO_RELER` usa `usuario_texto`, como o `sis_montar`.
+
+**ABI (acréscimos).** As chamadas 80, 81 e 82; `pedido_setores_t`; o erro
+`ERRO_ES` (-18); o campo `origem` no fim de `info_disco_t` (os programas
+antigos continuam recebendo só o que cabe, D062); `info_boot_t.disco_id`
+(`BI_DISCO_ID`, byte 152 do bootinfo).
+
+**Teste.** `h109_trava_discos`, com `/testes/setores`: as recusas sem
+confirmação, a caixa (o que mostra, nome errado, Esc, nome certo), a
+liberação que acaba com o processo e, no fim, o disco conferido byte a byte:
+só o setor gravado depois da confirmação mudou.
+
+## D064. O instalador, por enquanto só apagando o disco inteiro (issue #45)
+
+**Contexto.** Com o driver ATA (D062) e a trava dos setores crus (D063), dá
+para levar o SaguiOS do pendrive para um disco. Editar partições e instalar
+num espaço livre mexe com os dados de outros sistemas e precisa de uma
+leitura da tabela muito mais cuidadosa (partições lógicas, GPT, tabelas
+malformadas). Por isso o instalador entra primeiro só com o caso mais
+simples e fácil de conferir: apagar o disco inteiro.
+
+**Decisão.**
+- `/bin/instalar` é um assistente em quatro passos: boas-vindas, disco,
+  resumo e instalação. Não tem opções de linha de comando.
+- Nada do disco escolhido é lido ou gravado antes do botão **Instalar**, no
+  resumo. É nele que o instalador chama `SIS_DISCO_LIBERAR` com o resumo, e
+  o kernel mostra a caixa em que a pessoa digita o nome do disco. O botão
+  Instalar não responde ao Enter. Nome errado ou Esc voltam ao resumo.
+- O resumo diz tudo o que muda: as partições e os dados somem, e o código de
+  boot, a tabela de partições e o identificador do disco são trocados (um
+  Windows ou Linux que ligava pelo disco deixa de ligar).
+- O que fica no disco: o primeiro MB e os 33 setores do fim (a cópia da
+  GPT) zerados; a partição do sistema (0xDA, ativa) a partir de 1 MB, com o
+  estágio 2, o kernel e o ramdisk copiados da origem; a FAT32 `SAGUIOS`
+  logo depois, alinhada em 1 MB, com `.saguios/configuracoes.txt`
+  (`sistema.instalado = sim`); o cabeçalho de boot no setor 1, com os LBA
+  novos; e por último o MBR, com um identificador novo. Cada setor gravado
+  é lido de volta e conferido.
+- O kernel monta um disco interno só se for a FAT32 de rótulo `SAGUIOS`
+  com `.saguios/configuracoes.txt`, ou se o processo que pede está liberado
+  para esse disco (o instalador, para gravar as configurações). Montado, o
+  disco aparece como "Disco", sem "Remover com segurança".
+- A FAT32 é formatada pelo próprio instalador, pela especificação da
+  Microsoft ("FAT32 File System Specification", 2000).
+
+**Teste.** `h110_instalar`: Cancelar, Enter no resumo, nome errado e Esc não
+mudam um byte do disco; a instalação deixa o MBR, o primeiro MB, o fim do
+disco, o sistema (cópia exata da origem) e a FAT32 (fsck.vfat) como
+descrito; ligando pelo disco, a partição dos arquivos monta sozinha e
+guarda um arquivo depois de reiniciar.
+
+## D065. O instalador e as unidades na coluna da direita da área de trabalho
+
+**Contexto.** Com o instalador (D064), quem liga pelo pendrive precisa achá-lo
+sem abrir o terminal. Nos sistemas Linux, o instalador e as unidades
+(pendrives, discos) ficam no canto de cima à direita da área de trabalho.
+
+**Decisão.**
+- A área de trabalho tem uma coluna à direita: primeiro "Instalar o SaguiOS"
+  (só quando o sistema não ligou pelo disco instalado), depois as unidades
+  (os pendrives e o Disco do SaguiOS montado), até 4.
+- O botão direito no instalador tem só "Abrir"; numa unidade, "Abrir" e
+  "Remover com segurança" (o Disco não tem "Remover").
+- O menu Iniciar ganha "Instalar o SaguiOS" (Sistema). Ligado pelo disco
+  instalado (`sistema.instalado = sim` nas configurações), ele some do menu
+  e da área de trabalho.
+
+**Teste.** `h111_area_unidades` (a coluna, os menus do botão direito e os
+duplos cliques), `h34` (o ícone do pendrive conferido pelo pixel na posição
+nova) e `h110` (o menu abre o instalador; instalado, ele some).
+
+## D066. A tabela de partições lida e conferida pelo kernel
+
+**Contexto.** Na revisão do #53 (B3 a B5), o instalador lia o setor 0 sozinho
+e confiava demais nele. Bastava a assinatura 0x55AA para os bytes 446 a 509
+virarem partições, mesmo num disco com FAT32 ou NTFS gravado no disco
+inteiro. Entradas que passavam do fim eram cortadas, entradas sem tamanho
+sumiam, as lógicas da estendida ficavam invisíveis e um GPT sem a entrada
+0xEE aparecia como "sem partições". Com isso, o instalador poderia gravar
+por cima de uma partição de outra pessoa.
+
+**Decisão.**
+- A leitura fica no kernel (`kernel/fs/tabela.c`), numa chamada nova,
+  `SIS_DISCO_TABELA` (83). Ela não precisa de liberação: lê só o setor 0, os
+  setores 1 e o último (procurando "EFI PART"), os EBRs e o primeiro setor
+  de cada partição (o formato).
+- O estado é um de: vazio, MBR, GPT, VBR (o setor 0 é um volume, sem
+  tabela), desconhecido (sem 0x55AA) ou erro de leitura. O VBR é
+  reconhecido pelo BPB e pela assinatura do formato, não pelo salto 0xEB,
+  porque o código de boot de um MBR (o do GRUB, por exemplo) também começa
+  com ele.
+- GPT é reconhecida pela entrada 0xEE e também pelo cabeçalho no setor 1 ou
+  no último setor.
+- As lógicas são lidas seguindo a cadeia de EBRs, que tem de andar sempre
+  para a frente e ficar dentro da estendida.
+- As entradas voltam como estão no disco, sem cortar e sem descartar, junto
+  com o maior fim visto em todas elas.
+- A tabela só é "conferida" se nada for estranho. Contam como estranho:
+  status diferente de 0x00 e 0x80, entrada sem tamanho, entrada começando
+  antes do setor 2, entrada passando do fim do disco, primárias ou lógicas
+  sobrepostas, lógica fora do seu lugar na estendida, mais de uma
+  estendida, cadeia de EBRs em laço ou longa demais. O primeiro problema
+  vai junto, em texto. Com uma tabela não conferida, o instalador não
+  oferece o espaço livre (parte 6).
+- A caixa de confirmação do kernel ganha uma linha com essa leitura
+  ("Tabela MBR: 4 partições (2 lógicas)", ou o problema), e o resumo do
+  instalador conta as partições que vai apagar.
+
+**Teste.** `h112_tabela` liga pelo pendrive com 15 discos, 3 por máquina:
+ext, partição em 63, estendida com duas lógicas, partição além do fim,
+sobrepostas, GPT com e sem 0xEE, FAT32 e NTFS no disco inteiro, setor 0
+zerado, sem assinatura, status inválido, entrada no setor 1, lógica fora da
+estendida e cadeia em laço. Para cada um, confere o estado, o problema, o
+maior fim e cada partição com os números exatos. Confere também a linha na
+caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
+confere a contagem no resumo.

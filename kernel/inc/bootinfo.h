@@ -39,6 +39,7 @@ typedef struct EMPACOTADO {
     uint32_t setores_lidos;
     char     teste[64];   /* autoteste pedido pelo build de teste; vazio no uso normal */
     uint32_t opcoes;      /* bit 0 VESA, bit 1 terminal de tela cheia sem área de trabalho */
+    uint32_t disco_id;    /* identificador do MBR (0x1B8) do disco de onde o sistema ligou */
 } info_boot_t;
 
 /* Cópia feita no início do kernel; vale durante toda a execução. */

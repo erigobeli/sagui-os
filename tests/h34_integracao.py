@@ -13,7 +13,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, imagem_console, criar_pendrive, pendrive_qemu, cor_do_pixel, RAIZ  # noqa: E402
+from qemu import Maquina, verificar, imagem_console, criar_pendrive, pendrive_qemu, RAIZ  # noqa: E402
 
 NOTA = "Nota salva no pendrive pelo SaguiOS. Ação!"
 
@@ -23,17 +23,34 @@ def janela(serial, titulo):
     return dict(l=int(m[0]), a=int(m[1]), x=int(m[2]) + 2, y=int(m[3]) + 24, fx=int(m[2]), fy=int(m[3]))
 
 
-POR_COLUNA = (768 - 40) // 92   # os ícones continuam numa segunda coluna (H38)
-PENDRIVE = 8                    # o último ícone
+# As unidades ficam na coluna da direita, no canto de cima, como no Linux
+# (D065): primeiro "Instalar o SaguiOS" (o sistema ligou pela imagem, não
+# está instalado), depois o pendrive.
+PEN_X, PEN_Y = 1024 - 20 - 96 + 16, 40 + 1 * 108      # canto do desenho (64x64)
+
+
+POR_COLUNA = (768 - 40) // 92   # os ícones dos programas continuam numa segunda coluna (H38)
 
 
 def icone(i):
     return 20 + (i // POR_COLUNA) * 110 + 48, 40 + (i % POR_COLUNA) * 92 + 32
 
 
-def canto_icone(i):
-    """Canto de cima à esquerda do desenho do ícone (64x64)."""
-    return 20 + (i // POR_COLUNA) * 110 + 16, 40 + (i % POR_COLUNA) * 92
+def icone_pendrive():
+    return PEN_X + 48, PEN_Y + 32
+
+
+def azuis(png):
+    """Pixels do azul do corpo do pendrive na parte do ícone que o Terminal
+    não cobre (a janela vai até x = 946, com a sombra)."""
+    x0 = 956
+    saida = subprocess.run(["convert", png, "-crop", f"{PEN_X + 64 - x0}x64+{x0}+{PEN_Y}", "-depth", "8", "txt:-"],
+                           capture_output=True, text=True, check=True).stdout
+    n = 0
+    for r, g, b in re.findall(r"\((\d+),(\d+),(\d+)", saida):
+        if int(b) > 150 and int(r) < 110 and int(b) > int(g) + 30:
+            n += 1
+    return n
 
 
 def mtype(img, caminho):
@@ -56,12 +73,11 @@ def main():
         time.sleep(0.6)
         png = m.captura("H34-1-pendrive-conectado")
         verificar(True, "ao espetar: notificação 'Pendrive conectado: MEUPEN (64 MB)'")
-        # Ícone 64x64 suavizado (H81): o corpo azul do pendrive.
-        ponto_icone = (canto_icone(PENDRIVE)[0] + 2 * 10 + 1, canto_icone(PENDRIVE)[1] + 2 * 12 + 1)
-        cor_icone = cor_do_pixel(png, *ponto_icone)
-        verificar(cor_icone[2] > 150 and cor_icone[0] < 110, f"ícone do pendrive apareceu na área de trabalho {cor_icone}")
+        # Ícone 64x64 suavizado (H81): o corpo azul do pendrive, na coluna da direita.
+        azul = azuis(png)
+        verificar(azul >= 40, f"ícone do pendrive apareceu na coluna da direita ({azul} pixels do azul dele)")
 
-        m.clique(*icone(PENDRIVE), duplo=True)
+        m.clique(*icone_pendrive(), duplo=True)
         m.esperar_serial("arquivos: pasta /usb", 15)
         verificar("Pendrive montado em /usb" in m.serial(), "duplo clique no ícone monta o pendrive e abre o Arquivos em /usb")
         time.sleep(0.5)
@@ -97,13 +113,13 @@ def main():
         m.esperar_serial("notificacao: Pendrive removido.", 15)
         time.sleep(0.6)
         png = m.captura("H34-5-pendrive-removido")
-        verificar(cor_do_pixel(png, *ponto_icone) != cor_icone, "removido: o ícone some")
+        verificar(azuis(png) == 0, f"removido: o ícone some ({azuis(png)} pixels do azul dele)")
 
         # Espeta de novo, monta pelo ícone e arranca sem desmontar.
         espetar(m, pen, "p2")
         m.esperar_serial("usb1: QEMU", 20)
         time.sleep(1)
-        m.clique(*icone(PENDRIVE), duplo=True)
+        m.clique(*icone_pendrive(), duplo=True)
         m.esperar_serial("[FAT32] montado", 15)
         time.sleep(0.5)
         m.monitor("device_del dev-p2")
@@ -151,7 +167,7 @@ def main():
         m.esperar_serial("notificacao: Pendrive conectado: DADOS", 20)
         verificar(True, "boot e dados no mesmo pendrive: a FAT32 na segunda partição é achada e notificada")
         time.sleep(1)
-        m.clique(*icone(PENDRIVE), duplo=True)
+        m.clique(*icone_pendrive(), duplo=True)
         m.esperar_serial("arquivos: pasta /usb (1 itens)", 15)
         verificar(True, "o ícone abre o Arquivos com o arquivo que veio do PC")
         m.captura("H34-8-um-pendrive-so")

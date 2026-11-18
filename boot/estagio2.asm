@@ -62,6 +62,11 @@ inicio:
         rep movsb
         movzx eax, word [CAB_ENDERECO + CAB_OPCOES]
         mov [BOOTINFO + BI_OPCOES], eax
+        ; O identificador do disco, do MBR que a BIOS deixou em 0x7C00 (a
+        ; pilha cresce para baixo de 0x7C00 e não chega nele): o kernel acha
+        ; por ele o disco de onde o sistema ligou (o instalador copia dele).
+        mov eax, [0x7C00 + 0x1B8]
+        mov [BOOTINFO + BI_DISCO_ID], eax
 
         mov si, msg_titulo
         call escrever

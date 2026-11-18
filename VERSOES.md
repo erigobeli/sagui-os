@@ -63,12 +63,26 @@ Já no código (no `main`), ainda não lançado como imagem:
   Lixeira fica cheio também quando só a lixeira do pendrive tem coisas; o
   kernel não escreve mais além da memória da janela quando um programa
   muda as opções de uma janela maior que a tela.
-
 - Renomear no lugar: um segundo clique, devagar, no nome de um ícone ou de um
   arquivo abre a edição ali mesmo (Robson). A interface ficou mais leve: o
   menu redesenha só o que muda, e o vidro e as sombras custam menos.
 - Três comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
   (`nome-maquina`) e `du` (`disco-usado`).
+- O kernel enxerga os **discos rígidos IDE/ATA** (`hd0`, `hd1`...), sem
+  montar nenhum (D062). É a base do instalador (issue #45).
+- **Gravar direto no disco fica travado no kernel** (D063): só depois que a
+  pessoa digita o nome do disco numa caixa desenhada pelo próprio kernel,
+  que mostra o disco e o que o programa diz que vai fazer.
+- **Instalador do SaguiOS** (D064): um assistente que copia o sistema do
+  pendrive para um disco, por enquanto apagando o disco inteiro, e cria a
+  partição dos seus arquivos. Ligado pelo disco, ela monta sozinha.
+- O instalador e as unidades (pendrives e o Disco) ficam **no canto de cima
+  à direita da área de trabalho**, como no Linux, e o instalador entra no
+  menu Iniciar; depois de instalado, ele some dos dois (D065).
+- O kernel lê e confere a **tabela de partições** de cada disco: MBR com as
+  partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
+  ou passando do fim. A caixa de confirmação e o instalador mostram o que
+  ele leu (D066).
 
 ## Versões lançadas
 

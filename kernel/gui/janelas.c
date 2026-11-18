@@ -130,6 +130,124 @@ static void desenhar_aviso(superficie_t *t)
     }
 }
 
+/* ------------------------------------------------------------ confirmação do disco (D063)
+ *
+ * Antes de um programa ler ou gravar setores crus de um disco, a pessoa
+ * digita o nome dele nesta caixa. Ela é desenhada pelo kernel, por cima de
+ * tudo, e o teclado vem direto do driver: um programa não consegue desenhá-la
+ * nem digitar nela. Enquanto está aberta, teclado e mouse são só dela. */
+#define CONF_L 600
+#define CONF_A (118 + conf.n * 18)   /* a altura acompanha o número de linhas */
+static struct {
+    bool aberta;
+    int  pid, resultado;           /* resultado: 1 confirmou, -1 cancelou */
+    char nome[8], dig[12];
+    char linha[CONF_LINHAS][CONF_COLUNAS + 1];
+    int  n;
+    bool errou;
+} conf;
+
+static void conf_retangulo(int *x, int *y)
+{
+    *x = ((int)video_largura() - CONF_L) / 2;
+    *y = ((int)video_altura() - CONF_A) / 2;
+    if (*x < 0) *x = 0;
+    if (*y < BARRA_SUPERIOR) *y = BARRA_SUPERIOR;
+}
+
+static void redesenhar_conf(void)
+{
+    int x, y;
+    conf_retangulo(&x, &y);
+    gui_redesenhar(x - 2, y - 2, CONF_L + 8, CONF_A + 8);
+}
+
+const void *gui_confirmacao_canal(void) { return &conf; }
+
+static bool menu_aberto;               /* (definido mais abaixo, com o menu) */
+static void menu_abrir(bool abrir);
+
+bool gui_confirmar_disco(int pid, const char *nome, const char *const *linhas, int n)
+{
+    if (!ativa || conf.aberta) return false;
+    memset(&conf, 0, sizeof conf);
+    conf.aberta = true;
+    conf.pid = pid;
+    txt_copia_n(conf.nome, nome, sizeof conf.nome);
+    if (n > CONF_LINHAS) n = CONF_LINHAS;
+    conf.n = n;
+    for (int i = 0; i < n; i++) if (linhas[i]) txt_copia_n(conf.linha[i], linhas[i], sizeof conf.linha[i]);
+    if (menu_aberto) menu_abrir(false);
+    misturador_som_sistema(SOM_AVISO);
+    redesenhar_conf();
+    gui_mostrar();
+    klog("[GUI] confirmacao do disco %s aberta (pid %d)\n", nome, pid);
+    for (int i = 0; i < conf.n; i++) klog("[GUI] confirmacao: %s\n", conf.linha[i]);
+    return true;
+}
+
+/* -2: nenhum pedido desse processo; 0: esperando; 1: confirmou; -1: cancelou.
+ * O resultado só é entregue uma vez. */
+int gui_confirmacao_resultado(int pid)
+{
+    if (conf.pid != pid || !pid) return -2;
+    if (conf.aberta) return 0;
+    conf.pid = 0;
+    return conf.resultado;
+}
+
+static void conf_fechar(int r)
+{
+    conf.aberta = false;
+    conf.resultado = r;
+    redesenhar_conf();
+    klog("[GUI] confirmacao do disco %s: %s\n", conf.nome, r > 0 ? "confirmada" : "cancelada");
+    acordar(&conf);
+}
+
+static void conf_tecla(int t)
+{
+    int n = (int)txt_tamanho(conf.dig);
+    if (t == TECLA_ESC) { conf_fechar(-1); return; }
+    if (t == '\n') {
+        if (txt_compara(conf.dig, conf.nome) == 0) { conf_fechar(1); return; }
+        conf.errou = true;
+        conf.dig[0] = 0;
+        klog("[GUI] confirmacao do disco %s: nome diferente\n", conf.nome);
+    } else if (t == '\b') {
+        if (n) conf.dig[n - 1] = 0;
+    } else if (t > 0x20 && t < 0x7F && n + 1 < (int)sizeof conf.dig) {
+        conf.dig[n] = (char)t;
+        conf.dig[n + 1] = 0;
+    } else return;
+    redesenhar_conf();
+}
+
+static void desenhar_conf(void)
+{
+    if (!conf.aberta) return;
+    int x, y;
+    conf_retangulo(&x, &y);
+    /* No estilo claro do sistema, com a borda e a faixa vermelhas de aviso. */
+    sup_retangulo(&tela, x + 3, y + 4, CONF_L, CONF_A, 0x9AA3AB);            /* sombra */
+    sup_retangulo(&tela, x, y, CONF_L, CONF_A, 0xFFFFFF);
+    sup_moldura(&tela, x, y, CONF_L, CONF_A, 0xD9443F);
+    sup_retangulo(&tela, x, y, CONF_L, 6, 0xD9443F);
+    sup_texto_forte(&tela, x + 22, y + 18, "Gravar direto no disco?", 0x1E2328);
+    for (int i = 0; i < conf.n; i++)   /* a última linha é o aviso, em vermelho */
+        sup_texto(&tela, x + 22, y + 46 + i * 18, conf.linha[i], i == conf.n - 1 ? 0xC4302B : 0x3A434C);
+    char t[64];
+    snformatar(t, sizeof t, "Para permitir, digite %s e aperte Enter.", conf.nome);
+    sup_texto_forte(&tela, x + 22, y + 46 + conf.n * 18 + 4, t, 0x1E2328);
+    int cx = x + 22, cy = y + CONF_A - 44;
+    sup_retangulo(&tela, cx, cy, 180, 28, 0xF4F6F8);
+    sup_moldura(&tela, cx, cy, 180, 28, conf.errou ? 0xD9443F : 0x8A939C);
+    sup_texto(&tela, cx + 8, cy + 6, conf.dig, 0x1E2328);
+    sup_retangulo(&tela, cx + 9 + texto_largura(conf.dig), cy + 5, 2, 18, 0x0B7A3E);
+    sup_texto(&tela, cx + 196, cy + 6, conf.errou ? "Nome diferente. Esc cancela." : "Esc cancela.",
+              conf.errou ? 0xC4302B : 0x6A737C);
+}
+
 static int moldura_l(janela_t *j) { return j->larg + 2 * BORDA; }
 static int moldura_a(janela_t *j) { return j->alt + BARRA_TITULO + BORDA; }
 
@@ -378,6 +496,7 @@ static const programa_menu_t catalogo[] = {
     { "Sagui Code", "/bin/saguicode-janela", NULL, CAT_DESENVOLVIMENTO, arte_px_saguicode_40, "ia agente programar codigo" },
     { "Sagui Code (terminal)", "/bin/terminal", "/bin/saguicode", CAT_DESENVOLVIMENTO, arte_px_terminal_40, "ia agente programar codigo terminal" },
     { "Componentes", "/bin/componentes", NULL, CAT_DESENVOLVIMENTO, arte_px_componentes_40, "demonstracao botoes interface libsagui" },
+    { "Instalar o SaguiOS", "/bin/instalar", NULL, CAT_SISTEMA, arte_px_instalar_sistema_40, "instalar disco hd gravar instalacao particao" },
 };
 #define QTD_CATALOGO (int)(sizeof catalogo / sizeof catalogo[0])
 #define MENU_X 4
@@ -458,11 +577,16 @@ static bool contem(const char *texto, const char *busca)
 
 static void menu_filtrar(void)
 {
+    /* Ligado pelo disco instalado (o instalador grava sistema.instalado =
+     * sim nele), o instalador sai do menu. */
+    const char *inst = config_obter("sistema.instalado");
+    bool ja_instalado = inst && txt_compara(inst, "sim") == 0;
     menu_qtd = 0;
     bool buscando = menu_busca[0] != 0;
     for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_MAX; i++) {
         const programa_menu_t *p = &catalogo[i];
         if (!buscando && menu_cat != CAT_TODOS && p->cat != menu_cat) continue;
+        if (ja_instalado && txt_compara(p->programa, "/bin/instalar") == 0) continue;
         if (buscando && !contem(p->nome, menu_busca) && !contem(p->palavras, menu_busca)) continue;
         menu_res[menu_qtd++] = i;
     }
@@ -807,7 +931,7 @@ static void abrir_ctx(int icone, int x, int y)
     int tipo = area_icone_tipo(icone);
     ctx_item("Abrir", ACAO_ABRIR);
     if (tipo == 2) ctx_item("Remover com segurança", ACAO_DESMONTAR);
-    else {
+    else if (tipo != 3) {                         /* o instalador: só abrir */
         ctx_item("Renomear", ACAO_RENOMEAR);
         if (tipo == 1) ctx_item("Remover do pendrive...", ACAO_REMOVER);
         else ctx_item("Esconder o ícone", ACAO_ESCONDER);
@@ -1225,6 +1349,7 @@ void gui_mostrar(void)
     desenhar_menu();
     desenhar_ctx();
     desenhar_aviso(&tela);
+    desenhar_conf();
     video_marcar(tela.cx0, tela.cy0, tela.cx1 - tela.cx0, tela.cy1 - tela.cy0);
     video_mostrar();
 }
@@ -1490,6 +1615,7 @@ static void tratar_laco(evento_mouse_t *m)
 
 static void tratar_mouse(evento_mouse_t *m)
 {
+    if (conf.aberta) return;   /* a confirmação do disco pega tudo até fechar */
     if (laco_ativo) { tratar_laco(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
@@ -1843,6 +1969,7 @@ static void tarefa_gerenciador(void *arg)
                 klog("[GUI] Print Screen: captura pid %d\n", pid);
                 continue;
             }
+            if (conf.aberta) { conf_tecla(t); continue; }   /* nem atalhos: só ela */
             if (area_editando()) {   /* renomeando um ícone: a caixa fica com o teclado */
                 sujar_caixa_nome();
                 area_editar_tecla(t);
@@ -1878,10 +2005,8 @@ static void tarefa_gerenciador(void *arg)
         char texto[96];
         while (disco_proximo_aviso(&tipo, texto, sizeof texto))
             gui_aviso(texto);
-        disco_t *pd = NULL;
-        for (int k = 0; k < MAX_DISCOS && !pd; k++) { disco_t *d = disco_indice(k); if (d && d->presente && !d->de_boot) pd = d; }
-        if (area_pendrive(pd != NULL, pd ? (pd->rotulo[0] ? pd->rotulo : "Pendrive") : NULL))
-            gui_redesenhar(0, BARRA_SUPERIOR, 140, (int)video_altura() - BARRA_SUPERIOR);
+        if (area_unidades())                      /* o instalador e as unidades, na coluna da direita */
+            gui_redesenhar(0, BARRA_SUPERIOR, (int)video_largura(), (int)video_altura() - BARRA_SUPERIOR);
         if (aviso_ate && (int32_t)(relogio_tiques() - aviso_ate) >= 0) {
             aviso_ate = 0;
             int x, y;
@@ -1958,6 +2083,10 @@ static void destruir(int i)
 
 void janelas_do_processo_fechar(processo_t *p)
 {
+    if (conf.pid == p->pid) {                 /* quem pediu terminou: a caixa some */
+        if (conf.aberta) conf_fechar(-1);
+        conf.pid = 0;
+    }
     for (int i = 0; i < MAX_JANELAS; i++)
         if (janelas[i].usada && janelas[i].pid == p->pid)
             destruir(i);
@@ -1999,7 +2128,9 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     j->x = 150 + n * 34;
     j->y = BARRA_SUPERIOR + 30 + n * 28;
     if (j->x + moldura_l(j) > (int)video_largura()) j->x = (int)video_largura() - moldura_l(j);
-    if (j->y + moldura_a(j) > (int)video_altura()) j->y = (int)video_altura() - moldura_a(j);
+    /* Sem passar da doca: os botões do rodapé ficariam debaixo dela. */
+    int base = doca_ligada ? doca_y - 4 : (int)video_altura();
+    if (j->y + moldura_a(j) > base) j->y = base - moldura_a(j);
     if (j->x < 0) j->x = 0;
     if (j->y < BARRA_SUPERIOR) j->y = BARRA_SUPERIOR;
     janela_t *antes = focada();
