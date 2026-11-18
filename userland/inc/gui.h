@@ -104,14 +104,14 @@ typedef struct {
     int    topo;
     /* Desenha um ícone pequeno (16x16) antes do texto do item, se não for NULL. */
     void (*icone)(jan_t *j, int x, int y, int item);
-    /* H91: seleção de vários itens. Com marc != NULL (um byte por item), o
+    /* D058: seleção de vários itens. Com marc != NULL (um byte por item), o
      * clique marca um, Ctrl+clique alterna, Shift+clique marca a faixa,
      * Ctrl+A marca todos, e arrastar no vazio desenha o laço translúcido. */
     uint8_t *marc;
     bool laco;
     int  laco_x0, laco_y0, laco_x1, laco_y1;
     int  laco_linha;                    /* +1: linha onde o laço começou (soltar sem arrastar a seleciona) */
-    /* H91: o nome editado na própria linha (lista_editar). */
+    /* D058: o nome editado na própria linha (lista_editar). */
     bool editando;
     int  ed_item, ed_cur, ed_marca;     /* ed_marca: início da parte marcada (até o cursor) */
     char ed_texto[64];
@@ -127,6 +127,7 @@ bool lista_marcado(const lista_t *l, int i);
 int  lista_qtd_marcados(const lista_t *l);
 #define LISTA_EDITOU   3
 #define LISTA_DESISTIU 4
+#define LISTA_DEVAGAR  5   /* clique simples no item que já era o único marcado (renomear devagar) */
 #define LISTA_ALTURA_ITEM 20
 
 /* ---- diálogos (janelas próprias, esperam a resposta) ---- */

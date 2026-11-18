@@ -25,7 +25,6 @@ int principal(int argc, char **argv)
             formatar_texto(chave, sizeof chave, "icone.%s", programa);
             int r = config_gravar(chave, novo);
             registrar("icone: %s agora se chama %s (%d)", programa, novo, r);
-            if (r == 0) mensagem("Renomear", "Sem pendrive de dados: o nome novo vale até desligar.");
             return 0;
         }
         if (acha_char(novo, '/')) { mensagem("Renomear", "O nome não pode ter /."); return 1; }

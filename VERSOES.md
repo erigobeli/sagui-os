@@ -59,6 +59,14 @@ Já no código (no `main`), ainda não lançado como imagem:
   **captura de tela** com a tecla Print Screen (D060); a **Lixeira**, com
   restaurar e esvaziar (D061); e **cantos arredondados** com borda suavizada
   nas janelas e nos menus.
+- Menu Iniciar em telas de 640x480, com páginas ("<" e ">"); o ícone da
+  Lixeira fica cheio também quando só a lixeira do pendrive tem coisas; o
+  kernel não escreve mais além da memória da janela quando um programa
+  muda as opções de uma janela maior que a tela.
+
+- Renomear no lugar: um segundo clique, devagar, no nome de um ícone ou de um
+  arquivo abre a edição ali mesmo (Robson). A interface ficou mais leve: o
+  menu redesenha só o que muda, e o vidro e as sombras custam menos.
 - Três comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
   (`nome-maquina`) e `du` (`disco-usado`).
 

@@ -47,6 +47,26 @@ static inline uint32_t escurecer(uint32_t p, int k)
     return (rb & 0xFF00FF) | (g & 0x00FF00);
 }
 
+/* A média do desfoque: 1/n em 16 bits, arredondado para cima, troca as três
+ * divisões por pixel por multiplicações (no QEMU, e em processadores
+ * antigos, a divisão custa caro). Cada passada é de uma dimensão só, então n
+ * vai de 1 a 2R+1 e a soma de cada cor fica até 255 * (2R+1). Nessa faixa o
+ * resultado é igual ao da divisão, sem erro de arredondamento (conferido
+ * para todas as somas e todos os n). */
+#define MEDIA_MAX (2 * VIDRO_RAIO + 1)
+static uint32_t inverso[MEDIA_MAX + 1];
+
+/* As somas do desfoque andam em duas variáveis: vermelho e azul juntos
+ * (srb: o vermelho nos 16 bits de cima, o azul nos de baixo) e o verde
+ * (sg, no lugar dele, deslocado 8 bits). Cada soma vai até 255 x 13 = 3315,
+ * então o azul não transborda para o vermelho. São 4 somas e subtrações
+ * por pixel em vez de 6, com o mesmo resultado. */
+static inline uint32_t media_de(uint32_t srb, uint32_t sg, int n)
+{
+    uint32_t r = inverso[n];
+    return ((((srb >> 16) * r) >> 16) << 16) | ((((sg >> 8) * r) >> 16) << 8) | (((srb & 0xFFFF) * r) >> 16);
+}
+
 /* Canto arredondado suavizado: quanto de cada pixel da ponta fica dentro
  * do quarto de círculo, contado com 4 x 4 amostras (suave.h). Antes o canto
  * só pulava pixels inteiros (5, 3, 2, 1, 1), e a borda ficava em escada. O
@@ -97,6 +117,7 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
         return;
     }
     const int R = VIDRO_RAIO;
+    if (!inverso[1]) for (int n = 1; n <= MEDIA_MAX; n++) inverso[n] = (65536u + (uint32_t)n - 1) / (uint32_t)n;
     /* A fonte: o destino com R de margem, dentro do recorte. */
     int sx0 = x0 - R < s->cx0 ? s->cx0 : x0 - R, sx1 = x1 + R > s->cx1 ? s->cx1 : x1 + R;
     int sy0 = y0 - R < s->cy0 ? s->cy0 : y0 - R, sy1 = y1 + R > s->cy1 ? s->cy1 : y1 + R;
@@ -106,41 +127,41 @@ void vidro_pintar(superficie_t *s, int x, int y, int l, int a, uint32_t tinta, i
     for (int j = 0; j < H; j++) {
         const uint32_t *o = s->px + (sy0 + j) * s->larg + sx0;
         uint32_t *d = buf + j * W;
-        uint32_t sr = 0, sg = 0, sb = 0;
+        uint32_t srb = 0, sg = 0;
         int n = 0;
         /* Janela inicial: [0, R] (o que está à esquerda de 0 não existe). */
-        for (int i = 0; i <= R && i < W; i++) { sr += (o[i] >> 16) & 255; sg += (o[i] >> 8) & 255; sb += o[i] & 255; n++; }
+        for (int i = 0; i <= R && i < W; i++) { srb += o[i] & 0xFF00FF; sg += o[i] & 0xFF00; n++; }
         for (int i = 0; i < W; i++) {
-            d[i] = ((sr / (uint32_t)n) << 16) | ((sg / (uint32_t)n) << 8) | (sb / (uint32_t)n);
+            d[i] = media_de(srb, sg, n);
             int entra = i + R + 1, sai = i - R;
-            if (entra < W) { sr += (o[entra] >> 16) & 255; sg += (o[entra] >> 8) & 255; sb += o[entra] & 255; n++; }
-            if (sai >= 0) { sr -= (o[sai] >> 16) & 255; sg -= (o[sai] >> 8) & 255; sb -= o[sai] & 255; n--; }
+            if (entra < W) { srb += o[entra] & 0xFF00FF; sg += o[entra] & 0xFF00; n++; }
+            if (sai >= 0) { srb -= o[sai] & 0xFF00FF; sg -= o[sai] & 0xFF00; n--; }
         }
     }
     /* Passada 2: cada coluna do destino, média vertical sobre buf, misturada com a tinta. */
     for (int i = x0; i < x1; i++) {
         int c = i - sx0;
         bool coluna_canto = i < x + r || i >= x + l - r;   /* só as colunas dos cantos têm conta */
-        uint32_t sr = 0, sg = 0, sb = 0;
+        uint32_t srb = 0, sg = 0;
         int n = 0;
         int jj0 = y0 - sy0;                          /* linha do buf do primeiro destino */
         for (int j = jj0 - R; j <= jj0 + R; j++) {
             if (j < 0 || j >= H) continue;
             uint32_t v = buf[j * W + c];
-            sr += (v >> 16) & 255; sg += (v >> 8) & 255; sb += v & 255; n++;
+            srb += v & 0xFF00FF; sg += v & 0xFF00; n++;
         }
         for (int yy = y0; yy < y1; yy++) {
             int jb = yy - sy0;
             int cob = coluna_canto && (yy < y + r || yy >= y + a - r) ? cobertura(i, yy, x, y, l, a, cantos, r) : 256;
             if (cob) {
-                uint32_t media = ((sr / (uint32_t)n) << 16) | ((sg / (uint32_t)n) << 8) | (sb / (uint32_t)n);
+                uint32_t media = media_de(srb, sg, n);
                 uint32_t *p = &s->px[yy * s->larg + i];
                 uint32_t v = mistura(media, tinta, k);
                 *p = cob == 256 ? v : mistura(*p, v, cob);
             }
             int entra = jb + R + 1, sai = jb - R;
-            if (entra < H) { uint32_t v = buf[entra * W + c]; sr += (v >> 16) & 255; sg += (v >> 8) & 255; sb += v & 255; n++; }
-            if (sai >= 0) { uint32_t v = buf[sai * W + c]; sr -= (v >> 16) & 255; sg -= (v >> 8) & 255; sb -= v & 255; n--; }
+            if (entra < H) { uint32_t v = buf[entra * W + c]; srb += v & 0xFF00FF; sg += v & 0xFF00; n++; }
+            if (sai >= 0) { uint32_t v = buf[sai * W + c]; srb -= v & 0xFF00FF; sg -= v & 0xFF00; n--; }
         }
     }
 }
@@ -192,39 +213,71 @@ void vidro_pintar_r(superficie_t *s, int x, int y, int l, int a, uint32_t tinta,
 
 /* Sombra que segue o retângulo de cantos com raio r (a doca): a distância
  * nos cantos é até o arco, não até a quina; os pixels que o vidro cobre por
- * inteiro são pulados. */
+ * inteiro são pulados.
+ *
+ * Para ficar leve: a raiz inteira dos cantos sai de uma tabela por raio
+ * (a mesma conta de antes, feita uma vez só; os raios em uso são poucos), e
+ * nas linhas da janela o miolo, que o vidro cobre por inteiro, é pulado de
+ * uma vez (antes, nas linhas dos cantos, cada pixel do miolo passava pela
+ * conta de cobertura). */
+#define SOMBRA_RMAX 24
+#define SOMBRA_M (VIDRO_SOMBRA + SOMBRA_RMAX)
+static struct { int r; uint8_t d[SOMBRA_M][SOMBRA_M]; } raizes[4];
+static int qtd_raizes;
+
+/* d[dy-1][dx-1] = floor(raiz(dx² + dy²)), para dx, dy de 1 a SOMBRA_M. */
+static const uint8_t (*tabela_raiz(int r))[SOMBRA_M]
+{
+    for (int k = 0; k < qtd_raizes; k++) if (raizes[k].r == r) return raizes[k].d;
+    int k = qtd_raizes < 4 ? qtd_raizes++ : 3;
+    raizes[k].r = r;
+    for (int dy = 1; dy <= SOMBRA_M; dy++)
+        for (int dx = 1; dx <= SOMBRA_M; dx++) {
+            int d2 = dx * dx + dy * dy, d = 0;
+            while ((d + 1) * (d + 1) <= d2) d++;
+            raizes[k].d[dy - 1][dx - 1] = (uint8_t)d;
+        }
+    return raizes[k].d;
+}
+
 void vidro_sombra_r(superficie_t *s, int x, int y, int l, int a, int r)
 {
     if (!vidro_efeitos) return;
     if (2 * r > l) r = l / 2;
     if (2 * r > a) r = a / 2;
+    if (r > SOMBRA_RMAX) r = SOMBRA_RMAX;
     const int S = VIDRO_SOMBRA, desce = 4;
+    const uint8_t (*raiz)[SOMBRA_M] = tabela_raiz(r);
+    /* O quanto escurece, por distância (sem a divisão em cada pixel). */
+    static uint8_t escuro[VIDRO_SOMBRA];
+    if (!escuro[0]) for (int d = 0; d < S; d++) escuro[d] = (uint8_t)((S - d) * (S - d) * 90 / (S * S));
     int bx0 = x - S, by0 = y - S + desce, bx1 = x + l + S, by1 = y + a + S + desce;
     int x0 = bx0 < s->cx0 ? s->cx0 : bx0, y0 = by0 < s->cy0 ? s->cy0 : by0;
     int x1 = bx1 > s->cx1 ? s->cx1 : bx1, y1 = by1 > s->cy1 ? s->cy1 : by1;
     int sy = y + desce;                           /* a sombra é o retângulo descido */
     for (int j = y0; j < y1; j++) {
         uint32_t *p = s->px + j * s->larg;
+        bool linha_vidro = j >= y && j < y + a;
+        /* Nas linhas do vidro, as colunas de x + r a x + l - r estão todas
+         * debaixo dele (só os cantos têm curva); no meio, a linha inteira. */
+        int pula0 = x + r, pula1 = x + l - r;
+        if (j >= y + r && j < y + a - r) { pula0 = x; pula1 = x + l; }
         for (int i = x0; i < x1; i++) {
-            if (i >= x && i < x + l && j >= y && j < y + a && cobertura_r(i - x, j - y, l, a, r) == 256) {
-                if (j >= y + r && j < y + a - r) i = x + l - 1;   /* meio da doca: pula a linha */
-                continue;
-            }
+            if (linha_vidro && i >= pula0 && i < pula1) { i = pula1 - 1; continue; }
+            if (linha_vidro && i >= x && i < x + l && cobertura_r(i - x, j - y, l, a, r) == 256) continue;
             /* Distância (em pixels) até o retângulo arredondado descido. */
             int cx = i < x + r ? x + r : (i >= x + l - r ? x + l - r - 1 : i);
             int cy = j < sy + r ? sy + r : (j >= sy + a - r ? sy + a - r - 1 : j);
             int dx = i - cx, dy = j - cy, d;
-            if (!dx || !dy) d = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);   /* ao lado de uma reta: sem raiz */
-            else {
-                int d2 = dx * dx + dy * dy;
-                d = 0;
-                while ((d + 1) * (d + 1) <= d2) d++;
-            }
+            if (dx < 0) dx = -dx;
+            if (dy < 0) dy = -dy;
+            if (!dx || !dy) d = dx + dy;                                 /* ao lado de uma reta */
+            else if (dx <= SOMBRA_M && dy <= SOMBRA_M) d = raiz[dy - 1][dx - 1];
+            else continue;                                               /* longe demais: sem sombra */
             d -= r;
             if (d < 0) d = 0;
             if (d >= S) continue;
-            int f = S - d;
-            p[i] = escurecer(p[i], f * f * 90 / (S * S));
+            p[i] = escurecer(p[i], escuro[d]);
         }
     }
 }

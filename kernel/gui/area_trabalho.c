@@ -21,6 +21,7 @@
 #include "video.h"
 #include "disco.h"
 #include "sistema.h"
+#include "teclado.h"
 
 static uint32_t *fundo;
 static int larg, alt;
@@ -52,6 +53,9 @@ static const icone_t icones[] = {
 #define ICONE_PENDRIVE (QTD_ICONES - 1)
 #define ICONE_LIXEIRA  (QTD_ICONES - 2)
 static bool lixeira_cheia;   /* troca o desenho: com papéis saindo */
+/* A pasta que o ícone abre: a do sistema, ou a do pendrive quando só ela tem
+ * coisas (senão o ícone cheio abriria uma lixeira vazia). */
+static const char *lixeira_abrir = "/.lixeira";
 static bool pendrive_visivel;
 static char nome_pendrive[24] = "Pendrive";
 
@@ -133,6 +137,7 @@ void area_icone_acao(int i, int acao)
     else snformatar(caminho, sizeof caminho, "/bin/%s", chave_icone(i));   /* /bin/icone usa o fim do caminho */
     if (acao == ACAO_ABRIR) { area_icone_abrir(i); return; }
     if (acao == ACAO_DESMONTAR) { area_icone_direito(i); return; }
+    if (acao == ACAO_RENOMEAR) { area_editar(i); return; }   /* no lugar, sem janela */
     const char *verbo = acao == ACAO_RENOMEAR ? (i >= QTD_ICONES ? "renomear-programa" : "renomear-icone")
                       : acao == ACAO_REMOVER ? "remover" : "esconder";
     char *argv[] = { "icone", (char *)verbo, caminho, nome, NULL };
@@ -208,6 +213,106 @@ int area_qtd_selecionados(void)
     int n = 0;
     for (int i = 0; i < QTD_ICONES + qtd_instalados; i++) n += area_icone_selecionado(i);
     return n;
+}
+
+/* ------------------------------------------------------------ renomear no lugar
+ *
+ * Um segundo clique, devagar, num ícone já marcado (ou botão direito >
+ * Renomear) troca o nome embaixo do ícone por uma caixa de texto: o nome
+ * vem todo marcado, digitar substitui, Enter grava, Esc desiste e um clique
+ * fora também grava. Ícone do sistema: só o nome que aparece
+ * (icone.<programa> nas configurações). Programa instalado: o arquivo em
+ * /usb/programas muda de nome. O pendrive não se renomeia. */
+static void desenhar_fundo(void);
+static int ed_icone = -1;
+static char ed_texto[48];
+static int ed_cur;
+static bool ed_tudo;   /* o nome inteiro marcado: a próxima letra substitui */
+
+bool area_editando(void) { return ed_icone >= 0; }
+
+bool area_editar(int i)
+{
+    if (i < 0 || i >= QTD_ICONES + qtd_instalados || !icone_visivel(i) || area_icone_tipo(i) == 2) return false;
+    ed_icone = i;
+    txt_copia_n(ed_texto, nome_icone(i), sizeof ed_texto);
+    ed_cur = (int)txt_tamanho(ed_texto);
+    ed_tudo = true;
+    desenhar_fundo();   /* o nome some do fundo: a caixa fica no lugar */
+    klog("[GUI] renomear no lugar: icone %d (%s)\n", i, ed_texto);
+    return true;
+}
+
+void area_editar_terminar(bool gravar)
+{
+    if (ed_icone < 0) return;
+    int i = ed_icone;
+    ed_icone = -1;
+    const char *antes = nome_icone(i);
+    if (!gravar || !ed_texto[0] || txt_compara(ed_texto, antes) == 0) {
+        klog("[GUI] renomear no lugar: nome mantido\n");
+    } else if (i >= QTD_ICONES) {
+        char de[NOME_MAX + 16], para[64];
+        snformatar(de, sizeof de, "programas/%s", instalados[i - QTD_ICONES]);
+        snformatar(para, sizeof para, "programas/%s", ed_texto);
+        /* Sem "/" e sem começar com ponto ("." e ".." são as pastas; com
+         * ponto, o programa some da lista). E nunca por cima de outro: o
+         * fat_renomear substitui um arquivo com o nome novo, e com o nome de
+         * uma pasta move o programa para dentro dela. */
+        bool barra = ed_texto[0] == '.';
+        for (const char *c = ed_texto; *c; c++) barra |= *c == '/';
+        info_arquivo_t ja;
+        int r = barra ? ERRO_INVALIDO : !disco_montado() ? ERRO_NAO_EXISTE
+              : fat_info(para, &ja) == 0 ? ERRO_JA_EXISTE : fat_renomear(de, para);
+        if (r == 0) txt_copia_n(instalados[i - QTD_ICONES], ed_texto, NOME_MAX);
+        else gui_aviso(r == ERRO_INVALIDO ? "O nome não pode ter / nem começar com ponto."
+                       : r == ERRO_JA_EXISTE ? "Já existe um programa ou pasta com esse nome."
+                       : "Não consegui renomear o programa.");
+        klog("[GUI] icone renomeado: /usb/%s -> /usb/%s (%d)\n", de, para, r);
+    } else {
+        char chave[48];
+        snformatar(chave, sizeof chave, "icone.%s", chave_icone(i));
+        int r = config_definir(chave, ed_texto);
+        klog("[GUI] icone renomeado: %s agora se chama %s (%d)\n", chave_icone(i), ed_texto, r);
+    }
+    desenhar_fundo();
+}
+
+/* Uma tecla para a caixa. Devolve false se a tecla não é dela. */
+bool area_editar_tecla(int t)
+{
+    if (ed_icone < 0) return false;
+    int n = (int)txt_tamanho(ed_texto);
+    if (t == '\n') { area_editar_terminar(true); return true; }
+    if (t == TECLA_ESC) { area_editar_terminar(false); return true; }
+    if (ed_tudo && (t == '\b' || t == TECLA_DELETE || (t >= 0x20 && t < 0x7F) || (t >= 0xA0 && t <= 0xFF))) {
+        ed_texto[0] = 0; n = 0; ed_cur = 0;   /* apaga o nome marcado; a letra entra a seguir */
+        ed_tudo = false;
+        if (t == '\b' || t == TECLA_DELETE) return true;
+    }
+    ed_tudo = false;
+    if (t == '\b') {
+        if (ed_cur > 0) { for (int k = ed_cur - 1; k < n; k++) ed_texto[k] = ed_texto[k + 1]; ed_cur--; }
+    } else if (t == TECLA_DELETE) {
+        if (ed_cur < n) for (int k = ed_cur; k < n; k++) ed_texto[k] = ed_texto[k + 1];
+    } else if (t == TECLA_ESQUERDA) { if (ed_cur > 0) ed_cur--; }
+    else if (t == TECLA_DIREITA) { if (ed_cur < n) ed_cur++; }
+    else if (t == TECLA_HOME) ed_cur = 0;
+    else if (t == TECLA_END) ed_cur = n;
+    else if ((t >= 0x20 && t < 0x7F) || (t >= 0xA0 && t <= 0xFF)) {
+        if (n + 1 < (int)sizeof ed_texto) {
+            for (int k = n; k >= ed_cur; k--) ed_texto[k + 1] = ed_texto[k];
+            ed_texto[ed_cur++] = (char)t;
+        }
+    }
+    return true;   /* com a caixa aberta, as outras teclas não vão para as janelas */
+}
+
+/* Para desenhar a caixa: o ícone, o texto, o cursor e se está tudo marcado. */
+int area_editar_estado(const char **texto, int *cur, bool *tudo)
+{
+    *texto = ed_texto; *cur = ed_cur; *tudo = ed_tudo;
+    return ed_icone;
 }
 
 /* ------------------------------------------------------------ fundos (H81)
@@ -354,6 +459,7 @@ static void desenhar_fundo(void)
         int x, y, l, a;
         area_icone_retangulo(i, &x, &y, &l, &a);
         sup_icone(&s, x + (l - ICONE_LADO) / 2, y, px_icone(i), ICONE_LADO);
+        if (i == ed_icone) continue;   /* renomeando: a caixa é desenhada por cima (janelas.c) */
         const char *nome = nome_icone(i);
         texto_com_sombra(&s, x + (l - texto_largura(nome)) / 2, y + 68, nome, 0xFFFFFF);
     }
@@ -376,12 +482,22 @@ bool area_instalados_mudaram(void)
     conferido_em = relogio_tiques();
     /* A Lixeira está cheia? (o que o Arquivos pôs em /.lixeira ou /usb/.lixeira,
      * sem contar o .origens) */
-    bool cheia = false;
     static const char *const lixeiras[2] = { "/.lixeira", "/usb/.lixeira" };
-    for (int q = 0; q < 2 && !cheia; q++) {
+    bool tem[2] = { false, false };
+    for (int q = 0; q < 2; q++) {
         entrada_pasta_t e;
-        for (int k = 0; vfs_listar(lixeiras[q], k, &e) == 1; k++)
-            if (e.nome[0] != '.') { cheia = true; break; }
+        /* /usb não está na árvore da memória: o pendrive se lê pela FAT32. */
+        const char *rel;
+        bool usb = vfs_na_usb(lixeiras[q], &rel);
+        if (q == 1 && !usb) continue;
+        for (int k = 0; (usb ? fat_listar(rel, k, &e) : vfs_listar(lixeiras[q], k, &e)) == 1; k++)
+            if (e.nome[0] != '.') { tem[q] = true; break; }
+    }
+    bool cheia = tem[0] || tem[1];
+    const char *abrir = !tem[0] && tem[1] ? lixeiras[1] : lixeiras[0];
+    if (abrir != lixeira_abrir) {
+        lixeira_abrir = abrir;
+        klog("[GUI] lixeira abre %s\n", abrir);
     }
     if (cheia != lixeira_cheia) {
         lixeira_cheia = cheia;
@@ -618,7 +734,8 @@ void area_icone_abrir(int i)
         klog("[GUI] icone Pendrive -> /bin/arquivos /usb (pid %d)\n", pid);
         return;
     }
-    char *argv[] = { (char *)icones[i].programa + 5, (char *)icones[i].arg, NULL };
-    int pid = processo_executar(icones[i].programa, icones[i].arg ? 2 : 1, argv, NULL);
+    const char *arg = i == ICONE_LIXEIRA ? lixeira_abrir : icones[i].arg;
+    char *argv[] = { (char *)icones[i].programa + 5, (char *)arg, NULL };
+    int pid = processo_executar(icones[i].programa, arg ? 2 : 1, argv, NULL);
     klog("[GUI] icone %s -> %s (pid %d)\n", icones[i].nome, icones[i].programa, pid);
 }

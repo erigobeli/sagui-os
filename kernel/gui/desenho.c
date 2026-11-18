@@ -107,14 +107,36 @@ void sup_texto_forte(superficie_t *s, int x, int y, const char *t, uint32_t cor)
 }
 
 /* Ícone ARGB (tools/mkarte.py): o alfa diz quanto da cor cobre o fundo. */
+/* O mesmo que cor_mistura(a, b, al, 255), sem as três divisões: t / 255,
+ * truncado para zero, é (|t| * 0x8081) >> 23 para todo |t| <= 255 * 255
+ * (conferido para todos). */
+static inline uint32_t mistura_255(uint32_t a, uint32_t b, int al)
+{
+    uint32_t r = 0;
+    for (int s = 0; s <= 16; s += 8) {
+        int ca = (int)((a >> s) & 255), t = ((int)((b >> s) & 255) - ca) * al;
+        int q = (int)(((uint32_t)(t < 0 ? -t : t) * 0x8081u) >> 23);
+        r |= (uint32_t)(ca + (t < 0 ? -q : q)) << s;
+    }
+    return r;
+}
+
 void sup_icone(superficie_t *s, int x, int y, const uint32_t *argb, int lado)
 {
     if (x >= s->cx1 || y >= s->cy1 || x + lado <= s->cx0 || y + lado <= s->cy0) return;
-    for (int j = 0; j < lado; j++)
-        for (int i = 0; i < lado; i++) {
-            uint32_t c = argb[j * lado + i];
-            if (c >> 24) ponto_misturado(s, x + i, y + j, c & 0xFFFFFF, (int)(c >> 24), 255);
+    /* Só as linhas e colunas dentro do recorte; o pixel opaco (a maioria) é
+     * copiado, e o meio transparente é misturado sem divisão. */
+    int j0 = s->cy0 > y ? s->cy0 - y : 0, j1 = s->cy1 < y + lado ? s->cy1 - y : lado;
+    int i0 = s->cx0 > x ? s->cx0 - x : 0, i1 = s->cx1 < x + lado ? s->cx1 - x : lado;
+    for (int j = j0; j < j1; j++) {
+        uint32_t *p = s->px + (y + j) * s->larg + x;
+        const uint32_t *o = argb + j * lado;
+        for (int i = i0; i < i1; i++) {
+            uint32_t c = o[i], al = c >> 24;
+            if (!al) continue;
+            p[i] = al == 255 ? c & 0xFFFFFF : mistura_255(p[i], c & 0xFFFFFF, (int)al);
         }
+    }
 }
 
 /* Escurece um retângulo (alfa de 0 a 256): sombras sem desfoque. */
@@ -153,9 +175,7 @@ void sup_copiar(superficie_t *s, int x, int y, const uint32_t *origem, int larg,
 {
     int x0 = x < s->cx0 ? s->cx0 : x, y0 = y < s->cy0 ? s->cy0 : y;
     int x1 = x + larg > s->cx1 ? s->cx1 : x + larg, y1 = y + alt > s->cy1 ? s->cy1 : y + alt;
-    for (int j = y0; j < y1; j++) {
-        const uint32_t *o = origem + (j - y) * passo + (x0 - x);
-        uint32_t *d = s->px + j * s->larg + x0;
-        for (int i = 0; i < x1 - x0; i++) d[i] = o[i];
-    }
+    if (x0 >= x1) return;
+    for (int j = y0; j < y1; j++)                 /* uma linha por vez, de uma vez só */
+        memcpy(s->px + j * s->larg + x0, origem + (j - y) * passo + (x0 - x), (size_t)(x1 - x0) * 4);
 }

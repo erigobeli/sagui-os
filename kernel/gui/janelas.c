@@ -340,9 +340,9 @@ static void desenhar_doca(void)
     }
 }
 
-/* ------------------------------------------------------------ menu Iniciar (H75, H89) */
+/* ------------------------------------------------------------ menu Iniciar (H75, D056) */
 
-/* H89: o menu do sagui virou um menu Iniciar com todos os programas: uma
+/* D056: o menu do sagui virou um menu Iniciar com todos os programas: uma
  * caixa de busca no alto (o teclado vai para ela enquanto o menu está
  * aberto), as categorias logo abaixo e a grade de ícones. Embaixo, Sobre e
  * Desligar. Os programas instalados no pendrive entram em "Instalados". */
@@ -383,10 +383,19 @@ static const programa_menu_t catalogo[] = {
 #define MENU_X 4
 #define MENU_Y (BARRA_SUPERIOR + 4)
 #define MENU_L 620
-#define MENU_ALT 544
+/* A grade tem até 4 linhas; numa tela baixa (640x480), menos, e os
+ * programas que sobram vão para a página seguinte (setas no rodapé). */
+static int menu_linhas(void)
+{
+    int l = ((int)video_altura() - MENU_Y - 8 - 106 - 70) / 92;
+    return l < 1 ? 1 : l > 4 ? 4 : l;
+}
+#define MENU_ALT (106 + MENU_LINHAS * MENU_CEL_A + 70)
 #define MENU_ITEM 26          /* menu de contexto */
 #define MENU_COLUNAS 5
-#define MENU_LINHAS 4
+#define MENU_LINHAS menu_linhas()
+#define MENU_POR_PAG (MENU_COLUNAS * MENU_LINHAS)
+#define MENU_MAX 64
 #define MENU_CEL_L 108
 #define MENU_CEL_A 92
 #define MENU_GRADE_X (MENU_X + (MENU_L - MENU_COLUNAS * MENU_CEL_L) / 2)
@@ -398,14 +407,17 @@ static const programa_menu_t catalogo[] = {
 #define ALVO_CAT    1000      /* + categoria */
 #define ALVO_SOBRE  2000
 #define ALVO_DESLIGAR 2001
-#define ALVO_BUSCA  2002
+#define ALVO_PAG_ANT  2002
+#define ALVO_PAG_PROX 2003
+#define MENU_PAG_X (MENU_X + 150)   /* "<", "1 de 2" e ">" no meio do rodapé */
+#define ALVO_BUSCA  2004      /* fora de 2002 e 2003, que são o "<" e o ">" */
 
 static bool menu_aberto;
-static int menu_sob = -1, menu_sel, menu_cat;
+static int menu_sob = -1, menu_sel, menu_cat, menu_pag;
 static char menu_busca[40];
 /* A lista filtrada: índices do catálogo, ou -(1 + i) para o ícone i da área
  * de trabalho (programa instalado). */
-static int menu_res[MENU_COLUNAS * MENU_LINHAS], menu_qtd;
+static int menu_res[MENU_MAX], menu_qtd;
 
 static void abrir_programa(const char *caminho);
 
@@ -448,20 +460,23 @@ static void menu_filtrar(void)
 {
     menu_qtd = 0;
     bool buscando = menu_busca[0] != 0;
-    for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
+    for (int i = 0; i < QTD_CATALOGO && menu_qtd < MENU_MAX; i++) {
         const programa_menu_t *p = &catalogo[i];
         if (!buscando && menu_cat != CAT_TODOS && p->cat != menu_cat) continue;
         if (buscando && !contem(p->nome, menu_busca) && !contem(p->palavras, menu_busca)) continue;
         menu_res[menu_qtd++] = i;
     }
-    for (int i = 0; i < area_qtd_icones() && menu_qtd < MENU_COLUNAS * MENU_LINHAS; i++) {
+    for (int i = 0; i < area_qtd_icones() && menu_qtd < MENU_MAX; i++) {
         if (area_icone_tipo(i) != 1) continue;
         if (!buscando && menu_cat != CAT_TODOS && menu_cat != CAT_INSTALADOS) continue;
         if (buscando && !contem(area_icone_nome(i), menu_busca)) continue;
         menu_res[menu_qtd++] = -(1 + i);
     }
     if (menu_sel >= menu_qtd) menu_sel = menu_qtd ? menu_qtd - 1 : 0;
+    menu_pag = menu_sel / MENU_POR_PAG;          /* a página do escolhido */
 }
+
+static int menu_paginas(void) { return menu_qtd ? (menu_qtd + MENU_POR_PAG - 1) / MENU_POR_PAG : 1; }
 
 static bool ha_instalados(void)
 {
@@ -499,6 +514,12 @@ static void nome_cortado(char *saida, int tam, const char *nome, int l)
     }
 }
 
+/* O retângulo toca o recorte do quadro que está sendo desenhado? */
+static bool no_recorte(int x, int y, int l, int a)
+{
+    return x < tela.cx1 && x + l > tela.cx0 && y < tela.cy1 && y + a > tela.cy0;
+}
+
 static void desenhar_menu(void)
 {
     if (!menu_aberto) return;
@@ -532,6 +553,7 @@ static void desenhar_menu(void)
         for (int c = 0; c < QTD_CATS; c++) {
             if (c == CAT_INSTALADOS && !ha_instalados()) continue;
             int l = chip_largura(c);
+            if (!no_recorte(x, MENU_CHIPS_Y, l, 26)) { x += l + CHIP_VAO; continue; }   /* fora do que se redesenha */
             bool ativo = c == menu_cat, sob = menu_sob == ALVO_CAT + c;
             uint32_t fundo = ativo ? tema->destaque : sob ? cor_mistura(caixa, tema->destaque, 1, 3) : caixa;
             suave_ret(&sv, x, MENU_CHIPS_Y, l, 26, 13, fundo, fundo, 256);
@@ -545,8 +567,13 @@ static void desenhar_menu(void)
     }
 
     /* Grade */
-    for (int k = 0; k < menu_qtd; k++) {
-        int cx = MENU_GRADE_X + (k % MENU_COLUNAS) * MENU_CEL_L, cy = MENU_GRADE_Y + (k / MENU_COLUNAS) * MENU_CEL_A;
+    if (menu_pag >= menu_paginas()) menu_pag = menu_paginas() - 1;   /* a tela mudou de tamanho */
+    int k0 = menu_pag * MENU_POR_PAG, k1 = k0 + MENU_POR_PAG < menu_qtd ? k0 + MENU_POR_PAG : menu_qtd;
+    for (int k = k0; k < k1; k++) {
+        int cx = MENU_GRADE_X + ((k - k0) % MENU_COLUNAS) * MENU_CEL_L, cy = MENU_GRADE_Y + ((k - k0) / MENU_COLUNAS) * MENU_CEL_A;
+        /* Célula fora do que se redesenha (o mouse passando muda só uma ou
+         * duas): nada a fazer, nem o nome. */
+        if (!no_recorte(cx, cy, MENU_CEL_L, MENU_CEL_A)) continue;
         bool sob = menu_sob == k, sel = menu_busca[0] && menu_sel == k;
         if (sob || sel)
             suave_ret(&sv, cx + 2, cy + 2, MENU_CEL_L - 4, MENU_CEL_A - 4, 12,
@@ -582,6 +609,16 @@ static void desenhar_menu(void)
     sup_retangulo(&tela, MENU_X + 16, MENU_RODAPE_Y - 6, MENU_L - 32, 1, cor_mistura(tema->topo, tema->topo_relogio, 1, 4));
     sup_icone(&tela, MENU_X + 22, MENU_RODAPE_Y + 9, arte_px_sobre_20, 20);
     sup_texto(&tela, MENU_X + 50, MENU_RODAPE_Y + 11, "SaguiOS", texto);
+    if (menu_paginas() > 1) {
+        for (int b = 0; b < 2; b++) {
+            int x = MENU_PAG_X + b * 92;
+            if (menu_sob == ALVO_PAG_ANT + b) suave_ret(&sv, x, MENU_RODAPE_Y + 4, 32, 32, 10, tema->destaque, tema->destaque, 256);
+            sup_texto(&tela, x + 12, MENU_RODAPE_Y + 12, b ? ">" : "<", menu_sob == ALVO_PAG_ANT + b ? 0xFFFFFF : texto);
+        }
+        char t[16];
+        snformatar(t, sizeof t, "%d de %d", menu_pag + 1, menu_paginas());
+        sup_texto(&tela, MENU_PAG_X + 62 - texto_largura(t) / 2, MENU_RODAPE_Y + 12, t, fraco);
+    }
     static const char *const rot[2] = { "Sobre", "Desligar" };
     for (int b = 0; b < 2; b++) {
         int l = 112, x = MENU_X + MENU_L - 16 - (2 - b) * (l + 8) + 8, y = MENU_RODAPE_Y + 4;
@@ -596,6 +633,50 @@ static void desenhar_menu(void)
 static void redesenhar_corpo_menu(void)
 {
     gui_redesenhar(MENU_X, MENU_BUSCA_Y, MENU_L, MENU_Y + MENU_ALT - MENU_BUSCA_Y);
+}
+
+/* O retângulo de um alvo do menu (célula da grade, categoria ou botão do
+ * rodapé), para redesenhar só ele quando o mouse passa. Antes, cada célula
+ * sob o mouse refazia o corpo do menu e, pelo vidro, o menu inteiro e a
+ * sombra dele. */
+static bool menu_alvo_ret(int alvo, int *x, int *y, int *l, int *a)
+{
+    /* Com as páginas do menu (640x480), o alvo é o índice na lista inteira:
+     * a célula na tela é a posição dentro da página que está aberta. */
+    int k0 = menu_pag * MENU_POR_PAG;
+    if (alvo >= k0 && alvo < k0 + MENU_POR_PAG) {
+        int rel = alvo - k0;
+        *x = MENU_GRADE_X + (rel % MENU_COLUNAS) * MENU_CEL_L;
+        *y = MENU_GRADE_Y + (rel / MENU_COLUNAS) * MENU_CEL_A;
+        *l = MENU_CEL_L; *a = MENU_CEL_A;
+        return true;
+    }
+    if (alvo >= ALVO_CAT && alvo < ALVO_CAT + QTD_CATS) {
+        int cx = MENU_X + 16;
+        for (int c = 0; c < QTD_CATS; c++) {
+            if (c == CAT_INSTALADOS && !ha_instalados()) continue;
+            int cl = chip_largura(c);
+            if (ALVO_CAT + c == alvo) { *x = cx; *y = MENU_CHIPS_Y; *l = cl; *a = 26; return true; }
+            cx += cl + CHIP_VAO;
+        }
+        return false;
+    }
+    if (alvo == ALVO_PAG_ANT || alvo == ALVO_PAG_PROX) {
+        *x = MENU_PAG_X + (alvo - ALVO_PAG_ANT) * 92; *y = MENU_RODAPE_Y + 4; *l = 32; *a = 32;
+        return true;
+    }
+    if (alvo == ALVO_SOBRE || alvo == ALVO_DESLIGAR) {
+        int b = alvo - ALVO_SOBRE, bl = 112;
+        *x = MENU_X + MENU_L - 16 - (2 - b) * (bl + 8) + 8; *y = MENU_RODAPE_Y + 4; *l = bl; *a = 32;
+        return true;
+    }
+    return false;
+}
+
+static void redesenhar_alvo(int alvo)
+{
+    int x, y, l, a;
+    if (menu_alvo_ret(alvo, &x, &y, &l, &a)) gui_redesenhar(x, y, l, a);
 }
 
 static int menu_alvo_em(int x, int y)
@@ -614,9 +695,12 @@ static int menu_alvo_em(int x, int y)
     }
     if (y >= MENU_GRADE_Y && y < MENU_GRADE_Y + MENU_LINHAS * MENU_CEL_A && x >= MENU_GRADE_X &&
         x < MENU_GRADE_X + MENU_COLUNAS * MENU_CEL_L) {
-        int k = (y - MENU_GRADE_Y) / MENU_CEL_A * MENU_COLUNAS + (x - MENU_GRADE_X) / MENU_CEL_L;
+        int k = menu_pag * MENU_POR_PAG + (y - MENU_GRADE_Y) / MENU_CEL_A * MENU_COLUNAS + (x - MENU_GRADE_X) / MENU_CEL_L;
         return k < menu_qtd ? k : -1;
     }
+    if (y >= MENU_RODAPE_Y + 4 && y < MENU_RODAPE_Y + 36 && menu_paginas() > 1)
+        for (int b = 0; b < 2; b++)
+            if (x >= MENU_PAG_X + b * 92 && x < MENU_PAG_X + b * 92 + 32) return ALVO_PAG_ANT + b;
     if (y >= MENU_RODAPE_Y + 4 && y < MENU_RODAPE_Y + 36)
         for (int b = 0; b < 2; b++) {
             int l = 112, bx = MENU_X + MENU_L - 16 - (2 - b) * (l + 8) + 8;
@@ -630,6 +714,7 @@ static void menu_abrir(bool abrir)
     menu_aberto = abrir;
     menu_sob = -1;
     menu_sel = 0;
+    menu_pag = 0;
     menu_busca[0] = 0;
     if (abrir) { menu_filtrar(); klog("[GUI] menu aberto\n"); }
     redesenhar_menu();
@@ -723,7 +808,7 @@ static void abrir_ctx(int icone, int x, int y)
     ctx_item("Abrir", ACAO_ABRIR);
     if (tipo == 2) ctx_item("Remover com segurança", ACAO_DESMONTAR);
     else {
-        ctx_item("Renomear...", ACAO_RENOMEAR);
+        ctx_item("Renomear", ACAO_RENOMEAR);
         if (tipo == 1) ctx_item("Remover do pendrive...", ACAO_REMOVER);
         else ctx_item("Esconder o ícone", ACAO_ESCONDER);
     }
@@ -1088,7 +1173,9 @@ static void expandir_vidro(void)
         if (cruza(0, 0, (int)video_largura(), BARRA_SUPERIOR + R)) gui_redesenhar(0, 0, (int)video_largura(), BARRA_SUPERIOR + R);
         if (doca_ligada && cruza(doca_x - R, doca_y - 30 - R, doca_l + 2 * R, DOCA_A + 30 + 2 * R))
             gui_redesenhar(doca_x - R - DOCA_CELULA, doca_y - 30 - R, doca_l + 2 * R + 2 * DOCA_CELULA, DOCA_A + 30 + 2 * R);
-        if (menu_aberto && cruza(0, 0, MENU_X + MENU_L + R, MENU_Y + MENU_ALT + R)) redesenhar_menu();
+        /* O menu Iniciar não entra aqui: ele é mais alto que VIDRO_ALT_MAX,
+         * então o vidro dele é só a cor, sem desfoque, e um pedaço dele pode
+         * ser refeito sozinho (uma célula sob o mouse, por exemplo). */
         if (ctx_aberto && cruza(ctx_x - R, ctx_y - R, ctx_l + 2 * R, ctx_qtd * MENU_ITEM + 8 + 2 * R)) redesenhar_ctx();
         for (int k = 0; k < qtd; k++) {
             janela_t *j = &janelas[ordem[k]];
@@ -1300,6 +1387,9 @@ static void desenhar_selecao(void);
  * marcados). A ideia é a do commit 0b3c462
  * (ramo area-lixeira, do Robson), refeita para o código atual. */
 static bool laco_ativo, laco_somar;
+static int lento_icone = -1;     /* clique devagar num ícone marcado: renomear daqui a pouco */
+static uint32_t lento_tique;
+static bool fechou_edicao;       /* este clique fechou uma edição */
 static int laco_x0, laco_y0, laco_x1, laco_y1;
 
 static void laco_retangulo(int *x, int *y, int *l, int *a)
@@ -1317,6 +1407,49 @@ static void sujar_laco(void)
     gui_redesenhar(x - 1, y - 1, l + 2, a + 2);
 }
 
+/* Renomear no lugar (area_editar): a caixa com o nome, embaixo do ícone. */
+static bool caixa_nome_retangulo(int *x, int *y, int *l, int *a)
+{
+    const char *t; int cur; bool tudo;
+    int i = area_editar_estado(&t, &cur, &tudo);
+    if (i < 0) return false;
+    int ix, iy, il, ia;
+    area_icone_retangulo(i, &ix, &iy, &il, &ia);
+    int w = texto_largura(t) + 12;
+    if (w < il) w = il;
+    *x = ix + il / 2 - w / 2;
+    if (*x < 2) *x = 2;
+    *y = iy + 64; *l = w; *a = 24;
+    return true;
+}
+
+static void sujar_caixa_nome(void)
+{
+    int x, y, l, a;
+    if (caixa_nome_retangulo(&x, &y, &l, &a)) gui_redesenhar(x - 2, y - 2, l + 4, a + 4);
+}
+
+static void desenhar_caixa_nome(void)
+{
+    int x, y, l, a;
+    if (!caixa_nome_retangulo(&x, &y, &l, &a)) return;
+    const char *t; int cur; bool tudo;
+    area_editar_estado(&t, &cur, &tudo);
+    uint32_t cor = tema->filete ? tema->filete : 0x2FB866;
+    sup_retangulo(&tela, x - 1, y - 1, l + 2, a + 2, cor);
+    sup_retangulo(&tela, x, y, l, a, 0xFFFFFF);
+    int tx = x + (l - texto_largura(t)) / 2;
+    if (tudo && t[0]) {
+        sup_retangulo(&tela, tx - 1, y + 3, texto_largura(t) + 2, a - 6, 0x2F6FD0);
+        sup_texto(&tela, tx, y + 4, t, 0xFFFFFF);
+        return;
+    }
+    sup_texto(&tela, tx, y + 4, t, 0x101820);
+    char antes[48];
+    txt_copia_n(antes, t, (size_t)cur + 1 < sizeof antes ? (size_t)cur + 1 : sizeof antes);
+    sup_retangulo(&tela, tx + texto_largura(antes), y + 3, 2, a - 6, 0x101820);
+}
+
 /* Destaque dos ícones marcados e o laço, por cima do fundo e por baixo das
  * janelas (o laço é da área de trabalho). */
 static void desenhar_selecao(void)
@@ -1330,6 +1463,7 @@ static void desenhar_selecao(void)
         suave_ret(&sv, x, y - 4, l, a + 2, 10, cor, cor, 80);
         suave_contorno(&sv, x, y - 4, l, a + 2, 10, cor, 200);
     }
+    desenhar_caixa_nome();
     if (!laco_ativo) return;
     int x, y, l, a;
     laco_retangulo(&x, &y, &l, &a);
@@ -1359,6 +1493,15 @@ static void tratar_mouse(evento_mouse_t *m)
     if (laco_ativo) { tratar_laco(m); return; }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
+    if (apertou) lento_icone = -1;
+    fechou_edicao = false;
+    if (apertou && area_editando()) {
+        int x, y, l, a;
+        if (caixa_nome_retangulo(&x, &y, &l, &a) && m->x >= x && m->x < x + l && m->y >= y && m->y < y + a) return;
+        area_editar_terminar(true);   /* clicou fora: grava, e o clique segue */
+        fechou_edicao = true;         /* (mas não começa outra edição) */
+        gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+    }
 
     if (redimensionando >= 0) {
         janela_t *j = &janelas[redimensionando];
@@ -1435,6 +1578,13 @@ static void tratar_mouse(evento_mouse_t *m)
                 redesenhar_corpo_menu();
                 return;
             } else if (mi == ALVO_BUSCA) return;
+            else if (mi == ALVO_PAG_ANT || mi == ALVO_PAG_PROX) {
+                int p = menu_pag + (mi == ALVO_PAG_PROX ? 1 : -1);
+                if (p >= 0 && p < menu_paginas()) { menu_pag = p; menu_sel = p * MENU_POR_PAG; }
+                klog("[GUI] menu: pagina %d de %d\n", menu_pag + 1, menu_paginas());
+                redesenhar_corpo_menu();
+                return;
+            }
             else if (mi == ALVO_SOBRE || mi == ALVO_DESLIGAR) {
                 menu_abrir(false);
                 abrir_programa(mi == ALVO_SOBRE ? "/bin/sobre-o-sistema" : "/bin/energia");
@@ -1492,6 +1642,13 @@ static void tratar_mouse(evento_mouse_t *m)
             int ic = area_icone_em(m->x, m->y);
             uint32_t agora = relogio_tiques();
             bool duplo = ic >= 0 && ult_clique_alvo == 1000 + ic && agora - ult_clique_tique < DUPLO_CLIQUE;
+            /* Um clique devagar num ícone que já era o único marcado: renomear
+             * no lugar, se o segundo clique de um duplo clique não vier. */
+            bool era_unico = ic >= 0 && area_icone_selecionado(ic) && area_qtd_selecionados() == 1;
+            if (!duplo && era_unico && !fechou_edicao && (m->mudaram & BOTAO_ESQUERDO) && !(teclado_modificadores() & MOD_SHIFT)) {
+                lento_icone = ic;
+                lento_tique = agora;
+            }
             ult_clique_alvo = ic >= 0 ? 1000 + ic : -999;
             ult_clique_tique = agora;
             if (duplo && (m->mudaram & BOTAO_ESQUERDO)) { area_icone_abrir(ic); ult_clique_alvo = -999; }
@@ -1593,7 +1750,7 @@ static void tratar_mouse(evento_mouse_t *m)
     if (sob != doca_sob) { doca_sob = sob; redesenhar_doca(); }
     int ms = menu_alvo_em(m->x, m->y);
     if (ms == ALVO_BUSCA) ms = -1;
-    if (ms != menu_sob) { menu_sob = ms; redesenhar_corpo_menu(); }
+    if (ms != menu_sob) { redesenhar_alvo(menu_sob); redesenhar_alvo(ms); menu_sob = ms; }
     int cs = ctx_item_em(m->x, m->y);
     if (cs != ctx_sob) { ctx_sob = cs; redesenhar_ctx(); }
     if (sob >= 0) return;
@@ -1686,6 +1843,13 @@ static void tarefa_gerenciador(void *arg)
                 klog("[GUI] Print Screen: captura pid %d\n", pid);
                 continue;
             }
+            if (area_editando()) {   /* renomeando um ícone: a caixa fica com o teclado */
+                sujar_caixa_nome();
+                area_editar_tecla(t);
+                if (area_editando()) sujar_caixa_nome();
+                else gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+                continue;
+            }
             if (atalho(t, teclado_modificadores())) continue;
             if (menu_aberto) { menu_tecla(t); continue; }   /* a busca do menu Iniciar */
             janela_t *j = focada();
@@ -1698,6 +1862,12 @@ static void tarefa_gerenciador(void *arg)
             gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
         }
         anim_tique();
+        if (lento_icone >= 0 && relogio_tiques() - lento_tique >= DUPLO_CLIQUE) {
+            int ic = lento_icone;
+            lento_icone = -1;
+            if (area_icone_selecionado(ic) && area_qtd_selecionados() == 1 && !menu_aberto && area_editar(ic))
+                gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+        }
         /* A doca muda quando janelas abrem e fecham. */
         static int qtd_vista = -1;
         if (qtd != qtd_vista) { qtd_vista = qtd; montar_doca(); redesenhar_doca(); }
@@ -1958,6 +2128,10 @@ int32_t sis_janela_opcoes(uint32_t id, uint32_t opcoes, uint32_t minimos, uint32
     if (!j) return ERRO_INVALIDO;
     if (!(opcoes & JAN_REDIMENSIONAVEL) || j->redimensionavel) return 0;
     uint32_t max_px = (uint32_t)(video_largura() * video_altura());
+    /* Nunca menor que a janela de agora: numa tela de 640x480, o Terminal
+     * já nasce com 760x480, e a reserva menor deixava o programa escrever
+     * além dela (falta de página). */
+    if (max_px < (uint32_t)(j->larg * j->alt)) max_px = (uint32_t)(j->larg * j->alt);
     if (max_px > ESPACO_JANELA / 4) max_px = ESPACO_JANELA / 4;
     uint32_t paginas = (max_px * 4 + PAGINA - 1) / PAGINA;
     uint32_t fis = memfisica_alocar_seguidas(paginas);

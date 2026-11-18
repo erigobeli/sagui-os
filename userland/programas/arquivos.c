@@ -25,7 +25,12 @@ static char nomes[MAX_ITENS][64];
 static uint8_t tipos[MAX_ITENS];
 static uint32_t tamanhos[MAX_ITENS];
 static lista_t lista;
-static uint8_t marc[MAX_ITENS];   /* H91: itens marcados (laço, Ctrl, Shift) */
+/* Renomear devagar: o item clicado e quando; a edição abre se o segundo
+ * clique de um duplo clique não vier nesse tempo (o do kernel é 450 ms). */
+#define DEVAGAR_MS 500
+static int devagar_i = -1;
+static unsigned devagar_ms;
+static uint8_t marc[MAX_ITENS];   /* D058: itens marcados (laço, Ctrl, Shift) */
 static info_disco_t pendrive;
 static bool tem_pendrive;
 static botao_t bt_lado_raiz = { 8, 76, LATERAL - 16, 28, "SaguiOS", false };
@@ -318,7 +323,7 @@ static void abrir_item(int i)
     desenhar_rodape(msg);
 }
 
-/* ------------------------------------------------------------ criar e renomear na linha (H91)
+/* ------------------------------------------------------------ criar e renomear na linha (D058)
  *
  * Como nos outros sistemas: "Nova pasta" e "Novo arquivo de texto" criam o
  * item com um nome livre ("Nova pasta", "Nova pasta (2)"...) e já abrem a
@@ -650,7 +655,7 @@ static void abrir_lixeira(void)
     carregar();
 }
 
-/* ------------------------------------------------------------ menu do botão direito (H91)
+/* ------------------------------------------------------------ menu do botão direito (D058)
  *
  * Num item: abrir, abrir no Editor, renomear, apagar e os "Novo". No vazio:
  * só os "Novo", atualizar e voltar. Com vários marcados, o que vale para um
@@ -729,6 +734,13 @@ int principal(int argc, char **argv)
     evento_t e;
     unsigned ultimo = tempo_ms();
     for (;;) {
+        /* Clique devagar no nome já marcado: se o duplo clique não veio,
+         * abre o nome para editar na linha (como o F2). */
+        if (devagar_i >= 0 && tempo_ms() - devagar_ms >= DEVAGAR_MS) {
+            int i = devagar_i;
+            devagar_i = -1;
+            if (i == lista.sel && !lista.editando && !na_lixeira() && lista_qtd_marcados(&lista) == 1) renomear_na_linha(i);
+        }
         if (proximo_evento(j->id, &e, false) != 1) {
             /* Sem evento: de vez em quando confere se um pendrive entrou ou saiu. */
             if (tempo_ms() - ultimo > 700) {
@@ -742,6 +754,7 @@ int principal(int argc, char **argv)
             dormir(50);
             continue;
         }
+        if (e.tipo == EV_CLIQUE) devagar_i = -1;   /* outro clique (o segundo do duplo, inclusive) cancela */
         int c;
         while (recolher(&c) > 0) ;   /* programas abertos daqui que já terminaram */
         if (e.tipo == EV_FECHAR) break;
@@ -758,10 +771,12 @@ int principal(int argc, char **argv)
             registrar("arquivos: tamanho %dx%d", LARG, ALT);
             continue;
         }
-        /* H91: com um nome sendo editado na linha, o teclado e os cliques vão
+        /* D058: com um nome sendo editado na linha, o teclado e os cliques vão
          * primeiro para a lista (um clique fora termina a edição). */
+        bool fechou_edicao = false;   /* o clique que fecha uma edição não abre outra */
         if (lista.editando && (e.tipo == EV_TECLA || e.tipo == EV_CLIQUE)) {
             int r = lista_tratar(j, &lista, &e);
+            fechou_edicao = r == LISTA_EDITOU;
             if (r == LISTA_EDITOU) terminar_renomear();
             else if (r == LISTA_DESISTIU) desenhar_rodape("Nome mantido.");
             if (e.tipo == EV_TECLA || r == LISTA_NADA) continue;
@@ -814,6 +829,7 @@ int principal(int argc, char **argv)
             continue;
         }
         if (r == LISTA_EDITOU) { terminar_renomear(); continue; }
+        if (r == LISTA_DEVAGAR) { if (!fechou_edicao) { devagar_i = lista.sel; devagar_ms = tempo_ms(); } continue; }
         if (r == LISTA_ATIVOU) abrir_item(lista.sel);
         else if (r == LISTA_SELECIONOU && lista_qtd_marcados(&lista) > 1) {
             char msg[64];
