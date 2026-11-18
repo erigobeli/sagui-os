@@ -26,7 +26,6 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 ### 2.2.0 (em preparação)
 
 Já no código (no `main`), ainda não lançado como imagem:
-
 - **Teclado espanhol** e troca do layout do teclado nas Configurações (H90,
   D051), do fork SaguiOS-Extended de Alejandro Anuncibay.
 - **Comandos de texto ao estilo Unix** (H91), também do fork do Alejandro:
@@ -87,6 +86,11 @@ Já no código (no `main`), ainda não lançado como imagem:
   mouse, com destaque azul, e **Ctrl+C copia** o trecho; depois de um clique
   na conversa, Ctrl+A seleciona tudo. A caixa do pedido continua com o seu
   próprio Ctrl+C/Ctrl+V (H123).
+- **SaguiOS em espanhol e em inglês** (primeira parte, D073): a aba "Idioma e
+  teclado" das Configurações escolhe a língua (`sistema.idioma`); a `ajuda` e
+  as mensagens do shell e as próprias Configurações já saem traduzidas. As
+  traduções são arquivos de texto em `/sistema/idiomas`, fáceis de completar.
+  A ideia veio do fork SaguiOS-Extended de Alejandro Anuncibay.
 
 ## Versões lançadas
 
@@ -98,7 +102,6 @@ mudaram (D041): **o núcleo continua sempre do zero** (kernel, drivers, rede,
 TLS, janelas, `libsagui`, shell, compilador e os programas básicos), mas os
 **aplicativos podem usar código livre de terceiros**, com licença compatível
 com a GPL 3, numa pasta própria em `terceiros/` e com crédito.
-
 - **Cipó**, o navegador: CSS moderno, JavaScript com DOM, fontes TrueType,
   WOFF e WOFF2, Canvas, SVG, WebGL, imagens GIF e WebP e vídeo H.264/AAC
   (motor de Robson de Lima Barbosa; o nome veio de M4R4G0N).
@@ -120,7 +123,6 @@ com a GPL 3, numa pasta própria em `terceiros/` e com crédito.
 ### 2.0 (novembro de 2026): o SaguiOS conectado
 
 Ainda escrita inteiramente por IA, seguindo o `prd2.md`, em nove fases:
-
 - Configurações, desligar e reiniciar pelo ACPI e a lista do hardware.
 - **Som** pela placa Intel HD Audio, com os sons do sistema e dos jogos.
 - **Rede**: placa de rede, IP, DHCP, DNS e `ping`; depois TCP, HTTP e o
@@ -159,7 +161,6 @@ A imagem de boot da 1.0 tinha 575.488 bytes.
 
 A partir da 3.0, o SaguiOS segue o versionamento **MAIOR.MENOR.CORREÇÃO**
 (o "versionamento semântico"):
-
 - só **correções** de erros: muda o último número (3.0.0 vira 3.0.1);
 - **coisas novas** (um programa, um comando, um driver): muda o número do
   meio (3.0.1 vira 3.1.0);

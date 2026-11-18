@@ -2189,3 +2189,62 @@ estendida e cadeia em laço. Para cada um, confere o estado, o problema, o
 maior fim e cada partição com os números exatos. Confere também a linha na
 caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
 confere a contagem no resumo.
+
+## D073. Textos em várias línguas: tr() e tabelas de texto (H124)
+
+O SaguiOS fala português, e o código também. A ideia de mostrar o sistema em
+espanhol e em inglês veio do fork SaguiOS-Extended de Alejandro Anuncibay
+(issue #14). Esta é a primeira parte: a infraestrutura, o shell e as
+Configurações.
+
+- **A língua é uma configuração**, `sistema.idioma` (`pt`, o padrão, `es` ou
+  `en`), como o layout do teclado (D051): nenhuma chamada de sistema nova. Ela
+  é escolhida na aba "Idioma e teclado" das Configurações (a antiga aba
+  "Teclado"; o argumento `teclado` e o nome no log continuam os mesmos, e
+  `idioma` também abre a aba) ou com `config sistema.idioma es`.
+- **O texto em português é a chave.** Os programas continuam escritos com as
+  frases em português e passam cada uma por `tr()`, da libsagui
+  (`idioma.c`). Sem tradução, sai o próprio português; uma tradução que falta
+  nunca quebra nada. Assim o código continua legível e não há números de
+  mensagem para manter em dia.
+- **As traduções são arquivos de texto**, `rootfs/sistema/idiomas/es.txt` e
+  `en.txt` (vão para `/sistema/idiomas`), uma por linha:
+  `texto em português = tradução`. O separador é o primeiro " = "; um " = "
+  do próprio texto vira "\=". Linhas com # são comentários. Quem quiser
+  traduzir mexe só nesses arquivos. Eles são UTF-8 e viram Latin-1 na
+  leitura (D027), a mesma conversão dos outros textos de fora.
+- **Marcas de formato conferidas.** Se a tradução de um texto com %s ou %d não
+  tiver as mesmas marcas, na mesma ordem, ela é ignorada e o problema vai
+  para o log: uma tradução errada não pode fazer o programa ler um argumento
+  que não existe. O teste h124 confere o mesmo no build.
+- **Lida uma vez por programa**, no primeiro `tr()`. Trocar a língua vale
+  para os programas abertos depois; quem quer perceber antes chama
+  `idioma_recarregar()`, que relê a configuração e só relê o arquivo se a
+  língua mudou. O shell faz isso a cada comando (uma leitura de
+  configuração), e as Configurações ao trocar a língua, redesenhando-se na
+  língua nova.
+- **A ajuda do shell**: em português, cada comando aparece com os dois nomes
+  (`ls/listar`); em espanhol e inglês, só o nome Unix, com a descrição
+  traduzida, porque o apelido em português não ajuda quem não lê
+  português. `ajuda ls` mostra o apelido numa linha à parte. Nenhum apelido
+  novo foi inventado: os comandos continuam os mesmos em todas as línguas.
+  As descrições curtas traduzidas cabem na coluna de 17 letras (o teste
+  confere). Os nomes dos erros (`nome_erro`) também passam por `tr()` no
+  shell.
+- **A busca é linear**, comparando o texto inteiro: a tabela tem algumas
+  centenas de linhas e a ajuda faz menos de duzentas buscas, nada que se
+  perceba. Se as tabelas crescerem muito, dá para trocar por uma tabela de
+  espalhamento sem mudar quem chama `tr()`.
+
+**O que fica para a segunda parte:** o kernel (área de trabalho, menu
+Iniciar, barra de cima, nomes dos ícones, caixas de confirmação do kernel),
+que não tem a libsagui e precisaria da tabela lida no próprio kernel; os
+outros programas (Arquivos, Editor, Terminal, jogos, Cipó, instalador, os
+utilitários de `/bin` e as mensagens deles); e as caixas de diálogo comuns
+da `gui.c` (os botões "OK" e "Cancelar").
+
+**Teste.** `h124_idiomas` confere no build que as duas tabelas estão bem
+formadas e têm todos os comandos da ajuda; no shell, troca para `es` e `en`
+com `config` e confere a `ajuda`, `ajuda ls`, a mensagem de comando
+desconhecido, um erro e um shell novo; nas Configurações, troca a língua
+pelos botões e confere o título da janela reaberta.
