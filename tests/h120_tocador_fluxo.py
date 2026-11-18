@@ -124,10 +124,14 @@ def main():
         ini_660 = tons.index(660, ini_440)
     except ValueError:
         raise FalhaTeste("a segunda música (660 Hz) não tocou")
-    seg_440 = sum(1 for k in range(ini_440, ini_660) if tons[k] == 440) * 0.05
+    # Mede do começo do 440 ao último 440 antes do 660, na linha do tempo da
+    # gravação: um silêncio curto no meio (o clique no volume grava a
+    # configuração) não muda essa conta.
+    fim_440 = max(k for k in range(ini_440, ini_660) if tons[k] == 440)
+    seg_440 = (fim_440 + 1 - ini_440) * 0.05
     tocou = t_troca - t_a
     print(f"  440 Hz gravado: {seg_440:.2f} s; tocou {tocou:.2f} s até o clique em >>")
-    verificar(seg_440 >= tocou - 0.6, "a primeira música tocou sem buracos até a troca")
+    verificar(seg_440 >= tocou - 0.6, "a primeira música tocou até a troca")
     # Antes da limpeza: a fila (~340 ms) e o anel repetido durante a leitura
     # do arquivo novo inteiro somavam bem mais que isso.
     verificar(seg_440 <= tocou + 0.35, f"o som velho para logo depois de >> ({seg_440 - tocou:+.2f} s)")
@@ -135,7 +139,7 @@ def main():
     fim_660 = max(k for k, v in enumerate(tons) if v == 660)
     volta = [k for k in range(ini_660, fim_660) if tons[k] == 440]
     verificar(len(volta) <= 1, f"depois da troca, a música velha não volta ({len(volta)} pedaços de 440 Hz no meio)")
-    seg_660 = sum(1 for k in range(ini_660, fim_660 + 1) if tons[k] == 660) * 0.05
+    seg_660 = (fim_660 + 1 - ini_660) * 0.05
     print(f"  660 Hz gravado: {seg_660:.2f} s; tocou {t_troca2 - t_b:.2f} s")
     verificar(seg_660 <= t_troca2 - t_b + 0.35, "a segunda também para logo no >> seguinte")
     depois = sum(1 for k in range(fim_660, len(tons)) if tons[k] == 440)
