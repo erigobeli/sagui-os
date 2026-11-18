@@ -60,11 +60,13 @@ static inline void suave_ret(const suave_t *s, int x, int y, int l, int a, int r
     if (l <= 0 || a <= 0) return;
     if (2 * r > l) r = l / 2;
     if (2 * r > a) r = a / 2;
-    for (int j = 0; j < a; j++) {
-        if (y + j < s->y0 || y + j >= s->y1) continue;
+    /* Só as linhas e colunas dentro do recorte (redesenhar um pedaço
+     * pequeno de uma forma grande não percorre a forma inteira). */
+    int j0 = s->y0 > y ? s->y0 - y : 0, j1 = s->y1 < y + a ? s->y1 - y : a;
+    int i0 = s->x0 > x ? s->x0 - x : 0, i1 = s->x1 < x + l ? s->x1 - x : l;
+    for (int j = j0; j < j1; j++) {
         uint32_t cor = topo == base || a < 2 ? topo : suave_mistura(topo, base, j * 256 / (a - 1));
-        for (int i = 0; i < l; i++) {
-            if (x + i < s->x0 || x + i >= s->x1) continue;
+        for (int i = i0; i < i1; i++) {
             int n = suave_amostras_ret(i, j, l, a, r);
             if (n) suave_ponto(s, x + i, y + j, cor, n * alfa / 16);
         }
@@ -78,9 +80,10 @@ static inline void suave_contorno(const suave_t *s, int x, int y, int l, int a, 
     if (2 * r > l) r = l / 2;
     if (2 * r > a) r = a / 2;
     int ri = r > 0 ? r - 1 : 0;
-    for (int j = 0; j < a; j++) {
-        if (y + j < s->y0 || y + j >= s->y1) continue;
-        for (int i = 0; i < l; i++) {
+    int j0 = s->y0 > y ? s->y0 - y : 0, j1 = s->y1 < y + a ? s->y1 - y : a;   /* só dentro do recorte */
+    int i0 = s->x0 > x ? s->x0 - x : 0, i1 = s->x1 < x + l ? s->x1 - x : l;
+    for (int j = j0; j < j1; j++) {
+        for (int i = i0; i < i1; i++) {
             bool perto = i < r + 1 || i >= l - r - 1 || j < r + 1 || j >= a - r - 1;
             if (!perto) { i = l - r - 2; continue; }
             int fora = suave_amostras_ret(i, j, l, a, r);
