@@ -2189,3 +2189,48 @@ estendida e cadeia em laço. Para cada um, confere o estado, o problema, o
 maior fim e cada partição com os números exatos. Confere também a linha na
 caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
 confere a contagem no resumo.
+
+## D075. O CI em pedaços paralelos e com KVM
+
+**Contexto.** O CI rodava num job só: compilava e passava os ~120 testes um
+atrás do outro, no QEMU sem aceleração (TCG), em uns 45 minutos. O nome
+desse job, "Compilar e testar no Ubuntu 24.04", é o check obrigatório da
+proteção da `main`, então não pode sumir nem ficar verde antes da hora.
+
+**Decisão.**
+- `tests/rodar_todos.py --pedaco N/TOTAL` roda só o N-ésimo de TOTAL
+  pedaços. A divisão usa uma tabela com o tempo de cada teste (o maior de três
+  rodadas recentes): o teste mais demorado que sobrou vai para o pedaço mais
+  vazio, com empate desfeito pelo nome, então toda máquina chega à mesma
+  divisão sem conversar com as outras. Teste fora da tabela conta 40 s. Sem o
+  argumento, roda tudo, como antes; `--listar` só mostra a lista.
+- O workflow tem uma matriz `testes` com 6 pedaços (uns 15 minutos de TCG
+  cada; o maior teste, `h84_video_nativo`, leva 9). Cada pedaço instala as
+  dependências e compila com `make -j$(nproc)` (cerca de um minuto; serial
+  levaria quase três). Compilar em cada pedaço é mais simples que passar o
+  `build/` por artefato: os testes também chamam o `make`, que teria de
+  aceitar as datas dos arquivos baixados.
+- O job final mantém o nome "Compilar e testar no Ubuntu 24.04", depende da
+  matriz (`needs`) e roda com `if: !cancelled()`, para ficar **vermelho**, e
+  não "pulado", quando um pedaço falha. O primeiro passo dele confere
+  `needs.testes.result == success`. A proteção do branch não muda.
+- A entrega da `main` sai da imagem testada no pedaço 1, passada ao job
+  final por um artefato de um dia; o VDI é feito com
+  `make -o build/saguios.img vdi`, que usa a imagem baixada sem recompilar.
+- `tests/qemu.py` usa `-accel kvm` quando `/dev/kvm` abre para leitura e
+  escrita e `SAGUI_KVM` não é `0`; senão a linha de comando fica a de sempre
+  (TCG). No CI, uma regra do udev (a que a documentação do GitHub sugere para
+  emuladores) libera o `/dev/kvm` para o usuário do runner, e a variável
+  `SAGUI_KVM` no topo do workflow liga ou desliga isso. O `rodar_todos.py`
+  escreve qual acelerador está em uso.
+- Os logs de falha continuam iguais, um artefato por pedaço
+  (`...-pedacoN`).
+
+**Por que o KVM pode ser desligado.** Com o KVM, o processador real roda o
+SaguiOS e o ritmo muda muito: um teste que dependa sem querer do ritmo do
+TCG pode falhar. Se isso acontecer, `SAGUI_KVM: "0"` volta ao comportamento
+antigo sem mexer em mais nada, e o teste pode ser corrigido com calma.
+
+**Teste.** `rodar_todos.py --listar` com os 6 pedaços dá os 120 testes, sem
+repetição; o pedaço 1 rodou inteiro na máquina de desenvolvimento (TCG). O
+KVM e o job final só podem ser conferidos no próprio GitHub Actions.
