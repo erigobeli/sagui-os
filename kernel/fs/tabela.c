@@ -223,17 +223,17 @@ int32_t sis_disco_tabela(uint32_t pnome, uint32_t ptab, uint32_t tam, uint32_t d
 {
     (void)dd; (void)e;
     char nome[8];
-    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    int r = usuario_texto((const char *)(uintptr_t)pnome, nome, sizeof nome);
     if (r < 0) return r;
     if (tam < sizeof(tabela_disco_t)) return ERRO_INVALIDO;
-    if (!usuario_ok((void *)ptab, sizeof(tabela_disco_t), true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)ptab, sizeof(tabela_disco_t), true)) return ERRO_ENDERECO;
     disco_t *d = disco_por_nome(nome);
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
     if (d->tam_setor != 512) return ERRO_INVALIDO;
     tabela_disco_t *k = kmalloc(sizeof *k);
     if (!k) return ERRO_SEM_MEMORIA;
     r = tabela_ler(d, k);
-    if (r == 0) memcpy((void *)ptab, k, sizeof *k);
+    if (r == 0) memcpy((void *)(uintptr_t)ptab, k, sizeof *k);
     kfree(k);
     return r;
 }

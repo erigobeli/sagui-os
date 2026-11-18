@@ -2232,9 +2232,9 @@ int32_t sis_ler_tela(uint32_t ppx, uint32_t n, uint32_t c, uint32_t d, uint32_t 
     int32_t tamanho = (int32_t)(l | a << 16);
     if (n == 0) return tamanho;
     if (n < l * a * 4) return ERRO_INVALIDO;
-    if (!usuario_ok((void *)ppx, l * a * 4, true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)ppx, l * a * 4, true)) return ERRO_ENDERECO;
     bool i0 = int_salva_desliga();
-    memcpy((void *)ppx, video_buffer(), l * a * 4);
+    memcpy((void *)(uintptr_t)ppx, video_buffer(), l * a * 4);
     int_restaura(i0);
     return tamanho;
 }

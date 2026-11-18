@@ -394,12 +394,12 @@ bool disco_eh_origem(const disco_t *d)
 int32_t sis_disco_setores(uint32_t pped, uint32_t b, uint32_t c, uint32_t dd, uint32_t e)
 {
     (void)b; (void)c; (void)dd; (void)e;
-    pedido_setores_t *p = (pedido_setores_t *)pped;
+    pedido_setores_t *p = (pedido_setores_t *)(uintptr_t)pped;
     if (!usuario_ok(p, sizeof *p, false)) return ERRO_ENDERECO;
     char nome[8];
     txt_copia_n(nome, p->nome, sizeof nome);
     uint32_t lba = p->lba, n = p->n, esc = p->escrever;
-    void *buf = p->buf;
+    void *buf = (void *)(uintptr_t)p->buf;
     disco_t *d = disco_por_nome(nome);
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
     if (n == 0 || n > 128 || d->tam_setor != 512 || lba + n < lba || lba + n > d->setores) return ERRO_INVALIDO;
@@ -427,7 +427,7 @@ int32_t sis_disco_reler(uint32_t pnome, uint32_t b, uint32_t c, uint32_t dd, uin
 {
     (void)b; (void)c; (void)dd; (void)e;
     char nome[8];
-    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    int r = usuario_texto((const char *)(uintptr_t)pnome, nome, sizeof nome);
     if (r < 0) return r;
     disco_t *d = disco_por_nome(nome);
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
@@ -472,7 +472,7 @@ int32_t sis_disco_liberar(uint32_t pnome, uint32_t presumo, uint32_t c, uint32_t
 {
     (void)c; (void)dd; (void)e;
     char nome[8];
-    int r = usuario_texto((const char *)pnome, nome, sizeof nome);
+    int r = usuario_texto((const char *)(uintptr_t)pnome, nome, sizeof nome);
     if (r < 0) return r;
     disco_t *d = disco_por_nome(nome);
     if (!d || !d->presente) return ERRO_NAO_EXISTE;
@@ -489,7 +489,7 @@ int32_t sis_disco_liberar(uint32_t pnome, uint32_t presumo, uint32_t c, uint32_t
         char resumo[CONF_RESUMO_MAX];
         resumo[0] = 0;
         if (presumo) {
-            r = usuario_texto((const char *)presumo, resumo, sizeof resumo);
+            r = usuario_texto((const char *)(uintptr_t)presumo, resumo, sizeof resumo);
             if (r < 0) return r;
         }
         static char l[CONF_LINHAS][CONF_COLUNAS + 1];
