@@ -5,7 +5,7 @@
 ; fixo no código além do próprio LBA 1. Os mesmos offsets estão repetidos no
 ; script Python (classe Cabecalho); se mudar aqui, mude lá.
 
-CAB_LBA             equ 1          ; único LBA fixo do projeto
+CAB_LBA             equ 1          ; na imagem; o MBR lê o LBA do seu campo 0x1B4 (D067)
 CAB_ENDERECO        equ 0x7E00     ; onde o MBR deixa o cabeçalho na memória
 CAB_ASSINATURA_VAL  equ 0x44484753 ; 'SGHD' em little-endian
 

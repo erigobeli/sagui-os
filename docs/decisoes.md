@@ -2189,3 +2189,118 @@ estendida e cadeia em laço. Para cada um, confere o estado, o problema, o
 maior fim e cada partição com os números exatos. Confere também a linha na
 caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
 confere a contagem no resumo.
+
+## D067. Instalar no espaço livre, sem tocar nas partições de hoje
+
+**Contexto.** Até a D064, o instalador só sabia apagar o disco inteiro. A
+revisão do #53 mostrou o que pode dar errado ao instalar ao lado de outro
+sistema:
+- B2: o espaço "livre" era medido a partir do fim da última partição
+  percorrida, e caía dentro de uma partição maior;
+- B3: as entradas da tabela eram regravadas cortadas ou descartadas;
+- o identificador do disco era trocado, o que quebra o BCD do Windows e o
+  PARTUUID do Linux;
+- o setor 1, onde o GRUB guarda o core.img, era sobrescrito.
+
+**Decisão.**
+- **O passo "Partições".** Entre o Disco e o Resumo, ele mostra a tabela que
+  o kernel leu (D066), com as regiões livres. A pessoa escolhe entre "Usar
+  o espaço livre" e "Apagar o disco inteiro". O espaço livre vem marcado
+  quando pode ser usado, porque não apaga nada de ninguém.
+- **Quando o espaço livre é oferecido:** só com tabela MBR conferida pelo
+  kernel, duas entradas vazias e uma região de pelo menos o tamanho do
+  sistema mais 64 MB. Fora disso, a opção aparece desligada, com o motivo.
+- **A região livre.** As primárias, a estendida inclusive, são percorridas
+  pelo início, e a região começa no maior fim visto até ali (B2). O
+  instalador usa a maior região, alinhada em 1 MB.
+- **O cabeçalho de boot sai do setor 1.** O MBR do SaguiOS passa a ler o LBA
+  do cabeçalho de um campo em 0x1B4, que vale 1 na imagem. No disco
+  instalado, o cabeçalho fica no primeiro setor da partição do sistema. Com
+  isso, o instalador nunca grava o setor 1, nos dois modos.
+- **O setor 0 no espaço livre.** Só o código de boot (0 a 0x1B3) muda. O
+  identificador e as entradas de hoje ficam byte a byte (B3), e as do
+  SaguiOS vão nas entradas vazias. A do sistema só fica ativa se nenhuma
+  outra for. O setor 0 antigo é guardado em `.saguios/mbr-antes.bin`: com
+  ele de volta, o boot de antes volta inteiro, porque o setor 1 não foi
+  tocado.
+- **Antes de gravar** (o MBR conferido antes): logo depois da liberação, a
+  tabela é lida de novo pelo kernel e comparada com a do resumo. No espaço
+  livre, cada entrada é conferida também no próprio setor 0. Se algo
+  mudou, nada é gravado.
+- **No kernel:** num disco interno, a FAT32 com rótulo SAGUIOS ganha de
+  outra FAT32 que venha antes na tabela.
+
+**Limites.**
+- A troca do código de boot faz o outro sistema deixar de ligar por este
+  disco. O resumo e a janela dizem isso, e o setor 0 antigo fica guardado.
+  Um menu de boot com os dois sistemas fica para depois.
+- A checagem do maior fim (B2) é uma segunda proteção. Uma partição dentro
+  de outra já deixa a tabela não conferida (D066), e aí o espaço livre nem
+  é oferecido.
+
+**Teste.**
+- `h113_espaco_livre`, num disco de 512 MB com:
+  - bytes conhecidos nos setores 1 a 62;
+  - uma FAT32 em 63;
+  - 50 MB livres;
+  - uma estendida com uma lógica ext3 de verdade e outra lógica;
+  - 212 MB livres no fim.
+
+  O teste confere:
+  - que a maior região é a escolhida;
+  - que o Esc deixa o disco igual;
+  - que, depois de instalar, todo byte fora do setor 0 e da região do
+    SaguiOS está igual;
+  - as entradas e o identificador byte a byte;
+  - o `fsck.vfat` e o `e2fsck`;
+  - o `mbr-antes.bin`;
+  - o boot só pelo disco, que monta a FAT32 do SaguiOS e não a outra.
+
+  Em cinco discos (partição dentro de outra, 4 primárias, GPT, NTFS no
+  disco inteiro, entrada além do fim), a opção vem desligada, o clique nela
+  não muda nada e cada disco fica byte a byte igual.
+- `h110` confere o cabeçalho no início da partição e o setor 1 zerado no
+  modo disco inteiro.
+
+## D068. O editor de partições do instalador: excluir e usar o lugar
+
+**Contexto.** No #53, o editor tinha "Excluir", "Nova" e "Formatar para o
+SaguiOS". Excluir ou formatar a estendida apagava as lógicas sem a pessoa
+vê-las (B4). O resumo também podia omitir uma exclusão.
+
+**Decisão.**
+- **A terceira opção.** O passo Partições ganha "Excluir partições e usar o
+  lugar delas". Ela só aparece com tabela MBR conferida pelo kernel (D066).
+- **Marcar o que sai.** Um clique numa partição da lista a marca para sair,
+  e outro clique desmarca. Uma lógica não sai sozinha: o clique nela marca a
+  estendida, e a lista mostra a estendida e todas as lógicas como "sai".
+- **Onde vai o SaguiOS.** Na maior região livre, contando o lugar das
+  excluídas (a mesma conta da D067). Sem lugar, o Continuar não avança, e a
+  opção diz por quê.
+- **"Formatar para o SaguiOS" e "Nova" não existem como botões.** Formatar
+  é o mesmo que excluir e deixar o SaguiOS ir no lugar. Criar partição para
+  outro sistema não é trabalho do instalador.
+- **O resumo diz cada exclusão.** A primeira linha, que também vai para a
+  caixa do kernel, cita todas: as primárias pelo número e as lógicas pelo
+  intervalo ("excluir a partição 2 de hd1 (e as lógicas 5 a 6)"). A janela
+  lista cada uma com o formato, o tamanho e o lugar.
+- **O que é gravado.** As entradas das excluídas são zeradas, e as do
+  SaguiOS vão nelas ou nas vazias. Todo o resto do setor 0 segue a D067.
+- **Uma última conta antes de gravar.** O lugar do SaguiOS não pode encostar
+  em nenhuma partição que fica. Se encostar, nada é gravado.
+
+**Teste.** `h114_editor` usa um disco de 400 MB com uma FAT32 em 63 e uma
+estendida com duas lógicas, uma delas ext3. Só sobram 10 MB livres. O
+teste confere:
+- que o espaço livre é recusado;
+- que, sem nada marcado, o Continuar não avança;
+- que um clique marca e outro desmarca;
+- que o clique na lógica marca a estendida;
+- a linha da caixa do kernel com a estendida e as lógicas;
+- que o Esc deixa o disco igual;
+- depois de instalar: a entrada 1 e o identificador byte a byte, o SaguiOS
+  na entrada da estendida, a FAT32 de hoje e todo o disco fora do setor 0 e
+  da região do SaguiOS iguais, `fsck.vfat` nas duas FAT32, o
+  `mbr-antes.bin` e o boot só pelo disco.
+
+Sem as lógicas na linha do resumo, o teste falha.
