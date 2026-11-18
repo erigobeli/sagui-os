@@ -2,7 +2,8 @@
 qemu.py - controle do QEMU para os testes automáticos do SaguiOS.
 
 Cada teste cria uma Maquina, que:
-  - liga o QEMU sem janela (-display none), sem KVM;
+  - liga o QEMU sem janela (-display none), com KVM quando a máquina deixa
+    (veja acelerador(); D075) e com a emulação pura (TCG) senão;
   - manda a serial COM1 para um arquivo (o log do kernel);
   - abre o monitor do QEMU num socket Unix, usado para enviar teclas, mover o
     mouse, ler a memória e tirar capturas de tela (screendump -> PNG).
@@ -183,6 +184,23 @@ def imagem_console():
     return imagem_de_teste("", ["--vesa", "--console"])
 
 
+def acelerador():
+    """Escolhe o acelerador do QEMU: "kvm" ou "tcg" (D075).
+
+    Com o KVM, o processador de verdade roda o código do SaguiOS, e o QEMU só
+    imita os dispositivos; é várias vezes mais rápido que o TCG, que traduz
+    instrução por instrução. O KVM só é usado se o /dev/kvm existe e este
+    usuário pode abri-lo para leitura e escrita (no CI, uma regra do udev
+    libera isso). SAGUI_KVM=0 força o TCG, o modo de sempre, para comparar ou
+    para contornar um teste que dependa do ritmo da emulação.
+    """
+    if os.environ.get("SAGUI_KVM", "1") == "0":
+        return "tcg"
+    if os.access("/dev/kvm", os.R_OK | os.W_OK):
+        return "kvm"
+    return "tcg"
+
+
 class FalhaTeste(Exception):
     pass
 
@@ -211,6 +229,10 @@ class Maquina:
                "-serial", "file:" + self.arq_serial,
                "-monitor", f"unix:{self.sock_monitor},server,nowait",
                ] + ([] if self.reiniciar else ["-no-reboot"])
+        # Sem o KVM, a linha de comando fica exatamente a de antes (o TCG é o
+        # padrão do QEMU).
+        if acelerador() == "kvm":
+            cmd += ["-accel", "kvm"]
         if self.modo == "ide":
             cmd += ["-drive", f"format={self.formato},file={self.imagem},if=ide,index=0,snapshot=on"]
         elif self.modo == "usb":
