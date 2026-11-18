@@ -10,6 +10,11 @@ uint32_t relogio_tiques(void);
 uint32_t relogio_segundos(void);
 void     relogio_dormir_ms(uint32_t ms);
 
+/* Tempo medido pelo contador do PIT: funciona com as interrupções desligadas. */
+typedef struct { uint16_t ult; uint32_t pulsos; } cronometro_t;
+void     cronometro_iniciar(cronometro_t *c);
+uint32_t cronometro_ms(cronometro_t *c);
+
 typedef struct {
     uint16_t ano;
     uint8_t  mes, dia, hora, minuto, segundo;

@@ -707,6 +707,46 @@ def visualizador(t):
     t.poligono([(18, 43), (18, 38), (26, 29), (33, 37), (37, 33), (46, 41), (46, 43)], vertical(0x3CB868, 0x1A7A40, 29, 43))
 
 
+def _hd(t, dx=0.0, dy=0.0, e=1.0):
+    """O disco rígido aberto, visto de cima: a caixa prateada, o prato
+    espelhado com o brilho, o eixo e o braço da cabeça de leitura."""
+    def p(x, y):
+        return (CX + (x - CX) * e + dx, CY + (y - CY) * e + dy)
+    x0, y0 = p(17, 14)
+    x1, y1 = p(47, 49)
+    t.ret(x0 + 0.8, y0 + 1.6, x1 + 0.8, y1 + 1.6, 3.2 * e, 0x0E1A28, 0.35)      # sombra
+    t.ret(x0, y0, x1, y1, 3.2 * e, vertical(0xF4F7FA, 0xB9C4CF, y0, y1))         # a caixa
+    t.ret(x0 + 1.4 * e, y0 + 1.4 * e, x1 - 1.4 * e, y1 - 1.4 * e, 2.2 * e, vertical(0xDDE4EA, 0xA9B5C1, y0, y1))
+    cx, cy = p(32, 28.5)
+    r = 11.5 * e
+    t.disco(cx, cy, r, diagonal(0xFAFCFE, 0x8C9BAA, cx - r, cy - r, cx + r, cy + r))   # o prato
+    t.anel(cx, cy, r - 0.4 * e, 0.8 * e, 0x7A8897, opacidade=0.6)
+    t.anel(cx, cy, 7 * e, 0.6 * e, 0xFFFFFF, -2.6, -1.2, opacidade=0.8)          # o brilho
+    t.disco(cx, cy, 2.6 * e, 0x55626F)                                            # o eixo
+    t.disco(cx, cy, 1.1 * e, 0xD8DFE6)
+    bx, by = p(42.5, 43)
+    t.disco(bx, by, 2.4 * e, 0x55626F)                                            # o pivô do braço
+    t.traco([(bx, by), p(36, 31.5)], 2.2 * e, 0x3B4652)                           # o braço
+    for k in range(4):                                                            # os parafusos
+        sx, sy = p(19.6 if k % 2 == 0 else 44.4, 16.6 if k < 2 else 46.4)
+        t.disco(sx, sy, 0.9 * e, 0x7A8897)
+
+
+def disco(t):
+    """Disco rígido (os discos internos, no instalador e no Arquivos)."""
+    estilo_app(t, 0x6F8296, 0x34465A)
+    _hd(t)
+
+
+def instalar_sistema(t):
+    """Instalar o SaguiOS: o disco rígido e uma seta verde descendo nele."""
+    estilo_app(t, 0x3CC46E, 0x0B7A3E)
+    _hd(t, dy=4.5, e=0.82)
+    seta = vertical(0xFFFFFF, 0xE8F6EC, 9, 27)
+    t.poligono([(27.5, 10), (36.5, 10), (36.5, 19.5), (42, 19.5), (32, 28.5), (22, 19.5), (27.5, 19.5)], 0x064A26, 0.35)
+    t.poligono([(27, 9), (37, 9), (37, 18.5), (42.5, 18.5), (32, 27.5), (21.5, 18.5), (27, 18.5)], seta)
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
           ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive),
           ("configuracoes", configuracoes), ("cipo", cipo), ("instalado", instalado), ("tocador", tocador),
@@ -714,7 +754,7 @@ ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("
           ("chip8", chip8), ("jclic", jclic),
           ("chuva", chuva), ("triangulos", triangulos), ("componentes", componentes), ("energia", energia),
           ("lupa", lupa), ("lixeira", lixeira), ("lixeira_cheia", lixeira_cheia),
-          ("visualizador", visualizador)]
+          ("visualizador", visualizador), ("disco", disco), ("instalar_sistema", instalar_sistema)]
 TAMANHOS = [(64, ""), (40, "_40"), (20, "_20")]   # 20: o rodapé e a busca do menu Iniciar
 
 

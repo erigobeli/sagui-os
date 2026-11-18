@@ -32,11 +32,12 @@ def main():
         m.esperar_serial("[GUI] lixeira abre /usb/.lixeira", 15)
         verificar("[GUI] lixeira cheia" in m.serial(), "com coisas só no pendrive, o ícone fica cheio")
         verificar(True, "e passa a abrir a lixeira do pendrive")
-        # Com o pendrive, a Lixeira é o 10º ícone (sempre o último): 2ª coluna,
-        # 3ª linha (7 por coluna em 1024x768, como no h103).
+        # A Lixeira é o 9º ícone (sempre o último da coluna da esquerda; o
+        # pendrive fica na coluna da direita, D065): 2ª coluna, 2ª linha
+        # (7 por coluna em 1024x768, como no h103).
         time.sleep(0.5)
         n = len(m.serial())
-        m.clique(20 + 110 + 30, 40 + 2 * 92 + 30, duplo=True)
+        m.clique(20 + 110 + 30, 40 + 1 * 92 + 30, duplo=True)
         m.esperar_serial("[GUI] icone Lixeira -> /bin/arquivos", 10)
         m.esperar_serial("arquivos: pasta /usb/.lixeira (1 itens)", 30)
         verificar(True, "o duplo clique no ícone abre a lixeira do pendrive, com o arquivo")
