@@ -5079,6 +5079,22 @@ static fonte_t *fonte_da_url(motor_t *m, const char *url, const char *fam)
 }
 static bool fonte_em_cache(fonte_t *f) { for (int i = 0; i < n_cache_f; i++) if (cache_f[i].f == f) return true; return false; }
 
+/* As próximas imagens que motor_imagens vai pedir, para o navegador
+ * buscá-las juntas (H129). Enquanto falta uma fonte da web, nenhuma: as
+ * fontes vêm antes, uma a uma. */
+int motor_imagens_proximas(motor_t *m, const char **urls, int max)
+{
+    for (int i = 0; i < m->n_faces; i++)
+        if (!m->faces[i].tentou && m->faces[i].quer && m->g.baixar) return 0;
+    int k = 0;
+    for (int i = 0; i < m->n_imgs && k < max; i++) {
+        imagem_m *im = &m->imgs[i];
+        if (im->tentou || comeca_com(im->url, "data:")) continue;
+        urls[k++] = im->url;
+    }
+    return k;
+}
+
 int motor_imagens(motor_t *m, int max)
 {
     int k = 0;

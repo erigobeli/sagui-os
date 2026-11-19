@@ -209,6 +209,61 @@ static void guardar_conexao(const url_t *u, canal_t *c)
     g->c.pos = g->c.tam = 0;
 }
 
+/* O corpo da resposta: em pedaços, com Content-Length ou até fechar. */
+static int ler_corpo(canal_t *c, long tamanho, bool pedacos, http_receptor_t receptor, void *ctx, http_resposta_t *resp)
+{
+    char bloco[4096];
+    char linha[512];
+    int ok = 0;
+    if (pedacos) {
+        for (;;) {
+            if (linha_http(c, linha, sizeof linha) < 0) { ok = ERRO_REDE; break; }
+            unsigned t = 0;
+            for (const char *p = linha; *p; p++) {
+                char h = *p;
+                if (h >= '0' && h <= '9') t = t * 16 + (unsigned)(h - '0');
+                else if (h >= 'a' && h <= 'f') t = t * 16 + (unsigned)(h - 'a' + 10);
+                else if (h >= 'A' && h <= 'F') t = t * 16 + (unsigned)(h - 'A' + 10);
+                else break;
+            }
+            if (t == 0) {
+                /* os cabeçalhos finais, se houver, até a linha vazia */
+                while (linha_http(c, linha, sizeof linha) > 0) {}
+                break;
+            }
+            while (t > 0) {
+                unsigned k = 0;
+                while (k < t && k < sizeof bloco) {
+                    int b = ler_byte(c);
+                    if (b < 0) { ok = ERRO_REDE; break; }
+                    bloco[k++] = (char)b;
+                }
+                if (ok < 0) break;
+                if (receptor(ctx, bloco, k) < 0) { ok = ERRO_INVALIDO; break; }
+                resp->recebidos += k;
+                t -= k;
+            }
+            if (ok < 0) break;
+            linha_http(c, linha, sizeof linha);   /* o \r\n depois do pedaço */
+        }
+    } else {
+        for (;;) {
+            if (tamanho >= 0 && (long)resp->recebidos >= tamanho) break;
+            unsigned k = 0;
+            /* O que já está no buffer da leitura de linhas vem primeiro. */
+            while (c->pos < c->tam && k < sizeof bloco && (tamanho < 0 || (long)(resp->recebidos + k) < tamanho)) bloco[k++] = c->buf[c->pos++];
+            if (k == 0) {
+                int b = ler_byte(c);
+                if (b < 0) { if (tamanho >= 0) ok = ERRO_REDE; break; }
+                bloco[k++] = (char)b;
+            }
+            if (receptor(ctx, bloco, k) < 0) { ok = ERRO_INVALIDO; break; }
+            resp->recebidos += k;
+        }
+    }
+    return ok;
+}
+
 /* ------------------------------------------------------------ pedido */
 
 int http_obter(const char *url_inicial, http_receptor_t receptor, void *ctx, http_resposta_t *resp)
@@ -232,7 +287,7 @@ int http_pedir(const char *metodo, const char *url_inicial, const char *extra, c
 int http_pedir_completo(const char *metodo, const char *url_inicial, const char *extra, const void *corpo, unsigned n_corpo,
                         http_receptor_t receptor, void *ctx, http_resposta_t *resp, http_cabecalhos_t cabecalhos)
 {
-    char url[512];
+    char url[MAX_URL_HTTP];
     copia_texto(url, url_inicial, sizeof url);
     memset(resp, 0, sizeof *resp);
     for (int redirecionamentos = 0; redirecionamentos < 6; redirecionamentos++) {
@@ -277,7 +332,7 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
         long tamanho = -1;
         bool pedacos = false;
         bool fica = guardar_ligado && compara_texto_n(linha, "HTTP/1.1", 8) == 0;   /* a conexão pode ser guardada */
-        char destino[512] = "";
+        char destino[MAX_URL_HTTP] = "";
         resp->tipo[0] = 0;
         while (linha_http(&c, linha, sizeof linha) > 0) {
             const char *v;
@@ -301,55 +356,7 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
             continue;
         }
         copia_texto(resp->url_final, url, sizeof resp->url_final);
-        /* Corpo. */
-        char bloco[4096];
-        int ok = 0;
-        if (pedacos) {
-            for (;;) {
-                if (linha_http(&c, linha, sizeof linha) < 0) { ok = ERRO_REDE; break; }
-                unsigned t = 0;
-                for (const char *p = linha; *p; p++) {
-                    char h = *p;
-                    if (h >= '0' && h <= '9') t = t * 16 + (unsigned)(h - '0');
-                    else if (h >= 'a' && h <= 'f') t = t * 16 + (unsigned)(h - 'a' + 10);
-                    else if (h >= 'A' && h <= 'F') t = t * 16 + (unsigned)(h - 'A' + 10);
-                    else break;
-                }
-                if (t == 0) {
-                    /* os cabeçalhos finais, se houver, até a linha vazia */
-                    while (linha_http(&c, linha, sizeof linha) > 0) {}
-                    break;
-                }
-                while (t > 0) {
-                    unsigned k = 0;
-                    while (k < t && k < sizeof bloco) {
-                        int b = ler_byte(&c);
-                        if (b < 0) { ok = ERRO_REDE; break; }
-                        bloco[k++] = (char)b;
-                    }
-                    if (ok < 0) break;
-                    if (receptor(ctx, bloco, k) < 0) { ok = ERRO_INVALIDO; break; }
-                    resp->recebidos += k;
-                    t -= k;
-                }
-                if (ok < 0) break;
-                linha_http(&c, linha, sizeof linha);   /* o \r\n depois do pedaço */
-            }
-        } else {
-            for (;;) {
-                if (tamanho >= 0 && (long)resp->recebidos >= tamanho) break;
-                unsigned k = 0;
-                /* O que já está no buffer da leitura de linhas vem primeiro. */
-                while (c.pos < c.tam && k < sizeof bloco && (tamanho < 0 || (long)(resp->recebidos + k) < tamanho)) bloco[k++] = c.buf[c.pos++];
-                if (k == 0) {
-                    int b = ler_byte(&c);
-                    if (b < 0) { if (tamanho >= 0) ok = ERRO_REDE; break; }
-                    bloco[k++] = (char)b;
-                }
-                if (receptor(ctx, bloco, k) < 0) { ok = ERRO_INVALIDO; break; }
-                resp->recebidos += k;
-            }
-        }
+        int ok = ler_corpo(&c, tamanho, pedacos, receptor, ctx, resp);
         if (fica && ok == 0 && c.pos == c.tam) guardar_conexao(&u, &c);
         else canal_fechar(&c);
         if (ok < 0 && !resp->erro[0]) copia_texto(resp->erro, ok == ERRO_INVALIDO ? "parado por quem pediu" : "a conexão caiu no meio", sizeof resp->erro);
@@ -357,4 +364,84 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
     }
     copia_texto(resp->erro, "redirecionamentos demais", sizeof resp->erro);
     return ERRO_REDE;
+}
+
+/* ------------------------------------------------------------ lote (H129) */
+
+typedef struct { http_lote_receptor_t r; void *ctx; int i; } ponte_lote_t;
+static int receber_lote(void *p, const char *dados, unsigned n)
+{
+    ponte_lote_t *pl = p;
+    return pl->r(pl->ctx, pl->i, dados, n);
+}
+
+/* Vários GET ao mesmo servidor de uma vez, pela mesma conexão: os pedidos
+ * saem todos juntos e as respostas chegam na mesma ordem (pipelining do
+ * HTTP/1.1). Para n imagens pequenas, isso troca n idas e voltas pela rede
+ * por uma. Só entram os endereços do mesmo servidor do primeiro; cada
+ * resposta vai para fim(ctx, i, resp, ok) depois do corpo, que chega por
+ * receptor(ctx, i, ...). Devolve quantas respostas chegaram inteiras: as que
+ * faltarem (o servidor fechou no meio, um redirecionamento) o chamador pede
+ * de novo, uma a uma. */
+int http_lote(const char *const *urls, const char *const *extras, int n,
+              http_lote_receptor_t receptor, http_lote_fim_t fim, void *ctx)
+{
+    if (n <= 0) return 0;
+    url_t u0;
+    if (url_separar(urls[0], &u0) < 0) return 0;
+    canal_t c;
+    bool reusada = guardar_ligado && pegar_guardada(&u0, &c);
+    if (!reusada) {
+        if (guardar_ligado && u0.seguro) abrir_vaga_tls();
+        char erro[128];
+        if (canal_abrir(&c, &u0, erro, sizeof erro) < 0) return 0;
+    }
+    bool porta_padrao = u0.porta == (u0.seguro ? 443 : 80);
+    char host[160];
+    if (porta_padrao) copia_texto(host, u0.servidor, sizeof host);
+    else formatar_texto(host, sizeof host, "%s:%d", u0.servidor, u0.porta);
+    /* Os pedidos: só os do mesmo servidor, em ordem, até o primeiro de outro. */
+    int m = 0;
+    for (; m < n; m++) {
+        url_t u;
+        if (url_separar(urls[m], &u) < 0 || u.seguro != u0.seguro || u.porta != u0.porta || compara_texto(u.servidor, u0.servidor) != 0) break;
+        char pedido[6144];
+        int k = formatar_texto(pedido, sizeof pedido,
+                               "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: SaguiOS/3.0.0 (+https://github.com/erigobeli/sagui-os)\r\nAccept: */*\r\n"
+                               "Accept-Encoding: identity\r\nConnection: keep-alive\r\n%s\r\n", u.caminho, host,
+                               extras && extras[m] ? extras[m] : "");
+        if (k >= (int)sizeof pedido - 1) break;
+        if (canal_escrever(&c, pedido, (unsigned)k) < 0) { canal_fechar(&c); return 0; }
+    }
+    /* As respostas, na ordem dos pedidos. */
+    int prontos = 0;
+    bool fica = true;
+    for (int i = 0; i < m && fica; i++) {
+        http_resposta_t resp;
+        memset(&resp, 0, sizeof resp);
+        char linha[2048];
+        if (linha_http(&c, linha, sizeof linha) < 0 || compara_texto_n(linha, "HTTP/1.", 7) != 0) { fica = false; break; }
+        resp.situacao = texto_para_int(linha + 9);
+        if (compara_texto_n(linha, "HTTP/1.1", 8) != 0) fica = false;
+        long tamanho = -1;
+        bool pedacos = false;
+        while (linha_http(&c, linha, sizeof linha) > 0) {
+            const char *v;
+            if (cabecalho(linha, "Content-Length", &v)) tamanho = texto_para_int(v);
+            else if (cabecalho(linha, "Transfer-Encoding", &v) && compara_texto_n(v, "chunked", 7) == 0) pedacos = true;
+            else if (cabecalho(linha, "Content-Type", &v)) copia_texto(resp.tipo, v, sizeof resp.tipo);
+            else if (cabecalho(linha, "Connection", &v) && compara_texto_n(v, "close", 5) == 0) fica = false;
+        }
+        if (resp.situacao < 200 || resp.situacao == 204 || resp.situacao == 304) { tamanho = 0; pedacos = false; }
+        if (!pedacos && tamanho < 0) fica = false;
+        copia_texto(resp.url_final, urls[i], sizeof resp.url_final);
+        ponte_lote_t pl = { receptor, ctx, i };
+        int ok = ler_corpo(&c, tamanho, pedacos, receber_lote, &pl, &resp);
+        if (ok < 0) { fica = false; break; }
+        fim(ctx, i, &resp);
+        prontos++;
+    }
+    if (fica && prontos == m && c.pos == c.tam) guardar_conexao(&u0, &c);
+    else canal_fechar(&c);
+    return prontos;
 }

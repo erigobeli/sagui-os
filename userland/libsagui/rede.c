@@ -87,10 +87,35 @@ static int pular_nome(const unsigned char *m, int n, int p)
     return -1;
 }
 
+/* Os nomes já resolvidos, com a validade que o servidor de DNS deu (no
+ * máximo 10 min): uma página com imagens de três servidores perguntava o
+ * nome a cada conexão nova (H129). */
+#define DNS_GUARDADOS 16
+static struct { char nome[64]; unsigned ip, ate; } dns_guardados[DNS_GUARDADOS];
+
+static void dns_guardar(const char *nome, unsigned ip, unsigned ttl_s)
+{
+    if (tam_texto(nome) >= sizeof dns_guardados[0].nome) return;
+    if (ttl_s > 600) ttl_s = 600;
+    int k = 0;
+    for (int i = 0; i < DNS_GUARDADOS; i++) {
+        if (compara_texto(dns_guardados[i].nome, nome) == 0) { k = i; break; }
+        if (dns_guardados[i].ate < dns_guardados[k].ate) k = i;
+    }
+    copia_texto(dns_guardados[k].nome, nome, sizeof dns_guardados[k].nome);
+    dns_guardados[k].ip = ip;
+    dns_guardados[k].ate = tempo_ms() + ttl_s * 1000u;
+}
+
 int dns_resolver(const char *nome, unsigned *ip)
 {
     unsigned direto = texto_para_ip(nome);
     if (direto) { *ip = direto; return 0; }
+    for (int i = 0; i < DNS_GUARDADOS; i++)
+        if (dns_guardados[i].nome[0] && compara_texto(dns_guardados[i].nome, nome) == 0 && (int)(dns_guardados[i].ate - tempo_ms()) > 0) {
+            *ip = dns_guardados[i].ip;
+            return 0;
+        }
     info_rede_t r;
     if (rede_info(&r) < 0) return ERRO_NAO_EXISTE;
     if (!r.configurado || !r.dns) return ERRO_REDE;
@@ -135,6 +160,8 @@ int dns_resolver(const char *nome, unsigned *ip)
                 p += 10;
                 if (tipo == 1 && tam == 4 && p + 4 <= n) {
                     *ip = (unsigned)resp[p] | ((unsigned)resp[p + 1] << 8) | ((unsigned)resp[p + 2] << 16) | ((unsigned)resp[p + 3] << 24);
+                    unsigned ttl = ((unsigned)resp[p - 6] << 24) | ((unsigned)resp[p - 5] << 16) | ((unsigned)resp[p - 4] << 8) | resp[p - 3];
+                    dns_guardar(nome, *ip, ttl);
                     resultado = 0;
                     break;
                 }

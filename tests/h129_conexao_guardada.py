@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""H129 - o Cipó reaproveita a conexão: as imagens de uma página vêm pela
-mesma conexão da página, sem abrir outra para cada uma.
+"""H129 - o Cipó reaproveita a conexão e pede as imagens juntas.
 
-Um servidor local (HTTP/1.1, keep-alive) serve uma página com 8 imagens PNG e
-conta as conexões TCP que recebe.
+As imagens de uma página vêm pela mesma conexão da página (keep-alive), e
+várias de uma vez (pipelining: os pedidos saem juntos, as respostas voltam
+em ordem). Um servidor local (HTTP/1.1) serve uma página com 8 imagens PNG,
+conta as conexões TCP e marca quantos pedidos chegaram antes da primeira
+resposta sair.
 
 Critérios:
-  - servidor normal: as 8 imagens aparecem e a página inteira (9 pedidos)
-    usa no máximo 2 conexões (antes era uma por pedido: 9);
+  - servidor normal: as 8 imagens aparecem; a página inteira (10 pedidos)
+    usa no máximo 2 conexões (antes era uma por pedido: 10), e chegam
+    pedidos juntos (vários lidos de uma vez na mesma conexão);
   - servidor que derruba a conexão depois de 2 pedidos, sem avisar (sem
-    "Connection: close"): as 8 imagens aparecem do mesmo jeito, e o registro
-    diz que a conexão guardada foi trocada por outra;
+    "Connection: close"): as 8 imagens aparecem do mesmo jeito (as que
+    ficaram sem resposta vão de novo), sem erro de recurso no registro;
+  - um CSS com endereço de quase 500 caracteres (o da Wikipédia passa de 400; antes o HTTP cortava em 383)
+    chega inteiro ao servidor;
   - o baixar, que não liga a guarda, continua pedindo "Connection: close".
 """
 import http.server
@@ -36,9 +41,11 @@ def png(k):
 
 
 IMAGENS = {f"/img{k}.png": png(k) for k in range(QTD)}
-PAGINA = ("<html><head><meta charset='utf-8'><title>Guarda</title></head><body><h1>Imagens</h1>"
+LONGO = "/estilo.css?m=" + "a" * 480
+PAGINA = ("<html><head><meta charset='utf-8'><title>Guarda</title>"
+          f"<link rel='stylesheet' href='{LONGO}'></head><body><h1>Imagens</h1>"
           + "".join(f"<img src='img{k}.png'>" for k in range(QTD)) + "</body></html>").encode()
-estado = {"conexoes": 0, "por_conexao": 0, "cabecalhos": []}
+estado = {"conexoes": 0, "juntos": 0, "cabecalhos": [], "caminhos": []}
 
 
 class Atendente(http.server.BaseHTTPRequestHandler):
@@ -52,7 +59,19 @@ class Atendente(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         estado["cabecalhos"].append(self.headers.get("Connection", ""))
-        if self.path == "/pagina.html":
+        # Outro pedido já esperando no buffer antes de respondermos: veio junto (pipelining).
+        self.connection.setblocking(False)   # olhar sem esperar
+        try:
+            if b"GET " in self.rfile.peek(4096):
+                estado["juntos"] += 1
+        except (BlockingIOError, OSError):
+            pass
+        finally:
+            self.connection.setblocking(True)
+        estado["caminhos"].append(self.path)
+        if self.path == LONGO:
+            corpo, tipo = b"h1 { color: #008000; }", "text/css"
+        elif self.path == "/pagina.html":
             corpo, tipo = PAGINA, "text/html; charset=utf-8"
         elif self.path in IMAGENS:
             corpo, tipo = IMAGENS[self.path], "image/png"
@@ -97,8 +116,10 @@ def main():
         m.digitar(f"navegador {url}\n", 0.04)
         log = esperar(m, "navegador: imagens prontas", 60, n)
         verificar(f"imagens prontas ({QTD} de {QTD})" in log, f"as {QTD} imagens aparecem")
-        verificar(estado["conexoes"] <= 2, f"9 pedidos em {estado['conexoes']} conexão(ões) (antes: uma por pedido)")
+        verificar(LONGO in estado["caminhos"], "o CSS de quase 500 caracteres chegou inteiro")
+        verificar(estado["conexoes"] <= 2, f"10 pedidos em {estado['conexoes']} conexão(ões) (antes: uma por pedido)")
         verificar(all(c == "keep-alive" for c in estado["cabecalhos"]), "o Cipó pede Connection: keep-alive")
+        verificar(estado["juntos"] >= 3, f"as imagens vão juntas: {estado['juntos']} pedidos chegaram com outro já esperando")
         m.tecla("alt-f4")
         time.sleep(1)
 
@@ -108,7 +129,7 @@ def main():
         m.digitar(f"navegador {url}\n", 0.04)
         log = esperar(m, "navegador: imagens prontas", 90, n)
         verificar(f"imagens prontas ({QTD} de {QTD})" in log, f"servidor derrubando a conexão a cada 2 pedidos: as {QTD} imagens aparecem")
-        verificar("fechou a conex" in log, "o registro diz que a conexão guardada foi trocada por outra")
+        verificar("navegador: recurso" not in log, "nenhuma imagem falhou")
         verificar(estado["conexoes"] >= 4, f"e o Cipó abriu as conexões que precisou ({estado['conexoes']})")
         m.tecla("alt-f4")
         time.sleep(1)
