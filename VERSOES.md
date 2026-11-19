@@ -27,6 +27,14 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Cipó:** as imagens e o CSS vêm pela mesma conexão da página e várias
+  de uma vez (keep-alive e pipelining), endereços de CSS longos (o da
+  Wikipédia) chegam inteiros e os nomes do DNS ficam guardados. A página do
+  Gato da Wikipédia passou de mais de 1 minuto para uns 10 s.
+
+- **Cipó:** rolar ou clicar enquanto as imagens chegam não as deixa mais
+  faltando: a carga continua depois, e a barra de baixo volta a "Pronto".
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
