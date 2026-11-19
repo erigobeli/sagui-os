@@ -83,7 +83,7 @@ static const comando_t comandos[] = {
     { "ola", NULL, false, false, "mostra argumentos", "ola [argumentos]", "Imprime os argumentos recebidos (teste do carregador de programas)." },
     { "contador", NULL, false, false, "conta segundos", "contador [segundos]", "Conta segundos (padrão: 10). Rode com & para ver a multitarefa." },
     { "falha", NULL, false, false, "provoca um erro", "falha [memoria|kernel|divisao|instrucao]", "Faz um erro de propósito: só este programa é encerrado, o sistema continua." },
-    { "reiniciar", NULL, true, false, "reinicia o PC", "reiniciar", "Grava o que falta nos pendrives e reinicia o computador." },
+    { "reiniciar", "reboot", true, false, "reinicia o PC", "reiniciar", "Grava o que falta nos pendrives e reinicia o computador." },
     { "poweroff", "desligar", true, false, "desliga o PC", "desligar", "Grava o que falta nos pendrives e desliga o computador." },
     { "sair", "exit", true, false, "fecha o shell", "sair", "Fecha o shell (também: exit)." },
     { "discos", NULL, false, false, "lista os pendrives", "discos", "Mostra os pendrives conectados, o formato e se estão montados." },
@@ -122,6 +122,7 @@ static const comando_t comandos[] = {
     { "hostname", "nome-maquina", false, false, "nome do computador", "hostname [novo]", "Mostra ou muda o nome do computador (guarda nas configurações)." },
     { "du", "disco-usado", false, false, "espaço usado", "du [caminho...]", "Mostra o espaço usado por arquivos e pastas (soma recursivamente)." },
     { "clear", "limpar", false, false, "limpa a tela", "clear", "Limpa a tela do terminal e coloca o cursor no canto superior esquerdo." },
+    { "uptime", "tempo-ligado", false, false, "tempo ligado", "uptime", "Mostra há quanto tempo o sistema está ligado (dias, horas, minutos, segundos)." },
 };
 #define QTD_COMANDOS (int)(sizeof comandos / sizeof comandos[0])
 
