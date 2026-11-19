@@ -639,6 +639,7 @@ static void guardar_rolagem(void)
 }
 
 static unsigned custo_diagramar;   /* ms da última diagramação */
+static bool falta_diagramar;       /* chegaram imagens que ainda não estão na tela */
 
 static void diagramar(void)
 {
@@ -653,6 +654,7 @@ static void diagramar(void)
 static void ler_pagina(const char *h, int n)
 {
     soltar_adiantadas();
+    falta_diagramar = false;
     if (motor) motor_fim(motor);
     motor = motor_novo(&ganchos_motor);
     if (!motor) { altura = 0; return; }
@@ -671,7 +673,6 @@ static void ler_pagina(const char *h, int n)
 static void carregar_imagens(void)
 {
     unsigned ultimo = tempo_ms();
-    bool falta = false;   /* chegaram imagens que ainda não estão na tela */
     while (motor) {
         evento_t e;
         if (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
@@ -685,17 +686,20 @@ static void carregar_imagens(void)
         if (tem_evento_guardado) break;
         adiantar_imagens();
         if (!motor_imagens(motor, 2)) break;
-        falta = true;
+        falta_diagramar = true;
         unsigned espera = custo_diagramar * 4 > REDIAGRAMAR_MS ? custo_diagramar * 4 : REDIAGRAMAR_MS;
         if (tempo_ms() - ultimo >= espera) {
             diagramar();
             desenhar_pagina();
             jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
             ultimo = tempo_ms();
-            falta = false;
+            falta_diagramar = false;
         }
     }
-    if (motor && falta) {
+    /* Interrompida, a diagramação fica para quando as imagens voltarem: o
+     * clique ou a rolagem são tratados antes. */
+    if (motor && falta_diagramar && !tem_evento_guardado) {
+        falta_diagramar = false;
         diagramar();
         desenhar_pagina();
         jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
@@ -1227,6 +1231,12 @@ int principal(int argc, char **argv)
         }
         evento_t e;
         if (tem_evento_guardado) { e = evento_guardado; tem_evento_guardado = false; }
+        else if (motor && motor_imagens_faltam(motor)) {
+            /* Um clique, a rolagem ou o menu interromperam as imagens: tratado o
+             * evento, elas continuam de onde pararam (antes ficavam faltando, H129). */
+            carregar_imagens();
+            continue;
+        }
         else if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
             /* página viva: timers e animações no ritmo deles, sem travar os eventos */
             if (proximo_evento(j->id, &e, false) != 1) {

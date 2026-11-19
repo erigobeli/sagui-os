@@ -16,6 +16,9 @@ Critérios:
     ficaram sem resposta vão de novo), sem erro de recurso no registro;
   - um CSS com endereço de quase 500 caracteres (o da Wikipédia passa de 400; antes o HTTP cortava em 383)
     chega inteiro ao servidor;
+  - rolar a página (PgDn) enquanto as imagens chegam (servidor lento)
+    interrompe a carga, mas ela continua depois: as 8 aparecem (antes
+    ficavam faltando para sempre);
   - o baixar, que não liga a guarda, continua pedindo "Connection: close".
 """
 import http.server
@@ -51,6 +54,7 @@ estado = {"conexoes": 0, "juntos": 0, "cabecalhos": [], "caminhos": []}
 class Atendente(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"   # keep-alive
     derrubar = 0                    # >0: fecha a conexão sem aviso depois de tantos pedidos
+    atraso = 0.0                    # segundos antes de cada imagem (servidor lento)
 
     def setup(self):
         super().setup()
@@ -75,6 +79,7 @@ class Atendente(http.server.BaseHTTPRequestHandler):
             corpo, tipo = PAGINA, "text/html; charset=utf-8"
         elif self.path in IMAGENS:
             corpo, tipo = IMAGENS[self.path], "image/png"
+            time.sleep(Atendente.atraso)
         else:
             corpo, tipo = b"nada", "text/plain"
         self.send_response(200 if corpo != b"nada" else 404)
@@ -135,6 +140,20 @@ def main():
         time.sleep(1)
 
         Atendente.derrubar = 0
+        Atendente.atraso = 0.4
+        n = len(m.serial())
+        m.digitar(f"navegador {url}\n", 0.04)
+        esperar(m, "navegador: carregada", 60, n)
+        for _ in range(4):
+            m.tecla("pgdn")
+            time.sleep(0.3)
+        log = esperar(m, f"imagens prontas ({QTD} de {QTD})", 90, n)
+        verificar("imagens interrompidas" in log, "rolar a página interrompe a carga das imagens")
+        verificar(True, f"e depois ela continua: as {QTD} imagens aparecem")
+        m.tecla("alt-f4")
+        time.sleep(1)
+
+        Atendente.atraso = 0.0
         estado["cabecalhos"].clear()
         m.comando(f"baixar http://10.0.2.2:{porta}/img0.png /tmp/x.png", tempo=30)
         verificar(estado["cabecalhos"] == ["close"], f"o baixar continua com Connection: close ({estado['cabecalhos']})")

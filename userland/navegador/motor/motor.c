@@ -5095,6 +5095,15 @@ int motor_imagens_proximas(motor_t *m, const char **urls, int max)
     return k;
 }
 
+/* Falta pedir alguma fonte da web ou imagem? */
+bool motor_imagens_faltam(motor_t *m)
+{
+    for (int i = 0; i < m->n_faces; i++)
+        if (!m->faces[i].tentou && m->faces[i].quer && m->g.baixar) return true;
+    for (int i = 0; i < m->n_imgs; i++) if (!m->imgs[i].tentou) return true;
+    return false;
+}
+
 int motor_imagens(motor_t *m, int max)
 {
     int k = 0;
