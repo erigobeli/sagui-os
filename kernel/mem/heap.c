@@ -47,7 +47,7 @@ static bool abastecer(int c)
         cabeca_t *b = (cabeca_t *)(pag + off);
         b->assinatura = ASSIN_LIVRE;
         b->classe = (uint8_t)c;
-        b->elo = (uint32_t)listas[c];
+        b->elo = (uint32_t)(uintptr_t)listas[c];
         listas[c] = b;
     }
     return true;
@@ -63,14 +63,14 @@ void *kmalloc(size_t n)
         int c = classe_de(total);
         if (!listas[c] && !abastecer(c)) { int_restaura(i); return NULL; }
         h = listas[c];
-        listas[c] = (cabeca_t *)h->elo;
+        listas[c] = (cabeca_t *)(uintptr_t)h->elo;
         h->elo = 0;
         blocos_usados++;
     } else {
         uint32_t pags = (uint32_t)((total + PAGINA - 1) / PAGINA);
         uint32_t end = memfisica_alocar_seguidas(pags);
         if (!end) { int_restaura(i); return NULL; }
-        h = (cabeca_t *)end;
+        h = (cabeca_t *)(uintptr_t)end;
         h->classe = CLASSE_GRANDE;
         h->elo = pags;
         grandes_usados++;
@@ -101,9 +101,9 @@ void kfree(void *p)
     h->assinatura = ASSIN_LIVRE;
     if (h->classe == CLASSE_GRANDE) {
         grandes_usados--;
-        memfisica_liberar_seguidas((uint32_t)h, h->elo);
+        memfisica_liberar_seguidas((uint32_t)(uintptr_t)h, h->elo);
     } else if (h->classe < CLASSES) {
-        h->elo = (uint32_t)listas[h->classe];
+        h->elo = (uint32_t)(uintptr_t)listas[h->classe];
         listas[h->classe] = h;
         blocos_usados--;
     }

@@ -45,7 +45,7 @@ static void copiar_para(espaco_t e, uint32_t virt, const void *origem, uint32_t 
         uint32_t fis = espaco_traduzir(e, virt, NULL);
         uint32_t cabe = PAGINA - (virt & 0xFFF);
         if (cabe > n) cabe = n;
-        memcpy((void *)fis, o, cabe);
+        memcpy((void *)(uintptr_t)fis, o, cabe);
         virt += cabe; o += cabe; n -= cabe;
     }
 }
@@ -141,7 +141,7 @@ int32_t sis_executar(uint32_t ptr_caminho, uint32_t ptr_argv, uint32_t c, uint32
 {
     (void)c; (void)d; (void)e;
     char bruto[CAMINHO_MAX], caminho[CAMINHO_MAX];
-    int r = usuario_texto((const char *)ptr_caminho, bruto, sizeof bruto);
+    int r = usuario_texto((const char *)(uintptr_t)ptr_caminho, bruto, sizeof bruto);
     if (r < 0) return r;
     if (!caminho_resolver(atual->pasta, bruto, caminho, sizeof caminho)) return ERRO_INVALIDO;
 
@@ -150,10 +150,12 @@ int32_t sis_executar(uint32_t ptr_caminho, uint32_t ptr_argv, uint32_t c, uint32
     if (!textos) return ERRO_SEM_MEMORIA;
     int argc = 0;
     uint32_t usado = 0;
-    const char *const *uargv = (const char *const *)ptr_argv;
+    /* O vetor argv do programa é de ponteiros de 32 bits (ELF32), mesmo
+     * no kernel de 64 bits: cada elemento é lido como uint32_t. */
+    const uint32_t *uargv = (const uint32_t *)(uintptr_t)ptr_argv;
     while (uargv) {
-        if (!usuario_ok(&uargv[argc], sizeof(char *), false)) { r = ERRO_ENDERECO; break; }
-        const char *a = uargv[argc];
+        if (!usuario_ok(&uargv[argc], sizeof(uint32_t), false)) { r = ERRO_ENDERECO; break; }
+        const char *a = (const char *)(uintptr_t)uargv[argc];
         if (!a) break;
         if (argc == MAX_ARGS) { r = ERRO_LIMITE; break; }
         r = usuario_texto(a, textos + usado, MAX_ARGS_BYTES - usado);

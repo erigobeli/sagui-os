@@ -20,7 +20,7 @@
 #include "vfs.h"
 #include "gui.h"
 
-void tss_definir_pilha(uint32_t esp0);
+void tss_definir_pilha(uintptr_t esp0);
 
 
 static processo_t tabela[MAX_PROCESSOS];
@@ -75,17 +75,12 @@ static void fpu_iniciar(void)
     uint32_t a, b, c, d;
     __asm__ volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(1));
     if (!(d & (1u << 24))) { klog("[FPU] processador sem FXSAVE: programas sem ponto flutuante\n"); return; }
-    uint32_t cr0;
-    __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
-    cr0 &= ~((1u << 2) | (1u << 3));          /* EM = 0 (há FPU), TS = 0 */
+    uintptr_t cr0 = le_cr0();
+    cr0 &= ~(uintptr_t)((1u << 2) | (1u << 3));   /* EM = 0 (há FPU), TS = 0 */
     cr0 |= (1u << 1) | (1u << 5);             /* MP = 1, NE = 1 (erros por exceção) */
-    __asm__ volatile("mov %0, %%cr0" :: "r"(cr0));
-    if (d & (1u << 25)) {                     /* SSE: o sistema sabe salvar os XMM */
-        uint32_t cr4;
-        __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
-        cr4 |= (1u << 9) | (1u << 10);        /* OSFXSR, OSXMMEXCPT */
-        __asm__ volatile("mov %0, %%cr4" :: "r"(cr4));
-    }
+    escreve_cr0(cr0);
+    if (d & (1u << 25))                       /* SSE: o sistema sabe salvar os XMM */
+        escreve_cr4(le_cr4() | (1u << 9) | (1u << 10));   /* OSFXSR, OSXMMEXCPT */
     __asm__ volatile("fninit");
     __asm__ volatile("fxsave %0" : "=m"(fpu_limpa));
     fpu_ok = true;
@@ -144,14 +139,29 @@ processo_t *tarefa_kernel(const char *nome, void (*funcao)(void *), void *arg)
     /* No anel 0 o iret só desempilha EIP, CS e EFLAGS. Os dois campos
      * seguintes do quadro (esp_usuario e ss_usuario) ficam no topo da pilha
      * quando a função começa: viram o endereço de retorno e o argumento. */
-    quadro_t *q = (quadro_t *)(p->pilha_kernel + PILHA_KERNEL - sizeof(quadro_t));
+    quadro_t *q = (quadro_t *)(uintptr_t)(p->pilha_kernel + PILHA_KERNEL - sizeof(quadro_t));
     memset(q, 0, sizeof *q);
     q->ds = q->es = q->fs = q->gs = SEL_KDADOS;
     q->cs = SEL_KCODIGO;
+#ifdef __x86_64__
+    /* No modo longo o iretq desempilha também RSP e SS, mesmo sem troca de
+     * anel, e o argumento vai em RDI (System V AMD64). A pilha da tarefa
+     * começa logo abaixo do quadro, com o "endereço de retorno" fim_tarefa
+     * no topo: ao entrar na função, RSP + 8 fica alinhado em 16, como a
+     * ABI espera depois de um "call". */
+    uint64_t *pilha = (uint64_t *)q - 1;
+    *pilha = (uintptr_t)fim_tarefa;
+    q->rip = (uintptr_t)funcao;
+    q->rdi = (uintptr_t)arg;
+    q->rflags = 0x202;                     /* IF=1: a tarefa pode ser interrompida */
+    q->rsp = (uintptr_t)pilha;
+    q->ss = SEL_KDADOS;
+#else
     q->eip = (uint32_t)funcao;
     q->eflags = 0x202;                     /* IF=1: a tarefa pode ser interrompida */
     q->esp_usuario = (uint32_t)fim_tarefa; /* "endereço de retorno" da função */
     q->ss_usuario = (uint32_t)arg;         /* primeiro argumento */
+#endif
     p->quadro = q;
     p->estado = P_PRONTO;
     p->espera = NULL;
@@ -279,7 +289,10 @@ quadro_t *escalonador_tique(quadro_t *q)
  * também ESP e SS, e a CPU passa a executar o programa sem privilégios. */
 void processo_preparar_usuario(processo_t *p, uint32_t entrada, uint32_t pilha)
 {
-    quadro_t *q = (quadro_t *)(p->pilha_kernel + PILHA_KERNEL - sizeof(quadro_t));
+    /* No kernel de 64 bits, o CS do usuário (SEL_UCODIGO) é um segmento de
+     * 32 bits: o iretq com ele leva a CPU para o modo de compatibilidade, e
+     * o programa ELF32 roda exatamente como rodava na 2.x (D079). */
+    quadro_t *q = (quadro_t *)(uintptr_t)(p->pilha_kernel + PILHA_KERNEL - sizeof(quadro_t));
     memset(q, 0, sizeof *q);
     q->ds = q->es = q->fs = q->gs = SEL_UDADOS;
     q->cs = SEL_UCODIGO;

@@ -8,7 +8,11 @@
 
 #define MAX_PROCESSOS   64
 #define MAX_ARQUIVOS    16
+#ifdef __x86_64__
+#define PILHA_KERNEL    16384    /* 4 páginas: no modo longo os quadros e registradores têm 8 bytes */
+#else
 #define PILHA_KERNEL    8192     /* 2 páginas por processo */
+#endif
 #define QUANTUM_TIQUES  2        /* 20 ms de CPU antes de passar a vez */
 
 typedef enum { P_LIVRE, P_PRONTO, P_EXECUTANDO, P_BLOQUEADO, P_ZUMBI } estado_t;

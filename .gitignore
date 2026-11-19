@@ -1,5 +1,6 @@
 # Saída do build (regenerável com make)
 /build/
+/build32/
 # Lixo de editores e Python
 __pycache__/
 *.pyc

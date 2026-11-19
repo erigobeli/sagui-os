@@ -10,9 +10,19 @@ typedef signed char        int8_t;
 typedef short              int16_t;
 typedef int                int32_t;
 typedef long long          int64_t;
+/* Tamanhos e endereços acompanham a largura dos ponteiros: 32 bits na
+ * imagem de 32 bits (make ARQ=32) e 64 bits no kernel em modo longo (3.0).
+ * Os campos de tamanho fixo (uint32_t...) continuam iguais nos dois, e é
+ * com eles que se descreve o que o hardware e os programas enxergam. */
+#ifdef __x86_64__
+typedef unsigned long      size_t;
+typedef long               ssize_t;
+typedef unsigned long      uintptr_t;
+#else
 typedef unsigned int       size_t;
 typedef int                ssize_t;
 typedef unsigned int       uintptr_t;
+#endif
 typedef _Bool              bool;
 
 #define true  1

@@ -237,7 +237,11 @@ typedef struct {
     unsigned int lba;
     unsigned int n;
     unsigned int escrever;         /* 0 = ler para buf, 1 = gravar buf */
+#ifdef SAGUI_KERNEL
+    unsigned int buf;              /* no kernel de 64 bits, o ponteiro de 32 bits do programa (D079) */
+#else
     void        *buf;
+#endif
 } pedido_setores_t;
 
 /* SIS_DISCO_TABELA: o que o kernel achou no setor 0 e na cadeia das

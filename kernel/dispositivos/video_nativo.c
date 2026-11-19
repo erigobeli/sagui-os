@@ -153,7 +153,7 @@ static bool intel(const pci_disp_t *pd)
     uint32_t mmio_fis = b0 & 0xFFFFFFF0u, abertura = b2 & 0xFFFFFFF0u;
     if (!mmio_fis || !abertura || (b0 & 1) || (b2 & 1)) return desistir("BARs da placa sem endereco de memoria");
 
-    mmio = (volatile uint32_t *)janela_mapear(mmio_fis, MMIO_TAMANHO);
+    mmio = (volatile uint32_t *)(uintptr_t)janela_mapear(mmio_fis, MMIO_TAMANHO);
     if (!mmio) return desistir("sem espaco na janela do kernel para os registradores");
 
     /* Qual pipe a BIOS ligou? Tem de ser um só (com monitor externo ligado
@@ -219,7 +219,7 @@ static bool intel(const pci_disp_t *pd)
 
     /* Tudo pronto antes de mexer na placa: memória da CPU e buffer de trás. */
     bool wc = false;
-    uint8_t *tela = (uint8_t *)janela_mapear_wc(info_boot.vesa_fb, bytes, &wc);
+    uint8_t *tela = (uint8_t *)(uintptr_t)janela_mapear_wc(info_boot.vesa_fb, bytes, &wc);
     uint32_t *tras = tela ? video_reservar(nl, na) : NULL;
     if (!tela || !tras) return desistir("sem memoria para a tela nova");
 
@@ -306,7 +306,7 @@ static bool teste_qemu(const pci_disp_t *pd)
         return desistir("teste-qemu: a placa nao aceitou 1366x768");
     }
     bool wc = false;
-    uint8_t *tela = (uint8_t *)janela_mapear_wc(fb, virt * 4 * a, &wc);
+    uint8_t *tela = (uint8_t *)(uintptr_t)janela_mapear_wc(fb, virt * 4 * a, &wc);
     if (!tela) { kfree(tras); return desistir("sem espaco para a tela nova"); }
     video_adotar(tela, tras, l, a, virt * 4);
     klog("[VIDEO] nativo: teste-qemu: tela trocada para %ux%u com o sistema ligado\n", l, a);

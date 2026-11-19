@@ -129,7 +129,7 @@ int32_t sis_aleatorio(uint32_t ptr, uint32_t n, uint32_t c, uint32_t d, uint32_t
 {
     (void)c; (void)d; (void)e;
     if (n > 4096) n = 4096;
-    if (!usuario_ok((void *)ptr, n, true)) return ERRO_ENDERECO;
-    aleatorio_bytes((uint8_t *)ptr, n);
+    if (!usuario_ok((void *)(uintptr_t)ptr, n, true)) return ERRO_ENDERECO;
+    aleatorio_bytes((uint8_t *)(uintptr_t)ptr, n);
     return (int32_t)n;
 }

@@ -341,16 +341,16 @@ static bool preparar_filas(void)
 {
     uint32_t pagina = memfisica_alocar();
     if (!pagina) return false;
-    memset((void *)pagina, 0, PAGINA);
-    corb = (uint32_t *)pagina;                                /* 1 KB */
-    rirb = (volatile uint32_t *)(pagina + 2048);              /* 2 KB */
+    memset((void *)(uintptr_t)pagina, 0, PAGINA);
+    corb = (uint32_t *)(uintptr_t)pagina;                                /* 1 KB */
+    rirb = (volatile uint32_t *)(uintptr_t)(pagina + 2048);              /* 2 KB */
     /* CORB */
     w8(CORBCTL, 0);
     esperar_bit8(CORBCTL, 0x02, false, 10);
     uint8_t cod;
     corb_n = tamanho_fila(r8(CORBSIZE) >> 4, &cod);
     w8(CORBSIZE, (uint8_t)((r8(CORBSIZE) & 0xFC) | cod));
-    w32(CORBLBASE, (uint32_t)corb);
+    w32(CORBLBASE, (uint32_t)(uintptr_t)corb);
     w32(CORBUBASE, 0);
     w16(CORBRP, 0x8000);                                      /* zera o ponteiro de leitura */
     esperar_bit16(CORBRP, 0x8000, true, 5);
@@ -363,7 +363,7 @@ static bool preparar_filas(void)
     esperar_bit8(RIRBCTL, 0x02, false, 10);
     rirb_n = tamanho_fila(r8(RIRBSIZE) >> 4, &cod);
     w8(RIRBSIZE, (uint8_t)((r8(RIRBSIZE) & 0xFC) | cod));
-    w32(RIRBLBASE, (uint32_t)rirb);
+    w32(RIRBLBASE, (uint32_t)(uintptr_t)rirb);
     w32(RIRBUBASE, 0);
     w16(RIRBWP, 0x8000);                                      /* zera o ponteiro de escrita */
     w16(RINTCNT, 1);
@@ -386,8 +386,8 @@ static bool preparar_fluxo(void)
     uint32_t b = memfisica_alocar_seguidas(paginas);
     uint32_t l = memfisica_alocar();
     if (!b || !l) return false;
-    anel = (uint8_t *)b;
-    bdl = (uint32_t *)l;
+    anel = (uint8_t *)(uintptr_t)b;
+    bdl = (uint32_t *)(uintptr_t)l;
     memset(anel, 0, HDA_ANEL);
     hda_descarregar(0, HDA_ANEL);                              /* começa em silêncio, também na memória */
     memset(bdl, 0, PAGINA);
@@ -417,7 +417,7 @@ static void programar_fluxo(void)
     w32(sd + SD_CBL, HDA_ANEL);
     w16(sd + SD_LVI, HDA_PEDACOS - 1);
     w16(sd + SD_FMT, FORMATO_48K_16_ESTEREO);
-    w32(sd + SD_BDPL, (uint32_t)bdl);
+    w32(sd + SD_BDPL, (uint32_t)(uintptr_t)bdl);
     w32(sd + SD_BDPU, 0);
     w8(sd + SD_CTL + 2, (uint8_t)(FLUXO_NUMERO << 4));        /* número do fluxo */
     w8(sd + SD_STS, 0x1C);                                    /* limpa avisos */
@@ -456,7 +456,7 @@ bool hda_iniciar(void)
         pci_escreve32(&d, 0x78, dv & ~(1u << 11));
         klog("[HDA] DEVC %x: sem snoop %s -> desligado\n", dv & 0xFFFF, (dv & (1u << 11)) ? "ligado" : "desligado");
     }
-    regs = (volatile uint8_t *)janela_mapear(bar, 0x4000);
+    regs = (volatile uint8_t *)(uintptr_t)janela_mapear(bar, 0x4000);
     if (!regs) return false;
     bool i0 = int_salva_desliga();
     bool ok = reiniciar_controlador();

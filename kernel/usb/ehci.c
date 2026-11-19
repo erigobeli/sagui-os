@@ -117,10 +117,10 @@ static uint8_t *buffer;
 static void usar(ehci_t *c)
 {
     uint32_t p = c->estruturas;
-    cabeca = (qh_t *)p;
-    fila = (qh_t *)(p + 128);
-    setup_pacote = (uint8_t *)(p + 256);
-    qtds = (qtd_t *)(p + 512);
+    cabeca = (qh_t *)(uintptr_t)p;
+    fila = (qh_t *)(uintptr_t)(p + 128);
+    setup_pacote = (uint8_t *)(uintptr_t)(p + 256);
+    qtds = (qtd_t *)(uintptr_t)(p + 512);
 }
 
 int ehci_quantidade(void) { return qtd_ctls; }
@@ -175,7 +175,7 @@ static bool alocar_buffer(void)
     if (buffer) return true;
     uint32_t b = memfisica_alocar_seguidas(BUFFER_BYTES / PAGINA);
     if (!b) return false;
-    buffer = (uint8_t *)b;
+    buffer = (uint8_t *)(uintptr_t)b;
     return true;
 }
 
@@ -185,11 +185,11 @@ static bool alocar_estruturas(ehci_t *c)
 {
     uint32_t p = memfisica_alocar();
     if (!p) return false;
-    memset((void *)p, 0, PAGINA);
+    memset((void *)(uintptr_t)p, 0, PAGINA);
     c->estruturas = p;
     usar(c);
     /* A cabeça do anel assíncrono: aponta para si mesma, marcada como "H". */
-    cabeca->ligacao = (uint32_t)cabeca | T_QH;
+    cabeca->ligacao = (uint32_t)(uintptr_t)cabeca | T_QH;
     cabeca->caracteristicas = (1u << 15) | (2u << 12);
     cabeca->capacidades = 1u << 30;
     cabeca->prox_qtd = T_TERMINA;
@@ -204,7 +204,7 @@ static bool iniciar(ehci_t *c)
     if (!bar) return false;
     /* Comando PCI: espaço de memória + mestre do barramento (DMA). */
     pci_escreve32(&c->pci, 0x04, pci_le32(&c->pci, 0x04) | 0x6);
-    c->cap = (volatile uint8_t *)janela_mapear(bar, 4096);
+    c->cap = (volatile uint8_t *)(uintptr_t)janela_mapear(bar, 4096);
     if (!c->cap) return false;
     c->op = (volatile uint32_t *)(c->cap + c->cap[0]);
     uint32_t hcs = *(volatile uint32_t *)(c->cap + 4);
@@ -226,7 +226,7 @@ static bool iniciar(ehci_t *c)
     c->op[USBINTR] = 0;                       /* sem interrupções: o driver consulta */
     if (*(volatile uint32_t *)(c->cap + 8) & 1) c->op[CTRLDSSEG] = 0;   /* 64 bits: parte alta = 0 */
     c->op[PERIODIC] = 0;
-    c->op[ASYNCLIST] = (uint32_t)cabeca;
+    c->op[ASYNCLIST] = (uint32_t)(uintptr_t)cabeca;
     c->op[USBCMD] = (8u << 16) | CMD_RS | CMD_ASE;   /* 8 microquadros por interrupção (não usada), rodando, lista assíncrona */
     for (int i = 0; i < 100 && (c->op[USBSTS] & STS_HALTED); i++) esperar_bruto_us(1000);
     c->op[CONFIGFLAG] = 1;                     /* todas as portas para este controlador */
@@ -314,15 +314,15 @@ static void preparar_qtd(qtd_t *t, uint32_t pid, uint32_t alterna, uint32_t ende
 static int executar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, int n_qtd, uint32_t tempo_ms, uint32_t vazio_uf)
 {
     uint32_t tam_inicial = (qtds[0].ficha >> 16) & 0x7FFF;
-    for (int i = 0; i < n_qtd - 1; i++) qtds[i].proximo = (uint32_t)&qtds[i + 1];
+    for (int i = 0; i < n_qtd - 1; i++) qtds[i].proximo = (uint32_t)(uintptr_t)&qtds[i + 1];
     memset((void *)fila, 0, sizeof *fila);
     fila->caracteristicas = (uint32_t)endereco | ((uint32_t)ep << 8) | (2u << 12) /* alta velocidade */ |
                             (1u << 14) /* alternância vem do qTD */ | ((uint32_t)mps << 16) | (4u << 28);
     fila->capacidades = 1u << 30;
-    fila->prox_qtd = (uint32_t)&qtds[0];
+    fila->prox_qtd = (uint32_t)(uintptr_t)&qtds[0];
     fila->alt_qtd = T_TERMINA;
-    fila->ligacao = (uint32_t)cabeca | T_QH;
-    cabeca->ligacao = (uint32_t)fila | T_QH;
+    fila->ligacao = (uint32_t)(uintptr_t)cabeca | T_QH;
+    cabeca->ligacao = (uint32_t)(uintptr_t)fila | T_QH;
 
     int r = 0;
     uint32_t passou = 0, antes = c->op[FRINDEX] & 0x3FFF;
@@ -342,7 +342,7 @@ static int executar(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, int n
     }
 
     /* Tira a QH do anel e espera o controlador confirmar ("doorbell"). */
-    cabeca->ligacao = (uint32_t)cabeca | T_QH;
+    cabeca->ligacao = (uint32_t)(uintptr_t)cabeca | T_QH;
     c->op[USBSTS] = STS_IAA;
     c->op[USBCMD] |= CMD_IAAD;
     for (int i = 0; i < 20000 && !(c->op[USBSTS] & STS_IAA); i++) porta_pausa();
@@ -358,10 +358,10 @@ int ehci_controle(ehci_t *c, uint8_t endereco, uint8_t mps0, const void *setup, 
     memcpy(setup_pacote, setup, 8);
     if (!entrada && tam) memcpy(buffer, dados, tam);
     int n = 0;
-    preparar_qtd(&qtds[n++], PID_SETUP, 0, (uint32_t)setup_pacote, 8, false);
-    if (tam) preparar_qtd(&qtds[n++], entrada ? PID_ENTRADA : PID_SAIDA, 1, (uint32_t)buffer, tam, false);
+    preparar_qtd(&qtds[n++], PID_SETUP, 0, (uint32_t)(uintptr_t)setup_pacote, 8, false);
+    if (tam) preparar_qtd(&qtds[n++], entrada ? PID_ENTRADA : PID_SAIDA, 1, (uint32_t)(uintptr_t)buffer, tam, false);
     /* Estado: sempre alternância 1, na direção contrária aos dados (ou IN sem dados). */
-    preparar_qtd(&qtds[n++], (tam && entrada) ? PID_SAIDA : PID_ENTRADA, 1, (uint32_t)buffer, 0, true);
+    preparar_qtd(&qtds[n++], (tam && entrada) ? PID_SAIDA : PID_ENTRADA, 1, (uint32_t)(uintptr_t)buffer, 0, true);
     int r = executar(c, endereco, 0, mps0 ? mps0 : 64, n, 1000, 0);
     int feito = 0;
     if (r == 0 && tam) {
@@ -385,7 +385,7 @@ static int bulk(ehci_t *c, uint8_t endereco, uint8_t ep, uint16_t mps, bool entr
     uint32_t feito_antes = 0, t = *alterna;
     do {
         uint32_t parte = tam - feito_antes > QTD_MAX_BYTES ? QTD_MAX_BYTES : tam - feito_antes;
-        preparar_qtd(&qtds[n], entrada ? PID_ENTRADA : PID_SAIDA, t, (uint32_t)buffer + feito_antes, parte, false);
+        preparar_qtd(&qtds[n], entrada ? PID_ENTRADA : PID_SAIDA, t, (uint32_t)(uintptr_t)buffer + feito_antes, parte, false);
         t ^= (parte / mps) & 1;
         feito_antes += parte;
         n++;

@@ -16,16 +16,35 @@ versão é lançada, o que estava lá vira a seção dessa versão.
    comunidade e, nos aplicativos, bibliotecas de terceiros, desde que livres,
    com licença compatível com a GPL 3 e com crédito. O núcleo continua do
    zero.
-3. **3.0: 64 bits e evolução contínua (em breve).** O kernel passa a rodar em
+3. **3.0: 64 bits e evolução contínua.** O kernel passa a rodar em
    64 bits (x86-64), com os programas de antes funcionando sem mudança, e o
    projeto passa a seguir o versionamento MAIOR.MENOR.CORREÇÃO, crescendo com
    a comunidade.
 
 ## Em desenvolvimento
 
-### 2.2.0 (em preparação)
+Nada ainda: o que entrar no `main` depois da 3.0.0 aparece aqui.
 
-Já no código (no `main`), ainda não lançado como imagem:
+## Versões lançadas
+
+### 3.0.0 (novembro de 2026): 64 bits
+
+- O **kernel roda em 64 bits** (x86-64, modo longo): o estágio 2 confere se o
+  processador tem 64 bits (e avisa na tela se não tiver), o kernel tem GDT,
+  IDT e TSS de 64 bits e paginação de 4 níveis (D076 a D078).
+- Os **programas de antes rodam sem mudança**, em 32 bits, no modo de
+  compatibilidade do processador (D079). Por fora, tudo funciona como na 2.2.
+- A janela "Sobre o SaguiOS" mostra **x86-64, 64 bits**.
+- Testada no Lenovo G470: boot, teclado, touchpad, janelas, pendrive de
+  dados, rede, som, tocador e vídeo.
+- Tem tudo o que entrou na 2.2.0, abaixo.
+
+### 2.2.0 (novembro de 2026): a última de 32 bits
+
+Lançada junto com a 3.0.0, para PCs sem 64 bits. É o mesmo sistema da 3.0.0
+com o kernel de 32 bits (`make ARQ=32`); os programas são os mesmos. Foi
+testada no QEMU (a suíte inteira) e não no G470, onde quem foi testada foi a
+3.0.0. Correções que valham para os 32 bits podem sair como 2.2.x.
 
 - **Teclado espanhol** e troca do layout do teclado nas Configurações (H90,
   D051), do fork SaguiOS-Extended de Alejandro Anuncibay.
@@ -102,8 +121,6 @@ Já no código (no `main`), ainda não lançado como imagem:
   convertida com SSE2; e há controles: tocar/pausar, tempo, barra de
   progresso que pula ao clicar, volume, maximizar e **tela cheia** (F, F11
   ou duplo clique; Esc sai).
-
-## Versões lançadas
 
 ### 2.1 (novembro de 2026): a primeira com a comunidade
 

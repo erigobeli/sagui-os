@@ -10,6 +10,21 @@
 #include "cpu.h"
 #include "console.h"
 
+#ifdef __x86_64__
+/* No modo longo cada porta tem 16 bytes: o endereço do tratador tem 64 bits
+ * e há o campo IST, que escolhe uma pilha de reserva da TSS (Intel SDM
+ * vol. 3A, 7.14.1 "64-Bit Mode IDT"). O tipo 0xE continua sendo "porta de
+ * interrupção", agora de 64 bits. */
+typedef struct EMPACOTADO {
+    uint16_t desloc_baixo;
+    uint16_t seletor;
+    uint8_t  ist;       /* 0 = pilha normal; 1-7 = pilha da TSS */
+    uint8_t  tipo;      /* presente, anel permitido para "int n", tipo de porta */
+    uint16_t desloc_meio;
+    uint32_t desloc_alto;
+    uint32_t reservado;
+} porta_idt_t;
+#else
 typedef struct EMPACOTADO {
     uint16_t desloc_baixo;
     uint16_t seletor;
@@ -17,19 +32,27 @@ typedef struct EMPACOTADO {
     uint8_t  tipo;      /* presente, anel permitido para "int n", tipo de porta */
     uint16_t desloc_alto;
 } porta_idt_t;
+#endif
 
-extern const uint32_t tabela_vetores[256];
+extern const uintptr_t tabela_vetores[256];
 
-static porta_idt_t idt[256] ALINHADO(8);
+static porta_idt_t idt[256] ALINHADO(16);
 static manipulador_t manipuladores[256];
 
-static void definir_porta(int v, uint32_t endereco, uint8_t tipo)
+static void definir_porta(int v, uintptr_t endereco, uint8_t tipo)
 {
     idt[v].desloc_baixo = endereco & 0xFFFF;
-    idt[v].desloc_alto = endereco >> 16;
     idt[v].seletor = SEL_KCODIGO;
-    idt[v].zero = 0;
     idt[v].tipo = tipo;
+#ifdef __x86_64__
+    idt[v].ist = 0;
+    idt[v].desloc_meio = (endereco >> 16) & 0xFFFF;
+    idt[v].desloc_alto = (uint32_t)(endereco >> 32);
+    idt[v].reservado = 0;
+#else
+    idt[v].zero = 0;
+    idt[v].desloc_alto = endereco >> 16;
+#endif
 }
 
 void idt_iniciar(void)
@@ -41,8 +64,13 @@ void idt_iniciar(void)
         definir_porta(v, tabela_vetores[v], 0x8E);
     /* A chamada de sistema precisa ser alcançável a partir do anel 3. */
     definir_porta(VETOR_SISTEMA, tabela_vetores[VETOR_SISTEMA], 0xEE);
+#ifdef __x86_64__
+    /* Falta dupla e NMI usam pilhas próprias da TSS (IST1 e IST2, ver gdt.c). */
+    idt[8].ist = 1;
+    idt[2].ist = 2;
+#endif
 
-    struct EMPACOTADO { uint16_t limite; uint32_t base; } reg = { sizeof idt - 1, (uint32_t)idt };
+    struct EMPACOTADO { uint16_t limite; uintptr_t base; } reg = { sizeof idt - 1, (uintptr_t)idt };
     __asm__ volatile("lidt %0" : : "m"(reg));
 }
 

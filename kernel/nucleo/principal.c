@@ -27,7 +27,13 @@
 #include "ata.h"
 #include "video.h"
 
+/* A 3.0 é o kernel de 64 bits; o de 32 bits (make ARQ=32) continua sendo a
+ * série 2.2, para PCs sem 64 bits (D080). Os dois saem do mesmo código. */
+#ifdef __x86_64__
+#define SAGUI_VERSAO "3.0.0"
+#else
 #define SAGUI_VERSAO "2.2.0"
+#endif
 
 info_boot_t info_boot;
 const char *sagui_versao = SAGUI_VERSAO;
@@ -93,7 +99,7 @@ static void registrar_mapa(void)
 /* Confere o cabeçalho do SGFS (o leitor completo vem na H08). */
 static void conferir_ramdisk(void)
 {
-    const uint8_t *rd = (const uint8_t *)info_boot.ramdisk_inicio;
+    const uint8_t *rd = (const uint8_t *)(uintptr_t)info_boot.ramdisk_inicio;
     if (info_boot.ramdisk_bytes < 32 || memcmp(rd, "SGFS", 4) != 0) {
         kprintf("Ramdisk: NAO encontrado em %p\n", rd);
         return;
@@ -137,6 +143,10 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     serial_iniciar();
     console_iniciar();
     klog("\n[SAGUI] kernel iniciado\n");
+#ifdef __x86_64__
+    /* 3.0 (H127): o estágio 2 já entrou no modo longo antes de chegar aqui. */
+    klog("[SAGUI] modo longo (64 bits)\n");
+#endif
 
     if (magico != BOOT_MAGICO || bi->assinatura != BOOTINFO_ASSIN)
         parar_com_erro("nao fui carregado pelo estagio 2 do SaguiOS");
@@ -148,7 +158,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     info_boot.teste[63] = 0;
     if (info_boot.mapa_qtd > MAPA_MAX)
         info_boot.mapa_qtd = MAPA_MAX;
-    memcpy(mapa_memoria, (const void *)info_boot.mapa_end, info_boot.mapa_qtd * sizeof(regiao_e820_t));
+    memcpy(mapa_memoria, (const void *)(uintptr_t)info_boot.mapa_end, info_boot.mapa_qtd * sizeof(regiao_e820_t));
 
     /* H05, H06, H10: interrupções, relógio, memória e paginação. Vêm antes
      * de qualquer texto porque o terminal gráfico (H18) precisa do kmalloc e
@@ -190,14 +200,23 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
         kprintf("nenhum\n");
     klog("[SAGUI] memoria_mb=%u usavel_mb=%u\n", (uint32_t)(livre >> 20), (uint32_t)(usavel >> 20));
 
+#ifdef __x86_64__
+    /* Mesma quantidade de linhas da 2.x: a tela de 25 linhas não pode rolar (erro 1). */
+    etapa("Modo longo (64 bits): GDT e IDT próprias, PIC remapeado, relógio a 100 Hz");
+#else
     etapa("Interrupções: GDT e IDT próprias, PIC remapeado, relógio a 100 Hz");
+#endif
     {
         char linha[96];
         snformatar(linha, sizeof linha, "Memória física: %u MB gerenciados em páginas de 4 KB, kmalloc pronto",
                    memfisica_livres() / 256);
         etapa(linha);
     }
+#ifdef __x86_64__
+    etapa("Paginação de 4 níveis, páginas de 4 KB, um espaço de endereço por processo");
+#else
     etapa("Paginação: páginas de 4 KB, um espaço de endereço por processo");
+#endif
     if (grafico) {
         char linha[96];
         snformatar(linha, sizeof linha, "Vídeo: %ux%u, %u bits, fonte própria 8x16 com acentos",
@@ -235,7 +254,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
 
     /* H08: sistema de arquivos do ramdisk. */
     conferir_ramdisk();
-    if (sgfs_iniciar((const void *)info_boot.ramdisk_inicio, info_boot.ramdisk_bytes)) {
+    if (sgfs_iniciar((const void *)(uintptr_t)info_boot.ramdisk_inicio, info_boot.ramdisk_bytes)) {
         char linha[96];
         vfs_iniciar();
         snformatar(linha, sizeof linha, "Arquivos: SGFS com %u entradas (%u KB) + camada gravável na RAM",

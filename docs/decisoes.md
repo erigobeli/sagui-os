@@ -2515,3 +2515,103 @@ antigo sem mexer em mais nada, e o teste pode ser corrigido com calma.
 **Teste.** `rodar_todos.py --listar` com os 6 pedaços dá os 120 testes, sem
 repetição; o pedaço 1 rodou inteiro na máquina de desenvolvimento (TCG). O
 KVM e o job final só podem ser conferidos no próprio GitHub Actions.
+
+## D076. Kernel de 64 bits no mesmo lugar e com o mesmo mapa de memória (H127, 3.0)
+
+O kernel da 3.0 roda no modo longo (x86-64), mas continua sendo um binário
+plano carregado em 1 MB e continua usando o mapa de memória da 2.x (D010):
+0 a 896 MB com endereço virtual igual ao físico para o kernel, 896 MB a 1 GB
+para as janelas de dispositivos e 1 a 3 GB para o programa de cada processo.
+Um kernel na "metade alta" (endereços acima de 0xFFFF8000_00000000) seria o
+mais comum em sistemas de 64 bits, mas aqui não traria nada na fase 1: os
+programas são de 32 bits e não enxergam acima de 4 GB, e manter tudo abaixo
+de 4 GB faz com que todo endereço do kernel caiba em 32 bits. Assim o resto
+do kernel (drivers, sistema de arquivos, janelas) muda pouco: os campos que
+guardam endereços físicos em `uint32_t` continuam certos, e os controladores
+que só aceitam endereços de 32 bits (EHCI, os anéis do e1000 e do HD Audio)
+continuam recebendo memória baixa sem nenhuma regra nova. Onde um ponteiro
+vira número (ou o contrário), o código passa por `uintptr_t`
+(`(uint32_t)(uintptr_t)p`), o que deixa a conversão explícita e o
+compilador sem avisos. O modelo de código do GCC é o `small` (tudo abaixo de
+2 GB), com `-mno-red-zone` (a CPU empilha o quadro da interrupção logo
+abaixo do RSP, onde a "zona vermelha" da ABI ficaria).
+
+Quem entra no modo longo é o estágio 2, e só quando o kernel é ELF64: o
+`mkimagem.py` lê a classe do ELF e liga o bit `OPC_LONGO` (8) das opções do
+cabeçalho de boot. O mesmo estágio 2 serve às duas imagens (`make` e
+`make ARQ=32`) e aos kernels de mentira dos testes. Antes da troca de vídeo,
+ainda com o texto da BIOS, ele confere o CPUID (bit 21 do EFLAGS, função
+0x80000001, bit LM do EDX); sem 64 bits, a tela diz isso e como obter a
+imagem de 32 bits. Com 64 bits: tabelas provisórias em 0x20000 (PML4, PDPT e
+4 diretórios com páginas de 2 MB, identidade nos primeiros 4 GB), PAE, CR3,
+EFER.LME, CR0.PG e salto longo para um segmento com L=1, na ordem do manual
+da Intel (vol. 3A, 10.8.5) e da AMD (APM vol. 2, 14.6). O kernel recebe a
+assinatura e a boot_info em RDI e RSI (System V AMD64) e troca as tabelas
+pelas dele no `paginacao_iniciar`.
+
+## D077. GDT, TSS, IDT e o quadro de interrupção de 64 bits (H128)
+
+GDT: nula, código do kernel de 64 bits (0x08), dados do kernel (0x10),
+código do usuário de 32 bits (0x1B, o mesmo seletor da 2.x), dados do
+usuário (0x23), código do usuário de 64 bits (0x2B, para a fase 2) e a TSS de
+64 bits (descritor de 16 bytes em 0x30). A sequência 0x18/0x20/0x28 é a que
+o SYSRET exige do MSR STAR, já pensando na fase 2. A TSS só guarda pilhas:
+RSP0 (trocada pelo escalonador a cada processo, como o ESP0 da 2.x) e duas
+pilhas IST, uma para a falta dupla e outra para o NMI, para que um estouro
+da pilha do kernel mostre a tela de erro em vez de virar falta tripla.
+
+As portas da IDT passam a ter 16 bytes. O trecho comum de `vetores.asm`
+salva os 15 registradores e os 4 seletores de dados (que os programas de 32
+bits usam de verdade) num `quadro_t` de 208 bytes, e o resto do desenho não
+muda (D007): o C devolve o quadro a retomar, e trocar de processo continua
+sendo só devolver outro quadro. No `quadro_t` de 64 bits cada registrador
+tem dois nomes no mesmo lugar (`rax`/`eax`, `rip`/`eip`...), com `union`:
+as chamadas de sistema dos programas de 32 bits continuam lendo `q->eax`,
+`q->ebx`... e a tela de erro continua com o formato "EIP=xxxxxxxx" da 2.x
+(os testes conferem esse formato). No modo longo a CPU empilha SS e RSP
+sempre, mesmo sem troca de anel, então uma tarefa do kernel nova recebe no
+quadro a própria pilha (com `fim_tarefa` como endereço de retorno) e o
+argumento em RDI.
+
+## D078. Paginação de 4 níveis com o primeiro GB compartilhado (H129)
+
+Cada espaço de endereço tem a própria PML4 e a própria PDPT; a entrada 0 da
+PDPT (o primeiro GB, do kernel) aponta para um diretório único criado no
+boot, com as 512 tabelas de 4 KB já prontas (identidade até 896 MB e
+vazias na faixa das janelas). Como na 2.x, mapear uma janela do kernel vale
+na hora para todos os processos. A entrada do diretório do kernel na PDPT
+não tem o bit U/S: nada do primeiro GB chega ao anel 3, qualquer que seja a
+entrada lá embaixo. As páginas continuam de 4 KB (a página 0 tem que faltar
+para que o ponteiro nulo gere falta), e a escrita combinada da memória de
+vídeo continua pelo PAT (tipo 1 = WC, escolhido pelo bit PWT). O
+`espaco_traduzir` devolve a permissão efetiva, o E de todos os níveis, como
+a 2.x fazia com diretório e tabela. A memória física gerida continua abaixo
+de 896 MB (D008), então as alocações para DMA continuam abaixo de 4 GB.
+
+## D079. Programas de 32 bits no modo de compatibilidade (H130, H131)
+
+Os programas da 2.x não mudam: continuam ELF32, com `int 0x80`, os mesmos
+números e os mesmos ponteiros de 32 bits. O que os faz rodar no kernel de
+64 bits é só o CS do quadro inicial: o seletor 0x1B aponta para um segmento
+de código com L=0 e D=1, e o `iretq` para ele deixa a CPU no modo de
+compatibilidade (Intel SDM vol. 3A, 5.2.1). A porta 0x80 da IDT leva de
+volta ao kernel de 64 bits, que lê EAX, EBX, ECX, EDX, ESI e EDI do quadro
+como antes e devolve o resultado em RAX com a metade alta zerada. Os
+ponteiros que chegam de um programa têm 32 bits; viram ponteiros do kernel
+por extensão com zeros e passam pela mesma validação (`usuario_ok`), que
+agora confere o valor inteiro de 64 bits. Onde o kernel lê estruturas do
+programa que contêm ponteiros, como o vetor `argv` do `executar`, cada
+elemento é lido como `uint32_t`. A FPU de cada processo continua salva com
+FXSAVE (o formato de 32 bits, o certo para esses programas); a pilha do
+kernel de cada processo dobrou para 16 KB, porque quadros e registradores
+agora têm 8 bytes.
+
+## D080. Duas imagens até a 3.0 ser aprovada (H134)
+
+`make` gera a imagem de 64 bits em `build/`; `make ARQ=32` gera a da 2.x
+em `build32/`, com a mesma árvore de código (o que muda com a arquitetura
+fica em `kernel/arch/i386` e `kernel/arch/x86_64`, e alguns `#ifdef
+__x86_64__` pequenos no resto). Os testes usam `qemu-system-x86_64`
+(variável `SAGUI_QEMU` em `tests/qemu.py`), que roda as duas imagens; a
+H127 também confere a mensagem de erro numa CPU sem 64 bits
+(`-cpu qemu32`).

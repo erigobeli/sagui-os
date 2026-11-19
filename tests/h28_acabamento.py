@@ -12,7 +12,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, RAIZ  # noqa: E402
+from qemu import Maquina, verificar, RAIZ, versao_esperada  # noqa: E402
 
 ICONES = ["Arquivos", "Terminal", "Editor", "Calculadora", "Banana", "Sagui 3D", "Configurações", "Sobre"]
 POR_COLUNA = (768 - 40) // 92   # os ícones continuam numa segunda coluna (H38)
@@ -39,7 +39,7 @@ def main():
         m.esperar_serial("sobre: versao", 15)
         s = m.serial()
         v = re.findall(r"sobre: versao (.*?), imagem (\d+) bytes, (\d+) processos", s)[-1]
-        verificar(v[0] == "2.2.0" and int(v[1]) == tamanho, f"Sobre mostra a versão {v[0]} e o tamanho da imagem ({v[1]} bytes)")
+        verificar(v[0] == versao_esperada() and int(v[1]) == tamanho, f"Sobre mostra a versão {v[0]} e o tamanho da imagem ({v[1]} bytes)")
         verificar(int(v[2]) >= 7, f"Sobre mostra {v[2]} processos ativos (ocioso, janelas, terminal, sagsh e os programas abertos)")
         time.sleep(1)
         m.captura("H28-programas-abertos")

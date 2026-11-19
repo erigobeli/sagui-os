@@ -543,7 +543,7 @@ void rede_relatorio(char *s, int max)
 int32_t sis_rede_info(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;
-    info_rede_t *r = (info_rede_t *)ptr;
+    info_rede_t *r = (info_rede_t *)(uintptr_t)ptr;
     if (!usuario_ok(r, sizeof *r, true)) return ERRO_ENDERECO;
     memset(r, 0, sizeof *r);
     if (!placa) return ERRO_NAO_EXISTE;
@@ -617,17 +617,17 @@ int32_t sis_rede_enviar(uint32_t id, uint32_t ptr, uint32_t tam, uint32_t d, uin
     (void)d; (void)e;
     socket_t *s = socket_do_processo(id);
     if (!s) return ERRO_DESCRITOR;
-    if (!usuario_ok((const void *)ptr, tam, false)) return ERRO_ENDERECO;
+    if (!usuario_ok((const void *)(uintptr_t)ptr, tam, false)) return ERRO_ENDERECO;
     if (!configurado || !s->ip_remoto) return ERRO_REDE;
-    if (s->tipo == REDE_TCP) return s->tcp < 0 ? ERRO_REDE : tcp_enviar(s->tcp, (const uint8_t *)ptr, tam);
+    if (s->tipo == REDE_TCP) return s->tcp < 0 ? ERRO_REDE : tcp_enviar(s->tcp, (const uint8_t *)(uintptr_t)ptr, tam);
     if (tam > 1400) tam = 1400;
     if (s->tipo == REDE_UDP)
-        return udp_enviar(s->ip_remoto, s->porta_local, s->porta_remota, (const void *)ptr, tam) ? (int32_t)tam : ERRO_REDE;
+        return udp_enviar(s->ip_remoto, s->porta_local, s->porta_remota, (const void *)(uintptr_t)ptr, tam) ? (int32_t)tam : ERRO_REDE;
     if (s->tipo == REDE_ICMP) {
         /* O programa manda a mensagem ICMP inteira; o kernel calcula a soma. */
         uint8_t m[1400];
         if (tam < 8) return ERRO_INVALIDO;
-        memcpy(m, (const void *)ptr, tam);
+        memcpy(m, (const void *)(uintptr_t)ptr, tam);
         m[2] = m[3] = 0;
         uint16_t soma = soma_verificacao(m, tam, 0);
         memcpy(m + 2, &soma, 2);
@@ -642,17 +642,17 @@ int32_t sis_rede_receber(uint32_t id, uint32_t ptr, uint32_t max, uint32_t porig
     (void)e;
     socket_t *s = socket_do_processo(id);
     if (!s) return ERRO_DESCRITOR;
-    if (!usuario_ok((void *)ptr, max, true)) return ERRO_ENDERECO;
-    if (porigem && !usuario_ok((void *)porigem, 4, true)) return ERRO_ENDERECO;
+    if (!usuario_ok((void *)(uintptr_t)ptr, max, true)) return ERRO_ENDERECO;
+    if (porigem && !usuario_ok((void *)(uintptr_t)porigem, 4, true)) return ERRO_ENDERECO;
     if (s->tipo == REDE_TCP) {
         if (s->tcp < 0) return ERRO_REDE;
-        if (porigem) memcpy((void *)porigem, &s->ip_remoto, 4);
-        return tcp_receber_dados(s->tcp, (uint8_t *)ptr, max);
+        if (porigem) memcpy((void *)(uintptr_t)porigem, &s->ip_remoto, 4);
+        return tcp_receber_dados(s->tcp, (uint8_t *)(uintptr_t)ptr, max);
     }
     if (s->qtd == 0) return 0;
     uint32_t n = s->fila[s->ini].tam < max ? s->fila[s->ini].tam : max;
-    memcpy((void *)ptr, s->fila[s->ini].dados, n);
-    if (porigem) memcpy((void *)porigem, &s->fila[s->ini].origem, 4);
+    memcpy((void *)(uintptr_t)ptr, s->fila[s->ini].dados, n);
+    if (porigem) memcpy((void *)(uintptr_t)porigem, &s->fila[s->ini].origem, 4);
     s->ini = (s->ini + 1) % FILA;
     s->qtd--;
     return (int32_t)n;

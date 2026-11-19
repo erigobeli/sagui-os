@@ -258,12 +258,12 @@ int32_t sis_som_enviar(uint32_t f, uint32_t ptr, uint32_t bytes, uint32_t d, uin
 {
     (void)d; (void)e;
     if (f >= MAX_FONTES || !fontes[f].usada || fontes[f].pid != atual->pid) return ERRO_DESCRITOR;
-    if (!usuario_ok((const void *)ptr, bytes, false)) return ERRO_ENDERECO;
+    if (!usuario_ok((const void *)(uintptr_t)ptr, bytes, false)) return ERRO_ENDERECO;
     fonte_t *fo = &fontes[f];
     bool i0 = int_salva_desliga();
     uint32_t cabem = FONTE_QUADROS - fo->qtd, n = bytes / HDA_QUADRO;
     if (n > cabem) n = cabem;
-    const int16_t *src = (const int16_t *)ptr;
+    const int16_t *src = (const int16_t *)(uintptr_t)ptr;
     for (uint32_t k = 0; k < n; k++) {
         uint32_t i = (fo->ini + fo->qtd) % FONTE_QUADROS;
         fo->quadros[i * 2] = src[k * 2];

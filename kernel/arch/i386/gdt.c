@@ -37,7 +37,7 @@ static uint64_t descritor(uint32_t base, uint32_t limite, uint8_t acesso, uint8_
     return d;
 }
 
-void tss_definir_pilha(uint32_t esp0)
+void tss_definir_pilha(uintptr_t esp0)
 {
     tss.esp0 = esp0;
 }

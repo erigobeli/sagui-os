@@ -2,7 +2,8 @@
  *
  * Suporta: %s %c %d %i %u %x %X %p %%, com largura (número ou '*'), alinhamento à esquerda
  * ('-') e preenchimento com zeros ('0'). O modificador 'l' é aceito e
- * ignorado (long tem 32 bits aqui). Não há ponto flutuante de propósito: o
+ * ignorado na imagem de 32 bits (lá long tem 32 bits); no kernel de 64
+ * bits, %lu, %lx e %ld leem um valor de 64 bits. Não há ponto flutuante de propósito: o
  * kernel não usa a FPU.
  *
  * A ideia central: cada conversão produz primeiro os dígitos num buffer local
@@ -37,7 +38,7 @@ static void emitir_campo(saida_t *s, const char *txt, size_t n, int largura, boo
 }
 
 /* Escreve v na base dada no fim de buf; devolve o início. */
-static char *numero(char *fim, uint32_t v, unsigned base, bool maiusculo)
+static char *numero(char *fim, uintptr_t v, unsigned base, bool maiusculo)
 {
     const char *dig = maiusculo ? "0123456789ABCDEF" : "0123456789abcdef";
     *fim = 0;
@@ -51,7 +52,7 @@ static char *numero(char *fim, uint32_t v, unsigned base, bool maiusculo)
 int formatar(char *dst, size_t max, const char *fmt, va_list ap)
 {
     saida_t s = { dst, max, 0 };
-    char buf[16];
+    char buf[24];
 
     for (; *fmt; fmt++) {
         if (*fmt != '%') { poe(&s, *fmt); continue; }
@@ -71,7 +72,8 @@ int formatar(char *dst, size_t max, const char *fmt, va_list ap)
         }
         while (*fmt >= '0' && *fmt <= '9')
             largura = largura * 10 + (*fmt++ - '0');
-        while (*fmt == 'l') fmt++;
+        bool longo = false;   /* 'l': long (32 bits na imagem de 32, 64 no kernel de 64) */
+        while (*fmt == 'l') { longo = true; fmt++; }
 
         char *ini;
         switch (*fmt) {
@@ -86,23 +88,21 @@ int formatar(char *dst, size_t max, const char *fmt, va_list ap)
             emitir_campo(&s, buf, 1, largura, esquerda, ' ');
             break;
         case 'd': case 'i': {
-            int32_t v = va_arg(ap, int32_t);
-            /* Converte o módulo como sem sinal: funciona até para -2^31. */
-            ini = numero(buf + sizeof buf - 1, v < 0 ? 0u - (uint32_t)v : (uint32_t)v, 10, false);
+            long v = longo ? va_arg(ap, long) : (long)va_arg(ap, int32_t);
+            /* Converte o módulo como sem sinal: funciona até para o menor negativo. */
+            ini = numero(buf + sizeof buf - 1, v < 0 ? 0ul - (unsigned long)v : (unsigned long)v, 10, false);
             if (v < 0) *--ini = '-';
             emitir_campo(&s, ini, txt_tamanho(ini), largura, esquerda, preenche);
             break;
         }
-        case 'u':
-            ini = numero(buf + sizeof buf - 1, va_arg(ap, uint32_t), 10, false);
+        case 'u': case 'x': case 'X': {
+            unsigned long v = longo ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, uint32_t);
+            ini = numero(buf + sizeof buf - 1, v, *fmt == 'u' ? 10 : 16, *fmt == 'X');
             emitir_campo(&s, ini, txt_tamanho(ini), largura, esquerda, preenche);
             break;
-        case 'x': case 'X':
-            ini = numero(buf + sizeof buf - 1, va_arg(ap, uint32_t), 16, *fmt == 'X');
-            emitir_campo(&s, ini, txt_tamanho(ini), largura, esquerda, preenche);
-            break;
+        }
         case 'p':
-            ini = numero(buf + sizeof buf - 1, (uint32_t)va_arg(ap, void *), 16, false);
+            ini = numero(buf + sizeof buf - 1, (uintptr_t)va_arg(ap, void *), 16, false);
             poe(&s, '0'); poe(&s, 'x');
             emitir_campo(&s, ini, txt_tamanho(ini), 8, false, '0');
             break;

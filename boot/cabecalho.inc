@@ -28,6 +28,7 @@ CAB_K_ENTRADA       equ 52         ; u32 endereço de entrada do kernel
 OPC_VESA            equ 1
 OPC_CONSOLE         equ 2      ; sem área de trabalho: terminal de tela cheia (testes)
 OPC_VESA_LARGO      equ 4      ; prefere telas largas (1366x768...): testes da H84 no QEMU
+OPC_LONGO           equ 8      ; kernel ELF64: o estágio 2 entra no modo longo (64 bits, 3.0)
 
 ; Endereços de trabalho em modo real (todos abaixo de 0x7C00 ou entre o
 ; estágio 2 e 0x9F000, longe da EBDA).

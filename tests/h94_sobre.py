@@ -6,7 +6,7 @@ Critério:
     desses arquivos chegou, pelo build, a /sistema/licencas/<pasta>.txt
     dentro do ramdisk (um componente novo sem licença faz este teste falhar);
     o índice da janela lista todos;
-  - no SaguiOS: a janela Sobre mostra a versão 2.2.0, a arquitetura (32 bits),
+  - no SaguiOS: a janela Sobre mostra a versão (3.0.0 ou 2.2.0), a arquitetura (64 ou 32 bits),
     os créditos e os botões "Créditos e licenças" e "Histórico"; o botão abre a
     janela das licenças, que começa na GPL 3; escolher um componente de
     terceiros mostra o texto dele; o botão "Histórico" mostra o VERSOES.md.
@@ -18,7 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, janela, RAIZ  # noqa: E402
+from qemu import Maquina, verificar, janela, RAIZ, versao_esperada  # noqa: E402
 
 ICONES = ["Arquivos", "Terminal", "Editor", "Calculadora", "Banana", "Sagui 3D", "Configurações", "Sobre"]
 POR_COLUNA = (768 - 40) // 92
@@ -82,7 +82,7 @@ def main():
         m.esperar_serial("sobre: versao", 15)
         s = m.serial()
         v = re.findall(r"sobre: versao (.*?), imagem \d+ bytes, \d+ processos, (\d+) bits", s)[-1]
-        verificar(v[0] == "2.2.0", f"Sobre mostra a versão {v[0]}")
+        verificar(v[0] == versao_esperada(), f"Sobre mostra a versão {v[0]}")
         # A arquitetura é a do kernel desta imagem: o byte 4 do ELF diz 1
         # (32 bits) ou 2 (64 bits, a 3.0).
         with open(os.path.join(RAIZ, "build", "kernel.elf"), "rb") as k:

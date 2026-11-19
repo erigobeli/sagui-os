@@ -51,7 +51,7 @@ void memfisica_iniciar(void)
             marcar(r->base & ~(uint64_t)(PAGINA - 1), r->base + r->tamanho, true);
     }
     marcar(0, 0x100000, true);                                   /* primeiro 1 MB */
-    marcar((uint32_t)_kernel_inicio, (uint32_t)_kernel_fim, true);  /* kernel + BSS (inclui este bitmap) */
+    marcar((uint32_t)(uintptr_t)_kernel_inicio, (uint32_t)(uintptr_t)_kernel_fim, true);  /* kernel + BSS (inclui este bitmap) */
     marcar(info_boot.ramdisk_inicio, info_boot.ramdisk_inicio + info_boot.ramdisk_bytes, true);
     geridas = livres;
     dica = 0;

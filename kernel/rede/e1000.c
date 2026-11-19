@@ -76,7 +76,7 @@ static bool enviar(placa_t *p, const void *quadro, uint32_t tam)
     if (!(d->estado & 1) && d->comando) return false;   /* anel cheio: a placa ainda não mandou este */
     memcpy(buf_tx + tx_prox * BUF, quadro, tam);
     if (tam < 60) { memset(buf_tx + tx_prox * BUF + tam, 0, 60 - tam); tam = 60; }   /* tamanho mínimo */
-    d->endereco = (uint32_t)(buf_tx + tx_prox * BUF);
+    d->endereco = (uint32_t)(uintptr_t)(buf_tx + tx_prox * BUF);
     d->tamanho = (uint16_t)tam;
     d->estado = 0;
     d->comando = 0x01 | 0x02 | 0x08;                     /* fim do quadro, soma Ethernet, avisar */
@@ -127,7 +127,7 @@ placa_t *e1000_iniciar(void)
     if (!d) return NULL;
     uint32_t bar = pci_le32(d, 0x10) & ~0xFu;
     pci_escreve32(d, 0x04, pci_le32(d, 0x04) | 0x6);     /* memória + mestre (DMA) */
-    regs = (volatile uint8_t *)janela_mapear(bar, 0x20000);
+    regs = (volatile uint8_t *)(uintptr_t)janela_mapear(bar, 0x20000);
     if (!regs) return NULL;
 
     w32(IMC, 0xFFFFFFFFu);                                /* sem interrupções */
@@ -155,19 +155,19 @@ placa_t *e1000_iniciar(void)
 
     /* Anéis e buffers: memória física contígua, abaixo de 4 GB. */
     uint32_t pag = memfisica_alocar();
-    buf_rx = (uint8_t *)memfisica_alocar_seguidas(QTD_RX * BUF / PAGINA);
-    buf_tx = (uint8_t *)memfisica_alocar_seguidas(QTD_TX * BUF / PAGINA);
+    buf_rx = (uint8_t *)(uintptr_t)memfisica_alocar_seguidas(QTD_RX * BUF / PAGINA);
+    buf_tx = (uint8_t *)(uintptr_t)memfisica_alocar_seguidas(QTD_TX * BUF / PAGINA);
     if (!pag || !buf_rx || !buf_tx) return NULL;
-    memset((void *)pag, 0, PAGINA);
-    rx = (desc_rx_t *)pag;                                /* 32 x 16 = 512 bytes */
-    tx = (desc_tx_t *)(pag + 1024);                       /* 16 x 16 = 256 bytes */
-    for (int i = 0; i < QTD_RX; i++) rx[i].endereco = (uint32_t)(buf_rx + i * BUF);
+    memset((void *)(uintptr_t)pag, 0, PAGINA);
+    rx = (desc_rx_t *)(uintptr_t)pag;                                /* 32 x 16 = 512 bytes */
+    tx = (desc_tx_t *)(uintptr_t)(pag + 1024);                       /* 16 x 16 = 256 bytes */
+    for (int i = 0; i < QTD_RX; i++) rx[i].endereco = (uint32_t)(uintptr_t)(buf_rx + i * BUF);
     for (int i = 0; i < QTD_TX; i++) tx[i].estado = 1;    /* "feito": livre para usar */
-    w32(RDBAL, (uint32_t)rx); w32(RDBAH, 0);
+    w32(RDBAL, (uint32_t)(uintptr_t)rx); w32(RDBAH, 0);
     w32(RDLEN, QTD_RX * sizeof(desc_rx_t));
     w32(RDH, 0); w32(RDT, QTD_RX - 1);
     w32(RCTL, (1u << 1) | (1u << 15) | (1u << 26));       /* ligar, aceitar difusão, tirar a soma Ethernet */
-    w32(TDBAL, (uint32_t)tx); w32(TDBAH, 0);
+    w32(TDBAL, (uint32_t)(uintptr_t)tx); w32(TDBAH, 0);
     w32(TDLEN, QTD_TX * sizeof(desc_tx_t));
     w32(TDH, 0); w32(TDT, 0);
     w32(TCTL, (1u << 1) | (1u << 3) | (0x10u << 4) | (0x40u << 12));   /* ligar, completar quadros curtos */

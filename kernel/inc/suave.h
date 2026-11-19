@@ -10,8 +10,15 @@
  * retângulo de recorte [x0, x1) x [y0, y1), para servir às duas pontas. */
 #ifndef SAGUI_SUAVE_H
 #define SAGUI_SUAVE_H
+/* No kernel, os tipos vêm do tipos.h do próprio kernel: em 64 bits o
+ * <stdint.h> do compilador define int64_t como long, e o do kernel como
+ * long long, e os dois não podem se encontrar. */
+#ifdef SAGUI_KERNEL
+#include "tipos.h"
+#else
 #include <stdint.h>
 #include <stdbool.h>
+#endif
 
 typedef struct {
     uint32_t *px;
