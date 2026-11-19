@@ -83,6 +83,12 @@ Já no código (no `main`), ainda não lançado como imagem:
   partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
   ou passando do fim. A caixa de confirmação e o instalador mostram o que
   ele leu (D066).
+- **Tocador de vídeo** (D071, issues #28 e #29): a imagem segue o relógio do
+  som e, quando a máquina não dá conta, descarta os quadros que pode (o som
+  não para mais nem o vídeo fica em câmera lenta por causa deles); a cor é
+  convertida com SSE2; e há controles: tocar/pausar, tempo, barra de
+  progresso que pula ao clicar, volume, maximizar e **tela cheia** (F, F11
+  ou duplo clique; Esc sai).
 
 ## Versões lançadas
 
