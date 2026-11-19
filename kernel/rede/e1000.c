@@ -40,7 +40,11 @@
 #define RAL0   0x5400
 #define RAH0   0x5404
 
-#define QTD_RX 32
+/* 256 buffers de recepção: o kernel olha a placa a cada tique (10 ms), e uma
+ * janela TCP inteira (64 KB, ~46 quadros) chega de uma vez. Com 32, o anel
+ * enchia, a placa jogava quadros fora e o TCP esperava para mandar de novo:
+ * uma página de 1,2 MB levava de 0,5 a 3,5 s (H129). */
+#define QTD_RX 256
 #define QTD_TX 16
 #define BUF    2048
 
@@ -154,13 +158,14 @@ placa_t *e1000_iniciar(void)
     for (int i = 0; i < 128; i++) w32(MTA + i * 4, 0);    /* sem grupos (multicast) */
 
     /* Anéis e buffers: memória física contígua, abaixo de 4 GB. */
-    uint32_t pag = memfisica_alocar();
+    uint32_t pag = memfisica_alocar(), pag_tx = memfisica_alocar();
     buf_rx = (uint8_t *)(uintptr_t)memfisica_alocar_seguidas(QTD_RX * BUF / PAGINA);
     buf_tx = (uint8_t *)(uintptr_t)memfisica_alocar_seguidas(QTD_TX * BUF / PAGINA);
-    if (!pag || !buf_rx || !buf_tx) return NULL;
+    if (!pag || !pag_tx || !buf_rx || !buf_tx) return NULL;
     memset((void *)(uintptr_t)pag, 0, PAGINA);
-    rx = (desc_rx_t *)(uintptr_t)pag;                                /* 32 x 16 = 512 bytes */
-    tx = (desc_tx_t *)(uintptr_t)(pag + 1024);                       /* 16 x 16 = 256 bytes */
+    memset((void *)(uintptr_t)pag_tx, 0, PAGINA);
+    rx = (desc_rx_t *)(uintptr_t)pag;                                /* 256 x 16 = 4096 bytes: a página inteira */
+    tx = (desc_tx_t *)(uintptr_t)pag_tx;                             /* 16 x 16 = 256 bytes */
     for (int i = 0; i < QTD_RX; i++) rx[i].endereco = (uint32_t)(uintptr_t)(buf_rx + i * BUF);
     for (int i = 0; i < QTD_TX; i++) tx[i].estado = 1;    /* "feito": livre para usar */
     w32(RDBAL, (uint32_t)(uintptr_t)rx); w32(RDBAH, 0);

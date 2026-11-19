@@ -27,6 +27,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Rede mais rápida e estável:** a placa e1000 guarda 256 quadros recebidos
+  (eram 32). Uma janela TCP inteira chega entre duas olhadas do kernel na
+  placa, e antes os quadros a mais eram jogados fora (o TCP esperava para
+  mandar de novo).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
