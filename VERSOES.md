@@ -85,8 +85,10 @@ testada no QEMU (a suíte inteira) e não no G470, onde quem foi testada foi a
 - Renomear no lugar: um segundo clique, devagar, no nome de um ícone ou de um
   arquivo abre a edição ali mesmo (Robson). A interface ficou mais leve: o
   menu redesenha só o que muda, e o vidro e as sombras custam menos.
-- Três comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
-  (`nome-maquina`) e `du` (`disco-usado`).
+- Quatro comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
+  (`nome-maquina`), `du` (`disco-usado`) e `clear` (`limpar`), o apelido
+  `exit` para o comando interno `sair`, `uptime` (`tempo-ligado`) e o
+  apelido `reboot` para `reiniciar`.
 - O kernel enxerga os **discos rígidos IDE/ATA** (`hd0`, `hd1`...), sem
   montar nenhum (D062). É a base do instalador (issue #45).
 - **Gravar direto no disco fica travado no kernel** (D063): só depois que a
