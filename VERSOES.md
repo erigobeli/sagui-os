@@ -27,6 +27,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Cipó:** os estilos de uma página grande são calculados umas 4 vezes mais
+  rápido (filtro dos ancestrais), e o texto que não cabe ao lado de um
+  elemento flutuante desce para baixo dele, em vez de ficar espremido por
+  cima.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
