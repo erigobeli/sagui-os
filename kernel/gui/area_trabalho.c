@@ -215,18 +215,28 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
         for (int k = base_dir(); k < i; k++) if (icone_visivel(k)) vaga++;
         *x = larg - ICONE_X - ICONE_L;
         *y = ICONE_Y0 + vaga * (ICONE_PASSO + 16);   /* + 16: nomes em duas linhas */
-        *l = ICONE_L; *a = ICONE_A;
-        char l1[32];
-        if (nome_em_linhas(i, l1)) *a += 16;   /* a seleção cobre a segunda linha */
-        return;
+    } else {
+        /* A Lixeira fica sempre por último, depois do pendrive e dos programas
+         * instalados, como no fim da fila de ícones dos outros sistemas. */
+        int ate = i == ICONE_LIXEIRA ? QTD_ICONES + qtd_instalados : i;
+        for (int k = 0; k < ate; k++) if (k != ICONE_LIXEIRA && icone_visivel(k)) vaga++;
+        *x = ICONE_X + (vaga / por_coluna) * ICONE_COLUNA;
+        *y = ICONE_Y0 + (vaga % por_coluna) * ICONE_PASSO;
     }
-    /* A Lixeira fica sempre por último, depois do pendrive e dos programas
-     * instalados, como no fim da fila de ícones dos outros sistemas. */
-    int ate = i == ICONE_LIXEIRA ? QTD_ICONES + qtd_instalados : i;
-    for (int k = 0; k < ate; k++) if (k != ICONE_LIXEIRA && icone_visivel(k)) vaga++;
-    *x = ICONE_X + (vaga / por_coluna) * ICONE_COLUNA;
-    *y = ICONE_Y0 + (vaga % por_coluna) * ICONE_PASSO;
     *l = ICONE_L; *a = ICONE_A;
+    /* A seleção cobre o nome inteiro: desce até a segunda linha e, se o nome
+     * é mais largo que o ícone ("Configurações"), alarga para os dois lados. */
+    char l1[32];
+    const char *l2 = nome_em_linhas(i, l1);
+    int w = texto_largura(l1);
+    if (l2) {
+        *a += 16;
+        if (texto_largura(l2) > w) w = texto_largura(l2);
+    }
+    if (w + 8 > *l) {
+        *x -= (w + 8 - *l) / 2;
+        *l = w + 8;
+    }
 }
 
 /* ------------------------------------------------------------ seleção (issue #25, parte 3)
