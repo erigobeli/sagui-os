@@ -439,6 +439,14 @@ class Maquina:
                 self.tecla(c, espera)
 
 
+def versao_esperada():
+    """Versão que a imagem em build/ deve mostrar: 3.0.0 com o kernel de 64
+    bits, 2.2.0 com o de 32 (D080). O byte 4 do cabeçalho ELF diz a classe:
+    1 = 32 bits, 2 = 64 bits."""
+    with open(os.path.join(RAIZ, "build", "kernel.elf"), "rb") as k:
+        return "3.0.0" if k.read(5)[4] == 2 else "2.2.0"
+
+
 def verificar(condicao, mensagem):
     if not condicao:
         raise FalhaTeste(mensagem)

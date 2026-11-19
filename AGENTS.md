@@ -6,7 +6,9 @@ de escrever código. As mesmas regras valem para pessoas: veja `CONTRIBUTING.md`
 
 ## O que é o SaguiOS
 
-Um sistema operacional x86 de 32 bits **escrito do zero**, começado pelo Claude
+Um sistema operacional x86 de 64 bits **escrito do zero** (desde a 3.0 o kernel
+roda em 64 bits e os programas continuam em 32, no modo de compatibilidade;
+`make ARQ=32` gera a série 2.2, de 32 bits), começado pelo Claude
 (Anthropic) para o Eli Rigobeli, que roda no QEMU, no VirtualBox e num Lenovo
 G470 de 2011. O kernel, os drivers, a pilha de rede, o TLS, o SSH, o navegador,
 o compilador C e o visual foram escritos aqui, a partir de **especificações

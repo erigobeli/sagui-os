@@ -27,7 +27,13 @@
 #include "ata.h"
 #include "video.h"
 
+/* A 3.0 é o kernel de 64 bits; o de 32 bits (make ARQ=32) continua sendo a
+ * série 2.2, para PCs sem 64 bits (D080). Os dois saem do mesmo código. */
+#ifdef __x86_64__
+#define SAGUI_VERSAO "3.0.0"
+#else
 #define SAGUI_VERSAO "2.2.0"
+#endif
 
 info_boot_t info_boot;
 const char *sagui_versao = SAGUI_VERSAO;

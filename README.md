@@ -4,12 +4,9 @@
 
 [![CI](https://github.com/erigobeli/sagui-os/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/erigobeli/sagui-os/actions/workflows/ci.yml)
 
-**Um sistema operacional escrito do zero por IA**
-para PCs x86 de 32 bits, rodando de verdade num notebook de 2011.
+**Um sistema operacional escrito do zero por IA, para PCs x86 de 64 bits.**
 
-Feito por Claude (Anthropic) para o projeto do **Eli Rigobeli**.
-
-`versão 2.1` · `sem GRUB` · `sem libc` · `núcleo sem código de outros sistemas` · `83 testes automáticos`
+`versão 3.0` · `64 bits` · `sem GRUB` · `sem libc` · `núcleo sem código de outros sistemas` · `mais de 120 testes automáticos`
 
 <img src="docs/v2/capturas/H81-7-menu-titulo.png" width="49%" alt="Área de trabalho do SaguiOS 2.1 com o fundo da Mata Atlântica e o menu da barra de título">
 <img src="docs/v2/capturas/H63-1-wikipedia.png" width="49%" alt="O navegador Cipó mostrando a Wikipédia">
@@ -20,33 +17,46 @@ Feito por Claude (Anthropic) para o projeto do **Eli Rigobeli**.
 
 ---
 
-## SaguiOS 2.1
+## SaguiOS 3.0 e 2.2
 
-A versão 2.0 ([`prd2.md`](prd2.md)) trouxe som, rede, HTTPS próprio, terminal com SSH,
-navegador, um compilador de C rodando dentro do sistema e o **Sagui Code**, um agente de
-programação com IA. A **2.1** é a primeira com contribuições da comunidade, trazidas para o
-código atual com os autores nos commits (veja [`CONTRIBUIDORES.md`](CONTRIBUIDORES.md)):
+A **3.0** ([`prd3.md`](prd3.md)) leva o kernel para os **64 bits** (x86-64, modo longo): GDT,
+IDT e paginação de 4 níveis novas, e os programas de antes rodando sem mudança no modo de
+compatibilidade do processador (D076 a D080). A **2.2** é a última versão de 32 bits, para
+quem tem um PC sem 64 bits, e junta tudo o que a comunidade trouxe depois da 2.1:
 
-- **Cipó**, o navegador, com CSS moderno, JavaScript, fontes TrueType, Canvas, SVG, WebGL e
-  vídeo (motor de Robson de Lima Barbosa, nome de M4R4G0N);
-- o **visual novo**: ícones suavizados, temas "Mata" e "Azul", fundos novos, menus do botão
-  direito e barra de tarefas (Robson e Gabriel);
-- `poweroff` e a tela "pode desligar" (Clayton); `top`, `grep`, `fetch`, `uname`, `df` e duas
-  demonstrações (Gabriel);
-- ponto flutuante nos programas, Ctrl+C no Terminal e, para o G470, um driver de vídeo na
-  resolução nativa do painel (opcional) e um driver de adaptador USB de rede.
+- **menu Iniciar**, laço de seleção, **Lixeira**, Arquivos com renomear e vários
+  selecionados, **Visualizador** de fotos, **Print Screen**, cantos arredondados (Robson de
+  Lima Barbosa, issue #25);
+- **instalador** em HD com as proteções: o disco só é apagado depois de um resumo e de
+  digitar o nome dele numa caixa do kernel (Robson, D062 a D066);
+- o sistema em **espanhol e inglês** (primeira parte, D073) e o teclado espanhol, comandos de
+  texto ao estilo Unix e compactação (`tar`, `gzip`, `zip`), ideias do fork de Alejandro
+  Anuncibay;
+- **jogos**: Caça-Bananas, Paciência Banana, CHIP-8 e atividades JClic;
+- **Tocador** que não trava a tela e **vídeo** que acompanha o som, com pausa e tela cheia
+  (D070, D071); copiar o texto no **Sagui Code**;
+- `dirname`, `hostname` e `du` (Gabriel), uma janela "Sobre o SaguiOS" com créditos e
+  histórico, e a política de **segurança** ([`SECURITY.md`](SECURITY.md)).
 
-Acompanhe pelo painel [`dashboard/v2/`](dashboard/v2/index.html). Quer contribuir? Leia
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+Acompanhe pelo painel [`dashboard/v3/`](dashboard/v3/index.html). Quer contribuir? Leia
+[`CONTRIBUTING.md`](CONTRIBUTING.md); quem já contribuiu está em
+[`CONTRIBUIDORES.md`](CONTRIBUIDORES.md).
 
 ## A história do SaguiOS
+
+O SaguiOS começou com uma pergunta do **Eli Rigobeli**: uma IA é capaz de escrever um sistema
+operacional de verdade, a partir de um kernel zerado? Não uma distribuição montada com peças
+prontas, mas o carregador de boot, o kernel, os drivers e os programas, tudo do zero, dando
+boot num notebook comum. O Eli escreveu a especificação ([`prd.md`](prd.md)), o Claude
+(Anthropic) escreveu o código, e cada fase só avançou depois de o Eli testar no Lenovo G470
+dele, um notebook de 2011. Daí em diante:
 
 - **1.0: criado inteiramente por IA.** Escrito do zero pelo Claude (Anthropic), sob a direção
   do Eli, sem código de outros sistemas e sem bibliotecas prontas.
 - **2.x: a comunidade chega.** O projeto passa a aceitar contribuições da comunidade e, nos
   aplicativos, bibliotecas de terceiros, desde que livres, com licença compatível e crédito
   (D041). O núcleo continua do zero.
-- **3.0: 64 bits e evolução contínua** *(em breve)*. O kernel passa a rodar em 64 bits
+- **3.0: 64 bits e evolução contínua.** O kernel passa a rodar em 64 bits
   (x86-64), com os programas de antes funcionando sem mudança, e o projeto passa a seguir o
   versionamento MAIOR.MENOR.CORREÇÃO, crescendo com a comunidade.
 
@@ -60,8 +70,8 @@ textos de todas as licenças.
 O SaguiOS é um sistema operacional completo, do carregador de boot ao jogo em 3D, escrito
 inteiro neste projeto, seguindo a especificação em [`prd.md`](prd.md). Ele dá boot por um
 pendrive num **Lenovo G470** (2011), no VirtualBox e no QEMU. A versão 1.0 cabia em **575.488
-bytes** (39% de um disquete de 1,44 MB); a 2.1, com o navegador, as fontes de letra e o fundo
-da Mata Atlântica, tem cerca de **6 MB**.
+bytes** (39% de um disquete de 1,44 MB); a 3.0, com o navegador, as fontes de letra e o fundo
+da Mata Atlântica, tem cerca de **8 MB**.
 
 Tudo o que vai dentro da imagem foi escrito aqui: carregador de boot em dois estágios, kernel,
 drivers (teclado ABNT2, touchpad, vídeo VESA, USB 2.0, pendrive), sistema de arquivos FAT32,
@@ -129,9 +139,17 @@ na seção "Sagui 3D" de [`docs/decisoes.md`](docs/decisoes.md).
 
 As imagens prontas estão nas [Releases](https://github.com/erigobeli/sagui-os/releases) do GitHub:
 
-- **VirtualBox:** `saguios.vdi` (máquina "Other/Unknown", 32 bits, EFI desligado).
+- **3.0 (64 bits)**, para qualquer PC x86 dos últimos 15 anos;
+- **2.2 (32 bits)**, para um PC antigo sem 64 bits (a 3.0 avisa na tela se o processador
+  não tiver).
+
+Em cada uma:
+
+- **VirtualBox:** `saguios.vdi` (máquina "Other/Unknown (64-bit)" para a 3.0, ou
+  "Other/Unknown" para a 2.2; EFI desligado).
 - **PC de verdade:** grave `saguios.img` num pendrive em modo DD (Rufus, balenaEtcher ou `dd`)
-  e dê boot pela BIOS tradicional.
+  e dê boot pela BIOS tradicional. O SaguiOS roda do pendrive e nunca grava no disco
+  interno, a não ser que você abra o instalador, escolha o disco e digite o nome dele.
 
 O passo a passo está em [`docs/como-gravar.md`](docs/como-gravar.md).
 
@@ -167,7 +185,7 @@ python3-pil qemu-system-x86 qemu-utils imagemagick mtools dosfstools fdisk
 procps openssl openssh-client openssh-server vim htop ffmpeg`.
 
 ```bash
-make            # build/saguios.img (kernel de 64 bits no branch da 3.0; programas de 32)
+make            # build/saguios.img (kernel de 64 bits; os programas continuam de 32)
 make ARQ=32     # build32/saguios.img (o kernel de 32 bits da 2.x)
 make vdi        # build/saguios.vdi (VirtualBox)
 make test       # todos os testes no QEMU (sem janela)
@@ -182,7 +200,8 @@ funcionam numa máquina Linux ou no WSL2.
 
 ```
 boot/        estágio 1 (MBR) e estágio 2 do carregador, em NASM
-kernel/      kernel em C freestanding + NASM: núcleo, memória, drivers, USB, arquivos, janelas
+kernel/      kernel em C freestanding + NASM: núcleo, memória, drivers, USB, arquivos, janelas;
+             kernel/arch/i386 e kernel/arch/x86_64 têm o que muda entre 32 e 64 bits
 userland/    libsagui e os programas; userland/sagui3d/ é o jogo do bônus B4;
              userland/navegador/ é o Cipó, o navegador; userland/video/ o tocador de vídeo
 terceiros/   o pouco código de terceiros dos aplicativos, cada um com licença e ORIGEM.md
@@ -200,11 +219,13 @@ testes_eli/  fotos dos testes do Eli no G470
 | Documento | O que tem |
 | --- | --- |
 | [`docs/resumo-final.md`](docs/resumo-final.md) | Resumo do projeto, tempo de cada fase e a tabela de conceitos do livro do Tanenbaum preenchida |
-| [`docs/decisoes.md`](docs/decisoes.md) | As 30 decisões de projeto e a seção do Sagui 3D |
-| [`docs/erros.md`](docs/erros.md) | Os 19 erros encontrados, inclusive os achados no G470 |
+| [`VERSOES.md`](VERSOES.md) | O que entrou em cada versão |
+| [`docs/decisoes.md`](docs/decisoes.md) | As decisões de projeto (D001 a D080), com o raciocínio de cada uma, e a seção do Sagui 3D |
+| [`docs/erros.md`](docs/erros.md) | Os erros encontrados, inclusive os achados no G470, com sintoma, causa e correção |
 | [`docs/diario.md`](docs/diario.md) | O diário do projeto, fase a fase |
-| [`docs/historias/`](docs/historias/) | Uma página por história (H01 a H34, B1 a B4) |
-| [`status.md`](status.md) e [`dashboard/`](dashboard/index.html) | Situação de cada fase e história |
+| [`docs/historias/`](docs/historias/), [`docs/v2/`](docs/v2/), [`docs/v3/`](docs/v3/) | Uma página por história (1.0: H01 a H34 e B1 a B4; 2.x: H35 em diante; 3.0: H127 a H138) |
+| [`status.md`](status.md), [`status-v2.md`](status-v2.md), [`status-v3.md`](status-v3.md) e [`dashboard/`](dashboard/index.html) | Situação de cada fase e história |
+| [`SECURITY.md`](SECURITY.md) | Como relatar uma vulnerabilidade |
 
 ## As regras do projeto
 
