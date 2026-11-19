@@ -300,10 +300,10 @@ static void lote_fim(void *ctx, int i, const http_resposta_t *resp)
 
 int rede_lote(const char *const *urls, int n, rede_resposta_t *rs, unsigned max)
 {
-    if (n > 8) n = 8;
-    static char redes[8][MAX_URL_NAV];
-    static char extras[8][3100];
-    const char *pu[8], *pe[8];
+    if (n > 16) n = 16;
+    static char redes[16][MAX_URL_NAV];
+    static char extras[16][3100];
+    const char *pu[16], *pe[16];
     for (int i = 0; i < n; i++) {
         memset(&rs[i], 0, sizeof rs[i]);
         rs[i].max = max;

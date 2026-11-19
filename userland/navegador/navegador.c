@@ -259,6 +259,9 @@ static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
     return c;
 }
 
+/* Para onde vai o tempo de uma página (registrado em "navegador: tempos"). */
+static struct { unsigned rede, n_rede, decod, n_decod, diag, n_diag, desenho; } perf;
+
 /* Evento que chegou enquanto a página carregava (tratado depois, no laço). */
 static evento_t evento_guardado;
 static bool tem_evento_guardado;
@@ -272,7 +275,9 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
     formatar_texto(msg, sizeof msg, "Baixando %s", end);
     definir_status(msg);
     rede_resposta_t r;
+    unsigned t0 = tempo_ms();
     int s = rede_buscar(end, &r, MAX_RECURSO, cab, cmax);
+    perf.rede += tempo_ms() - t0; perf.n_rede++;
     if (codigo) *codigo = s < 0 ? 0 : s;
     if (final) copia_texto(final, r.final, (size_t)fmax);
     if (s < 0 || !r.d) { registrar("navegador: recurso %s: %s", end, r.erro[0] ? r.erro : "veio vazio"); libera(r.d); return NULL; }
@@ -281,7 +286,7 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
 }
 
 /* Imagens que chegaram juntas (pipelining, H129), esperando o motor pedir. */
-#define ADIANTADAS 8
+#define ADIANTADAS 16
 static struct { char *url; uint8_t *d; unsigned n; } adiantadas[ADIANTADAS];
 
 static void soltar_adiantadas(void)
@@ -295,7 +300,7 @@ static void soltar_adiantadas(void)
 }
 
 /* Busca juntas as próximas imagens do mesmo servidor, se nenhuma está
- * esperando: uma ida e volta pela rede para até 8, em vez de uma para cada. */
+ * esperando: uma ida e volta pela rede para até 16, em vez de uma para cada. */
 static void adiantar_imagens(void)
 {
     for (int i = 0; i < ADIANTADAS; i++) if (adiantadas[i].url) return;
@@ -311,12 +316,20 @@ static void adiantar_imagens(void)
         for (int c = 0; c < qtd_cache && !repetida; c++) if (compara_texto(cache[c].url, ends[k]) == 0) repetida = true;
         for (int c = 0; c < k && !repetida; c++) if (compara_texto(ends[c], ends[k]) == 0) repetida = true;
         if (repetida) continue;
+        /* um servidor por vez: o da primeira; os outros ficam para a próxima leva */
+        if (k > 0) {
+            const char *a = acha_char(ends[0] + 8, '/'), *b = acha_char(ends[k] + 8, '/');
+            int la = a ? (int)(a - ends[0]) : (int)tam_texto(ends[0]), lb = b ? (int)(b - ends[k]) : (int)tam_texto(ends[k]);
+            if (la != lb || compara_texto_n(ends[0], ends[k], (size_t)la) != 0) continue;
+        }
         urls[k] = ends[k];
         k++;
     }
     if (k < 2) return;   /* uma só: o caminho de sempre */
     static rede_resposta_t rs[ADIANTADAS];
+    unsigned t0 = tempo_ms();
     int prontas = rede_lote(urls, k, rs, MAX_RECURSO);
+    perf.rede += tempo_ms() - t0; perf.n_rede += (unsigned)prontas;
     for (int i = 0; i < k; i++) {
         if (i < prontas && rs[i].d && rs[i].situacao >= 200 && rs[i].situacao < 300) {
             int t = (int)tam_texto(urls[i]);
@@ -409,7 +422,9 @@ static bool decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int
         *px = c; *l = imgc[i].l; *a = imgc[i].a;
         return true;
     }
+    unsigned t0 = tempo_ms();
     bool ok = imagem_decodificar(d, n, px, l, a);
+    perf.decod += tempo_ms() - t0; perf.n_decod++;
     if (ok) registrar("navegador: imagem %dx%d", *l, *a);
     else registrar("navegador: imagem nao decodificou (%u bytes)", n);
     if (qtd_imgc < IMGC_N) {
@@ -647,6 +662,7 @@ static void diagramar(void)
     unsigned t0 = tempo_ms();
     altura = motor_layout(motor, VISTA_L, VISTA_A);
     custo_diagramar = tempo_ms() - t0;
+    perf.diag += custo_diagramar; perf.n_diag++;
     limitar_rolagem();
 }
 
@@ -769,6 +785,8 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     imgc_limpar();
     copia_texto(url_atual, url, sizeof url_atual);
 
+    memset(&perf, 0, sizeof perf);
+    unsigned t_pagina = 0, t_scripts = 0, t_ler = 0;
     texto_t pag = { 0, 0, 0 };
     char tipo[64] = "text/html", final[MAX_URL], erro[160] = "";
     int situacao = 200;
@@ -776,7 +794,9 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     if (comeca_com(url, "sagui:")) { pagina_interna(url, &pag); copia_texto(final, url, sizeof final); }
     else {
         rede_resposta_t r;
+        t_pagina = tempo_ms();
         situacao = rede_buscar(url, &r, MAX_PAGINA, NULL, 0);
+        t_pagina = tempo_ms() - t_pagina;
         copia_texto(tipo, r.tipo[0] ? r.tipo : "text/html", sizeof tipo);
         copia_texto(final, r.final[0] ? r.final : url, sizeof final);
         copia_texto(erro, r.erro, sizeof erro);
@@ -829,8 +849,14 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     if (comeca_com(pag.d, "<html><head><meta charset=\"iso-8859-1\">")) pag.d = para_utf8(pag.d, &pag.n, 0);
     copia_texto(url_atual, final[0] && !comeca_com(url, "sagui:") ? final : url, sizeof url_atual);
     if (acha_char(url, '#') && !acha_char(url_atual, '#')) junta_texto(url_atual, acha_char(url, '#'), sizeof url_atual);
+    t_scripts = tempo_ms();
     pag.d = rodar_scripts(pag.d, &pag.n);
+    t_scripts = tempo_ms() - t_scripts;
+    unsigned rede_antes = perf.rede, diag_antes = perf.diag;
+    t_ler = tempo_ms();
     ler_pagina(pag.d, (int)pag.n);
+    t_ler = tempo_ms() - t_ler;
+    unsigned css_rede = perf.rede - rede_antes, ler_diag = perf.diag - diag_antes;
     libera(pag.d);
     copia_texto(url_atual, url, sizeof url_atual);
     rolagem = rolagem_inicial;
@@ -854,8 +880,16 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     copia_texto(tit, titulo_js[0] ? titulo_js : motor ? motor_titulo(motor) : "", sizeof tit);
     utf8_para_sistema(tit);
     registrar("navegador: titulo %s", tit);
+    unsigned t_des = tempo_ms();
     desenhar_tudo();
+    t_des = tempo_ms() - t_des;
+    registrar("navegador: tempos da pagina: rede %u ms, scripts %u ms, ler %u ms (css pela rede %u ms, diagramar %u ms), desenhar %u ms",
+              t_pagina, t_scripts, t_ler, css_rede, ler_diag, t_des);
+    memset(&perf, 0, sizeof perf);
+    unsigned t_imgs = tempo_ms();
     carregar_imagens();
+    registrar("navegador: tempos das imagens: %u ms: rede %u ms (%u), decodificar %u ms (%u), diagramar %u ms (%u)",
+              tempo_ms() - t_imgs, perf.rede, perf.n_rede, perf.decod, perf.n_decod, perf.diag, perf.n_diag);
     /* Imagens novas podem ter mudado a altura: a âncora pode ter descido. */
     if (frag && motor) { int y = motor_ancora(motor, frag + 1); if (y >= 0) { rolagem = y - 4; limitar_rolagem(); } }
     formatar_texto(status, sizeof status, "%s%sPronto: %u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", bytes / 1024, tempo_ms() - inicio);
