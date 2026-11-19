@@ -107,6 +107,10 @@ def main():
         n = len(m.serial())
         m.digitar(f"/testes/setores hd1 {SETOR_NEGADO} gravar liberar\n", 0.03)
         esperar(m, "[GUI] confirmacao do disco hd1 aberta", 20, n)
+        # As linhas da caixa vêm no log logo depois de "aberta": espera a
+        # última delas antes de ler (sem isso, numa máquina ocupada o teste
+        # lia a caixa pela metade).
+        esperar(m, "pode ser apagado", 20, n)
         caixa = m.serial()[n:]
         verificar("disco interno" in caixa and "ext (Linux)" in caixa, "a caixa mostra o disco e o que tem nele hoje (do kernel)")
         verificar("O programa diz que vai:" in caixa and "gravar 1 setor de teste" in caixa,

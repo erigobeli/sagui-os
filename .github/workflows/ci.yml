@@ -5,6 +5,12 @@
 # e o VDI como artefato. O desenvolvimento continua no Windows; nada aqui
 # precisa de Linux na máquina do desenvolvedor.
 #
+# Para andar depressa (D075), a suíte é repartida em pedaços que rodam ao
+# mesmo tempo, cada um numa máquina (job "testes", uma matriz), e o QEMU usa o
+# KVM do runner quando ele existe. O job final, "Compilar e testar no Ubuntu
+# 24.04", é o check obrigatório da proteção da main: ele só fica verde quando
+# todos os pedaços passaram, e é ele que gera a entrega na main.
+#
 # Segurança: só ações oficiais do GitHub, permissão de leitura, nenhum segredo
 # e nenhum pull_request_target. Pull requests de forks rodam com o token
 # somente leitura e sem acesso a segredos.
@@ -44,14 +50,27 @@ env:
   SAGUI_RAMDISK: build/ramdisk.sgfs
   LANG: C.UTF-8
   PYTHONUNBUFFERED: "1"
+  # "1": o QEMU dos testes usa o KVM se o runner tiver /dev/kvm (bem mais
+  # rápido); "0": emulação pura (TCG), como era antes do D075. Trocar para
+  # "0" é o jeito de descartar o KVM como causa de uma falha.
+  SAGUI_KVM: "1"
 
 jobs:
-  ci:
-    name: Compilar e testar no Ubuntu 24.04
+  testes:
+    name: Testes (pedaço ${{ matrix.pedaco }} de 6)
     runs-on: ubuntu-24.04
-    # A suíte completa tem dezenas de testes no QEMU, alguns com internet
-    # real. Quatro horas dão folga sem deixar uma execução travada por um dia.
-    timeout-minutes: 240
+    # Cada pedaço tem uns 15 minutos de testes no TCG (bem menos com o KVM).
+    # Duas horas dão folga para os testes de internet sem deixar um pedaço
+    # travado por muito tempo.
+    timeout-minutes: 120
+    strategy:
+      # Um pedaço que falha não cancela os outros: assim uma execução mostra
+      # todas as falhas de uma vez, e não só a do primeiro pedaço a falhar.
+      fail-fast: false
+      matrix:
+        # O número de pedaços aparece aqui, no nome do job e no --pedaco N/6
+        # do passo de testes. Mudar um exige mudar os outros.
+        pedaco: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Baixar o repositório
@@ -107,6 +126,27 @@ jobs:
             sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
           } 2>&1 | tee -a build/testes/resultado.txt
 
+      # O GitHub recomenda esta regra do udev para emuladores: o /dev/kvm do
+      # runner existe, mas só o grupo kvm pode abri-lo. A regra libera o
+      # dispositivo para o usuário runner, que continua sem ser root. Sem
+      # /dev/kvm (ou com SAGUI_KVM=0), os testes usam o TCG, como antes.
+      - name: Liberar o KVM para o QEMU
+        if: env.SAGUI_KVM != '0'
+        run: |
+          set -eu
+          set -o pipefail
+          {
+            if [ -e /dev/kvm ]; then
+              echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+              sudo udevadm control --reload-rules
+              sudo udevadm trigger --name-match=kvm
+              ls -l /dev/kvm
+            else
+              echo "::notice::este runner não tem /dev/kvm; os testes vão usar o TCG"
+            fi
+          } 2>&1 | tee -a build/testes/resultado.txt
+
       - name: Conferir ferramentas e bibliotecas
         run: |
           set -eu
@@ -155,13 +195,17 @@ jobs:
             echo "  ffmpeg com libx264 e AAC ok"
           } 2>&1 | tee -a build/testes/resultado.txt
 
+      # Cada pedaço compila a sua imagem: com o make em paralelo leva cerca
+      # de um minuto, e evita passar o build/ inteiro de uma máquina para
+      # outra (os testes ainda chamam o make, que teria de concordar com as
+      # datas dos arquivos baixados).
       - name: Compilar a imagem
         run: |
           set -eu
           set -o pipefail
           # resultado.txt já foi criado após o checkout; não truncar aqui, para
           # preservar os logs da instalação e da conferência.
-          make 2>&1 | tee -a build/testes/resultado.txt
+          make -j"$(nproc)" 2>&1 | tee -a build/testes/resultado.txt
           test -s build/saguios.img
           test -s build/saguios.img.sha256
           test -s build/tamanho.txt
@@ -169,29 +213,106 @@ jobs:
           echo "Imagem: $(wc -c < build/saguios.img) bytes; úteis: $(cat build/tamanho.txt) bytes"
 
       # 3.0 (D080): a imagem padrão tem o kernel de 64 bits; a de 32 bits
-      # (a da 2.x) continua compilando até a 3.0 ser aprovada no G470.
+      # (a da 2.x) continua compilando até a 3.0 ser aprovada no G470; basta
+      # conferir isso num dos pedaços.
       - name: Compilar a imagem de 32 bits
+        if: matrix.pedaco == 1
         run: |
           set -eu
           set -o pipefail
           make ARQ=32 2>&1 | tee -a build/testes/resultado.txt
           test -s build32/saguios.img
 
-      - name: Rodar a suíte completa de testes
+      - name: Rodar o pedaço ${{ matrix.pedaco }} de 6 da suíte
         run: |
           set -eu
           set -o pipefail
-          python3 tests/rodar_todos.py 2>&1 | tee -a build/testes/resultado.txt
+          python3 tests/rodar_todos.py --pedaco ${{ matrix.pedaco }}/6 2>&1 | tee -a build/testes/resultado.txt
 
-      # A entrega é só da main, depois de compilar e de todos os testes
-      # passarem. O VDI também é gerado pelos testes H04, mas repetimos o alvo
-      # aqui para garantir os arquivos de entrega desta execução.
+      # O job final gera o VDI e publica a entrega a partir desta imagem, a
+      # que passou pelos testes do pedaço 1 (os outros pedaços compilam o
+      # mesmo commit com o mesmo Makefile).
+      - name: Guardar a imagem testada para a entrega
+        if: success() && github.ref == 'refs/heads/main' && matrix.pedaco == 1
+        uses: actions/upload-artifact@v7
+        with:
+          name: saguios-imagem-testada
+          path: |
+            build/saguios.img
+            build/saguios.img.sha256
+            build/tamanho.txt
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+      # Em falha, os logs e as capturas ficam disponíveis para o diagnóstico,
+      # inclusive em pull requests de forks (não há segredo nenhum neles).
+      # Cada pedaço publica o seu artefato.
+      - name: Publicar logs da falha
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: saguios-ci-logs-${{ github.sha }}-${{ github.run_attempt }}-pedaco${{ matrix.pedaco }}
+          path: |
+            build/testes/resultado.txt
+            build/testes/*.serial
+            build/testes/**/*.serial
+            build/testes/*.log
+            build/testes/**/*.log
+            build/testes/**/*.png
+            build/h68/**/*.serial
+            build/h68/**/*.log
+            build/h68/capturas/*.png
+          retention-days: 14
+          if-no-files-found: warn
+
+  ci:
+    # Este nome é o check obrigatório da proteção da main: não mude.
+    name: Compilar e testar no Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    needs: testes
+    # Roda mesmo quando algum pedaço falhou, para o check ficar vermelho em
+    # vez de "pulado". Só não roda se a execução foi cancelada.
+    if: ${{ !cancelled() }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Conferir que todos os pedaços passaram
+        env:
+          RESULTADO: ${{ needs.testes.result }}
+        run: |
+          set -eu
+          echo "Resultado dos pedaços: $RESULTADO"
+          if [ "$RESULTADO" != "success" ]; then
+            echo "::error::a suíte não passou inteira (resultado dos pedaços: $RESULTADO)"
+            exit 1
+          fi
+
+      - name: Baixar o repositório
+        if: github.ref == 'refs/heads/main'
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Baixar a imagem testada
+        if: github.ref == 'refs/heads/main'
+        uses: actions/download-artifact@v8
+        with:
+          name: saguios-imagem-testada
+          path: build
+
+      # A entrega é só da main, depois de todos os pedaços passarem. O
+      # "-o build/saguios.img" diz ao make para usar a imagem baixada como
+      # está, sem recompilá-la: o VDI sai da própria imagem testada.
       - name: Gerar a imagem VDI e conferir a entrega
-        if: success() && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: |
           set -eu
           set -o pipefail
-          make vdi 2>&1 | tee -a build/testes/resultado.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-utils
+          (cd build && sha256sum -c saguios.img.sha256)
+          make -o build/saguios.img vdi
           for arq in \
             build/saguios.img \
             build/saguios.img.sha256 \
@@ -214,7 +335,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publicar a entrega
-        if: success() && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
           name: saguios-${{ github.sha }}
@@ -230,22 +351,49 @@ jobs:
           # em vez de falhar pelo nome do artefato já existir.
           overwrite: true
 
-      # Em falha, os logs e as capturas ficam disponíveis para o diagnóstico,
-      # inclusive em pull requests de forks (não há segredo nenhum neles).
-      - name: Publicar logs da falha
-        if: failure()
+  # Análise estática (D074): o analisador do GCC (-fanalyzer) passa por todo
+  # o C de kernel/ e userland/ (terceiros/ fica de fora), com as mesmas
+  # opções do build. É um job separado para não atrasar o de cima, que é o
+  # obrigatório nos pull requests.
+  #
+  # Por enquanto é informativo: o script sai com 0 mesmo com achados (só
+  # falha se o gcc não conseguir analisar um arquivo), e o resumo aparece na
+  # página da execução e no artefato "saguios-analise-...". Para torná-lo
+  # obrigatório: zerar os achados, trocar a linha do script por
+  # "python3 tools/analise_estatica.py --estrito" e marcar o job
+  # "Análise estática (gcc -fanalyzer)" como verificação obrigatória na
+  # proteção da main (Settings > Branches).
+  analise:
+    name: Análise estática (gcc -fanalyzer)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar o compilador
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc gcc-multilib make python3
+
+      - name: Rodar o analisador
+        run: |
+          set -eu
+          set -o pipefail
+          gcc --version | head -n 1
+          python3 tools/analise_estatica.py -j "$(nproc)"
+
+      - name: Publicar o relatório
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: saguios-ci-logs-${{ github.sha }}-${{ github.run_attempt }}
+          name: saguios-analise-${{ github.sha }}-${{ github.run_attempt }}
           path: |
-            build/testes/resultado.txt
-            build/testes/*.serial
-            build/testes/**/*.serial
-            build/testes/*.log
-            build/testes/**/*.log
-            build/testes/**/*.png
-            build/h68/**/*.serial
-            build/h68/**/*.log
-            build/h68/capturas/*.png
+            build/analise/relatorio.txt
+            build/analise/resumo.md
           retention-days: 14
           if-no-files-found: warn

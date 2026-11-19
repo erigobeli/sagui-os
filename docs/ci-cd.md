@@ -7,9 +7,14 @@ trabalho para o runner remoto, que instala as ferramentas, compila com o
 `Makefile` do projeto e roda a suíte inteira no QEMU.
 
 O workflow fica em [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
-Ele usa somente ações oficiais do GitHub (`actions/checkout` e
-`actions/upload-artifact`), com permissão `contents: read`, sem segredos e sem
-`pull_request_target`.
+Ele usa somente ações oficiais do GitHub (`actions/checkout`,
+`actions/upload-artifact` e `actions/download-artifact`), com permissão
+`contents: read`, sem segredos e sem `pull_request_target`.
+
+Desde o D075, a suíte roda em **6 pedaços paralelos**, cada um num runner, e
+o QEMU usa o **KVM** do runner quando ele existe. Um job final com o nome de
+sempre, **Compilar e testar no Ubuntu 24.04**, só fica verde quando todos os
+pedaços passaram; é ele o check obrigatório da `main`.
 
 ## 1. Quando o CI roda
 
@@ -41,10 +46,10 @@ compartilham o grupo; nesse caso, `cancel-in-progress: false` garante que a
 execução ativa não seja interrompida, mas a pendente mais antiga pode ser
 substituída. Como o SHA é o mesmo, a entrega continua sendo do mesmo commit.
 
-O job tem limite de **4 horas**. A suíte tem dezenas de testes (QEMU e host),
-com limite de até 600 segundos por teste e vários deles dependendo da internet
-real; o limite do job é folgado, mas impede que uma execução fique presa por
-um dia.
+Cada pedaço tem limite de **2 horas** (uns 15 minutos de testes no TCG,
+bem menos com o KVM), e o job final, de 30 minutos. A suíte tem limite de até
+600 segundos por teste e vários testes dependem da internet real; os limites
+são folgados, mas impedem que uma execução fique presa por um dia.
 
 ## 2. Arquitetura da execução
 
@@ -53,20 +58,26 @@ Windows 11 (desenvolvedor)
   │  git push / pull request
   ▼
 GitHub Actions — ubuntu-24.04
-  ├─ checkout do repositório (somente leitura)
-  ├─ preparação de build/testes/resultado.txt e de build/testes/capturas
-  ├─ apt-get install das dependências (saída também vai para o resultado.txt)
-  ├─ conferência das ferramentas (idem; inclusive gcc -m32 com ASan/UBSan e ffmpeg com H.264/AAC)
-  ├─ make                         → build/saguios.img + SHA-256 + build/tamanho.txt
-  ├─ python3 tests/rodar_todos.py → suíte completa no QEMU
-  └─ somente na main e com sucesso:
-       ├─ make vdi                → build/saguios.vdi + SHA-256
-       └─ upload-artifact         → saguios-<commit> (14 dias)
+  ├─ "Testes (pedaço N de 6)", N = 1..6, ao mesmo tempo, um runner cada:
+  │    ├─ checkout do repositório (somente leitura)
+  │    ├─ preparação de build/testes/resultado.txt e de build/testes/capturas
+  │    ├─ apt-get install das dependências (saída também vai para o resultado.txt)
+  │    ├─ regra do udev que libera o /dev/kvm (se existir e SAGUI_KVM != 0)
+  │    ├─ conferência das ferramentas (inclusive gcc -m32 com ASan/UBSan e ffmpeg com H.264/AAC)
+  │    ├─ make -j$(nproc)                         → build/saguios.img + SHA-256 + tamanho.txt
+  │    ├─ python3 tests/rodar_todos.py --pedaco N/6 → o pedaço N da suíte no QEMU
+  │    └─ só no pedaço 1, na main e com sucesso: a imagem testada vira artefato interno
+  └─ "Compilar e testar no Ubuntu 24.04" (depois de todos os pedaços):
+       ├─ falha se algum pedaço falhou (ou não terminou)
+       └─ somente na main:
+            ├─ download-artifact da imagem testada
+            ├─ make -o build/saguios.img vdi → build/saguios.vdi + SHA-256
+            └─ upload-artifact               → saguios-<commit> (14 dias)
 ```
 
 Não há outro sistema de compilação: o CI chama exatamente `make` e
 `python3 tests/rodar_todos.py`, os mesmos comandos do `README.md` e do
-`CONTRIBUTING.md`. O executor de testes também roda `make` antes de começar,
+`CONTRIBUTING.md`; o `--pedaco` só escolhe uma parte da mesma lista. O executor de testes também roda `make` antes de começar,
 como sempre fez; a etapa explícita de compilação só torna a falha mais fácil
 de localizar.
 
@@ -126,8 +137,22 @@ do H63 acrescenta `-mstackrealign` ao `UCFLAGS` (erro 22 em
 python3 tests/rodar_todos.py
 ```
 
-O comando roda **todos** os `tests/hNN_*.py` e `tests/bN_*.py` em ordem. Não
-há seleção, `continue-on-error` nem teste desativado no CI. A suíte cobre,
+O comando roda **todos** os `tests/hNN_*.py` e `tests/bN_*.py` em ordem. No
+CI, cada pedaço roda `python3 tests/rodar_todos.py --pedaco N/6`; os seis
+pedaços juntos são exatamente a suíte inteira, sem repetir teste. A divisão
+equilibra os pedaços pela tabela `TEMPOS` do `rodar_todos.py` (um teste novo
+fora dela conta 40 s; vale acrescentá-lo quando o tempo for conhecido). Para
+ver um pedaço sem rodar: `python3 tests/rodar_todos.py --pedaco 2/6 --listar`.
+Não há `continue-on-error` nem teste desativado no CI.
+
+### KVM
+
+`tests/qemu.py` acrescenta `-accel kvm` quando `/dev/kvm` abre para leitura
+e escrita e a variável `SAGUI_KVM` não é `0`; senão, usa o TCG, a emulação
+pura de sempre. O `rodar_todos.py` escreve no começo `QEMU com acelerador:
+kvm` (ou `tcg`). No workflow, `SAGUI_KVM` fica no bloco `env` do topo: trocar
+para `"0"` desliga o KVM em todos os pedaços, o jeito de descartá-lo como
+causa de uma falha que dependa do ritmo da máquina. A suíte cobre,
 entre outros:
 
 - boot, modo protegido, memória, processos, paginação e chamadas de sistema;
@@ -183,8 +208,8 @@ A saída também aparece ao vivo na página da execução. As etapas de instala�
 conferência, compilação, testes e VDI usam `set -o pipefail`; portanto, se o
 `apt-get`, o `make` ou um teste falhar, o job falha mesmo com o `tee`.
 
-Em caso de falha, o workflow publica o artefato
-`saguios-ci-logs-<commit>-<tentativa>` com:
+Em caso de falha, cada pedaço que falhou publica o artefato
+`saguios-ci-logs-<commit>-<tentativa>-pedacoN` com:
 
 - `build/testes/resultado.txt`;
 - os logs seriais do QEMU (`*.serial`);
@@ -197,13 +222,15 @@ dependências.
 
 Para diagnosticar:
 
-1. abra **Actions** → execução → job **Compilar e testar no Ubuntu 24.04**;
+1. abra **Actions** → execução → o job vermelho **Testes (pedaço N de 6)**
+   (o **Compilar e testar no Ubuntu 24.04** só diz que algum pedaço falhou);
 2. procure a etapa vermelha e leia as últimas linhas dela;
 3. baixe o artefato de logs e veja `resultado.txt` e o `*.serial` do teste
    que falhou — a serial tem o log do kernel e o motivo exato;
 4. as capturas mostram a tela do SaguiOS no momento da falha;
 5. reproduza localmente no WSL/Ubuntu, se tiver, com os mesmos comandos:
-   `make && python3 tests/rodar_todos.py`.
+   `make && python3 tests/rodar_todos.py` (ou só o pedaço que falhou, com
+   `--pedaco N/6`).
 
 Falhas de rede externa (H45/H53/H63) aparecem como tempo esgotado ou erro de
 conexão no teste correspondente. Nesse caso, confira se o site está no ar e
@@ -218,7 +245,9 @@ A entrega só acontece quando **todas** estas condições valem:
 - todos os testes passaram.
 
 Pull requests e branches de trabalho nunca geram entrega. Quando as condições
-valem, o workflow gera `build/saguios.vdi` com `make vdi` e publica o artefato
+valem, o job final baixa a imagem testada no pedaço 1, gera
+`build/saguios.vdi` com `make -o build/saguios.img vdi` (o `-o` impede o
+`make` de recompilar a imagem) e publica o artefato
 **`saguios-<sha-do-commit>`**, com retenção de **14 dias**:
 
 ```
@@ -284,8 +313,10 @@ Isso é opcional e não substitui a execução real no GitHub Actions.
 - Permissão do workflow: `contents: read`.
 - Nenhum segredo, token pessoal, chave de API ou senha no repositório.
 - Nenhum `pull_request_target`.
-- Nenhuma ação de terceiros: só `actions/checkout` e `actions/upload-artifact`,
-  em versões maiores estáveis.
+- Nenhuma ação de terceiros: só `actions/checkout`, `actions/upload-artifact`
+  e `actions/download-artifact`, em versões maiores estáveis.
+- O `/dev/kvm` é liberado para o usuário do runner por uma regra do udev; a
+  suíte continua sem rodar como root.
 - O workflow não escreve no repositório: ele só compila e testa com os
   comandos oficiais do projeto. As mudanças de código deste PR são o
   `-mstackrealign` no `Makefile` (H63) e a medição do H82 no teste; nenhuma

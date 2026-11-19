@@ -138,7 +138,7 @@ void inicio_kernel(uint32_t magico, info_boot_t *bi)
     console_iniciar();
     klog("\n[SAGUI] kernel iniciado\n");
 #ifdef __x86_64__
-    /* 3.0 (H100): o estágio 2 já entrou no modo longo antes de chegar aqui. */
+    /* 3.0 (H127): o estágio 2 já entrou no modo longo antes de chegar aqui. */
     klog("[SAGUI] modo longo (64 bits)\n");
 #endif
 

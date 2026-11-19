@@ -57,6 +57,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_REDE_ESTADO] = sis_rede_estado,
     [SIS_ALEATORIO] = sis_aleatorio,
     [SIS_JANELA_OPCOES] = sis_janela_opcoes,
+    [SIS_JANELA_MODO]   = sis_janela_modo,
     [SIS_MENU_JANELA]   = sis_menu_janela,
     [SIS_DISCO_SETORES] = sis_disco_setores,  [SIS_DISCO_RELER] = sis_disco_reler,
     [SIS_DISCO_LIBERAR] = sis_disco_liberar, [SIS_DISCO_TABELA] = sis_disco_tabela,

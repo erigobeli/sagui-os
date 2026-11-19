@@ -1121,7 +1121,6 @@ static void ler_regra(motor_t *m, const char *sel, int ns, const char *d, int nd
 
 /* Folha de estilo. As regras dentro de @media só entram se a mídia vale
  * para a largura atual (o motor relê as folhas quando a largura muda). */
-static int ler_peso(const char *v);
 static int ler_peso_de(const char *v, int pai);
 static int ler_largura(const char *v);
 /* primeiro url(...) do valor; aceita aspas (data: com aspas do outro tipo dentro) */
@@ -1637,7 +1636,6 @@ static int ler_peso_de(const char *v, int pai)
     if (u && x >= 100 && x <= 100000) return x / 100;
     return -1;
 }
-static int ler_peso(const char *v) { int w = ler_peso_de(v, 400); return w < 0 ? -1 : w >= 600; }
 /* font-stretch: palavra-chave ou porcentagem, em décimos de % */
 static int ler_largura(const char *v)
 {
@@ -4507,7 +4505,8 @@ static int32_t fator16(const char *s, int n)   /* número -> 16.16 */
     int u; int v = num100(s, n, &u);
     if (!u) return 65536;
     if (n > u && s[u] == '%') v /= 100;
-    if (v > 3000) v = 3000; if (v < -3000) v = -3000;
+    if (v > 3000) v = 3000;
+    if (v < -3000) v = -3000;
     return v * 16384 / 25;
 }
 /* Matriz afim do transform: a b c d em 16.16, e f em px. Falso se identidade. */
@@ -5247,14 +5246,6 @@ static void ret(alvo_px_t *t, int x, int y, int l, int a, uint32_t cor, int raio
         if ((cor >> 24) >= 250) { uint32_t c = cor & 0xFFFFFF; for (int xx = xa; xx < xb; xx++) lin[xx] = c; }
         else for (int xx = xa; xx < xb; xx++) lin[xx] = misturar(lin[xx], cor);
     }
-}
-
-static char maiuscula(char c)
-{
-    uint8_t u = (uint8_t)c;
-    if (u >= 'a' && u <= 'z') return (char)(u - 32);
-    if (u >= 0xE0 && u <= 0xFE && u != 0xF7) return (char)(u - 32);
-    return c;
 }
 
 /* quadrilátero convexo (1/16 px) com antialias horizontal */

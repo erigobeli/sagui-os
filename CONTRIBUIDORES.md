@@ -26,5 +26,6 @@
   adaptar o SaguiOS para o espanhol (issue #5), que levou às regras de contribuição, e o
   fork SaguiOS-Extended, de onde vieram o layout espanhol do teclado (H90), os comandos de
   terminal (H91), os jogos, reescritos como Caça-Bananas, Paciência Banana, CHIP-8 e
-  Atividades JClic (H92), e os programas gzip, tar e zip (H93).
+  Atividades JClic (H92), os programas gzip, tar e zip (H93) e a ideia do SaguiOS em
+  várias línguas (issue #14; H124).
 

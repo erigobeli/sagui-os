@@ -61,6 +61,7 @@ typedef struct {
     bool       maximizada;
     int        antes[4];          /* x, y, largura, altura antes de maximizar */
     bool       encaixada;         /* H94: presa numa metade ou num quarto da tela */
+    bool       tela_cheia;        /* D071: o conteúdo cobre a tela toda, sem moldura */
 } janela_t;
 
 static janela_t janelas[MAX_JANELAS];
@@ -1146,6 +1147,12 @@ static void entregar(janela_t *j, evento_t *e);
 
 static void tamanho_maximo(janela_t *j, int *l, int *a)
 {
+    if (j->tela_cheia) {                 /* D071: a tela inteira, até onde a memória da janela deixa */
+        *l = (int)video_largura();
+        *a = (int)video_altura();
+        if (j->cap_px && (uint32_t)(*l * *a) > j->cap_px) *a = (int)(j->cap_px / (uint32_t)*l);
+        return;
+    }
     *l = (int)video_largura() - 2 * BORDA;
     *a = (doca_ligada ? doca_y - 4 : (int)video_altura()) - BARRA_SUPERIOR - BARRA_TITULO - BORDA;
     if (j->cap_px && (uint32_t)(*l * *a) > j->cap_px) *a = (int)(j->cap_px / (uint32_t)*l);
@@ -1170,9 +1177,12 @@ static void aplicar_tamanho(janela_t *j, int x, int y, int l, int a)
     klog("[GUI] janela %d redimensionada para %dx%d em (%d,%d)\n", j->id, l, a, x, y);
 }
 
+static void sair_tela_cheia(janela_t *j);
+
 static void alternar_maximizar(janela_t *j)
 {
     if (!j->redimensionavel) return;
+    if (j->tela_cheia) { sair_tela_cheia(j); return; }   /* Super+Cima/Baixo em tela cheia: volta */
     if (j->maximizada) {
         j->maximizada = false;
         j->encaixada = false;
@@ -1188,6 +1198,33 @@ static void alternar_maximizar(janela_t *j)
     klog("[GUI] janela %d %s\n", j->id, j->maximizada ? "maximizada" : "voltou ao tamanho de antes");
 }
 
+/* D071: tela cheia. A moldura fica fora da tela (x = -BORDA, y = -BARRA_TITULO),
+ * então o conteúdo começa no ponto (0, 0) e as contas de clique e de
+ * desenho continuam as mesmas; a composição só pula a moldura e, com a
+ * janela na frente, desenha o conteúdo de novo por cima da barra e da doca. */
+static void entrar_tela_cheia(janela_t *j)
+{
+    if (j->tela_cheia) return;
+    if (!j->maximizada && !j->encaixada) { j->antes[0] = j->x; j->antes[1] = j->y; j->antes[2] = j->larg; j->antes[3] = j->alt; }
+    j->maximizada = false;
+    j->encaixada = false;
+    j->tela_cheia = true;
+    int l, a;
+    tamanho_maximo(j, &l, &a);
+    gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+    aplicar_tamanho(j, -BORDA, -BARRA_TITULO, l, a);
+    klog("[GUI] janela %d em tela cheia (%dx%d)\n", j->id, j->larg, j->alt);
+}
+
+static void sair_tela_cheia(janela_t *j)
+{
+    if (!j->tela_cheia) return;
+    j->tela_cheia = false;
+    gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
+    aplicar_tamanho(j, j->antes[0], j->antes[1], j->antes[2], j->antes[3]);
+    klog("[GUI] janela %d saiu da tela cheia\n", j->id);
+}
+
 /* A borda de redimensionar sob o ponto: devolve o índice em ordem[] e o modo. */
 static int borda_em(int x, int y, int *modo)
 {
@@ -1196,7 +1233,7 @@ static int borda_em(int x, int y, int *modo)
         if (j->minimizada || j->escondida) continue;
         int l = moldura_l(j), a = moldura_a(j);
         bool dentro = x >= j->x && x < j->x + l && y >= j->y && y < j->y + a;
-        if (j->redimensionavel && !j->maximizada) {
+        if (j->redimensionavel && !j->maximizada && !j->tela_cheia) {
             bool dir = x >= j->x + l - 4 && x < j->x + l + 6 && y >= j->y + BARRA_TITULO && y < j->y + a + 6;
             bool baixo = y >= j->y + a - 4 && y < j->y + a + 6 && x >= j->x && x < j->x + l + 6;
             if (dir || baixo) { *modo = (dir ? 1 : 0) | (baixo ? 2 : 0); return k; }
@@ -1306,7 +1343,7 @@ static void expandir_vidro(void)
         if (ctx_aberto && cruza(ctx_x - R, ctx_y - R, ctx_l + 2 * R, ctx_qtd * MENU_ITEM + 8 + 2 * R)) redesenhar_ctx();
         for (int k = 0; k < qtd; k++) {
             janela_t *j = &janelas[ordem[k]];
-            if (j->minimizada || j->escondida) continue;
+            if (j->minimizada || j->escondida || j->tela_cheia) continue;
             if (cruza(j->x - R, j->y - R, moldura_l(j) + 2 * R, BARRA_TITULO + 2 * R))
                 gui_redesenhar(j->x - R, j->y - R, moldura_l(j) + 2 * R, BARRA_TITULO + 2 * R);
         }
@@ -1330,7 +1367,7 @@ void gui_mostrar(void)
     for (int k = 0; k < qtd; k++) {
         janela_t *j = &janelas[ordem[k]];
         if (j->minimizada || j->escondida) continue;
-        desenhar_moldura(j, j == f);
+        if (!j->tela_cheia) desenhar_moldura(j, j == f);
         {
             int vl = j->vl < j->larg ? j->vl : j->larg, va = j->va < j->alt ? j->va : j->alt;
             int cx = j->x + BORDA, cy = j->y + BARRA_TITULO;
@@ -1338,7 +1375,7 @@ void gui_mostrar(void)
             if (vl < j->larg) sup_retangulo(&tela, cx + vl, cy, j->larg - vl, j->alt, 0xF4F4F0);
             if (va < j->alt) sup_retangulo(&tela, cx, cy + va, vl, j->alt - va, 0xF4F4F0);
         }
-        vidro_aplicar_cantos(&tela, j->x, j->y, moldura_l(j), moldura_a(j));
+        if (!j->tela_cheia) vidro_aplicar_cantos(&tela, j->x, j->y, moldura_l(j), moldura_a(j));
     }
     desenhar_anims();
     desenhar_redimensionar();
@@ -1348,6 +1385,11 @@ void gui_mostrar(void)
         if (vidro_efeitos) vidro_pintar(&tela, 0, 0, (int)video_largura(), BARRA_SUPERIOR, tema->topo, tema->k_topo, 0);
         area_barra(&tela, vidro_efeitos, tema->claro, doca_ligada || qtd == 0);
         desenhar_tarefas();
+    }
+    if (f && f->tela_cheia && !f->escondida) {   /* D071: na frente, cobre a barra de cima e a doca */
+        int vl = f->vl < f->larg ? f->vl : f->larg, va = f->va < f->alt ? f->va : f->alt;
+        sup_retangulo(&tela, 0, 0, (int)video_largura(), (int)video_altura(), 0);
+        sup_copiar(&tela, 0, 0, f->px, vl, va, f->vl);
     }
     desenhar_menu();
     desenhar_ctx();
@@ -1724,14 +1766,16 @@ static void tratar_mouse(evento_mouse_t *m)
             if (m->y >= BARRA_SUPERIOR) return;
             if (m->x < 110) return;               /* clicou no próprio botão do menu: fecha */
         }
-        int di = doca_item_em(m->x, m->y);
+        janela_t *fc = focada();
+        bool cheia = fc && fc->tela_cheia;      /* D071: a janela em tela cheia pega todos os cliques */
+        int di = cheia ? -1 : doca_item_em(m->x, m->y);
         if (di >= 0) {
             if (m->mudaram & BOTAO_ESQUERDO) doca_clique(di);
             captura = -1;
             return;
         }
         int modo;
-        int kb = (m->mudaram & BOTAO_ESQUERDO) ? borda_em(m->x, m->y, &modo) : -1;
+        int kb = (m->mudaram & BOTAO_ESQUERDO) && !cheia ? borda_em(m->x, m->y, &modo) : -1;
         if (kb >= 0) {
             trazer_para_cima(kb);
             redimensionando = ordem[qtd - 1];
@@ -1875,7 +1919,8 @@ static void tratar_mouse(evento_mouse_t *m)
         return;
     }
     /* Movimento sem botão: o realce da doca e do menu, e a janela com foco. */
-    int sob = doca_item_em(m->x, m->y);
+    janela_t *fc = focada();
+    int sob = fc && fc->tela_cheia ? -1 : doca_item_em(m->x, m->y);
     if (sob != doca_sob) { doca_sob = sob; redesenhar_doca(); }
     int ms = menu_alvo_em(m->x, m->y);
     if (ms == ALVO_BUSCA) ms = -1;
@@ -2247,6 +2292,22 @@ int32_t sis_titulo_janela(uint32_t id, uint32_t ptitulo, uint32_t c, uint32_t d,
     int r = usuario_texto((const char *)(uintptr_t)ptitulo, j->titulo, sizeof j->titulo);
     if (r < 0) return r;
     gui_redesenhar(j->x, j->y, moldura_l(j), BARRA_TITULO);
+    gui_mostrar();
+    return 0;
+}
+
+/* SIS_JANELA_MODO (id, modo) -> 0 (D071): o programa pede para maximizar,
+ * entrar em tela cheia ou voltar ao normal (o tocador de vídeo usa). */
+int32_t sis_janela_modo(uint32_t id, uint32_t modo, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)c; (void)d; (void)e;
+    janela_t *j = janela_do_processo((int)id);
+    if (!j || !j->redimensionavel || modo > JAN_MODO_TELA_CHEIA) return ERRO_INVALIDO;
+    if (modo == JAN_MODO_TELA_CHEIA) entrar_tela_cheia(j);
+    else {
+        sair_tela_cheia(j);
+        if ((modo == JAN_MODO_MAXIMIZADA) != j->maximizada) alternar_maximizar(j);
+    }
     gui_mostrar();
     return 0;
 }

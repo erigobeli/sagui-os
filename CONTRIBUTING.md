@@ -97,10 +97,17 @@ segurança:
 Os workflows de quem contribui pela primeira vez só rodam depois da aprovação
 do mantenedor.
 
+O build precisa compilar **sem nenhum aviso** do GCC, e o CI roda também o
+analisador estático do GCC (`python3 tools/analise_estatica.py`, D074): não
+deixe achado novo dele no código que você mudou.
+
 ## 5. Ideias e problemas
 
 Não quer programar? **Issues** com ideias, relatos de erro (com foto da tela ou
 a saída do comando `registro`) e testes em computadores diferentes ajudam
 muito.
+
+**Vulnerabilidades de segurança não vão em issue pública**: relate de forma
+privada pela aba Security do GitHub, como explica o [`SECURITY.md`](SECURITY.md).
 
 Quem contribuiu está em [`CONTRIBUIDORES.md`](CONTRIBUIDORES.md).

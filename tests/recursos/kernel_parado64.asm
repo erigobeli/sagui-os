@@ -1,4 +1,4 @@
-; Kernel de mentira de 64 bits para o teste da H100: o estágio 2 só entra no
+; Kernel de mentira de 64 bits para o teste da H127: o estágio 2 só entra no
 ; modo longo se o kernel for ELF64; este para a máquina sem limpar a tela,
 ; para que a mensagem "[6/6] entrando no modo longo" fique visível. Antes de
 ; parar, escreve "64" no canto da tela VGA (0xB8000): prova que o código de

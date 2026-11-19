@@ -24,4 +24,8 @@ int     h264_amostra(h264_t *h, const uint8_t *d, int n, int tam_len);
 int     h264_nal(h264_t *h, const uint8_t *nal, int n);
 bool    h264_imagem(h264_t *h, h264_imagem_t *im);   /* próximo quadro na ordem de exibição (false: ainda não) */
 void    h264_esvaziar(h264_t *h);                     /* fim do vídeo: libera os quadros retidos */
+/* D071: f(ctx) é chamada a cada linha de macroblocos (o tocador alimenta o som). */
+void    h264_ao_progresso(h264_t *h, void (*f)(void *), void *ctx);
+bool    h264_descartavel(const uint8_t *d, int n, int tam_len);   /* nenhum quadro depende desta amostra */
+bool    h264_chave(const uint8_t *d, int n, int tam_len);         /* a amostra é um IDR */
 #endif

@@ -36,7 +36,7 @@
   ],
   "historias": [
     {
-      "id": "H100",
+      "id": "H127",
       "fase": 1,
       "titulo": "Boot em modo longo",
       "objetivo": "O estágio 2 confere o CPUID (bit LM), monta tabelas de página de 4 níveis com a identidade dos primeiros GB, liga PAE, EFER.LME e a paginação, salta para um segmento de 64 bits e entra no kernel ELF64.",
@@ -49,7 +49,7 @@
       "resultado": "estágio 2 entra no modo longo quando o kernel é ELF64; mensagem clara em CPU sem 64 bits"
     },
     {
-      "id": "H101",
+      "id": "H128",
       "fase": 1,
       "titulo": "Base do kernel em 64 bits",
       "objetivo": "GDT com segmentos de 64 bits e de 32 bits (compatibilidade), TSS de 64 bits (RSP0, IST), IDT de 64 bits, exceções com o quadro de 64 bits, PIC/PIT, relógio, console de texto e gráfico (VESA).",
@@ -62,7 +62,7 @@
       "resultado": "GDT com código 64/32, TSS64 com IST, IDT de 16 bytes, quadro_t de 64 bits; H03 H05 H09 H17 H18 passam"
     },
     {
-      "id": "H102",
+      "id": "H129",
       "fase": 1,
       "titulo": "Memória em 64 bits",
       "objetivo": "Memória física (E820), paginação de 4 níveis para o kernel e para cada processo, heap do kernel, mapeamento de MMIO (framebuffer com escrita combinada, PAT), DMA sempre abaixo de 4 GB.",
@@ -75,7 +75,7 @@
       "resultado": "paginação de 4 níveis com o primeiro GB compartilhado, PAT/WC, DMA abaixo de 4 GB; H06 H10 passam"
     },
     {
-      "id": "H103",
+      "id": "H130",
       "fase": 1,
       "titulo": "Processos e troca de contexto em 64 bits",
       "objetivo": "Estrutura de processo com os registradores de 64 bits, FXSAVE/FXRSTOR, escalonador, tarefas do kernel.",
@@ -88,7 +88,7 @@
       "resultado": "tarefas do kernel e troca de contexto com iretq, FXSAVE por processo, pilha do kernel de 16 KB; H11 H80 passam"
     },
     {
-      "id": "H104",
+      "id": "H131",
       "fase": 1,
       "titulo": "Programas de 32 bits em modo de compatibilidade",
       "objetivo": "Carregador ELF32 num espaço de endereçamento abaixo de 4 GB, `int 0x80` com os números e os ponteiros de 32 bits de hoje (todas as chamadas da 2.x), sinais/erros como antes.",
@@ -101,7 +101,7 @@
       "resultado": "ELF32 no modo de compatibilidade (CS 0x1B, L=0 D=1), int 0x80 igual, argv lido como uint32_t; H12-H16 H24 passam"
     },
     {
-      "id": "H105",
+      "id": "H132",
       "fase": 1,
       "titulo": "Drivers em 64 bits",
       "objetivo": "PCI, ATA, EHCI/USB (armazenamento e rede CDC), FAT32, SGFS, i8042, HDA, e1000, ACPI (desligar/reiniciar), vídeo nativo do G470, CMOS, aleatório.",
@@ -114,7 +114,7 @@
       "resultado": "drivers (EHCI, e1000, HDA, vídeo, FAT32, ACPI) com conversões explícitas por uintptr_t; DMA continua abaixo de 4 GB"
     },
     {
-      "id": "H106",
+      "id": "H133",
       "fase": 1,
       "titulo": "Janelas e interface em 64 bits",
       "objetivo": "Gerenciador de janelas, vidro, doca, menus, área de cópia, notificações.",
@@ -127,7 +127,7 @@
       "resultado": "janelas e pixels compartilhados (0xA0000000) iguais à 2.x; H20-H28, H74-H92 passam"
     },
     {
-      "id": "H107",
+      "id": "H134",
       "fase": 1,
       "titulo": "A suíte inteira em 64 bits",
       "objetivo": "`tests/rodar_todos.py` passa com a imagem de 64 bits; o CI ganha a imagem de 64 bits. Roteiro de teste no G470.",
@@ -140,7 +140,7 @@
       "resultado": "suíte inteira (88 testes) passa com a imagem de 64 bits; roteiro do G470 e imagem em entrega/v3.0-fase1"
     },
     {
-      "id": "H108",
+      "id": "H135",
       "fase": 2,
       "titulo": "Chamadas de sistema de 64 bits",
       "objetivo": "`syscall`/`sysret` (MSRs STAR, LSTAR, FMASK), ABI de 64 bits documentada, carregador ELF64.",
@@ -149,7 +149,7 @@
       "bonus": false
     },
     {
-      "id": "H109",
+      "id": "H136",
       "fase": 2,
       "titulo": "libsagui e programas em 64 bits",
       "objetivo": "A libsagui e os programas compilam em x86-64 (o build gera as duas versões); os programas do sistema passam a ser de 64 bits.",
@@ -158,7 +158,7 @@
       "bonus": false
     },
     {
-      "id": "H110",
+      "id": "H137",
       "fase": 2,
       "titulo": "O compilador `cc` gera x86-64",
       "objetivo": "Um gerador de código novo no `cc` (registradores de 64 bits, convenção de chamada própria documentada), mantendo o de 32 bits.",
@@ -167,7 +167,7 @@
       "bonus": false
     },
     {
-      "id": "H111",
+      "id": "H138",
       "fase": 2,
       "titulo": "Entrega da 3.0",
       "objetivo": "Imagem em `entrega/v3.0/`, roteiro de teste, decisões, README.",
@@ -251,11 +251,11 @@
     },
     {
       "data": "2026-11-16T07:18:40",
-      "texto": "H107 concluída: suíte inteira (88 testes) passa com a imagem de 64 bits; roteiro do G470 e imagem em entrega/v3.0-fase1"
+      "texto": "H134 concluída: suíte inteira (88 testes) passa com a imagem de 64 bits; roteiro do G470 e imagem em entrega/v3.0-fase1"
     },
     {
       "data": "2026-11-16T05:22:52",
-      "texto": "Início da H107: A suíte inteira em 64 bits"
+      "texto": "Início da H134: A suíte inteira em 64 bits"
     },
     {
       "data": "2026-11-16T05:22:52",
@@ -263,59 +263,59 @@
     },
     {
       "data": "2026-11-16T05:22:52",
-      "texto": "H106 concluída: janelas e pixels compartilhados (0xA0000000) iguais à 2.x; H20-H28, H74-H92 passam"
+      "texto": "H133 concluída: janelas e pixels compartilhados (0xA0000000) iguais à 2.x; H20-H28, H74-H92 passam"
     },
     {
       "data": "2026-11-16T05:22:52",
-      "texto": "Início da H106: Janelas e interface em 64 bits"
+      "texto": "Início da H133: Janelas e interface em 64 bits"
     },
     {
       "data": "2026-11-16T05:22:52",
-      "texto": "H105 concluída: drivers (EHCI, e1000, HDA, vídeo, FAT32, ACPI) com conversões explícitas por uintptr_t; DMA continua abaixo de 4 GB"
+      "texto": "H132 concluída: drivers (EHCI, e1000, HDA, vídeo, FAT32, ACPI) com conversões explícitas por uintptr_t; DMA continua abaixo de 4 GB"
     },
     {
       "data": "2026-11-16T05:22:52",
-      "texto": "Início da H105: Drivers em 64 bits"
+      "texto": "Início da H132: Drivers em 64 bits"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "H104 concluída: ELF32 no modo de compatibilidade (CS 0x1B, L=0 D=1), int 0x80 igual, argv lido como uint32_t; H12-H16 H24 passam"
+      "texto": "H131 concluída: ELF32 no modo de compatibilidade (CS 0x1B, L=0 D=1), int 0x80 igual, argv lido como uint32_t; H12-H16 H24 passam"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "H103 concluída: tarefas do kernel e troca de contexto com iretq, FXSAVE por processo, pilha do kernel de 16 KB; H11 H80 passam"
+      "texto": "H130 concluída: tarefas do kernel e troca de contexto com iretq, FXSAVE por processo, pilha do kernel de 16 KB; H11 H80 passam"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "H102 concluída: paginação de 4 níveis com o primeiro GB compartilhado, PAT/WC, DMA abaixo de 4 GB; H06 H10 passam"
+      "texto": "H129 concluída: paginação de 4 níveis com o primeiro GB compartilhado, PAT/WC, DMA abaixo de 4 GB; H06 H10 passam"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "H101 concluída: GDT com código 64/32, TSS64 com IST, IDT de 16 bytes, quadro_t de 64 bits; H03 H05 H09 H17 H18 passam"
+      "texto": "H128 concluída: GDT com código 64/32, TSS64 com IST, IDT de 16 bytes, quadro_t de 64 bits; H03 H05 H09 H17 H18 passam"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "Início da H104: Programas de 32 bits em modo de compatibilidade"
+      "texto": "Início da H131: Programas de 32 bits em modo de compatibilidade"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "Início da H103: Processos e troca de contexto em 64 bits"
+      "texto": "Início da H130: Processos e troca de contexto em 64 bits"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "Início da H102: Memória em 64 bits"
+      "texto": "Início da H129: Memória em 64 bits"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "Início da H101: Base do kernel em 64 bits"
+      "texto": "Início da H128: Base do kernel em 64 bits"
     },
     {
       "data": "2026-11-16T04:23:52",
-      "texto": "H100 concluída: estágio 2 entra no modo longo quando o kernel é ELF64; mensagem clara em CPU sem 64 bits"
+      "texto": "H127 concluída: estágio 2 entra no modo longo quando o kernel é ELF64; mensagem clara em CPU sem 64 bits"
     },
     {
       "data": "2026-11-16T04:09:03",
-      "texto": "Início da H100: Boot em modo longo"
+      "texto": "Início da H127: Boot em modo longo"
     },
     {
       "data": "2026-11-16T04:05:27",

@@ -99,6 +99,7 @@ int  atualizar_janela(int id, const retangulo_t *r);   /* r = NULL: a janela tod
 int  proximo_evento(int id, evento_t *e, bool esperar); /* 1 = veio um evento */
 int  titulo_janela(int id, const char *titulo);
 int  janela_opcoes(int id, int opcoes, int larg_min, int alt_min);   /* JAN_REDIMENSIONAVEL (H78) */
+int  janela_modo(int id, int modo);   /* JAN_MODO_NORMAL, _MAXIMIZADA ou _TELA_CHEIA (D071) */
 int  menu_janela(int id, int x, int y, const char *itens);
 /* Área de cópia do sistema (texto): copiar num programa, colar em outro. */
 int  area_copia_gravar(const char *t, unsigned n);
@@ -167,6 +168,14 @@ int   minuscula_latin1(int c);
 int      ler_arquivo_inteiro(const char *caminho, uint8_t **dados);   /* tamanho (dados alocados), ou erro */
 uint32_t data_para_unix(const data_t *d);   /* segundos desde 1/1/1970 (tar, gzip) */
 uint32_t data_para_dos(const data_t *d);    /* hora << 16 | data, como no MS-DOS (zip) */
+
+/* ---- idioma (D073; idioma.c) ----
+ * traduzir("texto em português") devolve o texto na língua de "sistema.idioma"
+ * (pt, es ou en), tirado de /sistema/idiomas/<língua>.txt, ou o próprio texto
+ * se não houver tradução. A língua é lida no primeiro uso. */
+const char *traduzir(const char *texto_pt);
+const char *idioma(void);          /* "pt", "es" ou "en" */
+void        idioma_recarregar(void);   /* relê a configuração (vale a escolha mais recente) */
 
 int principal(int argc, char **argv);
 int  ler_tela(uint32_t *pixels, unsigned bytes);   /* largura | altura << 16; bytes = 0 só mede */

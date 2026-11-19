@@ -82,6 +82,7 @@
 #define SIS_DISCO_RELER    81   /* (nome) -> 0; reconhece de novo o formato do disco liberado (depois de gravar a tabela) */
 #define SIS_DISCO_LIBERAR  82   /* (nome, resumo) -> 0 se a pessoa digitou o nome do disco na caixa do kernel; ERRO_ACESSO se não (D063) */
 #define SIS_DISCO_TABELA   83   /* (nome, &tabela_disco_t, tamanho) -> 0; a tabela de partições lida e conferida pelo kernel (D066) */
+#define SIS_JANELA_MODO    84   /* (id, modo) -> 0; JAN_MODO_NORMAL, _MAXIMIZADA ou _TELA_CHEIA (D071) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
 /* Erros (sempre negativos) */
@@ -316,6 +317,13 @@ typedef struct {
 
 /* Opções de janela (SIS_JANELA_OPCOES). */
 #define JAN_REDIMENSIONAVEL 1
+
+/* Modos de janela (SIS_JANELA_MODO, D071). Só para janela redimensionável.
+ * Em tela cheia o conteúdo cobre a tela toda, por cima da barra de cima e
+ * da doca, enquanto a janela estiver na frente. */
+#define JAN_MODO_NORMAL      0
+#define JAN_MODO_MAXIMIZADA  1
+#define JAN_MODO_TELA_CHEIA  2
 
 /* Teclas especiais nos eventos de janela. São os mesmos valores do enum do
  * kernel (teclado.h), que por isso não precisa destas definições. */
