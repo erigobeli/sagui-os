@@ -130,10 +130,12 @@ typedef struct {
 
 typedef struct { int prop; const char *valor; uint8_t importante; } decl_t;
 
+#define MAX_ANC 6
 typedef struct {
     seletor_t sel;
     decl_t *d; int nd;
     int ordem;
+    unsigned anc[MAX_ANC]; int n_anc;   /* tag, #id e .classes que algum ancestral precisa ter (filtro, H129) */
 } regra_m;
 
 typedef struct { const char *chave; int *regras; int n, cap; } balde_t;
@@ -1011,6 +1013,63 @@ static bool bate_de(const seletor_t *s, int i, no_m *n)
 
 static unsigned hash_s(const char *s) { unsigned h = 2166136261u; while (*s) h = (h ^ (uint8_t)*s++) * 16777619u; return h; }
 
+/* ---- filtro dos ancestrais (H129)
+ *
+ * A maioria das regras de uma página grande termina num seletor comum (".x a",
+ * ".mw-parser-output .y div") e, para casar, sobe pelos ancestrais do nó até a
+ * raiz. Na página do Gato da Wikipédia eram 1,3 milhão de tentativas, quase
+ * todas falhando lá em cima. Como fazem os navegadores grandes, um filtro
+ * guarda (contando) a tag, o #id e as .classes de todos os ancestrais do nó
+ * que está sendo estilizado: se uma regra pede um ancestral com algo que não
+ * está no filtro, ela não pode casar e nem é tentada. O filtro pode dizer
+ * "talvez" a mais (aí bate_de decide), nunca "não" a mais. */
+#define FILTRO 4096
+static uint16_t filtro[FILTRO];
+static int filtro_ativo;
+
+static unsigned hash_k(char tipo, const char *s, int n)
+{
+    unsigned h = (2166136261u ^ (uint8_t)tipo) * 16777619u;
+    for (int i = 0; i < n && s[i]; i++) h = (h ^ (uint8_t)s[i]) * 16777619u;
+    return h;
+}
+
+static void filtro_no(no_m *n, int d)
+{
+    if (n->texto || n->tag[0] == '#') return;
+    filtro[hash_k('t', n->tag, 1 << 20) % FILTRO] += (uint16_t)d;
+    if (n->id) filtro[hash_k('#', n->id, 1 << 20) % FILTRO] += (uint16_t)d;
+    if (n->classe)
+        for (const char *p = n->classe; *p;) {
+            while (*p && eh_esp(*p)) p++;
+            const char *i = p;
+            while (*p && !eh_esp(*p)) p++;
+            if (p > i) filtro[hash_k('.', i, (int)(p - i)) % FILTRO] += (uint16_t)d;
+        }
+}
+
+static bool filtro_pode(const regra_m *r)
+{
+    for (int k = 0; k < r->n_anc; k++) if (!filtro[r->anc[k] % FILTRO]) return false;
+    return true;
+}
+
+/* O que os compostos ancestrais da regra exigem: o composto j é um ancestral
+ * quando o combinador entre ele e o j-1 é ' ' ou '>' (com '+' e '~' é um
+ * irmão; os ancestrais de um irmão são os do próprio nó). */
+static void regra_ancestrais(regra_m *r)
+{
+    r->n_anc = 0;
+    for (int j = 1; j < r->sel.n; j++) {
+        char comb = r->sel.c[j - 1].comb;
+        if (comb == '+' || comb == '~') continue;
+        const composto_t *c = &r->sel.c[j];
+        if (c->tag[0] && c->tag[0] != '*' && r->n_anc < MAX_ANC) r->anc[r->n_anc++] = hash_k('t', c->tag, 1 << 20);
+        if (c->id && r->n_anc < MAX_ANC) r->anc[r->n_anc++] = hash_k('#', c->id, 1 << 20);
+        for (int i = 0; i < c->nc && r->n_anc < MAX_ANC; i++) r->anc[r->n_anc++] = hash_k('.', c->classes[i], 1 << 20);
+    }
+}
+
 static balde_t *balde(motor_t *m, const char *chave, bool criar)
 {
     if (!m->cap_baldes) {
@@ -1034,6 +1093,7 @@ static balde_t *balde(motor_t *m, const char *chave, bool criar)
 
 static void indexar(motor_t *m, int r)
 {
+    regra_ancestrais(&m->regras[r]);
     composto_t *c = &m->regras[r].sel.c[0];
     char ch[80];
     if (c->id) formatar_texto(ch, sizeof ch, "#%s", c->id);
@@ -2055,6 +2115,7 @@ static void estilizar(motor_t *m, no_m *n)
     for (int l = 0; l < nl; l++)
         for (int k = 0; k < tams[l]; k++) {
             regra_m *r = &m->regras[listas[l][k]];
+            if (filtro_ativo && !filtro_pode(r)) continue;
             uint8_t ps = r->sel.c[0].pseudo;
             if (ps) r->sel.c[0].pseudo = 0;
             bool bate = bate_de(&r->sel, 0, n);
@@ -2201,7 +2262,11 @@ static void estilizar_tudo(motor_t *m, no_m *n)
         n->bg_img = -1; n->mask_img = -1;
         if (!n->texto) { n->bg_img = url_img(m, n->e.bg_url); n->mask_img = url_img(m, n->e.mask_url); }
         if (n->e.display == D_NONE) continue;
-        if (n->filho) estilizar_tudo(m, n->filho);
+        if (n->filho) {
+            filtro_no(n, 1);
+            estilizar_tudo(m, n->filho);
+            filtro_no(n, -1);
+        }
     }
 }
 
@@ -5169,9 +5234,12 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
             if (largura_regras < 0) registrar("cipo: css %d regras\n", m->n_regras - antes);
         }
         largura_regras = largura;
+        memset(filtro, 0, sizeof filtro);
+        filtro_ativo = 1;
         estilizar_tudo(m, m->raiz);
         normalizar(m, m->raiz);
         estilizar_tudo(m, m->raiz);
+        filtro_ativo = 0;
     }
     limpar_layout(m->raiz);
     m->n_alvos = 0;
