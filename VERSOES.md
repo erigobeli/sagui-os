@@ -32,6 +32,9 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   Wikipédia) chegam inteiros e os nomes do DNS ficam guardados. A página do
   Gato da Wikipédia passou de mais de 1 minuto para uns 10 s.
 
+- **Cipó:** rolar ou clicar enquanto as imagens chegam não as deixa mais
+  faltando: a carga continua depois, e a barra de baixo volta a "Pronto".
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
