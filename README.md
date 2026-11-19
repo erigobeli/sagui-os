@@ -3,6 +3,7 @@
 # 🐒 SaguiOS
 
 [![CI](https://github.com/erigobeli/sagui-os/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/erigobeli/sagui-os/actions/workflows/ci.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16936/badge)](https://www.bestpractices.dev/projects/16936)
 
 **Um sistema operacional escrito do zero por IA, para PCs x86 de 64 bits.**
 
