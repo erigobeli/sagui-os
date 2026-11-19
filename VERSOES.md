@@ -83,6 +83,25 @@ Já no código (no `main`), ainda não lançado como imagem:
   partições lógicas, GPT, disco formatado sem tabela, entradas sobrepostas
   ou passando do fim. A caixa de confirmação e o instalador mostram o que
   ele leu (D066).
+- No **Sagui Code** (janela), o texto da conversa se seleciona arrastando o
+  mouse, com destaque azul, e **Ctrl+C copia** o trecho; depois de um clique
+  na conversa, Ctrl+A seleciona tudo. A caixa do pedido continua com o seu
+  próprio Ctrl+C/Ctrl+V (H123).
+- **SaguiOS em espanhol e em inglês** (primeira parte, D073): a aba "Idioma e
+  teclado" das Configurações escolhe a língua (`sistema.idioma`); a `ajuda` e
+  as mensagens do shell e as próprias Configurações já saem traduzidas. As
+  traduções são arquivos de texto em `/sistema/idiomas`, fáceis de completar.
+  A ideia veio do fork SaguiOS-Extended de Alejandro Anuncibay.
+- O **Tocador não trava mais a tela** ao abrir uma música do pendrive: lê o
+  arquivo aos poucos enquanto toca, e ao trocar de música o som da anterior
+  para na hora, sem ficar repetindo um pedaço (issue #27, D070). Ler do
+  pendrive ficou mais rápido quando o arquivo está em clusters seguidos.
+- **Tocador de vídeo** (D071, issues #28 e #29): a imagem segue o relógio do
+  som e, quando a máquina não dá conta, descarta os quadros que pode (o som
+  não para mais nem o vídeo fica em câmera lenta por causa deles); a cor é
+  convertida com SSE2; e há controles: tocar/pausar, tempo, barra de
+  progresso que pula ao clicar, volume, maximizar e **tela cheia** (F, F11
+  ou duplo clique; Esc sai).
 
 ## Versões lançadas
 

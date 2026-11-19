@@ -4,7 +4,7 @@
  * para as taxas baixas, de 16 a 24 kHz). A explicação de cada etapa está em
  * mp3.c; as tabelas que a norma traz nos anexos estão em mp3_tabelas.h.
  *
- * Uso: o arquivo inteiro fica na memória de quem chama (e precisa continuar
+ * Uso: o arquivo inteiro (ou, em fluxo, o que já chegou dele) fica na memória de quem chama (e precisa continuar
  * lá até o mp3_fechar); o decodificador entrega o som em pedaços, sempre em
  * 16 bits estéreo intercalado (esquerdo, direito), na taxa do arquivo.
  */
@@ -15,6 +15,13 @@ typedef struct mp3_s mp3_t;                 /* opaco */
 
 /* Abre o MP3 que está inteiro na memória (dados, tam). NULL se não for MP3. */
 mp3_t *mp3_abrir(const unsigned char *dados, unsigned tam);
+/* Em fluxo (o Tocador lendo o arquivo aos poucos): dados já tem espaço para
+ * tam_total bytes, mas só os tam primeiros chegaram. A cada pedaço novo, quem
+ * chama avisa com mp3_chegou (completo = 1 no último); enquanto não chega, o
+ * mp3_decodificar devolve 0 sem que seja o fim. */
+mp3_t *mp3_abrir_fluxo(const unsigned char *dados, unsigned tam, unsigned tam_total);
+void mp3_chegou(mp3_t *m, unsigned tam, int completo);
+int mp3_completo(mp3_t *m);                 /* 1: o arquivo inteiro já chegou */
 unsigned mp3_taxa(mp3_t *m);                /* amostras por segundo (44100, 48000, 32000...) */
 unsigned mp3_canais(mp3_t *m);              /* 1 ou 2 */
 unsigned mp3_duracao_ms(mp3_t *m);          /* estimada (VBR com cabeçalho Xing/Info, se houver; senão pelos quadros) */

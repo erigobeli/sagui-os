@@ -247,8 +247,10 @@ static int rsa_abrir(const u8 *n, u32 nn, const u8 *e, u32 ne,
                      const u8 *assinatura, u32 nassinatura, u8 *bloco, u32 *nbloco, u32 *bits)
 {
     sem_zeros(&n, &nn);
-    /* Abaixo de 1024 bits não é chave que se aceite hoje. */
-    if (nn < 128 || nn > RSA_BYTES_MAX) return CRIPTO_ERRO;
+    /* Abaixo de 2048 bits não é chave que se aceite hoje: o NIST (SP 800-57
+     * parte 1, tabela 2; SP 800-131A) dá 2048 bits como o mínimo para RSA,
+     * e os certificados raiz em uso já são todos de 2048 ou mais. */
+    if (nn < 256 || nn > RSA_BYTES_MAX) return CRIPTO_ERRO;
     /* A assinatura tem exatamente o tamanho do módulo (RFC 8017, 8.2.2). */
     if (nassinatura != nn) return CRIPTO_ERRO;
     const u8 *ee = e;

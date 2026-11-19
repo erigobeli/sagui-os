@@ -9,7 +9,10 @@
  * lugar de 0 ou 1, executa o programa (que herda 0, 1 e 2) e restaura.
  *
  * A linha é editada pelo próprio shell, com o terminal em modo bruto, para
- * ter histórico (setas) e completar nomes com Tab. */
+ * ter histórico (setas) e completar nomes com Tab.
+ *
+ * As mensagens e a ajuda passam por traduzir() (D073): saem na língua de
+ * "sistema.idioma", com as traduções de /sistema/idiomas/. */
 #include "sagui.h"
 
 #define MAX_LINHA    256
@@ -139,6 +142,19 @@ static char historico[MAX_HIST][MAX_LINHA];
 static int qtd_hist;
 
 static void mostrar(const char *s) { escrever_texto(SAIDA, s); }
+
+/* Uma mensagem traduzida (tr, D073), com o fim de linha. O texto em português
+ * é a chave da tradução, por isso vai sem o \n. */
+static void dizer(const char *fmt_pt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt_pt);
+    formatar_lista(buf, sizeof buf - 1, traduzir(fmt_pt), ap);
+    va_end(ap);
+    junta_texto(buf, "\n", sizeof buf);
+    mostrar(buf);
+}
 
 static void prompt(void)
 {
@@ -420,23 +436,26 @@ static void interno_ajuda(int argc, char **argv)
 {
     if (argc > 1) {
         const comando_t *c = achar_comando(argv[1]);
-        if (!c) { imprimir("ajuda: não conheço o comando %s\n", argv[1]); return; }
-        imprimir("Uso: %s\n%s\n", c->uso, c->explicacao);
-        if (c->apelido) imprimir("Apelido em português: %s\n", c->apelido);
-        imprimir("Tipo: %s\n", c->interno ? "comando interno do shell" : "programa em /bin");
+        if (!c) { dizer("ajuda: não conheço o comando %s", argv[1]); return; }
+        imprimir("%s %s\n%s\n", traduzir("Uso:"), c->uso, traduzir(c->explicacao));
+        if (c->apelido) dizer("Apelido em português: %s", c->apelido);
+        imprimir("%s %s\n", traduzir("Tipo:"), traduzir(c->interno ? "comando interno do shell" : "programa em /bin"));
         return;
     }
-    mostrar("Comandos do SaguiOS (nome/apelido):\n");
+    /* Em português, cada comando aparece com os dois nomes (Unix/apelido); nas
+     * outras línguas o apelido em português não ajuda quem lê, e sai só o nome. */
+    bool portugues = compara_texto(idioma(), "pt") == 0;
+    dizer("Comandos do SaguiOS (nome/apelido):");
     for (int i = 0; i < QTD_COMANDOS; i++) {
         char nome[32];
-        formatar_texto(nome, sizeof nome, "%s%s%s", comandos[i].nome, comandos[i].apelido ? "/" : "",
-                       comandos[i].apelido ? comandos[i].apelido : "");
+        bool apelido = portugues && comandos[i].apelido;
+        formatar_texto(nome, sizeof nome, "%s%s%s", comandos[i].nome, apelido ? "/" : "", apelido ? comandos[i].apelido : "");
         /* Duas colunas de 39 caracteres: a linha nunca chega a 80 (a tela
          * pularia uma linha a mais). */
-        imprimir("  %-20s%-17s%s", nome, comandos[i].curta, (i % 2 == 1 || i == QTD_COMANDOS - 1) ? "\n" : "");
+        imprimir("  %-20s%-17s%s", nome, traduzir(comandos[i].curta), (i % 2 == 1 || i == QTD_COMANDOS - 1) ? "\n" : "");
     }
-    mostrar("Arquivo: cmd > arq, >> arq, < arq   Pipe: cmd1 | cmd2   Segundo plano: cmd &\n");
-    mostrar("ajuda <comando> explica um comando. Setas: histórico. Tab: completa nomes.\n");
+    dizer("Arquivo: cmd > arq, >> arq, < arq   Pipe: cmd1 | cmd2   Segundo plano: cmd &");
+    dizer("ajuda <comando> explica um comando. Setas: histórico. Tab: completa nomes.");
 }
 
 static bool executar_interno(const comando_t *c, int argc, char **argv)
@@ -444,7 +463,7 @@ static bool executar_interno(const comando_t *c, int argc, char **argv)
     const char *n = c->nome;
     if (compara_texto(n, "cd") == 0) {
         int r = mudar_pasta(argc > 1 ? argv[1] : "/");
-        if (r < 0) imprimir("cd: %s: %s\n", argc > 1 ? argv[1] : "/", nome_erro(r));
+        if (r < 0) imprimir("cd: %s: %s\n", argc > 1 ? argv[1] : "/", traduzir(nome_erro(r)));
     } else if (compara_texto(n, "pwd") == 0) {
         char p[128];
         pasta_atual(p, sizeof p);
@@ -456,11 +475,11 @@ static bool executar_interno(const comando_t *c, int argc, char **argv)
     } else if (compara_texto(n, "ajuda") == 0) {
         interno_ajuda(argc, argv);
     } else if (compara_texto(n, "reiniciar") == 0) {
-        mostrar("Reiniciando...\n");
+        dizer("Reiniciando...");
         dormir(200);
         reiniciar();
     } else if (compara_texto(n, "desligar") == 0 || compara_texto(n, "poweroff") == 0) {   /* poweroff: do #4 */
-        mostrar("Desligando...\n");
+        dizer("Desligando...");
         dormir(200);
         desligar();
     } else if (compara_texto(n, "sair") == 0) {
@@ -475,7 +494,7 @@ static void recolher_fundo(void)
 {
     int codigo, pid;
     while ((pid = recolher(&codigo)) > 0)
-        imprimir("[%d] terminou (código %d)\n", pid, codigo);
+        dizer("[%d] terminou (código %d)", pid, codigo);
 }
 
 static void caminho_do_programa(const char *nome, char *saida, size_t max)
@@ -504,7 +523,7 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
         /* Entrada desta etapa. */
         if (i == 0 && et[i].entrada) {
             int fd = abrir(et[i].entrada, ABRIR_LER);
-            if (fd < 0) { imprimir_em(ERROS, "sagsh: %s: %s\n", et[i].entrada, nome_erro(fd)); ok = false; break; }
+            if (fd < 0) { imprimir_em(ERROS, "sagsh: %s: %s\n", et[i].entrada, traduzir(nome_erro(fd))); ok = false; break; }
             duplicar(fd, ENTRADA);
             fechar(fd);
         } else if (leitura_anterior >= 0) {
@@ -517,7 +536,7 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
         /* Saída desta etapa. */
         if (i < qtd - 1) {
             int p[2];
-            if (criar_pipe(p) < 0) { mostrar("sagsh: não consegui criar o pipe\n"); ok = false; break; }
+            if (criar_pipe(p) < 0) { dizer("sagsh: não consegui criar o pipe"); ok = false; break; }
             duplicar(p[1], SAIDA);
             fechar(p[1]);
             leitura_anterior = p[0];
@@ -526,7 +545,7 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
             int fd = abrir(et[i].saida, modo);
             if (fd < 0) {
                 duplicar(guarda1, SAIDA);
-                imprimir("sagsh: %s: %s\n", et[i].saida, nome_erro(fd));
+                imprimir("sagsh: %s: %s\n", et[i].saida, traduzir(nome_erro(fd)));
                 ok = false;
                 break;
             }
@@ -542,9 +561,9 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
             int erro = pids[i];
             duplicar(guarda1, SAIDA);
             if (erro == ERRO_NAO_EXISTE)
-                imprimir("sagsh: comando não encontrado: %s (digite ajuda)\n", et[i].argv[0]);
+                dizer("sagsh: comando não encontrado: %s (digite ajuda)", et[i].argv[0]);
             else
-                imprimir("sagsh: %s: %s\n", et[i].argv[0], nome_erro(erro));
+                imprimir("sagsh: %s: %s\n", et[i].argv[0], traduzir(nome_erro(erro)));
         }
     }
     if (leitura_anterior >= 0) fechar(leitura_anterior);
@@ -557,8 +576,8 @@ static void rodar(etapa_t *et, int qtd, bool fundo)
         if (pids[i] <= 0) continue;
         if (fundo) {
             const comando_t *cg = achar_comando(et[i].argv[0]);
-            if (cg && cg->grafico) imprimir("Abrindo %s (processo %d)...\n", et[i].argv[0], pids[i]);
-            else imprimir("[%d] %s em segundo plano\n", pids[i], et[i].argv[0]);
+            if (cg && cg->grafico) dizer("Abrindo %s (processo %d)...", et[i].argv[0], pids[i]);
+            else dizer("[%d] %s em segundo plano", pids[i], et[i].argv[0]);
             continue;
         }
         int codigo;
@@ -582,28 +601,28 @@ static bool executar_linha(char *linha)
         if (op == 0) {
             if (e->argc < MAX_PALAVRAS - 1) e->argv[e->argc++] = tok[i].texto;
         } else if (op == '|') {
-            if (e->argc == 0 || qtd == MAX_ETAPAS) { mostrar("sagsh: pipe sem comando\n"); return true; }
+            if (e->argc == 0 || qtd == MAX_ETAPAS) { dizer("sagsh: pipe sem comando"); return true; }
             qtd++;
         } else if (op == '&') {
             fundo = true;
         } else {
-            if (i + 1 >= nt || tok[i + 1].op) { mostrar("sagsh: falta o nome do arquivo\n"); return true; }
+            if (i + 1 >= nt || tok[i + 1].op) { dizer("sagsh: falta o nome do arquivo"); return true; }
             char *arq = tok[++i].texto;
             if (op == '<') e->entrada = arq;
             else { e->saida = arq; e->acrescentar = (op == 'A'); }
         }
     }
-    if (et[qtd - 1].argc == 0) { mostrar("sagsh: pipe sem comando\n"); return true; }
+    if (et[qtd - 1].argc == 0) { dizer("sagsh: pipe sem comando"); return true; }
     for (int i = 0; i < qtd; i++) et[i].argv[et[i].argc] = NULL;
 
     const comando_t *c = achar_comando(et[0].argv[0]);
     if (c && c->interno) {
-        if (qtd > 1) { mostrar("sagsh: comandos internos não funcionam num pipe\n"); return true; }
+        if (qtd > 1) { dizer("sagsh: comandos internos não funcionam num pipe"); return true; }
         return executar_interno(c, et[0].argc, et[0].argv);
     }
     for (int i = 1; i < qtd; i++) {
         const comando_t *ci = achar_comando(et[i].argv[0]);
-        if (ci && ci->interno) { mostrar("sagsh: comandos internos não funcionam num pipe\n"); return true; }
+        if (ci && ci->interno) { dizer("sagsh: comandos internos não funcionam num pipe"); return true; }
     }
     if (qtd == 1 && c && c->grafico) fundo = true;   /* programa gráfico não prende o shell */
     rodar(et, qtd, fundo);
@@ -619,7 +638,7 @@ int principal(int argc, char **argv)
         executar_linha(linha);
         return 0;
     }
-    imprimir("sagsh: o shell do SaguiOS (processo %d). Digite ajuda para ver os comandos.\n", meu_pid());
+    dizer("sagsh: o shell do SaguiOS (processo %d). Digite ajuda para ver os comandos.", meu_pid());
     char linha[MAX_LINHA];
     for (;;) {
         recolher_fundo();
@@ -627,8 +646,9 @@ int principal(int argc, char **argv)
         int n = ler_comando(linha);
         if (n < 0) break;
         if (n == 0) continue;
+        idioma_recarregar();   /* "config sistema.idioma es" vale já no próximo comando */
         if (!executar_linha(linha)) break;
     }
-    mostrar("sagsh: até logo!\n");
+    dizer("sagsh: até logo!");
     return 0;
 }

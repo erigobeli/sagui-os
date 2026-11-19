@@ -168,7 +168,7 @@ static int conferir_chave(void *ctx, const char *tipo, const u8 *blob, u32 nblob
 /* ------------------------------------------------------------ teclado e tela */
 
 /* Bytes do Terminal (modo bruto do SaguiOS) -> bytes para o servidor (xterm). */
-static int traduzir(const char *e, int n, char *s, int *consumidos)
+static int traduzir_teclas(const char *e, int n, char *s, int *consumidos)
 {
     int k = 0, i = 0;
     for (; i < n && k < 4000; i++) {
@@ -351,7 +351,7 @@ int principal(int argc, char **argv)
                 if (k > 0) n_iniciais += k;
                 static char lixo[4200];
                 int consumidos;
-                int sobra = traduzir(teclas_iniciais, n_iniciais, lixo, &consumidos);
+                int sobra = traduzir_teclas(teclas_iniciais, n_iniciais, lixo, &consumidos);
                 (void)sobra;
                 if (mudou_tamanho) { memmove(teclas_iniciais, teclas_iniciais + consumidos, (size_t)(n_iniciais - consumidos)); n_iniciais -= consumidos; }
             } else dormir(10);
@@ -383,7 +383,7 @@ int principal(int argc, char **argv)
         }
         if (nenvio == 0 && nteclas > 0) {
             int consumidos;
-            nenvio = traduzir(teclas, nteclas, envio, &consumidos);
+            nenvio = traduzir_teclas(teclas, nteclas, envio, &consumidos);
             memmove(teclas, teclas + consumidos, (size_t)(nteclas - consumidos));
             nteclas -= consumidos;
             feito = 0;

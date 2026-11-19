@@ -177,6 +177,7 @@ static int criar(int tela, int l, int a, int alfa, int z, int st, int premult, i
 typedef struct { int l, a; uint8_t *cor; float *z; uint8_t *st; int ok; } alvo_t;
 static int fb_status(gctx *c, int id, gobj *f, alvo_t *r)
 {
+    (void)c;   /* mesma assinatura das outras funções do contexto */
     memset(r, 0, sizeof *r);
     int l = -1, a = -1, algum = 0;
     #define DIM(L, A) do { if (l < 0) { l = (L); a = (A); } else if (l != (L) || a != (A)) return GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS; } while (0)
@@ -459,10 +460,19 @@ static void tri_raster(gctx *c, int id, prog_t *pg, alvo_t *al, caixa_t *cx, con
     const vj_t *v0 = a, *v1 = b, *v2 = d;
     if (area < 0) { v1 = d; v2 = b; area = -area; }
     float minx = v0->x, maxx = v0->x, miny = v0->y, maxy = v0->y;
-    if (v1->x < minx) minx = v1->x; if (v1->x > maxx) maxx = v1->x; if (v2->x < minx) minx = v2->x; if (v2->x > maxx) maxx = v2->x;
-    if (v1->y < miny) miny = v1->y; if (v1->y > maxy) maxy = v1->y; if (v2->y < miny) miny = v2->y; if (v2->y > maxy) maxy = v2->y;
+    if (v1->x < minx) minx = v1->x;
+    if (v1->x > maxx) maxx = v1->x;
+    if (v2->x < minx) minx = v2->x;
+    if (v2->x > maxx) maxx = v2->x;
+    if (v1->y < miny) miny = v1->y;
+    if (v1->y > maxy) maxy = v1->y;
+    if (v2->y < miny) miny = v2->y;
+    if (v2->y > maxy) maxy = v2->y;
     int x0 = (int)w_floor(minx), x1 = (int)w_floor(maxx) + 1, y0 = (int)w_floor(miny), y1 = (int)w_floor(maxy) + 1;
-    if (x0 < cx->x0) x0 = cx->x0; if (y0 < cx->y0) y0 = cx->y0; if (x1 > cx->x1) x1 = cx->x1; if (y1 > cx->y1) y1 = cx->y1;
+    if (x0 < cx->x0) x0 = cx->x0;
+    if (y0 < cx->y0) y0 = cx->y0;
+    if (x1 > cx->x1) x1 = cx->x1;
+    if (y1 > cx->y1) y1 = cx->y1;
     if (x0 >= x1 || y0 >= y1) return;
     x0 &= ~1; y0 &= ~1;
     /* arestas: E(p) = A x + B y + C, positiva dentro */
@@ -634,7 +644,10 @@ static void ponto(gctx *c, int id, prog_t *pg, alvo_t *al, caixa_t *cx, const fl
     float tam = s[4]; if (tam < 1) tam = 1; if (tam > 256) tam = 256;
     float x0 = v.x - tam * 0.5f, y0 = v.y - tam * 0.5f;
     int ix0 = (int)w_floor(x0 + 0.5f), iy0 = (int)w_floor(y0 + 0.5f), ix1 = (int)w_floor(x0 + tam + 0.5f), iy1 = (int)w_floor(y0 + tam + 0.5f);
-    if (ix0 < cx->x0) ix0 = cx->x0; if (iy0 < cx->y0) iy0 = cx->y0; if (ix1 > cx->x1) ix1 = cx->x1; if (iy1 > cx->y1) iy1 = cx->y1;
+    if (ix0 < cx->x0) ix0 = cx->x0;
+    if (iy0 < cx->y0) iy0 = cx->y0;
+    if (ix1 > cx->x1) ix1 = cx->x1;
+    if (iy1 > cx->y1) iy1 = cx->y1;
     if (ix0 >= ix1 || iy0 >= iy1) return;
     float k = v.iw != 0 ? 1 / v.iw : 0;
     quadw_t q; q.frente = 1;
@@ -1396,7 +1409,10 @@ int webgl_op(int op, const double *a, int na, void *dados, int ndados, const cha
     case 55: {
         if (I(0) != GL_FRAMEBUFFER) { erro_gl(c, GL_INVALID_ENUM); o[0] = 0; return 1; }
         if (!c->fb) { o[0] = GL_FRAMEBUFFER_COMPLETE; return 1; }
-        alvo_t al; o[0] = fb_status(c, id, O(id, c->fb, O_FB), &al); return 1;
+        /* c->fb só guarda um framebuffer válido (o bind confere e o delete
+         * desliga), mas a guarda custa pouco e deixa isso claro aqui. */
+        gobj *f = O(id, c->fb, O_FB);
+        alvo_t al; o[0] = f ? fb_status(c, id, f, &al) : GL_FRAMEBUFFER_UNSUPPORTED; return 1;
     }
     case 56: o[0] = obj_novo(id, O_RB); return 1;
     case 57: { if (O(id, I(0), O_RB)) obj_apagar(c, id, I(0)); return -1; }

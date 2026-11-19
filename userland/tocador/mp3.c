@@ -327,7 +327,10 @@ typedef struct {
 
 struct mp3_s {
     const unsigned char *dados;
-    unsigned tam;               /* sem a etiqueta ID3v1 do fim */
+    unsigned tam;               /* sem a etiqueta ID3v1 do fim; em fluxo, o que já chegou */
+    unsigned tam_total;         /* o tamanho do arquivo inteiro */
+    int completo;               /* o arquivo inteiro já está em dados (senão, ainda chegando) */
+    int contou_xing;            /* total_quadros veio do quadro Xing/Info (não precisa recontar) */
     unsigned inicio;            /* onde está o primeiro quadro de som */
     unsigned pos;               /* o próximo quadro a decodificar */
     unsigned taxa, canais, amostras_quadro, total_quadros;
@@ -395,6 +398,9 @@ static int achar_quadro(const mp3_t *m, unsigned pos, cab_t *c)
     for (; pos + 4 <= m->tam; pos++) {
         if (m->dados[pos] != 0xFF || !ler_cabecalho(m->dados + pos, c)) continue;
         unsigned fim = pos + (unsigned)c->tam;
+        /* Em fluxo, o que passa do que já chegou não dá para conferir ainda:
+         * espera mais dados em vez de aceitar (ou pular) um cabeçalho às cegas. */
+        if (fim + 4 > m->tam && !m->completo) return -1;
         if (fim > m->tam) continue;
         if (fim + 4 > m->tam) return (int)pos;
         cab_t prox;
@@ -407,7 +413,10 @@ static int achar_quadro(const mp3_t *m, unsigned pos, cab_t *c)
 static int proximo_quadro(const mp3_t *m, unsigned *pos, cab_t *c)
 {
     if (*pos + 4 > m->tam) return 0;
-    if (ler_cabecalho(m->dados + *pos, c) && *pos + (unsigned)c->tam <= m->tam) return 1;
+    if (ler_cabecalho(m->dados + *pos, c)) {
+        if (*pos + (unsigned)c->tam <= m->tam) return 1;
+        if (!m->completo) return 0;          /* o quadro ainda está chegando */
+    }
     int p = achar_quadro(m, *pos + 1, c);
     if (p < 0) return 0;
     *pos = (unsigned)p;
@@ -1022,11 +1031,36 @@ static unsigned be32(const unsigned char *p)
     return ((unsigned)p[0] << 24) | ((unsigned)p[1] << 16) | ((unsigned)p[2] << 8) | p[3];
 }
 
+/* Etiqueta ID3v1: os últimos 128 bytes, começando por "TAG". Só dá para
+ * ver com o arquivo inteiro na memória. */
+static unsigned sem_id3v1(const unsigned char *dados, unsigned tam)
+{
+    if (tam >= 128 && dados[tam - 128] == 'T' && dados[tam - 127] == 'A' && dados[tam - 126] == 'G') tam -= 128;
+    return tam;
+}
+
+/* Conta os quadros pulando de cabeçalho em cabeçalho (é rápido). */
+static unsigned contar_quadros(const mp3_t *m)
+{
+    unsigned q = m->inicio, n = 0;
+    cab_t cab;
+    while (proximo_quadro(m, &q, &cab)) {
+        n++;
+        q += (unsigned)cab.tam;
+    }
+    return n;
+}
+
 mp3_t *mp3_abrir(const unsigned char *dados, unsigned tam)
 {
+    return mp3_abrir_fluxo(dados, tam, tam);
+}
+
+mp3_t *mp3_abrir_fluxo(const unsigned char *dados, unsigned tam, unsigned tam_total)
+{
     if (!dados || tam < 4) return 0;
-    /* Etiqueta ID3v1: os últimos 128 bytes, começando por "TAG". */
-    if (tam >= 128 && dados[tam - 128] == 'T' && dados[tam - 127] == 'A' && dados[tam - 126] == 'G') tam -= 128;
+    int completo = tam >= tam_total;
+    if (completo) tam = tam_total = sem_id3v1(dados, tam);
     /* Etiqueta ID3v2, no começo: "ID3", versão (2 bytes), opções (1 byte) e o
      * tamanho em 4 bytes de 7 bits cada (o bit mais alto é sempre 0, para a
      * etiqueta nunca parecer um cabeçalho de quadro). O tamanho não conta os
@@ -1036,15 +1070,18 @@ mp3_t *mp3_abrir(const unsigned char *dados, unsigned tam)
         unsigned t = ((unsigned)(dados[pos + 6] & 127) << 21) | ((unsigned)(dados[pos + 7] & 127) << 14) |
                      ((unsigned)(dados[pos + 8] & 127) << 7) | (unsigned)(dados[pos + 9] & 127);
         t += 10 + ((dados[pos + 5] & 0x10) ? 10 : 0);
-        if (t > tam - pos) break;
+        if (t > tam_total - pos) break;
         pos += t;
     }
+    if (pos + 4 > tam) return 0;   /* em fluxo: a etiqueta (uma capa, às vezes) ainda está chegando */
 
     mp3_t *m = aloca(sizeof(mp3_t));
     if (!m) return 0;
     zerar(m, sizeof(mp3_t));
     m->dados = dados;
     m->tam = tam;
+    m->tam_total = tam_total;
+    m->completo = completo;
     cab_t cab;
     int p = achar_quadro(m, pos, &cab);
     if (p < 0) {
@@ -1065,22 +1102,29 @@ mp3_t *mp3_abrir(const unsigned char *dados, unsigned tam)
     if (4 + cab.tam_lateral + 12 <= cab.tam &&
         ((x[0] == 'X' && x[1] == 'i' && x[2] == 'n' && x[3] == 'g') ||
          (x[0] == 'I' && x[1] == 'n' && x[2] == 'f' && x[3] == 'o'))) {
-        if (be32(x + 4) & 1) m->total_quadros = be32(x + 8);
+        if (be32(x + 4) & 1) { m->total_quadros = be32(x + 8); m->contou_xing = 1; }
         m->inicio += (unsigned)cab.tam;
     }
     if (m->total_quadros == 0) {
-        /* Sem essa informação, conta os quadros (só pula de cabeçalho em
-         * cabeçalho, é rápido). */
-        unsigned q = m->inicio;
-        while (proximo_quadro(m, &q, &cab)) {
-            m->total_quadros++;
-            q += (unsigned)cab.tam;
-        }
+        /* Sem essa informação, conta os quadros. Em fluxo (o arquivo ainda
+         * chegando), estima pelo tamanho do primeiro quadro, como se a taxa
+         * de bits fosse fixa; a conta certa vem no mp3_chegou final. */
+        if (completo) m->total_quadros = contar_quadros(m);
+        else m->total_quadros = (tam_total - m->inicio) / (unsigned)cab.tam;
     }
     m->pos = m->inicio;
     return m;
 }
 
+void mp3_chegou(mp3_t *m, unsigned tam, int completo)
+{
+    if (!m || m->completo) return;
+    m->tam = completo ? sem_id3v1(m->dados, tam) : tam;
+    m->completo = completo;
+    if (completo && !m->contou_xing) m->total_quadros = contar_quadros(m);
+}
+
+int mp3_completo(mp3_t *m) { return m ? m->completo : 1; }
 unsigned mp3_taxa(mp3_t *m) { return m ? m->taxa : 0; }
 unsigned mp3_canais(mp3_t *m) { return m ? m->canais : 0; }
 

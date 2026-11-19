@@ -2189,3 +2189,329 @@ estendida e cadeia em laço. Para cada um, confere o estado, o problema, o
 maior fim e cada partição com os números exatos. Confere também a linha na
 caixa do kernel, e que todos os discos ficam byte a byte iguais. `h110`
 confere a contagem no resumo.
+
+## D070. O Tocador lê a música em pedaços e limpa o som ao trocar (issue #27)
+
+**Contexto.** No G470, abrir um WAV do pendrive travava a tela por alguns
+segundos, e trocar de música repetia um pedaço da anterior ("loop") até a
+nova começar. O Tocador lia o arquivo inteiro num `ler()` só. Uma chamada de
+sistema roda com as interrupções desligadas (a porta 0x80 é de interrupção,
+D007) e o kernel não é interrompido no meio dela. Então, durante a leitura
+de vários MB do pendrive, o relógio parava. Sem o relógio, a tela e o mouse
+não andavam e o misturador não enchia o anel da placa. O DMA do HD Audio
+seguia tocando o anel de 64 KB (~340 ms) em volta, com o som velho. Além
+disso, ao trocar de música, a fila da fonte (~340 ms) ainda tinha o fim da
+anterior.
+
+**Decisão.**
+- O Tocador abre o arquivo, reserva o espaço do tamanho dele e lê **um
+  pedaço de 32 KB por volta do laço**, entre os eventos da janela. A música
+  começa assim que o cabeçalho chega: o WAV toca até onde já chegou e espera
+  o resto, e o MP3 é decodificado quadro a quadro do que já está na memória.
+  Pular na barra só vai até onde o arquivo já chegou. Enquanto falta ler, o
+  laço não dorme.
+- O decodificador de MP3 ganha `mp3_abrir_fluxo` e `mp3_chegou`. Com o
+  arquivo incompleto, um quadro que passa do que chegou não é aceito nem
+  pulado: o decodificador devolve 0 e quem chama sabe, por `mp3_completo`,
+  que não é o fim. A duração sem quadro Xing é estimada pelo tamanho do
+  primeiro quadro e contada direito quando o arquivo termina de chegar. A
+  saída é igual, amostra por amostra, à da leitura inteira (conferido no PC
+  com pedaços de 1 KB, 4 KB e 32 KB e com uma etiqueta ID3v2 grande).
+- Quando a pessoa troca de música (botões, lista) ou aperta Parar, o Tocador
+  **fecha a fonte de som e abre outra**: o misturador zera a fila de uma
+  fonte nova, e o fim da música velha não toca. No fim natural de uma
+  música, a fila fica, porque é o finzinho dela. Não precisou de chamada nova.
+- No kernel, duas mudanças pequenas:
+  - o misturador **apaga a parte do anel que a placa já leu** (do ponto em
+    que parou da última vez até a posição atual). Se ele ficar sem rodar por
+    qualquer chamada longa, a placa toca o pouco que estava à frente e
+    depois silêncio, em vez de repetir o anel. O trecho à frente da posição
+    nunca é apagado;
+  - o `fat_ler` junta **clusters vizinhos no disco** num pedido só, de até
+    64 KB. Antes, cada cluster era um comando SCSI. Num pendrive formatado no
+    Windows, com clusters de 4 KB, 32 KB eram 8 comandos, e agora são 1. A
+    cadeia continua sendo seguida na FAT, então um arquivo picado só junta o
+    que está mesmo em seguida.
+- O que ficou de fora: deixar as interrupções ligadas durante a leitura USB.
+  O kernel não é preemptível dentro de uma chamada de sistema, e ligar as
+  interrupções ali deixaria o escalonador trocar de processo no meio do
+  FAT32. Não é uma mudança pequena. Com pedaços de 32 KB, cada chamada
+  segura as interrupções por poucos milissegundos.
+
+**Teste.** `h120_tocador_fluxo` usa um pendrive de 300 MB (clusters de 4 KB)
+com um WAV de 7 MB (440 Hz), outro de 5 MB (660 Hz) e um MP3. Confere que a
+música começa antes de o arquivo terminar de ser lido e que o botão de
+volume responde durante a leitura. No som gravado pelo QEMU, confere que o
+440 Hz dura só o tempo em que tocou até o clique em ">>" (com folga de
+0,35 s) e não volta depois do 660 Hz. Confere também que o 660 Hz para no
+">>" seguinte e que o MP3 toca depois.
+
+## D071. O tocador de vídeo segue o som, descarta quadros e ganha controles (issues #28 e #29)
+
+**Contexto.** No G470, o MP4 de 1080p de teste ficava em câmera lenta e o
+som "parava". Medido no QEMU (sem KVM), com os vídeos de 5,7 s do Eli:
+
+| vídeo | decodificar um quadro | fim do vídeo (antes) | som (antes) |
+|---|---|---|---|
+| 360p | 80 ms | 17,3 s | contínuo, 5,2 s |
+| 720p | 433 ms | 78,4 s | 5,9 s com 2 buracos |
+| 1080p | 607 ms | 109,3 s | 8,2 s com 5 buracos |
+
+O tocador decodificava e mostrava **todos** os quadros, um atrás do outro:
+quando decodificar demora mais que 33 ms (30 quadros por segundo), a imagem
+anda devagar. O som era posto na fila do misturador à parte, no tempo certo;
+acabava nos seus 5,8 s e o resto do vídeo seguia mudo; essa era a "parada"
+do som. E, como a fila do misturador guarda só ~340 ms, um quadro que levava
+mais que isso deixava a fila secar (os buracos). No PC de build, o mesmo
+decodificador leva ~8 ms por quadro em 360p, ~30 em 720p e ~55 em 1080p; o
+G470 (2011, um núcleo) deve ficar umas 2 a 3 vezes mais lento que isso.
+
+**Decisão.**
+- **O relógio é o do som.** Anda com o relógio do sistema, mas, sempre que a
+  fila do misturador está cheia, vai para o que está tocando de fato (o
+  entregue menos a fila: 341 ms da fonte mais 60 ms que o misturador
+  escreve à frente) e nunca passa do som já entregue (se o som secar, a
+  imagem espera). No QEMU com a máquina ocupada o relógio do sistema chega a
+  atrasar segundos em relação à placa de som; no G470 os dois devem andar
+  juntos.
+- **O som vem primeiro.** A fila é enchida antes de cada quadro e também no
+  meio dele: o decodificador H.264 ganhou `h264_ao_progresso`, chamado a
+  cada linha de macroblocos (e do desbloqueio), e o tocador enche a fila ali.
+- **Descarte quando atrasa.** Uma amostra cujas fatias têm todas
+  `nal_ref_idc = 0` não é referência de ninguém (H.264, 7.4.1): atrasada, é
+  pulada inteira, sem decodificar (`h264_descartavel`). Nos vídeos de teste
+  (x264, quadros B em pirâmide) são 85 dos 171 quadros. Os de referência (I,
+  P e os B de referência) não podem ser pulados, porque os seguintes são
+  previstos a partir deles; atrasados, são decodificados mas não vão para a
+  tela (no máximo um a cada 100 ms, para a imagem não congelar), poupando a
+  escala e a conversão de cor.
+- **Conversão de cor com SSE2** (`userland/video/cor.c`): escala por vizinho
+  mais próximo para qualquer tamanho de janela (com as colunas de origem
+  calculadas uma vez por tamanho, e cópia da linha anterior quando a linha
+  de origem se repete) e BT.601 de 8 em 8 pontos com `pmulhw` e `packuswb`.
+  No PC: 360p de 1,13 ms para 0,60 ms por quadro, 1080p reduzido à metade de
+  2,98 ms para 1,13 ms, a mesma imagem (diferença máxima de 1 nível em 255).
+  No QEMU o SSE é emulado e o ganho aparece menos.
+- **Controles** (barra embaixo, no estilo do Tocador de músicas): Tocar /
+  Pausar, tempo "0:02 / 0:05", barra de progresso que pula ao clicar, volume
+  do sistema (`som_volume`) e Tela cheia. Teclas: Espaço, setas (5 s para os
+  lados, volume para cima e para baixo), F ou F11, Esc. A janela é
+  redimensionável (o botão de maximizar da moldura funciona) e a imagem
+  mantém a proporção. Pausar fecha a fonte de som (o que estava na fila some
+  na hora) e voltar abre outra no ponto exato.
+- **Pular** volta ao IDR mais próximo antes do ponto (ou segue de onde está,
+  se o ponto estiver à frente e não houver IDR no caminho) e decodifica até
+  lá; os quadros do caminho estão "atrasados", então os B sem referência são
+  pulados e nada é desenhado. O som recomeça no ponto exato (um quadro AAC
+  antes, jogando fora a saída, por causa da sobreposição da MDCT). Os vídeos
+  de teste só têm um IDR, no começo: pular para o fim de um 1080p no G470
+  custa decodificar os quadros de referência até lá.
+- **Tela cheia é uma chamada nova**, `SIS_JANELA_MODO` (84), acrescentada no
+  fim da tabela: `(id, modo)` com `JAN_MODO_NORMAL`, `_MAXIMIZADA` ou
+  `_TELA_CHEIA`, só para janela redimensionável. Em tela cheia, a moldura
+  fica fora da tela (x = -2, y = -24), então o conteúdo começa em (0, 0) e
+  as contas de clique continuam as mesmas; a composição não desenha a
+  moldura e, com a janela na frente, desenha o conteúdo de novo por cima da
+  barra de cima e da doca, que não pegam mais os cliques. Esc é do programa
+  (o tocador sai da tela cheia); Super+Baixo também volta.
+- `video --todos` decodifica e tenta mostrar todos os quadros, como antes
+  (o H88 usa, para conferir o decodificador quadro a quadro).
+
+**O que não muda.** O decodificador H.264 em si (compensação de movimento,
+CABAC, desbloqueio) não foi reescrito: os quadros de referência continuam
+custando o mesmo. Em 1080p, só eles já passam do tempo real no QEMU e devem
+passar no G470; ali o som sai inteiro e no tempo certo, mas a imagem anda a
+poucos quadros por segundo e atrasa. Acelerar a compensação de movimento com
+SSE2 é o próximo passo, se for preciso.
+
+**Teste.** `h121_video_sincronia` toca o 1080p no QEMU e confere pelo .wav
+que o som sai contínuo e com a duração certa, que o relógio quase não teve
+de esperar pelo som, que os B sem referência foram descartados e todos os
+de referência decodificados sem erro, e que o fim chega bem antes do que
+levaria decodificando todos. `h122_video_controles` (360p) confere o tempo
+na barra (lido na captura pela fonte do sistema), a pausa (o tempo para e o
+som some do .wav), o pulo pelo clique na barra, o volume pelas setas, a
+tela cheia pela tecla F e pelo duplo clique (a janela vira 1024x768 e cobre
+a barra de cima e a doca), o Esc e o botão de maximizar. Os dois usam os
+vídeos do Eli em `testes_eli/` e avisam sem eles.
+
+## D073. Textos em várias línguas: traduzir() e tabelas de texto (H124)
+
+O SaguiOS fala português, e o código também. A ideia de mostrar o sistema em
+espanhol e em inglês veio do fork SaguiOS-Extended de Alejandro Anuncibay
+(issue #14). Esta é a primeira parte: a infraestrutura, o shell e as
+Configurações.
+
+- **A língua é uma configuração**, `sistema.idioma` (`pt`, o padrão, `es` ou
+  `en`), como o layout do teclado (D051): nenhuma chamada de sistema nova. Ela
+  é escolhida na aba "Idioma e teclado" das Configurações (a antiga aba
+  "Teclado"; o argumento `teclado` e o nome no log continuam os mesmos, e
+  `idioma` também abre a aba) ou com `config sistema.idioma es`.
+- **O texto em português é a chave.** Os programas continuam escritos com as
+  frases em português e passam cada uma por `traduzir()`, da libsagui
+  (`idioma.c`). Sem tradução, sai o próprio português; uma tradução que falta
+  nunca quebra nada. Assim o código continua legível e não há números de
+  mensagem para manter em dia.
+- **As traduções são arquivos de texto**, `rootfs/sistema/idiomas/es.txt` e
+  `en.txt` (vão para `/sistema/idiomas`), uma por linha:
+  `texto em português = tradução`. O separador é o primeiro " = "; um " = "
+  do próprio texto vira "\=". Linhas com # são comentários. Quem quiser
+  traduzir mexe só nesses arquivos. Eles são UTF-8 e viram Latin-1 na
+  leitura (D027), a mesma conversão dos outros textos de fora.
+- **Marcas de formato conferidas.** Se a tradução de um texto com %s ou %d não
+  tiver as mesmas marcas, na mesma ordem, ela é ignorada e o problema vai
+  para o log: uma tradução errada não pode fazer o programa ler um argumento
+  que não existe. O teste h124 confere o mesmo no build.
+- **Lida uma vez por programa**, no primeiro `traduzir()`. Trocar a língua vale
+  para os programas abertos depois; quem quer perceber antes chama
+  `idioma_recarregar()`, que relê a configuração e só relê o arquivo se a
+  língua mudou. O shell faz isso a cada comando (uma leitura de
+  configuração), e as Configurações ao trocar a língua, redesenhando-se na
+  língua nova.
+- **A ajuda do shell**: em português, cada comando aparece com os dois nomes
+  (`ls/listar`); em espanhol e inglês, só o nome Unix, com a descrição
+  traduzida, porque o apelido em português não ajuda quem não lê
+  português. `ajuda ls` mostra o apelido numa linha à parte. Nenhum apelido
+  novo foi inventado: os comandos continuam os mesmos em todas as línguas.
+  As descrições curtas traduzidas cabem na coluna de 17 letras (o teste
+  confere). Os nomes dos erros (`nome_erro`) também passam por `traduzir()` no
+  shell.
+- **A busca é linear**, comparando o texto inteiro: a tabela tem algumas
+  centenas de linhas e a ajuda faz menos de duzentas buscas, nada que se
+  perceba. Se as tabelas crescerem muito, dá para trocar por uma tabela de
+  espalhamento sem mudar quem chama `traduzir()`.
+
+**O que fica para a segunda parte:** o kernel (área de trabalho, menu
+Iniciar, barra de cima, nomes dos ícones, caixas de confirmação do kernel),
+que não tem a libsagui e precisaria da tabela lida no próprio kernel; os
+outros programas (Arquivos, Editor, Terminal, jogos, Cipó, instalador, os
+utilitários de `/bin` e as mensagens deles); e as caixas de diálogo comuns
+da `gui.c` (os botões "OK" e "Cancelar").
+
+**Teste.** `h124_idiomas` confere no build que as duas tabelas estão bem
+formadas e têm todos os comandos da ajuda; no shell, troca para `es` e `en`
+com `config` e confere a `ajuda`, `ajuda ls`, a mensagem de comando
+desconhecido, um erro e um shell novo; nas Configurações, troca a língua
+pelos botões e confere o título da janela reaberta.
+
+## D074. Segurança: SECURITY.md, análise estática no CI e build sem avisos (issue #17)
+
+**Contexto.** A issue #17 sugeriu o selo OpenSSF Best Practices. O nível
+"passing" pede, entre outras coisas, um jeito publicado e privado de relatar
+vulnerabilidades, uma ferramenta de análise estática além dos avisos do
+compilador, e que os avisos do compilador sejam tratados. O `make` mostrava
+21 avisos (inicializadores incompletos de `lista_t`, indentação enganosa,
+funções e parâmetros sem uso), todos em `userland/`.
+
+**Decisão.**
+- **`SECURITY.md`** na raiz: relatos só pelo "Private vulnerability
+  reporting" do GitHub (nenhum e-mail), o que conta como vulnerabilidade no
+  SaguiOS (memória do kernel, disco gravado sem a confirmação digitada,
+  vazamento da chave da IA, TLS/SSH aceitando o que não deviam), resposta em
+  até 14 dias, correção das falhas médias e graves em até 60 dias, correção
+  só na última versão, e o pedido de não publicar antes da correção. Resumo
+  em inglês no fim. Links no README e no CONTRIBUTING.
+- **Análise estática com o analisador do GCC** (`-fanalyzer`), em
+  `tools/analise_estatica.py`: o script pede ao Makefile os comandos de
+  compilação (`make -Bn`) e roda cada um de novo com `-fanalyzer`, então
+  cada arquivo é analisado com as opções reais do build. `terceiros/` fica
+  de fora. O cppcheck foi considerado, mas o `-fanalyzer` não precisa de
+  nada além do GCC que o build já usa e entende as mesmas opções.
+- **Job novo no CI**, "Análise estática (gcc -fanalyzer)", separado do job
+  obrigatório (que continua com o mesmo nome), com `contents: read`, sem
+  segredos e só com as ações oficiais já usadas. Por enquanto é
+  informativo: publica o resumo na página da execução e o relatório como
+  artefato, e só falha se o gcc não conseguir analisar um arquivo. Para
+  torná-lo obrigatório: zerar (ou justificar) os achados, rodar com
+  `--estrito` e marcá-lo como verificação obrigatória na proteção da `main`.
+  Um limite de tempo por arquivo (30 min) impede que um arquivo enorme
+  segure o job; o mais lento hoje é `userland/navegador/js/js.c` (uns 9 min
+  sozinho numa máquina de 8 núcleos; a análise inteira leva uns 10 min).
+- **Build sem nenhum aviso**: os inicializadores de `lista_t` passam a dar
+  nome aos campos; as linhas com dois ou mais `if` passam a ter um `if` por
+  linha; as funções sem uso (`udiv` no JavaScript, `maiuscula` e `ler_peso`
+  no motor) saem; os parâmetros sem uso ficam marcados com `(void)`. Nas 12
+  indentações enganosas (`svg.c`, `webgl.c`, `js_nativo.h`, `motor.c`) o
+  código fazia o que parecia: eram `if (a) x; if (b) y;` independentes
+  numa linha só, inclusive o `ult = off;` do gradiente SVG, que deve
+  acontecer sempre (a posição de cada parada não pode voltar, SVG 1.1,
+  seção 13.2.4). Nenhum defeito ali. O CONTRIBUTING pede que continue assim.
+- **Respostas do selo** em `docs/openssf.md`, critério por critério.
+
+**Achados da primeira análise.** 15 avisos, nenhum no kernel. Nenhum é um
+defeito alcançável hoje:
+- `compilador/base.c` (8, `va-list-exhausted`): o analisador não lê o
+  texto do formato e acha que um `%s` pode pedir um argumento que não veio;
+  as chamadas com zero argumentos têm formatos sem `%`.
+- `navegador/fontes/fonte.c:174` (valor não inicializado): `s[0..6]` são
+  todos preenchidos pelo laço anterior, ou a função já saiu.
+- `navegador/js/js.c:103` (ponteiro nulo): um pedaço da lista de livres está
+  sempre dentro de um bloco do coletor, então `bloco_de` não devolve NULL.
+- `navegador/graficos/webgl.c:184` (ponteiro nulo): `c->fb` só guarda um
+  framebuffer válido; mesmo assim, a chamada do `checkFramebufferStatus`
+  ganhou a mesma guarda que a outra chamada já tinha.
+- `video/h264.c:538` (ponteiro nulo): com `max_ref >= 1` sempre há um
+  quadro de referência a tirar; ganhou uma guarda, porque o valor vem do
+  arquivo de vídeo e a invariante fica longe dali.
+- `programas/sagsh.c:590` (valor não inicializado): `separar` preenche
+  `op` de todo token que devolve.
+- `programas/configuracoes.c:524` (tamanho do buffer): o nome do processador
+  tem 49 bytes e é escrito como 12 palavras de 4 bytes; só os 48 primeiros
+  são usados, o último é o zero.
+- `programas/falha.c:21` (ponteiro nulo): de propósito; é o programa que
+  provoca falhas para testar o kernel.
+
+Com as duas guardas, a análise fica com 13 achados, todos acima e todos
+explicados; o próximo passo para o job virar obrigatório é calá-los no
+próprio código (por exemplo, inicializando `s[]` e `tok[]`) ou aceitar a
+lista conhecida.
+
+**Teste.** O build limpo (`rm -rf build && make`) sem nenhum aviso;
+`python3 tools/analise_estatica.py` com os achados acima; os testes que
+tocam no que mudou (`h16`, `h20`, `h22`, `h61`, `h82`, `h82_video`, `h87`,
+`h89`, `h94_sobre`).
+
+## D075. O CI em pedaços paralelos e com KVM
+
+**Contexto.** O CI rodava num job só: compilava e passava os ~120 testes um
+atrás do outro, no QEMU sem aceleração (TCG), em uns 45 minutos. O nome
+desse job, "Compilar e testar no Ubuntu 24.04", é o check obrigatório da
+proteção da `main`, então não pode sumir nem ficar verde antes da hora.
+
+**Decisão.**
+- `tests/rodar_todos.py --pedaco N/TOTAL` roda só o N-ésimo de TOTAL
+  pedaços. A divisão usa uma tabela com o tempo de cada teste (o maior de três
+  rodadas recentes): o teste mais demorado que sobrou vai para o pedaço mais
+  vazio, com empate desfeito pelo nome, então toda máquina chega à mesma
+  divisão sem conversar com as outras. Teste fora da tabela conta 40 s. Sem o
+  argumento, roda tudo, como antes; `--listar` só mostra a lista.
+- O workflow tem uma matriz `testes` com 6 pedaços (uns 15 minutos de TCG
+  cada; o maior teste, `h84_video_nativo`, leva 9). Cada pedaço instala as
+  dependências e compila com `make -j$(nproc)` (cerca de um minuto; serial
+  levaria quase três). Compilar em cada pedaço é mais simples que passar o
+  `build/` por artefato: os testes também chamam o `make`, que teria de
+  aceitar as datas dos arquivos baixados.
+- O job final mantém o nome "Compilar e testar no Ubuntu 24.04", depende da
+  matriz (`needs`) e roda com `if: !cancelled()`, para ficar **vermelho**, e
+  não "pulado", quando um pedaço falha. O primeiro passo dele confere
+  `needs.testes.result == success`. A proteção do branch não muda.
+- A entrega da `main` sai da imagem testada no pedaço 1, passada ao job
+  final por um artefato de um dia; o VDI é feito com
+  `make -o build/saguios.img vdi`, que usa a imagem baixada sem recompilar.
+- `tests/qemu.py` usa `-accel kvm` quando `/dev/kvm` abre para leitura e
+  escrita e `SAGUI_KVM` não é `0`; senão a linha de comando fica a de sempre
+  (TCG). No CI, uma regra do udev (a que a documentação do GitHub sugere para
+  emuladores) libera o `/dev/kvm` para o usuário do runner, e a variável
+  `SAGUI_KVM` no topo do workflow liga ou desliga isso. O `rodar_todos.py`
+  escreve qual acelerador está em uso.
+- Os logs de falha continuam iguais, um artefato por pedaço
+  (`...-pedacoN`).
+
+**Por que o KVM pode ser desligado.** Com o KVM, o processador real roda o
+SaguiOS e o ritmo muda muito: um teste que dependa sem querer do ritmo do
+TCG pode falhar. Se isso acontecer, `SAGUI_KVM: "0"` volta ao comportamento
+antigo sem mexer em mais nada, e o teste pode ser corrigido com calma.
+
+**Teste.** `rodar_todos.py --listar` com os 6 pedaços dá os 120 testes, sem
+repetição; o pedaço 1 rodou inteiro na máquina de desenvolvimento (TCG). O
+KVM e o job final só podem ser conferidos no próprio GitHub Actions.
