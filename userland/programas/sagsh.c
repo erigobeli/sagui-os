@@ -121,6 +121,7 @@ static const comando_t comandos[] = {
     { "dirname", "pasta-de", false, false, "pasta do caminho", "dirname <caminho>", "Mostra a pasta de um caminho (ex.: dirname /a/b/c.txt mostra /a/b)." },
     { "hostname", "nome-maquina", false, false, "nome do computador", "hostname [novo]", "Mostra ou muda o nome do computador (guarda nas configurações)." },
     { "du", "disco-usado", false, false, "espaço usado", "du [caminho...]", "Mostra o espaço usado por arquivos e pastas (soma recursivamente)." },
+    { "clear", "limpar", false, false, "limpa a tela", "clear", "Limpa a tela do terminal e coloca o cursor no canto superior esquerdo." },
 };
 #define QTD_COMANDOS (int)(sizeof comandos / sizeof comandos[0])
 
