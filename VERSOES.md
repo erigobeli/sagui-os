@@ -67,7 +67,8 @@ Já no código (no `main`), ainda não lançado como imagem:
   arquivo abre a edição ali mesmo (Robson). A interface ficou mais leve: o
   menu redesenha só o que muda, e o vidro e as sombras custam menos.
 - Quatro comandos novos de Gabriel: `dirname` (`pasta-de`), `hostname`
-  (`nome-maquina`), `du` (`disco-usado`) e `clear` (`limpar`).
+  (`nome-maquina`), `du` (`disco-usado`) e `clear` (`limpar`), e o apelido
+  `exit` para o comando interno `sair`.
 - O kernel enxerga os **discos rígidos IDE/ATA** (`hd0`, `hd1`...), sem
   montar nenhum (D062). É a base do instalador (issue #45).
 - **Gravar direto no disco fica travado no kernel** (D063): só depois que a

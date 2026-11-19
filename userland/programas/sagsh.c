@@ -85,7 +85,7 @@ static const comando_t comandos[] = {
     { "falha", NULL, false, false, "provoca um erro", "falha [memoria|kernel|divisao|instrucao]", "Faz um erro de propósito: só este programa é encerrado, o sistema continua." },
     { "reiniciar", NULL, true, false, "reinicia o PC", "reiniciar", "Grava o que falta nos pendrives e reinicia o computador." },
     { "poweroff", "desligar", true, false, "desliga o PC", "desligar", "Grava o que falta nos pendrives e desliga o computador." },
-    { "sair", NULL, true, false, "fecha o shell", "sair", "Fecha o shell." },
+    { "sair", "exit", true, false, "fecha o shell", "sair", "Fecha o shell (também: exit)." },
     { "discos", NULL, false, false, "lista os pendrives", "discos", "Mostra os pendrives conectados, o formato e se estão montados." },
     { "df", "espaco", false, false, "espaço dos discos", "df [-k]", "Mostra o espaço total, usado e livre de / (a memória) e de /usb (o pendrive). -k: tudo em KB." },
     { "montar", NULL, false, false, "monta o pendrive", "montar [usb0]", "Monta o pendrive FAT32 em /usb." },
