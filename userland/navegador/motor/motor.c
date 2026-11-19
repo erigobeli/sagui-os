@@ -3025,6 +3025,10 @@ static int montar_linhas(no_m *bloco, int i0, int i1, int y, int cw, contexto_t 
             if (it->tipo == 4 || it->tipo == 5) { j++; continue; }
             if (it->tipo == 1 || it->tipo == 8) { ult_quebra = j; w_quebra = w; }
             if (it->tipo == 8) { j++; continue; }
+            /* Nem a primeira palavra cabe na fresta ao lado de um float: a
+             * linha desce para baixo dele (abaixo), em vez de ficar espremida
+             * por cima (o cladograma da Wikipédia, H129). */
+            if (w == 0 && j == i && it->tipo != 1 && it->l > disp && ctx->n && disp < cw) break;
             if (w + it->l > disp && j > i && !nowrap && it->tipo != 1) {
                 if (ult_quebra > i) { j = ult_quebra; w = w_quebra; }
                 else if (ctx->n && disp < cw && w == 0) { /* desce abaixo do float */ }
