@@ -58,13 +58,19 @@ sistema já destravado, e as limitações já documentadas (por exemplo, o TLS
 não consultar revogação de certificados: veja `userland/tls/LEIA-ME.md`).
 Na dúvida, mande pelo canal privado.
 
-## Prazos
+## Prazos (metas, sem garantia)
 
-- **Resposta**: confirmamos o recebimento e damos uma primeira avaliação em
-  **até 14 dias**.
-- **Correção**: falhas de gravidade **média ou alta** são corrigidas em **até
-  60 dias** depois de confirmadas. Falhas graves (por exemplo, gravar no disco
-  sem confirmação) têm prioridade sobre qualquer outro trabalho.
+O SaguiOS é um projeto pessoal, mantido por voluntários no tempo livre. Os
+prazos abaixo são **metas**, não um compromisso, e o programa vem **sem
+nenhuma garantia**, como dizem as seções 15 e 16 da licença
+([`LICENSE`](LICENSE), GPL 3).
+
+- **Resposta**: procuramos confirmar o recebimento e dar uma primeira
+  avaliação em **até 14 dias**.
+- **Correção**: procuramos corrigir as falhas de gravidade **média ou alta**
+  o quanto antes, de preferência em **até 60 dias** depois de confirmadas.
+  Falhas graves (por exemplo, gravar no disco sem confirmação) têm prioridade
+  sobre qualquer outro trabalho.
 - Depois da correção, publicamos um aviso (GitHub Security Advisory) e uma
   linha no [`VERSOES.md`](VERSOES.md) dizendo o que foi corrigido. Se você
   quiser, o seu nome entra nos créditos do aviso.
@@ -83,8 +89,8 @@ próxima versão.
 
 **Não publique detalhes da vulnerabilidade antes da correção** (nem em
 issue, nem em blog, nem em rede social). Combinamos juntos a data de
-publicação, depois que a correção estiver no ar. Se o prazo de 60 dias
-passar sem correção, avise pelo mesmo relato antes de publicar.
+publicação, depois que a correção estiver no ar. Se passarem 60 dias
+sem correção, avise pelo mesmo relato antes de publicar.
 
 ## Como o projeto cuida da segurança
 

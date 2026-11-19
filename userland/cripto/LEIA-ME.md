@@ -205,7 +205,7 @@ módulo 8). R mod n e R² mod n saem **sem divisão**: parte-se de 1 e dobra-se
 módulo n, 32k vezes para R e mais 32k para R². A potência é quadrado e
 multiplicação, do bit mais alto do expoente para o mais baixo.
 
-**RSA.** Só conferência. Exige módulo ímpar de 1024 a 4096 bits, assinatura do
+**RSA.** Só conferência. Exige módulo ímpar de 2048 a 4096 bits (o mínimo do NIST), assinatura do
 tamanho exato do módulo e menor que ele, expoente ímpar maior que 1.
 No PKCS#1 v1.5 o bloco esperado (00 01 FF…FF 00, DigestInfo, resumo) é
 **montado e comparado inteiro**, em vez de interpretar o bloco recebido: é
