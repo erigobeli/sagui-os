@@ -393,7 +393,7 @@ static uint32_t perda_teste, contador_perda;
 
 static void processar_quadros(void)
 {
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 256; i++) {   /* o anel do e1000 inteiro (H129) */
         int n = placa->receber(placa, quadro_rx, sizeof quadro_rx);
         if (n == 0) break;
         if (n < 14) continue;
