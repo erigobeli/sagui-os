@@ -2426,3 +2426,92 @@ volume responde durante a leitura. No som gravado pelo QEMU, confere que o
 440 Hz dura só o tempo em que tocou até o clique em ">>" (com folga de
 0,35 s) e não volta depois do 660 Hz. Confere também que o 660 Hz para no
 ">>" seguinte e que o MP3 toca depois.
+
+## D071. O tocador de vídeo segue o som, descarta quadros e ganha controles (issues #28 e #29)
+
+**Contexto.** No G470, o MP4 de 1080p de teste ficava em câmera lenta e o
+som "parava". Medido no QEMU (sem KVM), com os vídeos de 5,7 s do Eli:
+
+| vídeo | decodificar um quadro | fim do vídeo (antes) | som (antes) |
+|---|---|---|---|
+| 360p | 80 ms | 17,3 s | contínuo, 5,2 s |
+| 720p | 433 ms | 78,4 s | 5,9 s com 2 buracos |
+| 1080p | 607 ms | 109,3 s | 8,2 s com 5 buracos |
+
+O tocador decodificava e mostrava **todos** os quadros, um atrás do outro:
+quando decodificar demora mais que 33 ms (30 quadros por segundo), a imagem
+anda devagar. O som era posto na fila do misturador à parte, no tempo certo;
+acabava nos seus 5,8 s e o resto do vídeo seguia mudo; essa era a "parada"
+do som. E, como a fila do misturador guarda só ~340 ms, um quadro que levava
+mais que isso deixava a fila secar (os buracos). No PC de build, o mesmo
+decodificador leva ~8 ms por quadro em 360p, ~30 em 720p e ~55 em 1080p; o
+G470 (2011, um núcleo) deve ficar umas 2 a 3 vezes mais lento que isso.
+
+**Decisão.**
+- **O relógio é o do som.** Anda com o relógio do sistema, mas, sempre que a
+  fila do misturador está cheia, vai para o que está tocando de fato (o
+  entregue menos a fila: 341 ms da fonte mais 60 ms que o misturador
+  escreve à frente) e nunca passa do som já entregue (se o som secar, a
+  imagem espera). No QEMU com a máquina ocupada o relógio do sistema chega a
+  atrasar segundos em relação à placa de som; no G470 os dois devem andar
+  juntos.
+- **O som vem primeiro.** A fila é enchida antes de cada quadro e também no
+  meio dele: o decodificador H.264 ganhou `h264_ao_progresso`, chamado a
+  cada linha de macroblocos (e do desbloqueio), e o tocador enche a fila ali.
+- **Descarte quando atrasa.** Uma amostra cujas fatias têm todas
+  `nal_ref_idc = 0` não é referência de ninguém (H.264, 7.4.1): atrasada, é
+  pulada inteira, sem decodificar (`h264_descartavel`). Nos vídeos de teste
+  (x264, quadros B em pirâmide) são 85 dos 171 quadros. Os de referência (I,
+  P e os B de referência) não podem ser pulados, porque os seguintes são
+  previstos a partir deles; atrasados, são decodificados mas não vão para a
+  tela (no máximo um a cada 100 ms, para a imagem não congelar), poupando a
+  escala e a conversão de cor.
+- **Conversão de cor com SSE2** (`userland/video/cor.c`): escala por vizinho
+  mais próximo para qualquer tamanho de janela (com as colunas de origem
+  calculadas uma vez por tamanho, e cópia da linha anterior quando a linha
+  de origem se repete) e BT.601 de 8 em 8 pontos com `pmulhw` e `packuswb`.
+  No PC: 360p de 1,13 ms para 0,60 ms por quadro, 1080p reduzido à metade de
+  2,98 ms para 1,13 ms, a mesma imagem (diferença máxima de 1 nível em 255).
+  No QEMU o SSE é emulado e o ganho aparece menos.
+- **Controles** (barra embaixo, no estilo do Tocador de músicas): Tocar /
+  Pausar, tempo "0:02 / 0:05", barra de progresso que pula ao clicar, volume
+  do sistema (`som_volume`) e Tela cheia. Teclas: Espaço, setas (5 s para os
+  lados, volume para cima e para baixo), F ou F11, Esc. A janela é
+  redimensionável (o botão de maximizar da moldura funciona) e a imagem
+  mantém a proporção. Pausar fecha a fonte de som (o que estava na fila some
+  na hora) e voltar abre outra no ponto exato.
+- **Pular** volta ao IDR mais próximo antes do ponto (ou segue de onde está,
+  se o ponto estiver à frente e não houver IDR no caminho) e decodifica até
+  lá; os quadros do caminho estão "atrasados", então os B sem referência são
+  pulados e nada é desenhado. O som recomeça no ponto exato (um quadro AAC
+  antes, jogando fora a saída, por causa da sobreposição da MDCT). Os vídeos
+  de teste só têm um IDR, no começo: pular para o fim de um 1080p no G470
+  custa decodificar os quadros de referência até lá.
+- **Tela cheia é uma chamada nova**, `SIS_JANELA_MODO` (84), acrescentada no
+  fim da tabela: `(id, modo)` com `JAN_MODO_NORMAL`, `_MAXIMIZADA` ou
+  `_TELA_CHEIA`, só para janela redimensionável. Em tela cheia, a moldura
+  fica fora da tela (x = -2, y = -24), então o conteúdo começa em (0, 0) e
+  as contas de clique continuam as mesmas; a composição não desenha a
+  moldura e, com a janela na frente, desenha o conteúdo de novo por cima da
+  barra de cima e da doca, que não pegam mais os cliques. Esc é do programa
+  (o tocador sai da tela cheia); Super+Baixo também volta.
+- `video --todos` decodifica e tenta mostrar todos os quadros, como antes
+  (o H88 usa, para conferir o decodificador quadro a quadro).
+
+**O que não muda.** O decodificador H.264 em si (compensação de movimento,
+CABAC, desbloqueio) não foi reescrito: os quadros de referência continuam
+custando o mesmo. Em 1080p, só eles já passam do tempo real no QEMU e devem
+passar no G470; ali o som sai inteiro e no tempo certo, mas a imagem anda a
+poucos quadros por segundo e atrasa. Acelerar a compensação de movimento com
+SSE2 é o próximo passo, se for preciso.
+
+**Teste.** `h121_video_sincronia` toca o 1080p no QEMU e confere pelo .wav
+que o som sai contínuo e com a duração certa, que o relógio quase não teve
+de esperar pelo som, que os B sem referência foram descartados e todos os
+de referência decodificados sem erro, e que o fim chega bem antes do que
+levaria decodificando todos. `h122_video_controles` (360p) confere o tempo
+na barra (lido na captura pela fonte do sistema), a pausa (o tempo para e o
+som some do .wav), o pulo pelo clique na barra, o volume pelas setas, a
+tela cheia pela tecla F e pelo duplo clique (a janela vira 1024x768 e cobre
+a barra de cima e a doca), o Esc e o botão de maximizar. Os dois usam os
+vídeos do Eli em `testes_eli/` e avisam sem eles.

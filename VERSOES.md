@@ -96,6 +96,12 @@ Já no código (no `main`), ainda não lançado como imagem:
   arquivo aos poucos enquanto toca, e ao trocar de música o som da anterior
   para na hora, sem ficar repetindo um pedaço (issue #27, D070). Ler do
   pendrive ficou mais rápido quando o arquivo está em clusters seguidos.
+- **Tocador de vídeo** (D071, issues #28 e #29): a imagem segue o relógio do
+  som e, quando a máquina não dá conta, descarta os quadros que pode (o som
+  não para mais nem o vídeo fica em câmera lenta por causa deles); a cor é
+  convertida com SSE2; e há controles: tocar/pausar, tempo, barra de
+  progresso que pula ao clicar, volume, maximizar e **tela cheia** (F, F11
+  ou duplo clique; Esc sai).
 
 ## Versões lançadas
 

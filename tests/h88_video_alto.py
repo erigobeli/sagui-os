@@ -24,8 +24,8 @@ Critério, em duas partes:
    decodificador. O resumo dos quadros de cada vídeo fica anotado em RESUMOS
    para avisar se uma mudança futura alterar a imagem.
 
-2. No SaguiOS (QEMU): "video /usb/v.mp4" com o vídeo de 360p num pendrive
-   abre a janela, decodifica todos os quadros sem erro, e a janela mostra um
+2. No SaguiOS (QEMU): "video --todos /usb/v.mp4" com o vídeo de 360p num
+   pendrive (--todos: sem descartar os quadros atrasados, D071) abre a janela, decodifica todos os quadros sem erro, e a janela mostra um
    quadro do vídeo: a captura H88-1-video é comparada com os quadros
    decodificados no PC.
 
@@ -200,7 +200,7 @@ def main():
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
         m.comando("montar")
-        m.digitar("video /usb/v.mp4\n", 0.04)
+        m.digitar("video --todos /usb/v.mp4\n", 0.04)   # --todos: sem descartar (D071)
         m.esperar_serial(f"video: {larg}x{alt}", 120)
         m.esperar_serial('"v.mp4"', 60)       # a janela só abre se o H.264 foi aceito
         verificar("H.264 recusado" not in m.serial(), "o /bin/video aceita o vídeo High (antes: 'H.264 recusado (-2)')")

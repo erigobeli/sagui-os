@@ -99,6 +99,7 @@ int  atualizar_janela(int id, const retangulo_t *r);   /* r = NULL: a janela tod
 int  proximo_evento(int id, evento_t *e, bool esperar); /* 1 = veio um evento */
 int  titulo_janela(int id, const char *titulo);
 int  janela_opcoes(int id, int opcoes, int larg_min, int alt_min);   /* JAN_REDIMENSIONAVEL (H78) */
+int  janela_modo(int id, int modo);   /* JAN_MODO_NORMAL, _MAXIMIZADA ou _TELA_CHEIA (D071) */
 int  menu_janela(int id, int x, int y, const char *itens);
 /* Área de cópia do sistema (texto): copiar num programa, colar em outro. */
 int  area_copia_gravar(const char *t, unsigned n);

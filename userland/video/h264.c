@@ -264,7 +264,16 @@ struct h264 {
     uint8_t *rbsp;
     int rbsp_cap;
     int erros;
+    /* D071: chamado a cada linha de macroblocos (o tocador põe som na placa
+     * no meio de um quadro grande, que pode levar mais que a fila de som) */
+    void (*progresso)(void *);
+    void *progresso_ctx;
 };
+
+static inline void avisar_progresso(h264_t *h, int mb)
+{
+    if (h->progresso && mb % h->larg_mb == 0) h->progresso(h->progresso_ctx);
+}
 
 /* --------------------------------------------------------- utilidades */
 
@@ -2385,6 +2394,7 @@ static void desbloquear(h264_t *h, const desbloq_t *dbf)
     quadro_t *qd = h->atual;
     for (int my = 0; my < h->alt_mb; my++)
         for (int mx = 0; mx < h->larg_mb; mx++) {
+            avisar_progresso(h, my * h->larg_mb + mx);
             mbinfo_t *m = &h->mb[my * h->larg_mb + mx];
             if (m->fatia < 0) continue;
             const desbloq_t *f = &dbf[m->fatia & 255];
@@ -2606,6 +2616,7 @@ static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
             c.a = vizinho(h, c.mbx - 1, c.mby); c.b = vizinho(h, c.mbx, c.mby - 1);
             c.c = vizinho(h, c.mbx + 1, c.mby - 1); c.d = vizinho(h, c.mbx - 1, c.mby - 1);
             h->mb[mb].fatia = h->fatia_atual;
+            avisar_progresso(h, mb);
             if (decodificar_mb_cabac(h, &k, &c, b) < 0) return H264_ERRO;
             mb++;
             if (cab_fim(&k)) break;
@@ -2624,6 +2635,7 @@ static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
                 c.a = vizinho(h, c.mbx - 1, c.mby); c.b = vizinho(h, c.mbx, c.mby - 1);
                 c.c = vizinho(h, c.mbx + 1, c.mby - 1); c.d = vizinho(h, c.mbx - 1, c.mby - 1);
                 h->mb[mb].fatia = h->fatia_atual;
+                avisar_progresso(h, mb);
                 decodificar_mb(h, b, &c, 0, true);
                 mb++;
             }
@@ -2633,6 +2645,7 @@ static int ler_fatia(h264_t *h, bits_t *b, int tipo_nal, int nal_ref)
         c.a = vizinho(h, c.mbx - 1, c.mby); c.b = vizinho(h, c.mbx, c.mby - 1);
         c.c = vizinho(h, c.mbx + 1, c.mby - 1); c.d = vizinho(h, c.mbx - 1, c.mby - 1);
         h->mb[mb].fatia = h->fatia_atual;
+        avisar_progresso(h, mb);
         int tipo_mb = (int)ue(b);
         if (tipo_mb > (tipo == 0 ? 30 : 25)) return H264_ERRO;
         if (decodificar_mb(h, b, &c, tipo_mb, false) < 0) { DBG("mb %d tipo %d fatia %d pos %u/%u\n", mb, tipo_mb, tipo, b->pos, b->fim); return H264_ERRO; }
@@ -2686,6 +2699,45 @@ bool h264_imagem(h264_t *h, h264_imagem_t *im)
 void h264_esvaziar(h264_t *h) { fechar_quadro(h); h->esvaziar = true; }
 
 const char *h264_motivo(h264_t *h) { return h ? h->motivo : NULL; }
+
+void h264_ao_progresso(h264_t *h, void (*f)(void *), void *ctx) { h->progresso = f; h->progresso_ctx = ctx; }
+
+/* D071: uma amostra cujas fatias têm todas nal_ref_idc = 0 não serve de
+ * referência para nenhum outro quadro (7.4.1): pode ser pulada inteira sem
+ * estragar os seguintes. */
+bool h264_descartavel(const uint8_t *d, int n, int tam_len)
+{
+    int pos = 0;
+    bool viu_fatia = false;
+    while (pos + tam_len < n) {
+        uint32_t l = 0;
+        for (int i = 0; i < tam_len; i++) l = (l << 8) | d[pos + i];
+        pos += tam_len;
+        if (l > (uint32_t)(n - pos)) return false;
+        int tipo = d[pos] & 31;
+        if (tipo == 1 || tipo == 5) {
+            if (tipo == 5 || (d[pos] >> 5) & 3) return false;
+            viu_fatia = true;
+        }
+        pos += (int)l;
+    }
+    return viu_fatia;
+}
+
+/* D071: a amostra começa um quadro IDR (pode-se começar a decodificar dali). */
+bool h264_chave(const uint8_t *d, int n, int tam_len)
+{
+    int pos = 0;
+    while (pos + tam_len < n) {
+        uint32_t l = 0;
+        for (int i = 0; i < tam_len; i++) l = (l << 8) | d[pos + i];
+        pos += tam_len;
+        if (l > (uint32_t)(n - pos)) return false;
+        if ((d[pos] & 31) == 5) return true;
+        pos += (int)l;
+    }
+    return false;
+}
 
 /* ---------------------------------------------------------- NAL / API */
 
