@@ -1127,6 +1127,7 @@ int principal(int argc, char **argv)
     jan_redimensionavel(j, 520, 300);
     posicionar_botoes();
     registrar("navegador: janela %d", j->id);
+    http_guardar_conexoes(true);   /* as imagens e o CSS reaproveitam a conexão da página (H129) */
     carregar(argc > 1 ? argv[1] : "sagui:inicio", true, 0);
     for (;;) {
         /* o script pediu outra página (location.href, assign, replace, reload) */

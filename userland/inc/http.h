@@ -47,4 +47,8 @@ typedef void (*http_cabecalhos_t)(void *ctx, const char *url, const char *linha)
 int  http_pedir_completo(const char *metodo, const char *url, const char *extra_cabecalhos, const void *corpo, unsigned n_corpo,
                          http_receptor_t receptor, void *ctx, http_resposta_t *resp, http_cabecalhos_t cabecalhos);
 
+/* Guardar a conexão de um pedido para o próximo ao mesmo servidor (H129).
+ * Desligado por padrão; false fecha as guardadas. */
+void http_guardar_conexoes(bool sim);
+
 #endif

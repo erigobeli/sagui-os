@@ -15,7 +15,15 @@
  * vezes.
  *
  * O transporte é abstrato (um "canal"): TCP puro para http:// e, a partir da
- * H53, TLS por cima do TCP para https://. */
+ * H53, TLS por cima do TCP para https://.
+ *
+ * Conexões guardadas (H129): um programa que pede muitas coisas ao mesmo
+ * servidor (o Cipó, com as imagens e o CSS de uma página) liga
+ * http_guardar_conexoes(true). O pedido sai com "Connection: keep-alive" e,
+ * se a resposta veio inteira e delimitada (Content-Length ou pedaços), a
+ * conexão fica guardada para o próximo pedido ao mesmo servidor, sem outro
+ * DNS, TCP e TLS. Se o servidor já fechou a conexão guardada, um GET é
+ * repetido uma vez numa conexão nova. */
 #include "sagui.h"
 #include "http.h"
 
@@ -126,6 +134,81 @@ static bool cabecalho(const char *linha, const char *nome, const char **valor)
     return true;
 }
 
+/* ------------------------------------------------------------ conexões guardadas (H129) */
+
+#define GUARDADAS 4
+#define GUARDADA_MAX_MS 20000   /* parada há mais tempo: o servidor já deve ter fechado */
+
+typedef struct {
+    bool     usada;
+    bool     seguro;
+    int      porta;
+    char     servidor[128];
+    unsigned desde;
+    canal_t  c;
+} guardada_t;
+
+static bool guardar_ligado;
+static guardada_t guardadas[GUARDADAS];
+
+void http_guardar_conexoes(bool sim)
+{
+    guardar_ligado = sim;
+    if (!sim)
+        for (int i = 0; i < GUARDADAS; i++)
+            if (guardadas[i].usada) { canal_fechar(&guardadas[i].c); guardadas[i].usada = false; }
+}
+
+/* Tira da guarda uma conexão para o servidor (true) ou não acha (false). */
+static bool pegar_guardada(const url_t *u, canal_t *c)
+{
+    for (int i = 0; i < GUARDADAS; i++) {
+        guardada_t *g = &guardadas[i];
+        if (!g->usada || g->seguro != u->seguro || g->porta != u->porta || compara_texto(g->servidor, u->servidor) != 0) continue;
+        g->usada = false;
+        if (tempo_ms() - g->desde > GUARDADA_MAX_MS) { canal_fechar(&g->c); continue; }
+        *c = g->c;
+        return true;
+    }
+    return false;
+}
+
+/* A ponte do TLS tem só 2 sessões (tls_ponte.c): antes de abrir outra
+ * conexão segura, fica guardada no máximo uma, a mais nova. */
+static void abrir_vaga_tls(void)
+{
+    for (;;) {
+        int n = 0, velha = -1;
+        for (int i = 0; i < GUARDADAS; i++)
+            if (guardadas[i].usada && guardadas[i].seguro) {
+                n++;
+                if (velha < 0 || guardadas[i].desde < guardadas[velha].desde) velha = i;
+            }
+        if (n <= 1) return;
+        canal_fechar(&guardadas[velha].c);
+        guardadas[velha].usada = false;
+    }
+}
+
+/* Guarda a conexão, no lugar vago ou no da mais antiga. */
+static void guardar_conexao(const url_t *u, canal_t *c)
+{
+    int k = 0;
+    for (int i = 0; i < GUARDADAS; i++) {
+        if (!guardadas[i].usada) { k = i; break; }
+        if (guardadas[i].desde < guardadas[k].desde) k = i;
+    }
+    guardada_t *g = &guardadas[k];
+    if (g->usada) canal_fechar(&g->c);
+    g->usada = true;
+    g->seguro = u->seguro;
+    g->porta = u->porta;
+    copia_texto(g->servidor, u->servidor, sizeof g->servidor);
+    g->desde = tempo_ms();
+    g->c = *c;
+    g->c.pos = g->c.tam = 0;
+}
+
 /* ------------------------------------------------------------ pedido */
 
 int http_obter(const char *url_inicial, http_receptor_t receptor, void *ctx, http_resposta_t *resp)
@@ -156,7 +239,11 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
         url_t u;
         if (url_separar(url, &u) < 0) { copia_texto(resp->erro, "endereço inválido (use http:// ou https://)", sizeof resp->erro); return ERRO_INVALIDO; }
         canal_t c;
-        if (canal_abrir(&c, &u, resp->erro, sizeof resp->erro) < 0) return ERRO_REDE;
+        bool reusada = guardar_ligado && pegar_guardada(&u, &c);
+        if (!reusada && guardar_ligado && u.seguro) abrir_vaga_tls();
+        if (!reusada && canal_abrir(&c, &u, resp->erro, sizeof resp->erro) < 0) return ERRO_REDE;
+        bool repetir = reusada && !corpo;   /* o servidor pode ter fechado a guardada: um GET vai de novo */
+    de_novo:
         char pedido[6144];   /* com os cookies do Cipó (H82) */
         bool porta_padrao = u.porta == (u.seguro ? 443 : 80);
         char host[80];
@@ -166,12 +253,21 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
         if (corpo) formatar_texto(tamanho_corpo, sizeof tamanho_corpo, "Content-Length: %u\r\n", n_corpo);
         int n = formatar_texto(pedido, sizeof pedido,
                                "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: SaguiOS/3.0.0 (+https://github.com/erigobeli/sagui-os)\r\nAccept: */*\r\n"
-                               "Accept-Encoding: identity\r\nConnection: close\r\n%s%s\r\n", metodo, u.caminho, host,
-                               extra ? extra : "", tamanho_corpo);
+                               "Accept-Encoding: identity\r\nConnection: %s\r\n%s%s\r\n", metodo, u.caminho, host,
+                               guardar_ligado ? "keep-alive" : "close", extra ? extra : "", tamanho_corpo);
         if (n >= (int)sizeof pedido - 1) { canal_fechar(&c); copia_texto(resp->erro, "cabeçalhos grandes demais", sizeof resp->erro); return ERRO_INVALIDO; }
-        if (canal_escrever(&c, pedido, (unsigned)n) < 0 || (corpo && n_corpo && canal_escrever(&c, corpo, n_corpo) < 0)) { canal_fechar(&c); copia_texto(resp->erro, "a conexão caiu ao mandar o pedido", sizeof resp->erro); return ERRO_REDE; }
         char linha[2048];   /* Set-Cookie e Content-Security-Policy passam fácil de 512 */
-        if (linha_http(&c, linha, sizeof linha) < 0 || compara_texto_n(linha, "HTTP/1.", 7) != 0) {
+        bool mandou = canal_escrever(&c, pedido, (unsigned)n) >= 0 && !(corpo && n_corpo && canal_escrever(&c, corpo, n_corpo) < 0);
+        bool respondeu = mandou && linha_http(&c, linha, sizeof linha) >= 0;
+        if (!respondeu && repetir) {
+            canal_fechar(&c);
+            repetir = false;
+            registrar("http: %s fechou a conexão guardada; outra", u.servidor);
+            if (canal_abrir(&c, &u, resp->erro, sizeof resp->erro) < 0) return ERRO_REDE;
+            goto de_novo;
+        }
+        if (!mandou) { canal_fechar(&c); copia_texto(resp->erro, "a conexão caiu ao mandar o pedido", sizeof resp->erro); return ERRO_REDE; }
+        if (!respondeu || compara_texto_n(linha, "HTTP/1.", 7) != 0) {
             canal_fechar(&c);
             copia_texto(resp->erro, "resposta inválida do servidor", sizeof resp->erro);
             return ERRO_REDE;
@@ -180,6 +276,7 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
         if (cabecalhos) cabecalhos(ctx, url, linha);
         long tamanho = -1;
         bool pedacos = false;
+        bool fica = guardar_ligado && compara_texto_n(linha, "HTTP/1.1", 8) == 0;   /* a conexão pode ser guardada */
         char destino[512] = "";
         resp->tipo[0] = 0;
         while (linha_http(&c, linha, sizeof linha) > 0) {
@@ -189,7 +286,12 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
             else if (cabecalho(linha, "Transfer-Encoding", &v) && compara_texto_n(v, "chunked", 7) == 0) pedacos = true;
             else if (cabecalho(linha, "Location", &v)) copia_texto(destino, v, sizeof destino);
             else if (cabecalho(linha, "Content-Type", &v)) copia_texto(resp->tipo, v, sizeof resp->tipo);
+            else if (cabecalho(linha, "Connection", &v) && compara_texto_n(v, "close", 5) == 0) fica = false;
         }
+        /* HEAD, 1xx, 204 e 304 não têm corpo, mesmo com Content-Length. */
+        bool sem_corpo = compara_texto(metodo, "HEAD") == 0 || resp->situacao < 200 || resp->situacao == 204 || resp->situacao == 304;
+        if (sem_corpo) { tamanho = 0; pedacos = false; }
+        if (!pedacos && tamanho < 0) fica = false;   /* vai até fechar: não dá para reaproveitar */
         if (resp->situacao >= 300 && resp->situacao < 400 && destino[0] && !corpo) {
             canal_fechar(&c);
             if (destino[0] == '/')
@@ -213,7 +315,11 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
                     else if (h >= 'A' && h <= 'F') t = t * 16 + (unsigned)(h - 'A' + 10);
                     else break;
                 }
-                if (t == 0) break;
+                if (t == 0) {
+                    /* os cabeçalhos finais, se houver, até a linha vazia */
+                    while (linha_http(&c, linha, sizeof linha) > 0) {}
+                    break;
+                }
                 while (t > 0) {
                     unsigned k = 0;
                     while (k < t && k < sizeof bloco) {
@@ -244,7 +350,8 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
                 resp->recebidos += k;
             }
         }
-        canal_fechar(&c);
+        if (fica && ok == 0 && c.pos == c.tam) guardar_conexao(&u, &c);
+        else canal_fechar(&c);
         if (ok < 0 && !resp->erro[0]) copia_texto(resp->erro, ok == ERRO_INVALIDO ? "parado por quem pediu" : "a conexão caiu no meio", sizeof resp->erro);
         return ok;
     }
