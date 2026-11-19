@@ -23,7 +23,9 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
-Nada ainda: o que entrar no `main` depois da 3.0.0 aparece aqui.
+- **Segurança (Cipó):** uma fonte WOFF2 malformada, vinda de uma página, podia
+  fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
+  mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
 ## Versões lançadas
 
