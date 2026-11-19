@@ -1,11 +1,15 @@
 /* texto.c - memória e texto para os programas. */
 #include "sagui.h"
 
+/* memcpy e memset de 4 em 4 bytes com "rep movsl"/"rep stosl" (e o resto
+ * byte a byte): de byte em byte, copiar uma página de 1 MB ou uma imagem
+ * levava várias vezes mais (H129). */
 void *memcpy(void *d, const void *s, size_t n)
 {
-    uint8_t *a = d;
-    const uint8_t *b = s;
-    while (n--) *a++ = *b++;
+    void *dd = d;
+    size_t q = n >> 2, r = n & 3;
+    __asm__ volatile("rep movsl\n\tmov %3, %%ecx\n\trep movsb"
+                     : "+D"(dd), "+S"(s), "+c"(q) : "r"(r) : "memory");
     return d;
 }
 
@@ -21,8 +25,11 @@ void *memmove(void *d, const void *s, size_t n)
 
 void *memset(void *d, int v, size_t n)
 {
-    uint8_t *a = d;
-    while (n--) *a++ = (uint8_t)v;
+    void *dd = d;
+    uint32_t x = (uint8_t)v * 0x01010101u;
+    size_t q = n >> 2, r = n & 3;
+    __asm__ volatile("rep stosl\n\tmov %3, %%ecx\n\trep stosb"
+                     : "+D"(dd), "+c"(q), "+a"(x) : "r"(r) : "memory");
     return d;
 }
 

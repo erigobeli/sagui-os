@@ -27,6 +27,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Programas mais rápidos com muita memória:** o aloca da libsagui procura o
+  bloco numa lista por tamanho, em vez de varrer a área inteira, e memcpy e
+  memset copiam de 4 em 4 bytes.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
