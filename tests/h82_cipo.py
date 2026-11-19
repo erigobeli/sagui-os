@@ -143,6 +143,27 @@ def testar_decodificadores():
     verificar(nosso.size == pillow.size and media < 3.0, f"WebP parecido com o do Pillow (diferença média {media:.2f} de 255)")
 
 
+def testar_fonte_woff2():
+    """A tabela glyf transformada do WOFF2 com tamanhos que dão a volta nos 32
+    bits é recusada (antes passava na conferência e lia fora da tabela)."""
+    nav = os.path.join(RAIZ, "userland", "navegador")
+    prog = os.path.join(SAIDA, "h82-teste_fonte_woff2")
+    r = subprocess.run(["gcc", "-m32", "-std=gnu11", "-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover",
+                        "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-unused-function",
+                        "-I", os.path.join(RAIZ, "tests", "navegador", "simulado"), "-I", nav,
+                        "-I", os.path.join(RAIZ, "userland", "inc"), "-o", prog,
+                        os.path.join(RAIZ, "tests", "navegador", "teste_fonte_woff2.c"),
+                        os.path.join(nav, "fontes", "brotli.c"), os.path.join(RAIZ, "terceiros", "font-rs", "acumulador.c"),
+                        os.path.join(RAIZ, "userland", "libsagui", "compactar.c")],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise FalhaTeste("teste da fonte WOFF2 não compilou: " + r.stderr[-1500:])
+    r = subprocess.run([prog], capture_output=True, text=True, timeout=60,
+                       env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0"))
+    verificar(r.returncode == 0, "WOFF2 com tamanhos que dão a volta nos 32 bits é recusado; o glifo válido passa ("
+              + (r.stdout.strip().replace("\n", "; ") or r.stderr[-300:]) + ")")
+
+
 def testar_robustez():
     """O motor (HTML, CSS, layout e pintura), compilado com verificação de
     memória, lê páginas cortadas, embaralhadas e lixo sem cair (como a H61
@@ -228,6 +249,7 @@ def main():
     os.makedirs(SAIDA, exist_ok=True)
     preparar()
     testar_decodificadores()
+    testar_fonte_woff2()
     testar_robustez()
     ref, info = referencia("css.html")
     verificar("imagens: 4 (4 carregadas)" in info, "referência montada: " + info.replace("\n", ", "))

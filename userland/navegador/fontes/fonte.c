@@ -170,7 +170,9 @@ static int woff2_glyf(fonte_t *f, const uint8_t *d, unsigned n)
     for (int i = 0; i < 7; i++) tam[i] = u32(d + 8 + i * 4);
     const uint8_t *s[7], *fs[7];
     unsigned off = 36;
-    for (int i = 0; i < 7; i++) { if (off + tam[i] > n) return 0; s[i] = d + off; fs[i] = d + off + tam[i]; off += tam[i]; }
+    /* Os tamanhos vêm do arquivo: "off + tam[i]" poderia dar a volta nos 32
+     * bits e passar na conferência. Como off <= n sempre, "n - off" não dá. */
+    for (int i = 0; i < 7; i++) { if (tam[i] > n - off) return 0; s[i] = d + off; fs[i] = d + off + tam[i]; off += tam[i]; }
     const uint8_t *ncont = s[0], *npts = s[1], *flags = s[2], *gl = s[3], *comp = s[4];
     (void)ncont;
     f->ngl = (int)ng;
@@ -596,14 +598,14 @@ fonte_t *fonte_abrir(const uint8_t *d, unsigned n)
             dir[i].tag = tag; dir[i].tam = tlen; dir[i].transf = transf;
             soma += tlen;
         }
-        if (k > 64 || p + comp > fim) { fonte_fechar(f); return NULL; }
+        if (k > 64 || p > fim || comp > (unsigned)(fim - p)) { fonte_fechar(f); return NULL; }
         unsigned dn = 0;
         uint8_t *dd = brotli_descomprimir(p, comp, &dn, soma + 16);
         if (!dd) { fonte_fechar(f); return NULL; }
         f->blocos[f->nblocos++] = dd;
         unsigned off = 0;
         for (unsigned i = 0; i < k; i++) {
-            if (off + dir[i].tam > dn) { fonte_fechar(f); return NULL; }
+            if (dir[i].tam > dn - off) { fonte_fechar(f); return NULL; }   /* sem dar a volta: off <= dn */
             t[nt].tag = dir[i].tag; t[nt].p = dd + off; t[nt].n = dir[i].tam; t[nt].transf = dir[i].transf; nt++;
             off += dir[i].tam;
         }
