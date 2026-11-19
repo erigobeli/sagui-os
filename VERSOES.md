@@ -23,7 +23,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
-Nada ainda: o que entrar no `main` depois da 3.0.0 aparece aqui.
+- A **seleção de um ícone cobre o nome inteiro**: com o nome em duas linhas
+  ("Instalar o SaguiOS"), o quadro desce até a segunda linha, que também
+  passa a responder ao clique. Na coluna da esquerda, um nome que não cabe é
+  cortado com "..." (H128).
 
 ## Versões lançadas
 

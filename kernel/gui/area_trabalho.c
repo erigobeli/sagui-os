@@ -175,6 +175,33 @@ static const uint32_t *px_icone(int i)
 
 int area_qtd_icones(void) { return base_dir() + 1 + qtd_unid; }
 
+/* O nome do ícone como é desenhado: l1 é a primeira linha e o retorno é a
+ * segunda (NULL se o nome cabe numa linha só). Nome comprido ("Instalar o
+ * SaguiOS") quebra no último espaço que cabe, só na coluna da direita, que
+ * deixa 16 px a mais entre os ícones; na da esquerda o nome é cortado com
+ * "...". O desenho e o retângulo do ícone usam esta mesma conta. */
+static const char *nome_em_linhas(int i, char l1[32])
+{
+    const char *nome = nome_icone(i);
+    txt_copia_n(l1, nome, 32);
+    if (texto_largura(l1) <= ICONE_L + 10) return NULL;
+    if (i >= base_dir()) {
+        for (int k = (int)txt_tamanho(l1) - 1; k > 0; k--)
+            if (l1[k] == ' ') {
+                l1[k] = 0;
+                if (texto_largura(l1) <= ICONE_L + 10) return nome + k + 1;
+            }
+        txt_copia_n(l1, nome, 32);
+    }
+    for (int k = (int)txt_tamanho(l1) - 1; k > 0; k--) {
+        l1[k] = 0;
+        if (k + 3 < 32) { l1[k] = '.'; l1[k + 1] = '.'; l1[k + 2] = '.'; l1[k + 3] = 0; }
+        if (texto_largura(l1) <= ICONE_L + 10) break;
+        l1[k] = 0;
+    }
+    return NULL;
+}
+
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
 {
     /* Os ícones descem pela coluna da esquerda e, quando não cabem mais
@@ -189,6 +216,8 @@ void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
         *x = larg - ICONE_X - ICONE_L;
         *y = ICONE_Y0 + vaga * (ICONE_PASSO + 16);   /* + 16: nomes em duas linhas */
         *l = ICONE_L; *a = ICONE_A;
+        char l1[32];
+        if (nome_em_linhas(i, l1)) *a += 16;   /* a seleção cobre a segunda linha */
         return;
     }
     /* A Lixeira fica sempre por último, depois do pendrive e dos programas
@@ -484,18 +513,8 @@ static void desenhar_fundo(void)
         area_icone_retangulo(i, &x, &y, &l, &a);
         sup_icone(&s, x + (l - ICONE_LADO) / 2, y, px_icone(i), ICONE_LADO);
         if (i == ed_icone) continue;   /* renomeando: a caixa é desenhada por cima (janelas.c) */
-        /* Nome comprido ("Instalar o SaguiOS"): em duas linhas, quebrado
-         * no último espaço que cabe. */
-        const char *nome = nome_icone(i);
         char l1[32];
-        txt_copia_n(l1, nome, sizeof l1);
-        const char *l2 = NULL;
-        if (texto_largura(l1) > l + 10)
-            for (int k = (int)txt_tamanho(l1) - 1; k > 0; k--)
-                if (l1[k] == ' ') {
-                    l1[k] = 0;
-                    if (texto_largura(l1) <= l + 10) { l2 = nome + k + 1; break; }
-                }
+        const char *l2 = nome_em_linhas(i, l1);
         texto_com_sombra(&s, x + (l - texto_largura(l1)) / 2, y + 68, l1, 0xFFFFFF);
         if (l2) texto_com_sombra(&s, x + (l - texto_largura(l2)) / 2, y + 84, l2, 0xFFFFFF);
     }
