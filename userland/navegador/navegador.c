@@ -280,11 +280,72 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
     return r.d;
 }
 
+/* Imagens que chegaram juntas (pipelining, H129), esperando o motor pedir. */
+#define ADIANTADAS 8
+static struct { char *url; uint8_t *d; unsigned n; } adiantadas[ADIANTADAS];
+
+static void soltar_adiantadas(void)
+{
+    for (int i = 0; i < ADIANTADAS; i++) {
+        libera(adiantadas[i].url);
+        libera(adiantadas[i].d);
+        adiantadas[i].url = NULL;
+        adiantadas[i].d = NULL;
+    }
+}
+
+/* Busca juntas as próximas imagens do mesmo servidor, se nenhuma está
+ * esperando: uma ida e volta pela rede para até 8, em vez de uma para cada. */
+static void adiantar_imagens(void)
+{
+    for (int i = 0; i < ADIANTADAS; i++) if (adiantadas[i].url) return;
+    const char *pedidas[ADIANTADAS];
+    int q = motor_imagens_proximas(motor, pedidas, ADIANTADAS);
+    static char ends[ADIANTADAS][MAX_URL];
+    const char *urls[ADIANTADAS];
+    int k = 0;
+    for (int i = 0; i < q; i++) {
+        endereco_resolver(url_atual, pedidas[i], ends[k], MAX_URL);
+        if (!comeca_com(ends[k], "http://") && !comeca_com(ends[k], "https://")) continue;
+        bool repetida = false;
+        for (int c = 0; c < qtd_cache && !repetida; c++) if (compara_texto(cache[c].url, ends[k]) == 0) repetida = true;
+        for (int c = 0; c < k && !repetida; c++) if (compara_texto(ends[c], ends[k]) == 0) repetida = true;
+        if (repetida) continue;
+        urls[k] = ends[k];
+        k++;
+    }
+    if (k < 2) return;   /* uma só: o caminho de sempre */
+    static rede_resposta_t rs[ADIANTADAS];
+    int prontas = rede_lote(urls, k, rs, MAX_RECURSO);
+    for (int i = 0; i < k; i++) {
+        if (i < prontas && rs[i].d && rs[i].situacao >= 200 && rs[i].situacao < 300) {
+            int t = (int)tam_texto(urls[i]);
+            adiantadas[i].url = aloca((unsigned)t + 1);
+            if (adiantadas[i].url) {
+                memcpy(adiantadas[i].url, urls[i], (unsigned)t + 1);
+                adiantadas[i].d = rs[i].d;
+                adiantadas[i].n = rs[i].n;
+                continue;
+            }
+        }
+        libera(rs[i].d);
+    }
+}
+
 /* Recurso da página (CSS, imagem, fonte, script): só os que deram certo. */
 static uint8_t *baixar_recurso(const char *u, unsigned *n)
 {
     char end[MAX_URL];
     endereco_resolver(url_atual, u, end, sizeof end);
+    for (int i = 0; i < ADIANTADAS; i++)
+        if (adiantadas[i].url && compara_texto(adiantadas[i].url, end) == 0) {
+            uint8_t *d = adiantadas[i].d;
+            *n = adiantadas[i].n;
+            libera(adiantadas[i].url);
+            adiantadas[i].url = NULL;
+            adiantadas[i].d = NULL;
+            return d;
+        }
     for (int i = 0; i < qtd_cache; i++)
         if (compara_texto(cache[i].url, end) == 0) { *n = cache[i].n; return copia_bloco(cache[i].d, cache[i].n); }
     int codigo = 0;
@@ -577,16 +638,21 @@ static void guardar_rolagem(void)
     if (hist_pos >= 0) hist[hist_pos].rolagem = rolagem;
 }
 
+static unsigned custo_diagramar;   /* ms da última diagramação */
+
 static void diagramar(void)
 {
     if (!motor) { altura = 0; return; }
+    unsigned t0 = tempo_ms();
     altura = motor_layout(motor, VISTA_L, VISTA_A);
+    custo_diagramar = tempo_ms() - t0;
     limitar_rolagem();
 }
 
 /* Lê o HTML (UTF-8) num motor novo e diagrama. */
 static void ler_pagina(const char *h, int n)
 {
+    soltar_adiantadas();
     if (motor) motor_fim(motor);
     motor = motor_novo(&ganchos_motor);
     if (!motor) { altura = 0; return; }
@@ -594,9 +660,18 @@ static void ler_pagina(const char *h, int n)
     diagramar();
 }
 
-/* Fontes da web e imagens, umas poucas por vez. Para se chegar um evento. */
+/* Fontes da web e imagens, umas poucas por vez. Para se chegar um evento.
+ * Diagramar uma página grande custa caro (a do Gato, na Wikipédia, tem 19
+ * mil nós: uns 400 ms), então, enquanto as imagens chegam, a página é
+ * diagramada de novo só depois de REDIAGRAMAR_MS ou de 4 vezes o que a
+ * última diagramação custou (o que for maior), e uma vez no fim, em vez de
+ * depois de cada par de imagens (H129). Assim diagramar fica em no máximo
+ * um quinto do tempo. */
+#define REDIAGRAMAR_MS 300
 static void carregar_imagens(void)
 {
+    unsigned ultimo = tempo_ms();
+    bool falta = false;   /* chegaram imagens que ainda não estão na tela */
     while (motor) {
         evento_t e;
         if (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
@@ -608,7 +683,19 @@ static void carregar_imagens(void)
             }
         }
         if (tem_evento_guardado) break;
+        adiantar_imagens();
         if (!motor_imagens(motor, 2)) break;
+        falta = true;
+        unsigned espera = custo_diagramar * 4 > REDIAGRAMAR_MS ? custo_diagramar * 4 : REDIAGRAMAR_MS;
+        if (tempo_ms() - ultimo >= espera) {
+            diagramar();
+            desenhar_pagina();
+            jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
+            ultimo = tempo_ms();
+            falta = false;
+        }
+    }
+    if (motor && falta) {
         diagramar();
         desenhar_pagina();
         jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
@@ -1127,6 +1214,7 @@ int principal(int argc, char **argv)
     jan_redimensionavel(j, 520, 300);
     posicionar_botoes();
     registrar("navegador: janela %d", j->id);
+    http_guardar_conexoes(true);   /* as imagens e o CSS reaproveitam a conexão da página (H129) */
     carregar(argc > 1 ? argv[1] : "sagui:inicio", true, 0);
     for (;;) {
         /* o script pediu outra página (location.href, assign, replace, reload) */

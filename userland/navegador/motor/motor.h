@@ -50,6 +50,7 @@ uint32_t motor_fundo(motor_t *m);
 /* Estatísticas para o log: nós, caixas, comandos de pintura. */
 void     motor_numeros(motor_t *m, int *nos, int *cmds, int *imgs);
 int      motor_links(motor_t *m);                 /* quantos links a página tem */
+int      motor_imagens_proximas(motor_t *m, const char **urls, int max);   /* as que ainda vêm (H129) */
 int      motor_imagens_total(motor_t *m);         /* quantas imagens a página pede (2.1) */
 int      motor_ancora(motor_t *m, const char *nome);   /* y do id/name, ou -1 (2.1) */
 /* Campo de texto com foco: recebe a digitação dentro da própria caixa. */
