@@ -83,7 +83,11 @@ def main():
         s = m.serial()
         v = re.findall(r"sobre: versao (.*?), imagem \d+ bytes, \d+ processos, (\d+) bits", s)[-1]
         verificar(v[0] == "2.2.0", f"Sobre mostra a versão {v[0]}")
-        verificar(v[1] == "32", f"Sobre mostra a arquitetura: {v[1]} bits")
+        # A arquitetura é a do kernel desta imagem: o byte 4 do ELF diz 1
+        # (32 bits) ou 2 (64 bits, a 3.0).
+        with open(os.path.join(RAIZ, "build", "kernel.elf"), "rb") as k:
+            esperado = "64" if k.read(5)[4] == 2 else "32"
+        verificar(v[1] == esperado, f"Sobre mostra a arquitetura: {v[1]} bits")
         for linha in ("SaguiOS, um projeto de Eli Rigobeli.",
                       "Escrito por inteligência artificial (Claude, da",
                       "Anthropic), sob a direção do Eli.",
