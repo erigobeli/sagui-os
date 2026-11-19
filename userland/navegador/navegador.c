@@ -165,6 +165,8 @@ static void desenhar_tudo(void)
     jan_mostrar(j);
 }
 
+static char status_pronto[sizeof status];   /* "Pronto: ..." da página atual, para voltar depois das imagens */
+
 static void definir_status(const char *t)
 {
     copia_texto(status, t, sizeof status);
@@ -893,6 +895,7 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     /* Imagens novas podem ter mudado a altura: a âncora pode ter descido. */
     if (frag && motor) { int y = motor_ancora(motor, frag + 1); if (y >= 0) { rolagem = y - 4; limitar_rolagem(); } }
     formatar_texto(status, sizeof status, "%s%sPronto: %u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", bytes / 1024, tempo_ms() - inicio);
+    copia_texto(status_pronto, status, sizeof status_pronto);
     desenhar_tudo();
     registrar("navegador: pronto %s", url);
 }
@@ -1269,6 +1272,8 @@ int principal(int argc, char **argv)
             /* Um clique, a rolagem ou o menu interromperam as imagens: tratado o
              * evento, elas continuam de onde pararam (antes ficavam faltando, H129). */
             carregar_imagens();
+            /* terminaram: a barra volta a dizer "Pronto", não "Baixando" a última imagem */
+            if (motor && !motor_imagens_faltam(motor) && status_pronto[0]) definir_status(status_pronto);
             continue;
         }
         else if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
