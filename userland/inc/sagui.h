@@ -45,6 +45,7 @@ int  escrever(int fd, const void *buf, unsigned n);
 int  fechar(int fd);
 int  posicionar(int fd, int desloc, int origem);
 int  info_arquivo(const char *caminho, info_arquivo_t *info);
+int  data_arquivo(const char *caminho, data_t *d);   /* modificação; d->ano == 0: não se sabe (H135) */
 /* ---- pastas ---- */
 int  criar_pasta(const char *caminho);
 int  remover_pasta(const char *caminho);
@@ -100,6 +101,11 @@ int  proximo_evento(int id, evento_t *e, bool esperar); /* 1 = veio um evento */
 int  titulo_janela(int id, const char *titulo);
 int  janela_opcoes(int id, int opcoes, int larg_min, int alt_min);   /* JAN_REDIMENSIONAVEL (H78) */
 int  janela_modo(int id, int modo);   /* JAN_MODO_NORMAL, _MAXIMIZADA ou _TELA_CHEIA (D071) */
+/* Arrastar arquivos para fora da janela (H138): "caminhos" separados por
+ * '\n'; o kernel leva até o botão ser solto. Quem recebe o EV_SOLTAR (ou o
+ * programa que um ícone abre) lê os caminhos com arrasto_ler. */
+int  arrastar(int id, const char *caminhos, const char *rotulo);
+int  arrasto_ler(char *buf, int max);
 int  menu_janela(int id, int x, int y, const char *itens);
 /* Área de cópia do sistema (texto): copiar num programa, colar em outro. */
 int  area_copia_gravar(const char *t, unsigned n);

@@ -25,6 +25,7 @@ int  fat_espaco(uint32_t *total_kb, uint32_t *livre_kb);   /* do volume montado 
 
 /* Caminhos relativos ao volume, sem barra inicial ("" = raiz). */
 int  fat_info(const char *rel, info_arquivo_t *inf);
+int  fat_data(const char *rel, uint32_t *data);      /* modificação, no formato do FAT (H135) */
 int  fat_listar(const char *rel, int indice, entrada_pasta_t *e);
 int  fat_abrir(const char *rel, int modo, fat_arq_t *f);
 int  fat_ler(fat_arq_t *f, uint32_t pos, void *buf, uint32_t n);

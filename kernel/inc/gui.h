@@ -34,6 +34,8 @@ void area_selecionar(int x, int y, int l, int a, bool somar);
 bool area_limpar_selecao(void);            /* true se havia algo marcado */
 bool area_icone_selecionado(int i);
 int  area_qtd_selecionados(void);
+bool area_icone_dica(int i, const char *primeiro, char *dica, int max);   /* soltar arquivos aqui: o que acontece (H138) */
+void area_icone_soltar(int i, const char *primeiro);
 int  area_icone_tipo(int i);              /* 0 sistema, 1 instalado, 2 pendrive */
 void area_icone_acao(int i, int acao);
 bool area_editando(void);                  /* renomeando um ícone no lugar */

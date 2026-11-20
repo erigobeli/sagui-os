@@ -82,7 +82,7 @@ def main():
         verificar("ls/listar" not in out, "ajuda em espanhol: sem o apelido em português na lista")
         verificar("ajuda <comando> explica un comando." in out, "ajuda em espanhol: as dicas do fim")
         out = m.comando("ajuda ls")
-        verificar("Uso: ls [pasta]" in out and "Muestra los archivos y carpetas" in out, "ajuda ls em espanhol")
+        verificar("Uso: ls [-l] [pasta]" in out and "Muestra los archivos y carpetas" in out, "ajuda ls em espanhol")
         verificar("Alias en portugués: listar" in out, "ajuda ls mostra o apelido em português")
         out = m.comando("naoexiste")
         verificar("sagsh: comando no encontrado: naoexiste (escribe ajuda)" in out, "mensagem de comando desconhecido em espanhol")

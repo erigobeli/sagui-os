@@ -487,6 +487,13 @@ static void copiar_selecao_area(area_t *a)
 bool area_tratar(jan_t *j, area_t *a, const evento_t *e)
 {
     bool mudou = false;
+    if (e->tipo == EV_RODA && dentro(e->x, e->y, a->x, a->y, a->l, a->a)) {   /* roda: 3 linhas por passo (H134) */
+        int max = total_linhas(a) - area_linhas_visiveis(a);
+        int t = a->topo + 3 * (int)e->tecla;
+        a->topo = t > max ? (max > 0 ? max : 0) : t < 0 ? 0 : t;
+        area_desenhar(j, a);
+        return false;
+    }
     /* Arrastar com o botão apertado estende a seleção. */
     if (e->tipo == EV_MOVER && a->arrastando && (e->botoes & 1)) {
         int p = posicao_em(a, e->x, e->y);
@@ -595,13 +602,16 @@ int lista_qtd_marcados(const lista_t *l)
     return n;
 }
 
-static int lista_vis(const lista_t *l) { return (l->a - 4) / LISTA_ALTURA_ITEM; }
-static int lista_tx(const lista_t *l) { return l->x + 6 + (l->icone ? 22 : 0); }
+static int lista_alt(const lista_t *l) { return l->alt_item > 0 ? l->alt_item : LISTA_ALTURA_ITEM; }
+static int lista_vis(const lista_t *l) { return (l->a - 4) / lista_alt(l); }
+static int lista_tx(const lista_t *l) { return l->x + (l->claro ? 12 : 6) + (l->icone ? 22 : 0); }
+/* Onde termina a coluna do nome. */
+static int lista_fim_nome(const lista_t *l) { return l->colunas && l->larg_nome > 0 ? l->x + l->larg_nome : l->x + l->l; }
 
 /* Onde termina o texto do item (o laço e o clique "no vazio" usam isso). */
 static int lista_fim_texto(const lista_t *l, int i)
 {
-    int tx = lista_tx(l), n = (int)tam_texto(l->itens[i]), cabe = (l->x + l->l - tx - 4) / LETRA_L;
+    int tx = lista_tx(l), n = (int)tam_texto(l->itens[i]), cabe = (lista_fim_nome(l) - tx - 4) / LETRA_L;
     return tx + (n < cabe ? n : cabe) * LETRA_L;
 }
 
@@ -613,38 +623,47 @@ static void lista_ed_faixa(const lista_t *l, int *i0, int *i1)
 
 void lista_desenhar(jan_t *j, lista_t *l)
 {
+    int alt = lista_alt(l), dy = (alt - LETRA_A) / 2;
     g_retangulo(j, l->x, l->y, l->l, l->a, COR_BRANCO);
-    g_moldura(j, l->x, l->y, l->l, l->a, 0xA9B2BB);
+    if (!l->claro) g_moldura(j, l->x, l->y, l->l, l->a, 0xA9B2BB);
     int vis = lista_vis(l);
     int larg_sel = l->l - 6 - (l->qtd > vis ? 6 : 0);
+    int fim_nome = lista_fim_nome(l);
     for (int k = 0; k < vis && l->topo + k < l->qtd; k++) {
-        int i = l->topo + k, y = l->y + 2 + k * LISTA_ALTURA_ITEM;
+        int i = l->topo + k, y = l->y + 2 + k * alt;
         bool sel = lista_marcado(l, i);
         bool ed = l->editando && i == l->ed_item;
-        if (sel && !ed) g_ret_redondo(j, l->x + 3, y + 1, larg_sel, LISTA_ALTURA_ITEM - 2, 4, COR_SELECAO, COR_SELECAO);   /* 1 pixel de folga: marcados seguidos não grudam */
+        if (l->claro) {   /* azul-claro, texto escuro; a linha sob o mouse mais clara ainda */
+            if (sel && !ed) g_ret_redondo(j, l->x + 4, y + 1, larg_sel - 2, alt - 2, 4, 0xCCE8FF, 0xCCE8FF);
+            else if (l->sob == i + 1 && !ed) g_ret_redondo(j, l->x + 4, y + 1, larg_sel - 2, alt - 2, 4, 0xEEF5FC, 0xEEF5FC);
+            if (l->marc && i == l->sel && !ed && lista_qtd_marcados(l) == 0)
+                g_contorno_redondo(j, l->x + 4, y + 1, larg_sel - 2, alt - 2, 4, 0x8DB8E8);
+        } else if (sel && !ed) g_ret_redondo(j, l->x + 3, y + 1, larg_sel, alt - 2, 4, COR_SELECAO, COR_SELECAO);   /* 1 pixel de folga: marcados seguidos não grudam */
         else if (l->marc && i == l->sel && !ed && lista_qtd_marcados(l) == 0)
-            g_contorno_redondo(j, l->x + 3, y, larg_sel, LISTA_ALTURA_ITEM, 4, 0xA9C4EE);   /* o item do teclado */
+            g_contorno_redondo(j, l->x + 3, y, larg_sel, alt, 4, 0xA9C4EE);   /* o item do teclado */
         int tx = lista_tx(l);
-        if (l->icone) l->icone(j, tx - 22, y + 2, i);
+        if (l->icone) l->icone(j, tx - 22, y + (alt - 16) / 2, i);
         if (ed) {
             /* A caixa de edição na própria linha: fundo branco, contorno verde,
              * a parte marcada em azul e o cursor. */
-            int cabe = (l->x + l->l - tx - 10) / LETRA_L;
+            int cabe = (fim_nome - tx - 10) / LETRA_L;
             int n = (int)tam_texto(l->ed_texto), ini = l->ed_cur > cabe ? l->ed_cur - cabe : 0;
             suave_t sv = sv_de(j);
-            suave_ret(&sv, tx - 3, y, l->x + l->l - tx - 3, LISTA_ALTURA_ITEM, 3, COR_BRANCO, COR_BRANCO, 256);
-            suave_contorno(&sv, tx - 3, y, l->x + l->l - tx - 3, LISTA_ALTURA_ITEM, 3, COR_DESTAQUE, 256);
+            suave_ret(&sv, tx - 3, y, fim_nome - tx - 3, alt, 3, COR_BRANCO, COR_BRANCO, 256);
+            suave_contorno(&sv, tx - 3, y, fim_nome - tx - 3, alt, 3, COR_DESTAQUE, 256);
             int i0, i1;
             lista_ed_faixa(l, &i0, &i1);
             if (i1 > i0) {
                 int a0 = i0 < ini ? ini : i0, a1 = i1 > ini + cabe ? ini + cabe : i1;
-                if (a1 > a0) g_retangulo(j, tx + (a0 - ini) * LETRA_L, y + 2, (a1 - a0) * LETRA_L, LETRA_A, 0xBFD6F6);
+                if (a1 > a0) g_retangulo(j, tx + (a0 - ini) * LETRA_L, y + dy, (a1 - a0) * LETRA_L, LETRA_A, 0xBFD6F6);
             }
-            g_texto_n(j, tx, y + 2, l->ed_texto + ini, n - ini < cabe ? n - ini : cabe, COR_TEXTO);
-            g_retangulo(j, tx + (l->ed_cur - ini) * LETRA_L, y + 2, 2, LETRA_A, COR_TEXTO);
+            g_texto_n(j, tx, y + dy, l->ed_texto + ini, n - ini < cabe ? n - ini : cabe, COR_TEXTO);
+            g_retangulo(j, tx + (l->ed_cur - ini) * LETRA_L, y + dy, 2, LETRA_A, COR_TEXTO);
+            if (l->colunas) l->colunas(j, y, i);
             continue;
         }
-        g_texto_n(j, tx, y + 2, l->itens[i], (l->x + l->l - tx - 4) / LETRA_L, sel ? COR_BRANCO : COR_TEXTO);
+        g_texto_n(j, tx, y + dy, l->itens[i], (fim_nome - tx - 4) / LETRA_L, sel && !l->claro ? COR_BRANCO : COR_TEXTO);
+        if (l->colunas) l->colunas(j, y, i);
     }
     if (l->qtd > vis) {   /* indicador simples de que há mais itens */
         int total = l->qtd, trilho = l->a - 4;
@@ -683,8 +702,9 @@ static void lista_marcar_laco(lista_t *l)
     int y0 = l->laco_y0 < l->laco_y1 ? l->laco_y0 : l->laco_y1, y1 = l->laco_y0 ^ l->laco_y1 ^ y0;
     int vis = lista_vis(l);
     for (int k = 0; k < vis && l->topo + k < l->qtd; k++) {
-        int i = l->topo + k, ry0 = l->y + 2 + k * LISTA_ALTURA_ITEM, ry1 = ry0 + LISTA_ALTURA_ITEM - 1;
-        bool toca = y0 <= ry1 && ry0 <= y1 && x0 <= lista_fim_texto(l, i) && l->x + 3 <= x1;
+        int i = l->topo + k, ry0 = l->y + 2 + k * lista_alt(l), ry1 = ry0 + lista_alt(l) - 1;
+        int fim_item = l->colunas && l->larg_nome > 0 ? lista_fim_nome(l) : lista_fim_texto(l, i);
+        bool toca = y0 <= ry1 && ry0 <= y1 && x0 <= fim_item && l->x + 3 <= x1;
         l->marc[i] = toca;
     }
 }
@@ -741,8 +761,8 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
     if (l->editando) {
         if (e->tipo == EV_TECLA) return lista_tecla_edicao(j, l, e->tecla);
         if (e->tipo == EV_CLIQUE) {
-            int y = l->y + 2 + (l->ed_item - l->topo) * LISTA_ALTURA_ITEM, tx = lista_tx(l);
-            if (dentro(e->x, e->y, tx - 3, y, l->x + l->l - tx - 3, LISTA_ALTURA_ITEM)) {
+            int y = l->y + 2 + (l->ed_item - l->topo) * lista_alt(l), tx = lista_tx(l);
+            if (dentro(e->x, e->y, tx - 3, y, lista_fim_nome(l) - tx - 3, lista_alt(l))) {
                 int c = (e->x - tx + LETRA_L / 2) / LETRA_L, n = (int)tam_texto(l->ed_texto);
                 l->ed_cur = l->ed_marca = c < 0 ? 0 : c > n ? n : c;
                 lista_desenhar(j, l);
@@ -779,9 +799,31 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
             return LISTA_SELECIONOU;
         }
     }
+    if (e->tipo == EV_RODA && dentro(e->x, e->y, l->x, l->y, l->l, l->a)) {   /* roda: 3 itens por passo (H134) */
+        int max = l->qtd - lista_vis(l);
+        int t = l->topo + 3 * (int)e->tecla;
+        l->topo = t > max ? (max > 0 ? max : 0) : t < 0 ? 0 : t;
+        lista_desenhar(j, l);
+        return LISTA_NADA;
+    }
+    if (e->tipo == EV_SOLTOU && l->pendente) {   /* soltou sem arrastar: fica só o item apertado */
+        int i = l->pendente - 1;
+        l->pendente = 0;
+        if (i < l->qtd) { lista_desmarcar(l); l->marc[i] = 1; l->sel = i; lista_desenhar(j, l); }
+        return LISTA_SELECIONOU;
+    }
+    if (l->claro && e->tipo == EV_MOVER && !(e->botoes & 1)) {   /* a linha sob o mouse */
+        int k = (e->y - l->y - 2) / lista_alt(l), i = l->topo + k;
+        int sob = dentro(e->x, e->y, l->x, l->y, l->l, l->a) && e->y >= l->y + 2 && k < lista_vis(l) && i < l->qtd ? i + 1 : 0;
+        if (sob != l->sob) { l->sob = sob; lista_desenhar(j, l); }
+        return LISTA_NADA;
+    }
     if (e->tipo == EV_CLIQUE && dentro(e->x, e->y, l->x, l->y, l->l, l->a)) {
-        int i = l->topo + (e->y - l->y - 2) / LISTA_ALTURA_ITEM;
-        bool no_item = i >= 0 && i < l->qtd && (e->y - l->y - 2) >= 0 && e->x <= lista_fim_texto(l, i) + 12;
+        int i = l->topo + (e->y - l->y - 2) / lista_alt(l);
+        /* No item: sobre o nome. Na lista com colunas, a coluna do nome inteira
+         * (o laço começa nas outras colunas ou abaixo das linhas). */
+        int fim_item = l->colunas && l->larg_nome > 0 ? lista_fim_nome(l) : lista_fim_texto(l, i) + 12;
+        bool no_item = i >= 0 && i < l->qtd && (e->y - l->y - 2) >= 0 && e->x <= fim_item;
         if (!l->marc) {
             if (i < 0 || i >= l->qtd) return LISTA_NADA;
             l->sel = i;
@@ -814,7 +856,9 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
          * o começo de um "renomear devagar" (o programa espera o duplo clique
          * não vir antes de abrir a edição). */
         bool era_unico = !ctrl && !shift && e->cliques < 2 && l->sel == i && l->marc[i] && lista_qtd_marcados(l) == 1;
+        l->pendente = 0;
         if (ctrl) l->marc[i] = !l->marc[i];
+        else if (l->marc[i] && lista_qtd_marcados(l) > 1 && e->cliques < 2 && !shift) l->pendente = i + 1;   /* pode ser um arrastar */
         else if (shift && l->sel >= 0) {
             int a = l->sel < i ? l->sel : i, b = l->sel < i ? i : l->sel;
             lista_desmarcar(l);

@@ -5,7 +5,7 @@
 
 # O shell (sagsh): a ajuda. Descrição curta: até 17 letras.
 lista arquivos = list files
-Mostra os arquivos e pastas (pastas terminam com /). = Shows the files and folders (folders end with /).
+Mostra os arquivos e pastas (pastas terminam com /). -l mostra também a data de modificação. = Shows the files and folders (folders end with /). -l also shows the modification date.
 entra numa pasta = change folder
 Muda a pasta atual. "cd .." volta uma; "cd" sozinho vai para a raiz. = Changes the current folder. "cd .." goes up one; "cd" alone goes to the root.
 mostra a pasta = show folder

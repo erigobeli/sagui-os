@@ -11,6 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import arquivos_ui as ui  # noqa: E402
 from qemu import Maquina, verificar  # noqa: E402
 
 TEXTO = "Olá, SaguiOS! Ação e coração."
@@ -26,7 +27,7 @@ def fechar(m, j):
 
 
 def item(a, i):
-    return a["x"] + 146 + 120, a["y"] + 70 + 2 + i * 20 + 8   # a lista começa depois da lateral (H34)
+    return ui.item(a, i)   # a lista começa depois do painel (H136)
 
 
 def main():
@@ -66,7 +67,7 @@ def main():
         m.esperar_serial("editor: fechado", 10)
         time.sleep(0.4)
 
-        m.clique(a["x"] + 8 + 45, a["y"] + 7 + 13)               # Voltar
+        m.clique(*ui.subir(a))                                    # subir (H136)
         m.esperar_serial("arquivos: pasta / (11 itens)", 10)
         m.clique(*item(a, 8), duplo=True)                         # tmp/ (depois de arte, bin, fontes, historia, jogos, sistema, sons e testes)
         m.esperar_serial("arquivos: pasta /tmp (1 itens)", 10)
@@ -79,7 +80,9 @@ def main():
         m.esperar_serial("editor: fechado", 10)
         time.sleep(0.4)
 
-        m.clique(a["x"] + 106 + 55, a["y"] + 7 + 13)              # Nova pasta
+        m.clique(*ui.comando(a, "Novo"))                          # Novo > Pasta (H136)
+        time.sleep(0.5)
+        m.clique(*ui.menu_comando(a, "Novo", 0))
         # H91: a pasta nasce como "Nova pasta" e o nome é editado na própria
         # linha (sem janela de diálogo).
         m.esperar_serial("arquivos: renomeando Nova pasta", 10)
@@ -89,7 +92,7 @@ def main():
         m.esperar_serial("arquivos: pasta /tmp (2 itens)", 10)   # a lista é relida depois de renomear
         verificar(True, "pasta /tmp/teste criada e aparece na lista")
         m.clique(*item(a, 0))                                      # seleciona teste/
-        m.clique(a["x"] + 224 + 45, a["y"] + 7 + 13)              # Apagar
+        m.clique(*ui.comando(a, "Apagar"))                        # Apagar
         m.esperar_serial('"Apagar"', 10)
         time.sleep(0.4)
         m.captura("H23-confirmar-apagar")
