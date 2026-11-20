@@ -48,6 +48,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   do @layer valem na cascata. calc(), min(), max() e clamp() são avaliados de
   verdade (com %, vw, vh, em, *, / e parênteses). E box-shadow e text-shadow.
 
+- **Cipó:** as folhas de estilo da página são pedidas juntas, servidor por
+  servidor (no GitHub, 23 folhas em 2 lotes: 3,5 s em vez de 5,1 s), e as
+  media queries de intervalo funcionam: (width >= 600px), (width > 600px),
+  (400px <= width <= 1000px), com em.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
