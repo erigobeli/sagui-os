@@ -3,7 +3,7 @@
 
 Critério:
   - no computador: cada pasta de terceiros/ tem arquivo de licença, e cada um
-    desses arquivos chegou, pelo build, a /sistema/licencas/<pasta>.txt
+    desses arquivos chegou, pelo build, a /sistema/licencas/<pasta>.md
     dentro do ramdisk (um componente novo sem licença faz este teste falhar);
     o índice da janela lista todos;
   - no SaguiOS: a janela Sobre mostra a versão (3.0.0 ou 2.2.0), a arquitetura (64 ou 32 bits),
@@ -49,8 +49,8 @@ def conferir_no_computador():
         licencas = [a for a in os.listdir(dir_) if a.upper().startswith(PREFIXOS)]
         verificar(licencas, f"terceiros/{pasta}/ tem arquivo de licença ({', '.join(sorted(licencas))})")
         verificar(os.path.exists(os.path.join(dir_, "ORIGEM.md")), f"terceiros/{pasta}/ tem ORIGEM.md")
-        dentro = ramdisk.get(f"sistema/licencas/{pasta}.txt")
-        verificar(dentro is not None, f"/sistema/licencas/{pasta}.txt está no ramdisk")
+        dentro = ramdisk.get(f"sistema/licencas/{pasta}.md")
+        verificar(dentro is not None, f"/sistema/licencas/{pasta}.md está no ramdisk")
         texto = dentro.decode("latin-1")
         for lic in licencas:
             # Cada linha com letras do arquivo de licença tem de estar lá (as
@@ -59,10 +59,10 @@ def conferir_no_computador():
                       if l.strip() and all(ord(c) < 128 for c in l)]
             faltam = [l for l in linhas if l not in texto]
             verificar(linhas and not faltam, f"{pasta}: o texto inteiro de {lic} está na imagem ({len(linhas)} linhas)")
-        verificar(f"{pasta}.txt|" in indice, f"{pasta} aparece na lista da janela Créditos e licenças")
+        verificar(f"{pasta}.md|" in indice, f"{pasta} aparece na lista da janela Créditos e licenças")
     gpl = ramdisk.get("sistema/licencas/gpl-3.txt", b"")
     verificar(gpl.strip() == open(os.path.join(RAIZ, "LICENSE"), "rb").read().strip(), "a GPL 3 (LICENSE) está inteira na imagem")
-    for arq in ("LEIA-ME.txt", "contribuidores.txt", "dejavu.txt", "unicode.txt", "certificados.txt",
+    for arq in ("LEIA-ME.txt", "contribuidores.md", "creditos.md", "dejavu.txt", "unicode.txt", "certificados.txt",
                 "brotli-rfc7932.txt", "mata-atlantica.txt"):
         verificar(f"sistema/licencas/{arq}" in ramdisk, f"/sistema/licencas/{arq} está na imagem")
     verificar(b"mozilla.org/MPL/2.0" in ramdisk["sistema/licencas/certificados.txt"], "aviso da MPL 2.0 dos certificados")
@@ -73,7 +73,7 @@ def conferir_no_computador():
 
 def main():
     itens = conferir_no_computador()
-    alvo = next(i for i, (arq, _n) in enumerate(itens) if arq == "font-rs.txt")
+    alvo = next(i for i, (arq, _n) in enumerate(itens) if arq == "font-rs.md")
     with Maquina("h94", "ide") as m:
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
@@ -107,12 +107,17 @@ def main():
         verificar(qtd == len(itens), f"a lista tem os {qtd} itens do índice")
         verificar(re.search(r"licencas: mostrando SaguiOS \(GPL 3\) \(\d+ bytes\): +GNU GENERAL PUBLIC LICENSE", s),
                   "a janela abre no texto da GPL 3")
+        verificar(re.search(r"markdown: /sistema/licencas/gpl-3.txt: titulos 0, negrito 0", s),
+                  "a GPL 3 (.txt) aparece como texto puro, sem formatação")
         time.sleep(0.5)
         lic = janela(m.serial(), "Créditos e licenças")
         m.clique(lic["x"] + 10 + 100, lic["y"] + 10 + 2 + alvo * 20 + 10)
         m.esperar_serial("licencas: mostrando font-rs", 10)
         verificar(re.search(r"licencas: mostrando font-rs \(Apache License 2\.0\) \(\d+ bytes\): # font-rs: rasterizador", m.serial()),
                   "escolher o font-rs mostra o ORIGEM.md e a licença dele")
+        r = re.findall(r"markdown: /sistema/licencas/font-rs.md: titulos (\d+), negrito \d+, italico \d+, codigo (\d+)", m.serial())
+        verificar(r and int(r[-1][0]) >= 2 and int(r[-1][1]) >= 1,
+                  f"o font-rs sai formatado: o título do ORIGEM.md, o da licença e a licença num bloco de código ({r[-1] if r else '-'})")
         time.sleep(1)
         m.captura("H94-2-licencas")
         m.tecla("esc")
@@ -124,6 +129,11 @@ def main():
         m.esperar_serial("historico: pronto", 15)
         verificar(re.search(r"historico: pronto \(\d+ bytes\): # Histórico de versões do SaguiOS", m.serial()),
                   "o botão Histórico mostra o VERSOES.md")
+        r = re.findall(r"markdown: /sistema/ajuda/versoes.md: titulos (\d+), negrito (\d+), italico \d+, codigo \d+, links \d+, itens (\d+)", m.serial())
+        verificar(r and int(r[-1][0]) >= 4 and int(r[-1][1]) >= 10 and int(r[-1][2]) >= 10,
+                  f"o histórico sai formatado: títulos, negritos e itens de lista ({r[-1] if r else '-'})")
+        time.sleep(1)
+        m.captura("H94-3-historico")
     return 0
 
 
