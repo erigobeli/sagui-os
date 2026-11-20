@@ -27,6 +27,19 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Cipó:** os estilos de uma página grande são calculados umas 4 vezes mais
+  rápido (filtro dos ancestrais), e o texto que não cabe ao lado de um
+  elemento flutuante desce para baixo dele, em vez de ficar espremido por
+  cima.
+
+- **Cipó:** CSS dos sites grandes. A tabela que acha as regras pela classe
+  agora cresce (com mais de 4096 classes, como no GitHub, as regras de depois
+  nunca casavam), um elemento pode receber mais de 512 declarações (o :root
+  com milhares de variáveis cortava as últimas), as variáveis são achadas por
+  tabela de hash, até 64 folhas de estilo por página (eram 12) e as camadas
+  do @layer valem na cascata. calc(), min(), max() e clamp() são avaliados de
+  verdade (com %, vw, vh, em, *, / e parênteses). E box-shadow e text-shadow.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
