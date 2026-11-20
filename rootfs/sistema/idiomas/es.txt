@@ -5,7 +5,7 @@
 
 # O shell (sagsh): a ajuda. Descrição curta: até 17 letras.
 lista arquivos = lista archivos
-Mostra os arquivos e pastas (pastas terminam com /). = Muestra los archivos y carpetas (las carpetas terminan en /).
+Mostra os arquivos e pastas (pastas terminam com /). -l mostra também a data de modificação. = Muestra los archivos y carpetas (las carpetas terminan en /). -l muestra también la fecha de modificación.
 entra numa pasta = entra en carpeta
 Muda a pasta atual. "cd .." volta uma; "cd" sozinho vai para a raiz. = Cambia la carpeta actual. "cd .." sube una; "cd" solo va a la raíz.
 mostra a pasta = muestra carpeta

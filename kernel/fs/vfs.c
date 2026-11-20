@@ -16,6 +16,7 @@
 #include "sgfs.h"
 #include "texto.h"
 #include "fat32.h"
+#include "relogio.h"
 
 static no_t raiz;
 static uint32_t total_nos;
@@ -38,6 +39,35 @@ static no_t *novo_no(no_t *pai, const char *nome, size_t n, uint8_t tipo)
     total_nos++;
     return x;
 }
+
+/* Data de modificação (H135): no formato das entradas do FAT, para o mesmo
+ * código servir à memória e ao pendrive. Mudar um arquivo muda a data
+ * dele; criar, apagar ou renomear dentro de uma pasta muda a da pasta. */
+uint32_t data_fat_agora(void)
+{
+    data_hora_t h;
+    cmos_ler_data(&h);
+    if (h.ano < 1980) return 0;
+    uint32_t dia = (uint32_t)((h.ano - 1980) << 9 | h.mes << 5 | h.dia);
+    uint32_t hora = (uint32_t)(h.hora << 11 | h.minuto << 5 | h.segundo / 2);
+    return dia << 16 | hora;
+}
+
+void data_fat_para(uint32_t fat, data_t *d)
+{
+    memset(d, 0, sizeof *d);
+    if (!fat) return;
+    uint32_t dia = fat >> 16, hora = fat & 0xFFFF;
+    d->ano = (unsigned short)(1980 + (dia >> 9));
+    d->mes = (unsigned char)(dia >> 5 & 15);
+    d->dia = (unsigned char)(dia & 31);
+    d->hora = (unsigned char)(hora >> 11);
+    d->minuto = (unsigned char)(hora >> 5 & 63);
+    d->segundo = (unsigned char)((hora & 31) * 2);
+    if (d->mes >= 1 && d->mes <= 12 && d->dia >= 1) d->dia_semana = (unsigned char)dia_da_semana(d->ano, d->mes, d->dia);
+}
+
+static void tocar(no_t *x) { if (x) x->data = data_fat_agora(); }
 
 static no_t *filho_chamado(no_t *pasta, const char *nome, size_t n)
 {
@@ -126,6 +156,8 @@ int vfs_criar(const char *caminho, uint8_t tipo, no_t **saida)
     if (filho_chamado(pasta, nome, txt_tamanho(nome))) return ERRO_JA_EXISTE;
     no_t *x = novo_no(pasta, nome, txt_tamanho(nome), tipo);
     if (!x) return ERRO_SEM_MEMORIA;
+    tocar(x);
+    tocar(pasta);
     if (saida) *saida = x;
     return 0;
 }
@@ -167,6 +199,7 @@ int vfs_escrever(no_t *x, uint32_t desloc, const void *origem, uint32_t n)
         memset(x->dados + x->tamanho, 0, desloc - x->tamanho);
     memcpy(x->dados + desloc, origem, n);
     if (desloc + n > x->tamanho) x->tamanho = desloc + n;
+    tocar(x);
     return (int)n;
 }
 
@@ -174,6 +207,7 @@ void vfs_truncar(no_t *x)
 {
     x->tamanho = 0;
     x->original = NULL;
+    tocar(x);
 }
 
 static void destruir_no(no_t *x)
@@ -197,6 +231,7 @@ int vfs_apagar(const char *caminho)
     no_t *x = vfs_achar(caminho);
     if (!x) return ERRO_NAO_EXISTE;
     if (x->tipo == TIPO_PASTA) return ERRO_E_PASTA;
+    tocar(x->pai);
     desligar(x);
     /* Arquivo aberto por alguém: some da pasta já, mas os dados ficam até o
      * último fechar (vfs_soltar). */
@@ -212,6 +247,7 @@ int vfs_remover_pasta(const char *caminho)
     if (x == &raiz) return ERRO_ACESSO;
     if (x->tipo != TIPO_PASTA) return ERRO_NAO_E_PASTA;
     if (x->filho) return ERRO_NAO_VAZIA;
+    tocar(x->pai);
     desligar(x);
     destruir_no(x);
     return 0;
@@ -244,6 +280,8 @@ int vfs_renomear(const char *origem, const char *destino)
     if (r < 0) return r;
     for (no_t *p = pasta; p; p = p->pai)   /* pasta não pode ir para dentro dela mesma */
         if (p == x) return ERRO_INVALIDO;
+    tocar(x->pai);
+    tocar(pasta);
     desligar(x);
     txt_copia_n(x->nome, nome, NOME_MAX);
     x->pai = pasta;

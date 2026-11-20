@@ -1351,6 +1351,8 @@ static void expandir_vidro(void)
     }
 }
 
+static void desenhar_arrasto(void);   /* H138, mais abaixo */
+
 /* Recompõe o retângulo sujo e mostra. */
 void gui_mostrar(void)
 {
@@ -1393,6 +1395,7 @@ void gui_mostrar(void)
     }
     desenhar_menu();
     desenhar_ctx();
+    desenhar_arrasto();
     desenhar_aviso(&tela);
     desenhar_conf();
     video_marcar(tela.cx0, tela.cy0, tela.cx1 - tela.cx0, tela.cy1 - tela.cy0);
@@ -1658,10 +1661,149 @@ static void tratar_laco(evento_mouse_t *m)
     gui_redesenhar(0, 0, (int)video_largura(), (int)video_altura());
 }
 
+/* ------------------------------------------------------------ arrastar entre janelas (H138)
+ *
+ * Um programa que arrasta arquivos (o Arquivos) passa os caminhos ao kernel
+ * quando o cursor sai da janela dele (SIS_ARRASTAR). Daí até o botão ser
+ * solto, o kernel leva o nome junto do cursor, por cima de tudo, com o que
+ * vai acontecer embaixo ("Mandar para a Lixeira", "Abrir com Editor"...).
+ * Soltar numa janela manda EV_SOLTAR a ela; num ícone da área de trabalho,
+ * o ícone decide (area_icone_soltar). Os caminhos ficam guardados para quem
+ * pedir (SIS_ARRASTO). */
+static bool arr_ativo;
+static char arr_texto[2048], arr_rot[48], arr_dica[64];
+static int arr_origem, arr_gx, arr_gy, arr_gl, arr_ga;
+static janela_t *janela_do_processo(int id);
+
+static void arrasto_primeiro(char *p, int max)
+{
+    int k = 0;
+    while (arr_texto[k] && arr_texto[k] != '\n' && k < max - 1) { p[k] = arr_texto[k]; k++; }
+    p[k] = 0;
+}
+
+static void arrasto_alvo(int x, int y)
+{
+    arr_dica[0] = 0;
+    int k = janela_em(x, y);
+    if (k >= 0) {
+        janela_t *j = &janelas[ordem[k]];
+        if (j->id != arr_origem) snformatar(arr_dica, sizeof arr_dica, "Soltar em %s", j->titulo);
+        return;
+    }
+    int ic = area_icone_em(x, y);
+    char p[160];
+    arrasto_primeiro(p, sizeof p);
+    if (ic >= 0 && !area_icone_dica(ic, p, arr_dica, sizeof arr_dica)) arr_dica[0] = 0;
+}
+
+static void arrasto_posicionar(int x, int y)
+{
+    if (arr_gl) gui_redesenhar(arr_gx - 2, arr_gy - 2, arr_gl + 4, arr_ga + 4);
+    int l1 = texto_largura(arr_rot), l2 = arr_dica[0] ? texto_largura(arr_dica) : 0;
+    arr_gl = (l1 > l2 ? l1 : l2) + 24;
+    arr_ga = arr_dica[0] ? 44 : 26;
+    arr_gx = x + 14;
+    arr_gy = y + 10;
+    gui_redesenhar(arr_gx - 2, arr_gy - 2, arr_gl + 4, arr_ga + 4);
+}
+
+static void desenhar_arrasto(void)
+{
+    if (!arr_ativo || !arr_gl) return;
+    suave_t sv = { tela.px, tela.larg, tela.cx0, tela.cy0, tela.cx1, tela.cy1 };
+    suave_ret(&sv, arr_gx, arr_gy, arr_gl, arr_ga, 5, 0xEAF3FF, 0xEAF3FF, 240);
+    suave_contorno(&sv, arr_gx, arr_gy, arr_gl, arr_ga, 5, 0x8DB8E8, 256);
+    sup_texto(&tela, arr_gx + 12, arr_gy + 5, arr_rot, 0x1A1A1A);
+    if (arr_dica[0]) sup_texto(&tela, arr_gx + 12, arr_gy + 24, arr_dica, 0x0B7A3E);
+}
+
+static void arrasto_mouse(evento_mouse_t *m)
+{
+    char antes[64];
+    txt_copia_n(antes, arr_dica, sizeof antes);
+    arrasto_alvo(m->x, m->y);
+    arrasto_posicionar(m->x, m->y);
+    if (txt_compara(antes, arr_dica) != 0 && arr_dica[0]) klog("[GUI] arrasto sobre: %s\n", arr_dica);
+    if (!((m->mudaram & BOTAO_ESQUERDO) && !(m->botoes & BOTAO_ESQUERDO))) return;
+    /* soltou */
+    arr_ativo = false;
+    gui_redesenhar(arr_gx - 2, arr_gy - 2, arr_gl + 4, arr_ga + 4);
+    arr_gl = 0;
+    int k = janela_em(m->x, m->y);
+    if (k >= 0) {
+        janela_t *j = &janelas[ordem[k]];
+        evento_t e = { .tipo = EV_SOLTAR, .x = m->x - j->x - BORDA, .y = m->y - j->y - BARRA_TITULO,
+                       .tecla = (unsigned)arr_origem, .modificadores = teclado_modificadores() & 3 };
+        entregar(j, &e);
+        klog("[GUI] arrasto solto na janela %d (%s)\n", j->id, j->titulo);
+        return;
+    }
+    int ic = area_icone_em(m->x, m->y);
+    if (ic >= 0) {
+        char p[160];
+        arrasto_primeiro(p, sizeof p);
+        area_icone_soltar(ic, p);
+        return;
+    }
+    klog("[GUI] arrasto solto fora de um destino\n");
+}
+
+int32_t sis_arrastar(uint32_t id, uint32_t ptexto, uint32_t prot, uint32_t d, uint32_t e)
+{
+    (void)d; (void)e;
+    janela_t *j = janela_do_processo((int)id);
+    if (!j) return ERRO_INVALIDO;
+    static char t[sizeof arr_texto];
+    char r[sizeof arr_rot];
+    int n = usuario_texto((const char *)(uintptr_t)ptexto, t, sizeof t);
+    if (n < 0) return n;
+    n = usuario_texto((const char *)(uintptr_t)prot, r, sizeof r);
+    if (n < 0) return n;
+    bool i0 = int_salva_desliga();
+    txt_copia_n(arr_texto, t, sizeof arr_texto);
+    txt_copia_n(arr_rot, r, sizeof arr_rot);
+    arr_origem = j->id;
+    arr_ativo = true;
+    arr_gl = 0;
+    captura = -1;   /* daqui até soltar, o mouse é do arrastar */
+    int x, y;
+    mouse_posicao(&x, &y);
+    arrasto_alvo(x, y);
+    arrasto_posicionar(x, y);
+    int_restaura(i0);
+    klog("[GUI] arrastando %s da janela %d\n", arr_rot, j->id);
+    return 0;
+}
+
+int32_t sis_arrasto(uint32_t pbuf, uint32_t max, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)c; (void)d; (void)e;
+    uint32_t n = txt_tamanho(arr_texto);
+    if (n + 1 > max) return ERRO_LIMITE;
+    if (!usuario_ok((void *)(uintptr_t)pbuf, n + 1, true)) return ERRO_ENDERECO;
+    memcpy((void *)(uintptr_t)pbuf, arr_texto, n + 1);
+    return (int32_t)n;
+}
+
 static void tratar_mouse(evento_mouse_t *m)
 {
     if (conf.aberta) return;   /* a confirmação do disco pega tudo até fechar */
+    if (arr_ativo) { arrasto_mouse(m); return; }
     if (laco_ativo) { tratar_laco(m); return; }
+    if (m->roda) {   /* H134: a roda vai para a janela sob o cursor (com ou sem foco, como nos outros sistemas) */
+        int k = janela_em(m->x, m->y);
+        if (k >= 0) {
+            janela_t *j = &janelas[ordem[k]];
+            int cx = m->x - j->x - BORDA, cy = m->y - j->y - BARRA_TITULO;
+            if (cx >= 0 && cy >= 0 && cx < j->larg && cy < j->alt) {
+                evento_t e = { .tipo = EV_RODA, .x = cx, .y = cy, .tecla = (unsigned)(int)m->roda,
+                               .modificadores = teclado_modificadores() & 3 };
+                entregar(j, &e);
+            }
+        }
+        if (!m->mudaram && !m->dx && !m->dy) return;   /* só a roda */
+    }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
     if (apertou) lento_icone = -1;

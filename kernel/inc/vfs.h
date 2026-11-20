@@ -18,8 +18,11 @@ typedef struct no {
     uint32_t       capacidade;
     uint32_t       refs;           /* quantos arquivos abertos apontam para ele */
     bool           removido;       /* apagado enquanto aberto: some no último fechar */
+    uint32_t       data;           /* modificação, no formato do FAT (dia << 16 | hora); 0 = não se sabe (os do ramdisk) */
 } no_t;
 
+uint32_t data_fat_agora(void);           /* a data e a hora de agora, no formato do FAT (H135) */
+void     data_fat_para(uint32_t fat, data_t *d);   /* 0 vira tudo zero */
 void     vfs_iniciar(void);
 no_t    *vfs_raiz(void);
 no_t    *vfs_achar(const char *caminho);          /* caminho absoluto simplificado */

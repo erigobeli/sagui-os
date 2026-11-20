@@ -34,7 +34,7 @@ typedef struct {
 } comando_t;
 
 static const comando_t comandos[] = {
-    { "ls", "listar", false, false, "lista arquivos", "ls [pasta]", "Mostra os arquivos e pastas (pastas terminam com /)." },
+    { "ls", "listar", false, false, "lista arquivos", "ls [-l] [pasta]", "Mostra os arquivos e pastas (pastas terminam com /). -l mostra também a data de modificação." },
     { "cd", "entrar", true, false, "entra numa pasta", "cd <pasta>", "Muda a pasta atual. \"cd ..\" volta uma; \"cd\" sozinho vai para a raiz." },
     { "pwd", "onde", true, false, "mostra a pasta", "pwd", "Mostra em que pasta você está." },
     { "cat", "ver", false, false, "mostra um arquivo", "cat <arquivo...>", "Mostra o conteúdo dos arquivos. Sem arquivo, mostra o que chegar pela entrada." },

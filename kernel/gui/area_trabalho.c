@@ -801,3 +801,44 @@ void area_icone_abrir(int i)
     int pid = processo_executar(icones[i].programa, arg ? 2 : 1, argv, NULL);
     klog("[GUI] icone %s -> %s (pid %d)\n", icones[i].nome, icones[i].programa, pid);
 }
+
+/* Arquivos arrastados soltos num ícone (H138). A Lixeira e as unidades
+ * chamam o Arquivos, que lê os caminhos (SIS_ARRASTO) e faz o trabalho;
+ * um programa abre com o primeiro arquivo. O instalador não aceita. */
+bool area_icone_dica(int i, const char *primeiro, char *dica, int max)
+{
+    (void)primeiro;
+    if (i < 0 || i >= area_qtd_icones() || i == base_dir()) return false;
+    if (i == ICONE_LIXEIRA) { txt_copia_n(dica, "Mandar para a Lixeira", (uint32_t)max); return true; }
+    if (i > base_dir()) { snformatar(dica, (uint32_t)max, "Copiar para %s", unid[i - base_dir() - 1].nome); return true; }
+    snformatar(dica, (uint32_t)max, "Abrir com %s", nome_icone(i));
+    return true;
+}
+
+void area_icone_soltar(int i, const char *primeiro)
+{
+    char d[64];
+    if (!area_icone_dica(i, primeiro, d, sizeof d)) return;
+    int pid;
+    if (i == ICONE_LIXEIRA) {
+        char *argv[] = { "arquivos", "--soltar-lixeira", NULL };
+        pid = processo_executar("/bin/arquivos", 2, argv, NULL);
+    } else if (i > base_dir()) {
+        disco_t *u = disco_da_unidade(i), *m = disco_montado();
+        if (!u) return;
+        if (m && m != u) { gui_aviso("Outra unidade está aberta em /usb. Remova-a com segurança antes."); return; }
+        if (!m && disco_montar(u) < 0) { gui_aviso("Não consegui montar a unidade."); return; }
+        char *argv[] = { "arquivos", "--soltar", "/usb", NULL };
+        pid = processo_executar("/bin/arquivos", 3, argv, NULL);
+    } else if (i >= QTD_ICONES) {
+        char caminho[NOME_MAX + 24];
+        snformatar(caminho, sizeof caminho, "/usb/programas/%s", instalados[i - QTD_ICONES]);
+        char *argv[] = { instalados[i - QTD_ICONES], (char *)primeiro, NULL };
+        pid = processo_executar(caminho, 2, argv, NULL);
+    } else {
+        char *argv[] = { (char *)icones[i].programa + 5, (char *)primeiro, NULL };
+        pid = processo_executar(icones[i].programa, 2, argv, NULL);
+    }
+    klog("[GUI] soltos no icone %s: %s (pid %d)\n", nome_icone(i), d, pid);
+}
+

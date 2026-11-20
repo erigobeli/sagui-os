@@ -27,6 +27,39 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Data de modificação:** os arquivos e pastas guardam quando mudaram (na
+  memória e no pendrive, onde o FAT32 já gravava a data). A chamada nova
+  `data_arquivo` lê, e `ls -l` mostra. Os arquivos que vêm na imagem do
+  sistema não têm data até alguém mexer neles (H135).
+
+- **Roda do mouse:** o kernel liga a roda dos mouses PS/2 que têm (o
+  "IntelliMouse") e manda o evento EV_RODA para a janela sob o cursor. As
+  listas, as áreas de texto (o Editor) e o Cipó rolam com ela (H134).
+
+- **Arquivos de cara nova**: barra de
+  comandos (Novo, Renomear, Apagar, Ordenar), barra de endereço com voltar,
+  avançar, subir, atualizar, o caminho clicável e a pesquisa, painel de
+  navegação com o lugar atual marcado, lista em colunas (nome, data de
+  modificação, tipo, tamanho) com ordenação pelo cabeçalho e barra de
+  status (H136).
+
+- **Arrastar no Arquivos:** arquivos e pastas marcados vão, arrastando, para
+  uma pasta da lista, da árvore do painel, um pedaço do caminho ou a
+  Lixeira. No mesmo disco movem; entre a memória e o pendrive, copiam
+  (H137).
+
+- **Arrastar para fora do Arquivos:** levado até outra janela do Arquivos,
+  vai para a pasta embaixo; até um ícone da área de trabalho, a Lixeira
+  manda para a lixeira, uma unidade copia para ela e um programa abre o
+  arquivo. O kernel leva o nome junto do cursor e diz o que vai acontecer
+  (SIS_ARRASTAR, SIS_ARRASTO, EV_SOLTAR; H138).
+
+- **Menus no painel do Arquivos:** o botão direito no SaguiOS, na Lixeira,
+  no pendrive e nas pastas da árvore abre o menu de cada um (abrir em nova
+  janela, expandir, nova pasta, renomear, apagar, esvaziar a lixeira,
+  ejetar, Sobre o SaguiOS); e "Propriedades" mostra o sistema (versão,
+  arquitetura, memória, espaço), uma pasta ou um arquivo (H139).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

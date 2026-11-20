@@ -244,6 +244,30 @@ int32_t sis_info_arquivo(uint32_t ptr, uint32_t pinfo, uint32_t c, uint32_t d, u
     return 0;
 }
 
+/* A data de modificação (H135). Os arquivos que vêm na imagem do sistema não
+ * têm: o ano volta 0. */
+int32_t sis_data_arquivo(uint32_t ptr, uint32_t pdata, uint32_t c, uint32_t d, uint32_t e)
+{
+    (void)c; (void)d; (void)e;
+    char caminho[CAMINHO_MAX];
+    int r = caminho_do_usuario(ptr, caminho);
+    if (r < 0) return r;
+    data_t *dt = (data_t *)(uintptr_t)pdata;
+    if (!usuario_ok(dt, sizeof *dt, true)) return ERRO_ENDERECO;
+    uint32_t fat = 0;
+    const char *rel;
+    if (vfs_na_usb(caminho, &rel)) {
+        r = fat_data(rel, &fat);
+        if (r < 0) return r;
+    } else {
+        no_t *x = vfs_achar(caminho);
+        if (!x) return ERRO_NAO_EXISTE;
+        fat = x->data;
+    }
+    data_fat_para(fat, dt);
+    return 0;
+}
+
 int32_t sis_criar_pasta(uint32_t ptr, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
 {
     (void)b; (void)c; (void)d; (void)e;
