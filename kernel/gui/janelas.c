@@ -895,8 +895,8 @@ static void menu_tecla(int t)
  * escolha volta ao programa em EV_MENU). Um menu só fica aberto por vez. */
 enum { CTX_ICONE, CTX_AREA, CTX_JANELA, CTX_PROGRAMA };
 enum { J_MINIMIZAR = 100, J_MAXIMIZAR, J_FECHAR, A_TERMINAL, A_ARQUIVOS, A_FUNDO, A_MOSTRAR_AREA };
-#define CTX_MAX 10
-static struct { char nome[32]; int acao; } ctx[CTX_MAX];
+#define CTX_MAX 16   /* o menu de um arquivo no Arquivos chega a 12 (extrair, compactar) */
+static struct { char nome[48]; int acao; } ctx[CTX_MAX];
 static int ctx_qtd, ctx_x, ctx_y, ctx_l = 190, ctx_tipo, ctx_alvo, ctx_sob = -1;
 static bool ctx_aberto;
 
@@ -2500,7 +2500,7 @@ int32_t sis_menu_janela(uint32_t id, uint32_t xy, uint32_t pitens, uint32_t d, u
     (void)d; (void)e;
     janela_t *j = janela_do_processo((int)id);
     if (!j) return ERRO_INVALIDO;
-    char itens[CTX_MAX * 32];
+    char itens[CTX_MAX * 48];
     int r = usuario_texto((const char *)(uintptr_t)pitens, itens, sizeof itens);
     if (r < 0) return r;
     bool i0 = int_salva_desliga();

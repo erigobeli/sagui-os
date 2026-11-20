@@ -277,7 +277,8 @@ static void texto_tipo(int i, char *s, int max)
     static const struct { const char *ext, *nome; } t[] = {
         { ".txt", "Documento de texto" }, { ".md", "Texto Markdown" }, { ".html", "Página HTML" }, { ".htm", "Página HTML" },
         { ".wav", "Som WAV" }, { ".mp3", "Som MP3" }, { ".mp4", "Vídeo MP4" }, { ".c", "Código C" }, { ".h", "Cabeçalho C" },
-        { ".zip", "Pasta compactada" }, { ".gz", "Arquivo gzip" }, { ".json", "Arquivo JSON" }, { ".css", "Folha de estilo" },
+        { ".zip", "Pasta compactada" }, { ".tar.gz", "Pacote tar.gz" }, { ".tgz", "Pacote tar.gz" }, { ".tar", "Pacote tar" },
+        { ".gz", "Arquivo gzip" }, { ".json", "Arquivo JSON" }, { ".css", "Folha de estilo" },
     };
     for (unsigned k = 0; k < sizeof t / sizeof t[0]; k++) if (extensao(nomes[i], t[k].ext)) { copia_texto(s, t[k].nome, (size_t)max); return; }
     const char *p = acha_ultimo_char(nomes[i], '.');
@@ -905,7 +906,7 @@ static void carregar(void)
     if (busca[0]) registrar("arquivos: busca \"%s\" em %s (%d itens)", busca, pasta, n);
     registrar("arquivos: pasta %s (%d itens)", pasta, n);
     char ordem[200] = "";
-    for (int i = 0; i < n && i < 6; i++) { if (i) junta_texto(ordem, ", ", sizeof ordem); junta_texto(ordem, nomes[i], sizeof ordem); }
+    for (int i = 0; i < n && i < 10; i++) { if (i) junta_texto(ordem, ", ", sizeof ordem); junta_texto(ordem, nomes[i], sizeof ordem); }
     if (n) registrar("arquivos: ordem: %s", ordem);
 }
 
@@ -1019,12 +1020,27 @@ static void abrir_com(int i, const char *programa)
     desenhar_rodape(msg);
 }
 
+static int tipo_pacote(const char *n, int *ext);
+static bool extrair(int i, bool em_pasta);
+static char extraido[64];   /* a pasta que o último "Extrair para" criou */
+static void caminho_nome(const char *nome, char *saida, size_t max);
+
 static void abrir_item(int i)
 {
     if (i < 0 || i >= lista.qtd) return;
     char c[200];
     caminho_de(i, c, sizeof c);
     if (tipos[i] == TIPO_PASTA) { entrar(c); return; }
+    int ext, tp = tipos[i] == TIPO_PROGRAMA ? 0 : tipo_pacote(nomes[i], &ext);
+    if (tp) {
+        /* Abrir um pacote: extrai numa pasta com o nome dele e entra nela (o .gz sai ao lado) */
+        if (extrair(i, tp != 4) && tp != 4) {
+            char d[200];
+            caminho_nome(extraido, d, sizeof d);
+            entrar(d);
+        }
+        return;
+    }
     char *argv[3];
     int pid;
     if (tipos[i] == TIPO_PROGRAMA) {
@@ -1102,6 +1118,122 @@ static void selecionar(int i)
     desenhar_lista();
     desenhar_cmds();
     desenhar_status();
+}
+
+/* ------------------------------------------------------------ pacotes: extrair e compactar
+ *
+ * O trabalho é dos programas de sempre (zip, unzip, tar, gzip, H93): o
+ * Arquivos só monta o pedido, espera e mostra o resultado. Nada é
+ * substituído: "Extrair aqui" com um arquivo que já existe pára e avisa, e
+ * as pastas e pacotes novos ganham " (2)" se o nome já estiver em uso. */
+enum { PK_NADA, PK_ZIP, PK_TAR, PK_TGZ, PK_GZ };
+
+/* O tipo do pacote pelo nome, e quantas letras tem a extensão. */
+static int tipo_pacote(const char *n, int *ext)
+{
+    if (termina_com(n, ".tar.gz")) { *ext = 7; return PK_TGZ; }
+    if (termina_com(n, ".tgz")) { *ext = 4; return PK_TGZ; }
+    if (termina_com(n, ".zip")) { *ext = 4; return PK_ZIP; }
+    if (termina_com(n, ".tar")) { *ext = 4; return PK_TAR; }
+    if (termina_com(n, ".gz")) { *ext = 3; return PK_GZ; }
+    *ext = 0;
+    return PK_NADA;
+}
+
+/* Roda um programa e espera; devolve o código de saída (-1 se não abriu). */
+static int rodar_e_esperar(const char *prog, char *const argv[])
+{
+    int pid = executar(prog, argv);
+    if (pid < 0) return -1;
+    int codigo = -1;
+    esperar(pid, &codigo);
+    return codigo;
+}
+
+/* O nome do item sem a extensão do pacote ("fotos.tar.gz" -> "fotos"). */
+static void base_do_pacote(int i, char *saida, int max)
+{
+    int ext;
+    tipo_pacote(nomes[i], &ext);
+    int n = (int)tam_texto(nomes[i]) - ext;
+    if (n >= max) n = max - 1;
+    memcpy(saida, nomes[i], (size_t)n);
+    saida[n] = 0;
+}
+
+static bool extrair(int i, bool em_pasta)
+{
+    if (i < 0 || i >= lista.qtd) return false;
+    int ext, tipo = tipo_pacote(nomes[i], &ext);
+    if (tipo == PK_NADA || (tipo == PK_GZ && em_pasta)) return false;
+    char pacote[200], base[64], novo[64] = "", destino[200];
+    caminho_de(i, pacote, sizeof pacote);
+    base_do_pacote(i, base, sizeof base);
+    copia_texto(destino, pasta, sizeof destino);
+    if (em_pasta) {
+        nome_livre(base, "", novo, sizeof novo);
+        caminho_nome(novo, destino, sizeof destino);
+        if (criar_pasta(destino) < 0) { desenhar_rodape("Não deu para criar a pasta."); return false; }
+    }
+    desenhar_rodape("Extraindo...");
+    int codigo;
+    if (tipo == PK_ZIP) { char *argv[] = { "unzip", "-q", "-d", destino, pacote, NULL }; codigo = rodar_e_esperar("/bin/unzip", argv); }
+    else if (tipo == PK_GZ) {
+        /* um arquivo só: sai ao lado, sem o .gz (o original fica) */
+        copia_texto(novo, base, sizeof novo);
+        char *argv[] = { "gzip", "-d", "-k", pacote, NULL };
+        codigo = rodar_e_esperar("/bin/gzip", argv);
+    } else { char *argv[] = { "tar", "xf", pacote, "-C", destino, NULL }; codigo = rodar_e_esperar("/bin/tar", argv); }
+    registrar("arquivos: extrair %s em %s: codigo %d", pacote, destino, codigo);
+    carregar();
+    if (novo[0]) selecionar(indice_de(novo));
+    char msg[120];
+    if (codigo == 0 && em_pasta) formatar_texto(msg, sizeof msg, "Extraído em %s/", novo);
+    else if (codigo == 0) formatar_texto(msg, sizeof msg, "Extraído aqui%s%s", tipo == PK_GZ ? ": " : "", tipo == PK_GZ ? novo : "");
+    else formatar_texto(msg, sizeof msg, "Não deu para extrair (algum arquivo já existe, ou o pacote está estragado).");
+    desenhar_rodape(msg);
+    copia_texto(extraido, novo, sizeof extraido);
+    return codigo == 0;
+}
+
+/* Compacta os marcados num .zip (formato 0) ou .tar.gz (1), na pasta atual. */
+static void compactar(int formato)
+{
+    char *argv[40];
+    int k = 0;
+    argv[k++] = formato ? "tar" : "zip";
+    argv[k++] = formato ? "czf" : "-q";
+    char nome[72], base[64];
+    int primeiro = -1, qtd = 0;
+    for (int i = 0; i < lista.qtd; i++) if (marc[i]) { if (primeiro < 0) primeiro = i; qtd++; }
+    if (primeiro < 0) return;
+    if (qtd == 1) {
+        copia_texto(base, nomes[primeiro], sizeof base);
+        if (tipos[primeiro] != TIPO_PASTA) { char *ponto = NULL; for (char *p = base + 1; *p; p++) if (*p == '.') ponto = p; if (ponto) *ponto = 0; }
+    } else {
+        /* vários: o nome da pasta onde estão */
+        const char *b = pasta;
+        for (const char *p = pasta; *p; p++) if (*p == '/' && p[1]) b = p + 1;
+        copia_texto(base, compara_texto(pasta, "/") == 0 ? "SaguiOS" : b, sizeof base);
+    }
+    nome_livre(base, formato ? ".tar.gz" : ".zip", nome, sizeof nome);
+    argv[k++] = nome;
+    for (int i = 0; i < lista.qtd && k < 39; i++) if (marc[i]) argv[k++] = nomes[i];
+    argv[k] = NULL;
+    desenhar_rodape("Compactando...");
+    /* os nomes ficam relativos à pasta atual dentro do pacote */
+    char antes[200];
+    if (pasta_atual(antes, sizeof antes) < 0) copia_texto(antes, "/", sizeof antes);
+    mudar_pasta(pasta);
+    int codigo = rodar_e_esperar(formato ? "/bin/tar" : "/bin/zip", argv);
+    mudar_pasta(antes);
+    registrar("arquivos: compactar %d item(ns) em %s/%s: codigo %d", qtd, compara_texto(pasta, "/") == 0 ? "" : pasta, nome, codigo);
+    carregar();
+    selecionar(indice_de(nome));
+    char msg[120];
+    if (codigo == 0) formatar_texto(msg, sizeof msg, "Compactado em %s", nome);
+    else formatar_texto(msg, sizeof msg, "Não deu para compactar (código %d).", codigo);
+    desenhar_rodape(msg);
 }
 
 /* Quantos caracteres marcar ao editar: o nome sem a extensão (nas pastas, tudo). */
@@ -1386,10 +1518,10 @@ static void abrir_lixeira(void)
  * só (abrir, renomear) some. A escolha volta pelo índice; "acoes" diz qual é. */
 enum { AC_ABRIR, AC_EDITOR, AC_RENOMEAR, AC_APAGAR, AC_PASTA, AC_TEXTO, AC_PAGINA, AC_ATUALIZAR, AC_VOLTAR,
        AC_RESTAURAR, AC_APAGAR_VEZ, AC_ESVAZIAR, AC_ORD_NOME, AC_ORD_DATA, AC_ORD_TIPO, AC_ORD_TAMANHO,
-       AC_PROPRIEDADES,
+       AC_PROPRIEDADES, AC_EXTRAIR_AQUI, AC_EXTRAIR_PASTA, AC_ZIP, AC_TARGZ,
        AC_P_ABRIR, AC_P_JANELA, AC_P_EXPANDIR, AC_P_RECOLHER, AC_P_ESVAZIAR, AC_P_EJETAR, AC_P_NOVA, AC_P_RENOMEAR,
        AC_P_APAGAR, AC_P_SOBRE, AC_P_PROPRIEDADES };   /* AC_P_*: menu do painel (H139) */
-static int acoes[16], qtd_acoes;
+static int acoes[24], qtd_acoes;
 
 static void acao(char *itens, size_t max, const char *texto, int a)
 {
@@ -1400,7 +1532,7 @@ static void acao(char *itens, size_t max, const char *texto, int a)
 
 static void menu_de_contexto(int x, int y)
 {
-    static char itens[300];
+    static char itens[700];
     itens[0] = 0;
     qtd_acoes = 0;
     int marcados = lista_qtd_marcados(&lista);
@@ -1420,17 +1552,34 @@ static void menu_de_contexto(int x, int y)
         const char *n = nomes[lista.sel];
         bool arquivo = tipos[lista.sel] != TIPO_PASTA && tipos[lista.sel] != TIPO_PROGRAMA;
         const char *prog = arquivo ? programa_para(n) : NULL;
-        const char *primeiro = !prog ? "Abrir"
+        int ext0;
+        bool pacote = arquivo && tipo_pacote(n, &ext0) != PK_NADA;
+        const char *primeiro = pacote || !prog ? "Abrir"
             : compara_texto(prog, "/bin/tocador") == 0 ? "Abrir no Tocador"
             : compara_texto(prog, "/bin/cipo") == 0 ? "Abrir no Cipó"
             : compara_texto(prog, "/bin/visualizador") == 0 ? "Abrir no Visualizador"
             : compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor";
         acao(itens, sizeof itens, primeiro, AC_ABRIR);
-        if (arquivo && compara_texto(primeiro, "Abrir no Editor") != 0) acao(itens, sizeof itens, "Abrir no Editor", AC_EDITOR);
+        if (arquivo && !pacote && compara_texto(primeiro, "Abrir no Editor") != 0) acao(itens, sizeof itens, "Abrir no Editor", AC_EDITOR);
+        int ext, tp = arquivo ? tipo_pacote(n, &ext) : PK_NADA;
+        if (tp != PK_NADA) {
+            acao(itens, sizeof itens, "Extrair aqui", AC_EXTRAIR_AQUI);
+            if (tp != PK_GZ) {
+                char base[64], t[48];
+                base_do_pacote(lista.sel, base, sizeof base);
+                if (tam_texto(base) > 22) copia_texto(base + 19, "...", 4);
+                formatar_texto(t, sizeof t, "Extrair para \"%s/\"", base);
+                acao(itens, sizeof itens, t, AC_EXTRAIR_PASTA);
+            }
+        }
+        acao(itens, sizeof itens, "Compactar em .zip", AC_ZIP);
+        acao(itens, sizeof itens, "Compactar em .tar.gz", AC_TARGZ);
         acao(itens, sizeof itens, "Renomear", AC_RENOMEAR);
         acao(itens, sizeof itens, "Apagar...", AC_APAGAR);
     } else if (no_item) {
         char t[40];
+        acao(itens, sizeof itens, "Compactar em .zip", AC_ZIP);
+        acao(itens, sizeof itens, "Compactar em .tar.gz", AC_TARGZ);
         formatar_texto(t, sizeof t, "Apagar os %d itens...", marcados);
         acao(itens, sizeof itens, t, AC_APAGAR);
     }
@@ -1440,6 +1589,7 @@ static void menu_de_contexto(int x, int y)
     if (!no_item) acao(itens, sizeof itens, "Atualizar", AC_ATUALIZAR);
     acao(itens, sizeof itens, "Voltar", AC_VOLTAR);
     if (no_item && marcados == 1) acao(itens, sizeof itens, "Propriedades", AC_PROPRIEDADES);   /* por último (H139) */
+    registrar("arquivos: menu: %s", itens);
     jan_menu(j, x, y, itens);
 }
 
@@ -2257,6 +2407,8 @@ int principal(int argc, char **argv)
                 else if (a == AC_ESVAZIAR) esvaziar_lixeira();
                 else if (a >= AC_ORD_NOME && a <= AC_ORD_TAMANHO) ordenar(a - AC_ORD_NOME);
                 else if (a == AC_PROPRIEDADES && lista.sel >= 0) { char c[200]; caminho_de(lista.sel, c, sizeof c); propriedades(c); }
+                else if (a == AC_EXTRAIR_AQUI || a == AC_EXTRAIR_PASTA) extrair(lista.sel, a == AC_EXTRAIR_PASTA);
+                else if (a == AC_ZIP || a == AC_TARGZ) compactar(a == AC_TARGZ);
                 else acao_do_painel(a);
             }
             continue;
