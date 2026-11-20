@@ -1662,6 +1662,19 @@ static void tratar_mouse(evento_mouse_t *m)
 {
     if (conf.aberta) return;   /* a confirmação do disco pega tudo até fechar */
     if (laco_ativo) { tratar_laco(m); return; }
+    if (m->roda) {   /* H134: a roda vai para a janela sob o cursor (com ou sem foco, como nos outros sistemas) */
+        int k = janela_em(m->x, m->y);
+        if (k >= 0) {
+            janela_t *j = &janelas[ordem[k]];
+            int cx = m->x - j->x - BORDA, cy = m->y - j->y - BARRA_TITULO;
+            if (cx >= 0 && cy >= 0 && cx < j->larg && cy < j->alt) {
+                evento_t e = { .tipo = EV_RODA, .x = cx, .y = cy, .tecla = (unsigned)(int)m->roda,
+                               .modificadores = teclado_modificadores() & 3 };
+                entregar(j, &e);
+            }
+        }
+        if (!m->mudaram && !m->dx && !m->dy) return;   /* só a roda */
+    }
     bool apertou = (m->mudaram & m->botoes) != 0;
     bool soltou = (m->mudaram & ~m->botoes) != 0;
     if (apertou) lento_icone = -1;

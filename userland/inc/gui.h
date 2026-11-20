@@ -115,6 +115,15 @@ typedef struct {
     bool editando;
     int  ed_item, ed_cur, ed_marca;     /* ed_marca: início da parte marcada (até o cursor) */
     char ed_texto[64];
+    /* Aparência clara (o Arquivos, H134). Com claro: sem moldura, a linha
+     * marcada em azul-claro com o texto escuro, a linha sob o mouse
+     * destacada (sob = item + 1; 0 nenhum) e, se "colunas" não for NULL, o
+     * nome vai até larg_nome e o resto da linha é desenhado por quem usa. */
+    int  alt_item;                      /* 0: LISTA_ALTURA_ITEM */
+    bool claro;
+    int  sob;
+    int  larg_nome;
+    void (*colunas)(jan_t *j, int y, int item);
 } lista_t;
 void lista_desenhar(jan_t *j, lista_t *l);
 int  lista_tratar(jan_t *j, lista_t *l, const evento_t *e);

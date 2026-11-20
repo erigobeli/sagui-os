@@ -28,6 +28,9 @@ void teclado_byte(uint8_t b);
 void mouse_byte(uint8_t b);
 
 static bool mouse_ligado;
+static bool mouse_com_roda;   /* pacotes de 4 bytes (H134) */
+
+bool i8042_mouse_roda(void) { return mouse_com_roda; }
 static i8042_diag_t diag;
 
 const i8042_diag_t *i8042_diagnostico(void) { return &diag; }
@@ -111,7 +114,7 @@ static void gravar_config(uint8_t cfg)
 bool i8042_iniciar(bool com_mouse)
 {
     bool ints = int_salva_desliga();
-    diag = (i8042_diag_t){ -1, -1, -1, -1, 0 };
+    diag = (i8042_diag_t){ -1, -1, -1, -1, 0, 0 };
     comando(0xAD);                       /* teclado e mouse quietos durante a configuração */
     comando(0xA7);
     descartar_pendentes();               /* a fila TEM que estar vazia antes de pedir a configuração */
@@ -146,6 +149,17 @@ bool i8042_iniciar(bool com_mouse)
         /* 200 pacotes por segundo (comando 0xF3 "taxa de amostragem" do
          * protocolo PS/2): o padrão de 100 deixa o cursor aos saltos. Quem não
          * aceitar segue no padrão (H81, do Robson). */
+        /* Roda (H134): o "IntelliMouse" liga a roda quando recebe as taxas
+         * 200, 100 e 80 seguidas; aí responde 3 ao "quem é você?" (0xF2) e
+         * cada pacote ganha um 4º byte com os passos da roda. Mouse sem roda
+         * continua dizendo 0, com pacotes de 3 bytes. */
+        if (diag.resposta_padrao == 0xFA) {
+            static const uint8_t batida[3] = { 200, 100, 80 };
+            bool aceitou = true;
+            for (int k = 0; k < 3 && aceitou; k++) aceitou = para_mouse(0xF3) == 0xFA && para_mouse(batida[k]) == 0xFA;
+            if (aceitou && para_mouse(0xF2) == 0xFA) diag.id_mouse = ler_resposta();
+            mouse_com_roda = diag.id_mouse == 3;
+        }
         if (diag.resposta_padrao == 0xFA && para_mouse(0xF3) == 0xFA) para_mouse(200);
         diag.resposta_ligar = para_mouse(0xF4);    /* começar a enviar */
         ok = diag.resposta_padrao == 0xFA && diag.resposta_ligar == 0xFA;
@@ -163,8 +177,8 @@ bool i8042_iniciar(bool com_mouse)
     irq_registrar(1, ao_interromper);
     if (ok) irq_registrar(12, ao_interromper);
     int_restaura(ints);
-    klog("[I8042] config lida %x, gravada %x; mouse: padrao=%x reset=%x ligar=%x -> %s\n",
+    klog("[I8042] config lida %x, gravada %x; mouse: padrao=%x reset=%x ligar=%x id=%d -> %s%s\n",
          (uint32_t)diag.config_lida, cfg, (uint32_t)diag.resposta_padrao, (uint32_t)diag.resposta_reset,
-         (uint32_t)diag.resposta_ligar, ok ? "ligado" : "nao respondeu");
+         (uint32_t)diag.resposta_ligar, diag.id_mouse, ok ? "ligado" : "nao respondeu", ok && mouse_com_roda ? ", com roda" : "");
     return ok;
 }

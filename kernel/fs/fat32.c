@@ -240,6 +240,7 @@ typedef struct {
     uint32_t setor, desloc;           /* onde está a entrada curta */
     uint32_t setor_lfn, desloc_lfn;   /* a primeira entrada de nome longo (ou a curta) */
     uint32_t qtd_lfn;
+    uint32_t data;                    /* modificação: dia << 16 | hora (bytes 24 e 22 da entrada curta) */
 } entrada_t;
 
 typedef struct {
@@ -302,6 +303,7 @@ static bool ler_entrada(cursor_t *c, entrada_t *e)
         e->atributos = x[11];
         e->primeiro = (uint32_t)(x[26] | (x[27] << 8)) | ((uint32_t)(x[20] | (x[21] << 8)) << 16);
         e->tamanho = *(uint32_t *)(x + 28);
+        e->data = (uint32_t)(x[24] | x[25] << 8) << 16 | (uint32_t)(x[22] | x[23] << 8);
         e->setor = sn; e->desloc = desl;
         if (partes && soma == soma_curta(x)) {
             int k = 0;
@@ -723,6 +725,17 @@ int fat_info(const char *rel, info_arquivo_t *inf)
     if (!achar(rel, &e)) return terminar(ERRO_NAO_EXISTE);
     inf->tipo = (e.atributos & ATR_PASTA) ? TIPO_PASTA : TIPO_ARQUIVO;
     inf->tamanho = (e.atributos & ATR_PASTA) ? 0 : e.tamanho;
+    return terminar(0);
+}
+
+/* A data de modificação gravada na entrada (H135); a raiz não tem: 0. */
+int fat_data(const char *rel, uint32_t *data)
+{
+    *data = 0;
+    if (!*rel) return 0;
+    entrada_t e;
+    if (!achar(rel, &e)) return terminar(ERRO_NAO_EXISTE);
+    *data = e.data;
     return terminar(0);
 }
 
