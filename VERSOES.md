@@ -53,6 +53,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   media queries de intervalo funcionam: (width >= 600px), (width > 600px),
   (400px <= width <= 1000px), com em.
 
+- **Cipó:** seletores novos: :has(), :is() e :where() com listas inteiras,
+  :not() com lista, :first-of-type, :last-of-type, :only-of-type,
+  :only-child, :nth-of-type(), :nth-last-child(), :nth-last-of-type(),
+  :checked e :disabled. E object-fit, object-position e aspect-ratio.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
