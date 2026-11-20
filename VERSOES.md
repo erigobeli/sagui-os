@@ -32,6 +32,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   `data_arquivo` lê, e `ls -l` mostra. Os arquivos que vêm na imagem do
   sistema não têm data até alguém mexer neles (H135).
 
+- **Roda do mouse:** o kernel liga a roda dos mouses PS/2 que têm (o
+  "IntelliMouse") e manda o evento EV_RODA para a janela sob o cursor. As
+  listas, as áreas de texto (o Editor) e o Cipó rolam com ela (H134).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

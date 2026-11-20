@@ -315,6 +315,7 @@ typedef struct {
 #define EV_FECHAR    5   /* clicaram no X da moldura */
 #define EV_REDIMENSIONAR 6  /* a janela mudou de tamanho: x = largura, y = altura novas (H78) */
 #define EV_MENU      7   /* item escolhido no menu aberto por SIS_MENU_JANELA: tecla = índice (H81) */
+#define EV_RODA      8   /* roda do mouse sobre a janela (H134): tecla = passos, com sinal (int); positivo = para baixo */
 
 /* Opções de janela (SIS_JANELA_OPCOES). */
 #define JAN_REDIMENSIONAVEL 1
