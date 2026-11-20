@@ -934,6 +934,7 @@ static void abrir_ctx(int icone, int x, int y)
     ctx_novo(CTX_ICONE, icone);
     int tipo = area_icone_tipo(icone);
     ctx_item("Abrir", ACAO_ABRIR);
+    if (area_icone_lixeira_cheia(icone)) ctx_item("Esvaziar lixeira...", ACAO_ESVAZIAR);
     if (tipo == 2) ctx_item("Remover com segurança", ACAO_DESMONTAR);
     else if (tipo != 3) {                         /* o instalador: só abrir */
         ctx_item("Renomear", ACAO_RENOMEAR);

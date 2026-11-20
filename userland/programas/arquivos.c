@@ -650,6 +650,35 @@ static void esvaziar_lixeira(void)
     carregar();
 }
 
+/* "arquivos --esvaziar": o menu do ícone da Lixeira na área de trabalho.
+ * Pergunta e esvazia as duas lixeiras (a da memória e a do pendrive, se
+ * houver), sem abrir a janela do Arquivos. */
+static int conta_lixeira(const char *lix)
+{
+    entrada_pasta_t e;
+    int n = 0;
+    for (int k = 0; listar(lix, k, &e) == 1; k++) if (e.nome[0] != '.') n++;
+    return n;
+}
+
+static int esvaziar_lixeiras(void)
+{
+    static const char *const lix[2] = { "/.lixeira", "/usb/.lixeira" };
+    int n = conta_lixeira(lix[0]) + conta_lixeira(lix[1]);
+    if (n == 0) { mensagem("Esvaziar lixeira", "A lixeira já está vazia."); return 0; }
+    char pergunta[120];
+    formatar_texto(pergunta, sizeof pergunta, "Apagar de vez %s na lixeira?", n == 1 ? "o item que está" : "os itens que estão");
+    if (!confirmar("Esvaziar lixeira", pergunta)) { registrar("arquivos: esvaziar lixeira: desistiu"); return 0; }
+    for (int q = 0; q < 2; q++) {
+        info_arquivo_t inf;
+        if (info_arquivo(lix[q], &inf) < 0) continue;
+        int r = apagar_tudo(lix[q], 0);
+        criar_pasta(lix[q]);
+        registrar("arquivos: lixeira esvaziada %s (%d)", lix[q], r);
+    }
+    return 0;
+}
+
 static void abrir_lixeira(void)
 {
     const char *lix = comeca_com(pasta, "/usb") && !na_lixeira() ? "/usb/.lixeira" : "/.lixeira";
@@ -721,6 +750,7 @@ static void menu_de_contexto(int x, int y)
 
 int principal(int argc, char **argv)
 {
+    if (argc > 1 && compara_texto(argv[1], "--esvaziar") == 0) return esvaziar_lixeiras();
     if (argc > 1) copia_texto(pasta, argv[1], sizeof pasta);
     if (na_lixeira()) criar_pasta(pasta);   /* o ícone da Lixeira abre aqui antes de ela existir */
     j = jan_abrir("Arquivos", LARG, ALT);

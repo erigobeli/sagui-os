@@ -28,6 +28,7 @@ void area_icone_direito(int i);
 #define ACAO_REMOVER    3
 #define ACAO_ESCONDER   4
 #define ACAO_DESMONTAR  5
+#define ACAO_ESVAZIAR   6   /* a Lixeira: esvaziar (as duas: a da memória e a do pendrive) */
 const char *area_icone_nome(int i);      /* o nome embaixo do ícone */
 /* Seleção de ícones pelo laço (somar: mantém os já marcados). */
 void area_selecionar(int x, int y, int l, int a, bool somar);
@@ -35,6 +36,7 @@ bool area_limpar_selecao(void);            /* true se havia algo marcado */
 bool area_icone_selecionado(int i);
 int  area_qtd_selecionados(void);
 int  area_icone_tipo(int i);              /* 0 sistema, 1 instalado, 2 pendrive */
+bool area_icone_lixeira_cheia(int i);     /* é a Lixeira, e ela tem alguma coisa */
 void area_icone_acao(int i, int acao);
 bool area_editando(void);                  /* renomeando um ícone no lugar */
 bool area_editar(int i);
