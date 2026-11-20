@@ -20,6 +20,7 @@ int  escrever(int fd, const void *b, unsigned n) { return chamar(SIS_ESCREVER, (
 int  fechar(int fd)                   { return chamar(SIS_FECHAR, (unsigned)fd, 0, 0); }
 int  posicionar(int fd, int d, int o) { return chamar(SIS_POSICIONAR, (unsigned)fd, (unsigned)d, (unsigned)o); }
 int  info_arquivo(const char *c, info_arquivo_t *i) { return chamar(SIS_INFO_ARQUIVO, (unsigned)c, (unsigned)i, 0); }
+int  data_arquivo(const char *c, data_t *d) { return chamar(SIS_DATA_ARQUIVO, (unsigned)c, (unsigned)d, 0); }
 int  criar_pasta(const char *c)       { return chamar(SIS_CRIAR_PASTA, (unsigned)c, 0, 0); }
 int  remover_pasta(const char *c)     { return chamar(SIS_REMOVER_PASTA, (unsigned)c, 0, 0); }
 int  apagar(const char *c)            { return chamar(SIS_APAGAR, (unsigned)c, 0, 0); }

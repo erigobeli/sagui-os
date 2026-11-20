@@ -45,6 +45,7 @@ int  escrever(int fd, const void *buf, unsigned n);
 int  fechar(int fd);
 int  posicionar(int fd, int desloc, int origem);
 int  info_arquivo(const char *caminho, info_arquivo_t *info);
+int  data_arquivo(const char *caminho, data_t *d);   /* modificação; d->ano == 0: não se sabe (H135) */
 /* ---- pastas ---- */
 int  criar_pasta(const char *caminho);
 int  remover_pasta(const char *caminho);

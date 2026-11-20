@@ -27,6 +27,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Data de modificação:** os arquivos e pastas guardam quando mudaram (na
+  memória e no pendrive, onde o FAT32 já gravava a data). A chamada nova
+  `data_arquivo` lê, e `ls -l` mostra. Os arquivos que vêm na imagem do
+  sistema não têm data até alguém mexer neles (H135).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
