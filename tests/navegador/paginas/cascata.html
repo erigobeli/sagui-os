@@ -15,6 +15,13 @@ body{margin:0;background:#fff}
 .calc3{width:max(10%, 200px);height:10px;background:#000}
 .calc4{width:calc((100% - 40px) / 3);height:10px;background:#000}
 .calc5{width:clamp(100px, 10vw, 120px);height:10px;background:#000}
+.mq{height:10px;background:#ff0000}
+@media (width >= 900px){.mq1{background:#00ff00}}
+@media (width > 946px){.mq2{background:#00ff00}}
+@media (width <= 946px){.mq2{background:#0000ff}}
+@media (400px <= width <= 1000px){.mq3{background:#00ff00}}
+@media (60em < width){.mq4{background:#00ff00}}
+@media (width < 60em){.mq4{background:#0000ff}}
 </style></head><body>
 <div class="camada" style="height:20px"></div>
 <div class="imp" style="height:20px"></div>
@@ -25,4 +32,5 @@ body{margin:0;background:#fff}
 <div class="calc3"></div><div style="height:10px"></div>
 <div class="calc4"></div><div style="height:10px"></div>
 <div class="calc5"></div>
+<div class="mq mq1"></div><div class="mq mq2"></div><div class="mq mq3"></div><div class="mq mq4"></div>
 </body></html>

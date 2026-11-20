@@ -288,7 +288,9 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
 }
 
 /* Imagens que chegaram juntas (pipelining, H129), esperando o motor pedir. */
-#define ADIANTADAS 16
+#define ADIANTADAS 64   /* imagens (16 por vez) ou as folhas de estilo da página */
+#define LOTE 16         /* o máximo de um rede_lote */
+static bool lendo_folhas;   /* o motor está lendo a página (o que chega são folhas de estilo) */
 static struct { char *url; uint8_t *d; unsigned n; } adiantadas[ADIANTADAS];
 
 static void soltar_adiantadas(void)
@@ -306,10 +308,10 @@ static void soltar_adiantadas(void)
 static void adiantar_imagens(void)
 {
     for (int i = 0; i < ADIANTADAS; i++) if (adiantadas[i].url) return;
-    const char *pedidas[ADIANTADAS];
-    int q = motor_imagens_proximas(motor, pedidas, ADIANTADAS);
-    static char ends[ADIANTADAS][MAX_URL];
-    const char *urls[ADIANTADAS];
+    const char *pedidas[LOTE];
+    int q = motor_imagens_proximas(motor, pedidas, LOTE);
+    static char ends[LOTE][MAX_URL];
+    const char *urls[LOTE];
     int k = 0;
     for (int i = 0; i < q; i++) {
         endereco_resolver(url_atual, pedidas[i], ends[k], MAX_URL);
@@ -328,7 +330,7 @@ static void adiantar_imagens(void)
         k++;
     }
     if (k < 2) return;   /* uma só: o caminho de sempre */
-    static rede_resposta_t rs[ADIANTADAS];
+    static rede_resposta_t rs[LOTE];
     unsigned t0 = tempo_ms();
     int prontas = rede_lote(urls, k, rs, MAX_RECURSO);
     perf.rede += tempo_ms() - t0; perf.n_rede += (unsigned)prontas;
@@ -347,6 +349,57 @@ static void adiantar_imagens(void)
     }
 }
 
+/* mesmo servidor? (o esquema e o host, até a primeira barra depois dele) */
+static bool mesmo_servidor(const char *a, const char *b)
+{
+    const char *pa = acha_char(a + 8, '/'), *pb = acha_char(b + 8, '/');
+    int la = pa ? (int)(pa - a) : (int)tam_texto(a), lb = pb ? (int)(pb - b) : (int)tam_texto(b);
+    return la == lb && compara_texto_n(a, b, (size_t)la) == 0;
+}
+
+/* As folhas de estilo da página, pedidas juntas, servidor por servidor
+ * (gancho do motor, antes de ele pedir uma a uma): o GitHub tem 37. */
+static void adiantar_folhas(const char *const *lista, int n)
+{
+    static bool feita[ADIANTADAS];
+    if (n > ADIANTADAS) n = ADIANTADAS;
+    for (int i = 0; i < n; i++) {
+        feita[i] = !comeca_com(lista[i], "http://") && !comeca_com(lista[i], "https://");
+        /* já no cache (o motor do JavaScript relê a mesma página): nada a buscar */
+        for (int c = 0; c < qtd_cache && !feita[i]; c++) if (compara_texto(cache[c].url, lista[i]) == 0) feita[i] = true;
+    }
+    unsigned t0 = tempo_ms();
+    int pedidas = 0, lotes = 0;
+    for (int i = 0; i < n; i++) {
+        if (feita[i]) continue;
+        const char *urls[LOTE]; int k = 0;
+        for (int j = i; j < n && k < LOTE; j++)
+            if (!feita[j] && mesmo_servidor(lista[i], lista[j])) { urls[k++] = lista[j]; feita[j] = true; }
+        if (k < 2) continue;   /* uma só: o caminho de sempre, quando o motor pedir */
+        static rede_resposta_t rs[LOTE];
+        int prontas = rede_lote(urls, k, rs, MAX_RECURSO);
+        lotes++;
+        for (int x = 0; x < k; x++) {
+            bool ok = x < prontas && rs[x].d && rs[x].situacao >= 200 && rs[x].situacao < 300;
+            int vaga = -1;
+            for (int v = 0; ok && v < ADIANTADAS && vaga < 0; v++) if (!adiantadas[v].url) vaga = v;
+            if (vaga >= 0) {
+                int t = (int)tam_texto(urls[x]);
+                adiantadas[vaga].url = aloca((unsigned)t + 1);
+                if (adiantadas[vaga].url) {
+                    memcpy(adiantadas[vaga].url, urls[x], (unsigned)t + 1);
+                    adiantadas[vaga].d = rs[x].d;
+                    adiantadas[vaga].n = rs[x].n;
+                    pedidas++;
+                    continue;
+                }
+            }
+            libera(rs[x].d);
+        }
+    }
+    registrar("navegador: folhas de estilo juntas: %d de %d em %d lote(s), %u ms", pedidas, n, lotes, tempo_ms() - t0);
+}
+
 /* Recurso da página (CSS, imagem, fonte, script): só os que deram certo. */
 static uint8_t *baixar_recurso(const char *u, unsigned *n)
 {
@@ -359,6 +412,14 @@ static uint8_t *baixar_recurso(const char *u, unsigned *n)
             libera(adiantadas[i].url);
             adiantadas[i].url = NULL;
             adiantadas[i].d = NULL;
+            /* uma folha de estilo fica no cache também: a página viva relê as folhas */
+            if (lendo_folhas && qtd_cache < CACHE_N && cache_total + *n <= CACHE_MAX) {
+                int k = (int)tam_texto(end);
+                char *cu = aloca((unsigned)k + 1);
+                uint8_t *cd = copia_bloco(d, *n);
+                if (cu && cd) { memcpy(cu, end, (unsigned)k + 1); cache[qtd_cache].url = cu; cache[qtd_cache].d = cd; cache[qtd_cache].n = *n; qtd_cache++; cache_total += *n; }
+                else { libera(cu); libera(cd); }
+            }
             return d;
         }
     for (int i = 0; i < qtd_cache; i++)
@@ -438,7 +499,7 @@ static bool decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int
     return ok;
 }
 
-static const motor_ganchos_t ganchos_motor = { baixar_recurso, decodificar, tela2d_pixels };
+static const motor_ganchos_t ganchos_motor = { baixar_recurso, decodificar, tela2d_pixels, adiantar_folhas };
 
 /* Layout pedido por um script (medidas): um motor à parte diagrama o DOM
  * atual com o CSS em cache e devolve as caixas. Fica vivo para o
@@ -676,7 +737,10 @@ static void ler_pagina(const char *h, int n)
     if (motor) motor_fim(motor);
     motor = motor_novo(&ganchos_motor);
     if (!motor) { altura = 0; return; }
+    lendo_folhas = true;
     motor_ler(motor, h, n, url_atual);
+    lendo_folhas = false;
+    soltar_adiantadas();   /* sobrou alguma folha? o espaço volta para as imagens */
     diagramar();
 }
 

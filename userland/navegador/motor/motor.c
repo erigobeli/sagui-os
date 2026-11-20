@@ -1486,6 +1486,48 @@ static void ler_folha(motor_t *m, const char *s, int n, int prof)
     }
 }
 
+/* Media Queries 4, sintaxe de intervalo: "width >= 600px", "600px < width",
+ * "400px <= width <= 800px" (e height). em e rem valem 16px aqui. */
+static bool media_intervalo(motor_t *m, const char *q, int n)
+{
+    const char *p[3]; int t[3]; char op[2][3]; int np = 0, no = 0;
+    int i = 0;
+    while (i < n && np < 3) {
+        while (i < n && eh_esp(q[i])) i++;
+        int ini = i;
+        while (i < n && q[i] != '<' && q[i] != '>' && q[i] != '=') i++;
+        int fim = i;
+        while (fim > ini && eh_esp(q[fim - 1])) fim--;
+        p[np] = q + ini; t[np++] = fim - ini;
+        if (i >= n) break;
+        if (no >= 2) return false;
+        int k = 0;
+        while (i < n && (q[i] == '<' || q[i] == '>' || q[i] == '=') && k < 2) op[no][k++] = q[i++];
+        op[no++][k] = 0;
+    }
+    if (np != no + 1 || np < 2) return false;
+    int feat = -1;   /* qual pedaço é o nome */
+    for (int k = 0; k < np; k++)
+        if ((t[k] == 5 && igual_n(p[k], "width", 5)) || (t[k] == 6 && igual_n(p[k], "height", 6))) feat = k;
+    if (feat < 0) return false;
+    int fv = p[feat][0] == 'w' ? m->vw : m->vh;
+    for (int k = 0; k < no; k++) {
+        /* compara o pedaço k com o k+1 */
+        int lado = k == feat ? k + 1 : k;   /* o pedaço com o valor */
+        double px;
+        if (!calc_avaliar(p[lado], t[lado], -1, 16, &px)) {
+            char tmp[48]; int nn = t[lado] < 40 ? t[lado] : 40;
+            formatar_texto(tmp, sizeof tmp, "calc(%.*s)", nn, p[lado]);
+            if (!calc_avaliar(tmp, (int)tam_texto(tmp), -1, 16, &px)) return false;
+        }
+        double a = k == feat ? fv : px, b = k == feat ? px : fv;
+        const char *o = op[k];
+        bool ok = o[0] == '<' ? (o[1] == '=' ? a <= b : a < b) : o[0] == '>' ? (o[1] == '=' ? a >= b : a > b) : a == b;
+        if (!ok) return false;
+    }
+    return true;
+}
+
 static bool media_ok(motor_t *m, const char *s, int n)
 {
     /* vírgula = "ou" */
@@ -1517,11 +1559,8 @@ static bool media_ok(motor_t *m, const char *s, int n)
                 else if (nn == 20 && igual_n(nm, "prefers-color-scheme", 20)) { const char *w = q + dp + 1; while (eh_esp(*w)) w++; r = *w == 'l'; }
                 else if (nn == 22 && igual_n(nm, "prefers-reduced-motion", 22)) r = false;
                 else if ((nn == 5 && igual_n(nm, "hover", 5)) || (nn == 7 && igual_n(nm, "pointer", 7))) r = true;
-                else if (dp < nq && (q[dp] == '<' || q[dp] == '>')) {   /* (width >= 600px) */
-                    bool maior = q[dp] == '>';
-                    int e = dp + 1; if (e < nq && q[e] == '=') e++;
-                    if (ler_medida_m(q + e, nq - e, &md)) { v = md.v; r = maior ? m->vw >= v : m->vw <= v; }
-                } else r = false;
+                else if (dp < nq && (q[dp] == '<' || q[dp] == '>')) r = media_intervalo(m, q, nq);
+                else r = false;
                 ok = ok && r;
                 i = f;
                 continue;
@@ -5351,6 +5390,27 @@ void motor_ler(motor_t *m, const char *html, int n, const char *url)
     copia_texto(m->url, url ? url : "", sizeof m->url);
     ler_html_m(m, html, n);
     char u[600];
+    /* As folhas de estilo vão todas para o navegador antes: ele pode
+     * buscá-las juntas (antes era uma ida e volta pela rede para cada). */
+    if (m->g.adiantar) {
+        static char ends[MAX_LINKS_CSS][600];
+        const char *lista[MAX_LINKS_CSS];
+        int k = 0;
+        char base[sizeof m->url];
+        copia_texto(base, m->url, sizeof base);
+        for (no_m *q = m->raiz; q && k < MAX_LINKS_CSS; q = proximo_no(q)) {
+            if (q->texto) continue;
+            if (igual(q->tag, "base")) { const char *h = atributo_m(q, "href"); if (h) { juntar(m->url, h, u, sizeof u); copia_texto(base, u, sizeof base); } }
+            if (!igual(q->tag, "link")) continue;
+            const char *rel = atributo_m(q, "rel"), *h = atributo_m(q, "href"), *lm = atributo_m(q, "media");
+            bool so_impressao = lm && (strstr_m(lm, "print") || strstr_m(lm, "speech")) && !strstr_m(lm, "screen") && !strstr_m(lm, "all");
+            if (!rel || !h || !strstr_m(rel, "stylesheet") || strstr_m(rel, "alternate") || so_impressao) continue;
+            juntar(base, h, ends[k], sizeof ends[k]);
+            lista[k] = ends[k];
+            k++;
+        }
+        if (k > 1) m->g.adiantar(lista, k);
+    }
     for (no_m *q = m->raiz; q; q = proximo_no(q)) {
         if (q->texto) continue;
         if (igual(q->tag, "base")) { const char *h = atributo_m(q, "href"); if (h) { juntar(m->url, h, u, sizeof u); copia_texto(m->url, u, sizeof m->url); } }

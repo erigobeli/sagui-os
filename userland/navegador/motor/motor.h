@@ -12,6 +12,9 @@ typedef struct {
     bool (*imagem)(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
     /* Pixels atuais de um <canvas> (data-sagui-canvas); NULL se não houver. */
     const uint32_t *(*tela)(int id, int *l, int *a);
+    /* Opcional: as folhas de estilo da página, todas de uma vez, antes de
+     * serem pedidas uma a uma pelo baixar (o navegador busca juntas). */
+    void (*adiantar)(const char *const *urls, int n);
 } motor_ganchos_t;
 
 /* Tipos de alvo de clique. */

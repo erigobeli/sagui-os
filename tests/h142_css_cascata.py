@@ -10,7 +10,9 @@ Critérios:
   - 1200 variáveis no :root: as regras de depois continuam valendo, e
     var(--v20) acha o valor certo;
   - calc() com %, vw, *, /, parênteses, e clamp/min/max dentro dão a
-    largura certa.
+    largura certa;
+  - media queries de intervalo: >=, > estrito, <=, a forma
+    "400px <= width <= 1000px" e em (16px).
 """
 import os
 import struct
@@ -63,6 +65,14 @@ def main():
     for yy, w, txt in esperado:
         medida = largura(yy)
         verificar(abs(medida - w) <= 1, f"{txt}: {medida} px (esperado {w:g})")
+    ymq = y + 90   # depois do .calc5: quatro faixas de 10 px
+    mq = [((0, 255, 0), "(width >= 900px) vale em 946"),
+          ((0, 0, 255), "(width > 946px) não vale em 946 (estrito); (width <= 946px) vale"),
+          ((0, 255, 0), "(400px <= width <= 1000px) vale"),
+          ((0, 0, 255), "(60em < width) não vale (960px); (width < 60em) vale")]
+    for k, (cor, txt) in enumerate(mq):
+        p = px[100, ymq + 5 + 10 * k]
+        verificar(p == cor, f"{txt} ({p})")
 
 
 if __name__ == "__main__":
