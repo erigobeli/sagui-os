@@ -38,6 +38,8 @@ int32_t sis_fechar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_posicionar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_info_arquivo(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_data_arquivo(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+int32_t sis_arrastar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+int32_t sis_arrasto(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_criar_pasta(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_remover_pasta(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 int32_t sis_apagar(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);

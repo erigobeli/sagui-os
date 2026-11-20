@@ -72,6 +72,8 @@ int  disco_liberar(const char *nome, const char *resumo) { return chamar(SIS_DIS
 int  disco_tabela(const char *nome, tabela_disco_t *t) { return chamar(SIS_DISCO_TABELA, (unsigned)nome, (unsigned)t, sizeof *t); }
 int  area_copia_gravar(const char *t, unsigned n) { return chamar(SIS_AREA_COPIA, 0, (unsigned)t, n); }
 int  area_copia_ler(char *buf, unsigned max) { return chamar(SIS_AREA_COPIA, 1, (unsigned)buf, max); }
+int  arrastar(int id, const char *caminhos, const char *rotulo) { return chamar(SIS_ARRASTAR, (unsigned)id, (unsigned)caminhos, (unsigned)rotulo); }
+int  arrasto_ler(char *buf, int max) { return chamar(SIS_ARRASTO, (unsigned)buf, (unsigned)max, 0); }
 int  menu_janela(int id, int x, int y, const char *itens) { return chamar(SIS_MENU_JANELA, (unsigned)id, (unsigned)(x | (y << 16)), (unsigned)itens); }
 int  janela_modo(int id, int modo) { return chamar(SIS_JANELA_MODO, (unsigned)id, (unsigned)modo, 0); }
 int  janela_opcoes(int id, int opcoes, int larg_min, int alt_min) { return chamar(SIS_JANELA_OPCOES, (unsigned)id, (unsigned)opcoes, (unsigned)(larg_min | (alt_min << 16))); }

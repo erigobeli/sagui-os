@@ -48,6 +48,12 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   Lixeira. No mesmo disco movem; entre a memória e o pendrive, copiam
   (H137).
 
+- **Arrastar para fora do Arquivos:** levado até outra janela do Arquivos,
+  vai para a pasta embaixo; até um ícone da área de trabalho, a Lixeira
+  manda para a lixeira, uma unidade copia para ela e um programa abre o
+  arquivo. O kernel leva o nome junto do cursor e diz o que vai acontecer
+  (SIS_ARRASTAR, SIS_ARRASTO, EV_SOLTAR; H138).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

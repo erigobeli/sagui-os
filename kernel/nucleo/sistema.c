@@ -28,6 +28,7 @@ static const chamada_t tabela[SIS_MAX] = {
     [SIS_ESCREVER] = sis_escrever,       [SIS_FECHAR] = sis_fechar,
     [SIS_POSICIONAR] = sis_posicionar,   [SIS_INFO_ARQUIVO] = sis_info_arquivo,
     [SIS_DATA_ARQUIVO] = sis_data_arquivo,
+    [SIS_ARRASTAR] = sis_arrastar,       [SIS_ARRASTO] = sis_arrasto,
     [SIS_CRIAR_PASTA] = sis_criar_pasta, [SIS_REMOVER_PASTA] = sis_remover_pasta,
     [SIS_APAGAR] = sis_apagar,           [SIS_LISTAR] = sis_listar,
     [SIS_MUDAR_PASTA] = sis_mudar_pasta, [SIS_PASTA_ATUAL] = sis_pasta_atual,
