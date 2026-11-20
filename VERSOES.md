@@ -60,6 +60,14 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   ejetar, Sobre o SaguiOS); e "Propriedades" mostra o sistema (versão,
   arquitetura, memória, espaço), uma pasta ou um arquivo (H139).
 
+- **Arquivos:** extrair e compactar pelo menu do botão direito. Num .zip,
+  .tar, .tar.gz ou .tgz: "Extrair aqui" e "Extrair para "nome/"" (a pasta
+  ganha " (2)" se o nome estiver em uso); num .gz, "Extrair aqui". Abrir um
+  pacote (duplo clique) extrai numa pasta nova e entra nela. Em qualquer
+  item, ou em vários marcados: "Compactar em .zip" e "Compactar em
+  .tar.gz". Nada é substituído: se um arquivo já existe, a extração pára e
+  avisa. Os menus do botão direito aceitam até 16 itens (eram 10).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
