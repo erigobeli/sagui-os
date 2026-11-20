@@ -12,11 +12,12 @@
  *   sobre-o-sistema historico   "Histórico de versões": o VERSOES.md, que o
  *                               build copia para /sistema/ajuda/versoes.md.
  *
- * Os textos já chegam em Latin-1 (o mksgfs.py converte os .txt e .md). Como
- * a área de texto da libsagui não quebra linhas sozinha, as linhas mais
- * largas que a área são quebradas aqui, num espaço, antes de mostrar. */
+ * Os textos já chegam em Latin-1 (o mksgfs.py converte os .txt e .md). Os
+ * .md aparecem formatados (títulos, negrito, listas, tabelas: markdown.h da
+ * libsagui); os .txt, como estão, com as linhas longas quebradas. */
 #include "sagui.h"
 #include "gui.h"
+#include "markdown.h"
 
 static const char *const cabeca[16] = {
     "...........EEEEEEEEEE...........",
@@ -58,58 +59,25 @@ static const char *const creditos[] = {
 
 /* ------------------------------------------------------------ textos */
 
-/* Quebra as linhas mais largas que "cols" letras, de preferência num espaço,
- * para o texto inteiro aparecer sem rolagem para o lado. Devolve um texto
- * novo (alocado) e o tamanho em *n. */
-static char *quebrar_linhas(const char *t, int tam, int cols, int *n)
-{
-    /* Cada quebra acrescenta no máximo um '\n' a cada "cols" letras. */
-    char *s = aloca((size_t)(tam + tam / (cols > 1 ? cols - 1 : 1) + 2));
-    if (!s) { *n = 0; return NULL; }
-    int k = 0, i = 0;
-    while (i < tam) {
-        int fim = i;
-        while (fim < tam && t[fim] != '\n') fim++;
-        int ini = i;
-        while (fim - ini > cols) {
-            int corte = ini + cols;
-            while (corte > ini && t[corte] != ' ') corte--;
-            if (corte == ini) {                  /* palavra maior que a linha: corta no meio */
-                corte = ini + cols;
-                memcpy(s + k, t + ini, (size_t)(corte - ini)); k += corte - ini;
-                ini = corte;
-            } else {
-                memcpy(s + k, t + ini, (size_t)(corte - ini)); k += corte - ini;
-                ini = corte + 1;                 /* o espaço vira a quebra */
-            }
-            s[k++] = '\n';
-        }
-        memcpy(s + k, t + ini, (size_t)(fim - ini)); k += fim - ini;
-        if (fim < tam) s[k++] = '\n';
-        i = fim + 1;
-    }
-    s[k] = 0;
-    *n = k;
-    return s;
-}
-
-/* Carrega um arquivo de texto na área, já com as linhas quebradas. Devolve o
+/* Mostra um arquivo: .md formatado, o resto como texto puro. Devolve o
  * tamanho do arquivo, ou o erro. */
-static int carregar_texto(area_t *a, const char *caminho)
+static int carregar_texto(md_t *m, const char *caminho)
 {
     uint8_t *dados;
     int tam = ler_arquivo_inteiro(caminho, &dados);
     if (tam < 0) {
         char aviso[160];
         int n = formatar_texto(aviso, sizeof aviso, "Não consegui abrir %s (%s).", caminho, nome_erro(tam));
-        area_definir(a, aviso, n);
+        md_definir(m, aviso, n, true);
         return tam;
     }
-    int cols = (a->l - 12 - 10) / LETRA_L, n;   /* 12 da barra de rolagem, 10 das margens */
-    char *q = quebrar_linhas((const char *)dados, tam, cols, &n);
-    if (q) { area_definir(a, q, n); libera(q); }
-    else area_definir(a, (const char *)dados, tam);
+    int nc = (int)tam_texto(caminho);
+    bool md = nc > 3 && compara_texto(caminho + nc - 3, ".md") == 0;
+    md_definir(m, (const char *)dados, tam, !md);
     libera(dados);
+    char r[200];
+    md_resumo(m, r, sizeof r);
+    registrar("markdown: %s: %s", caminho, r);
     return tam;
 }
 
@@ -154,13 +122,14 @@ static int ler_indice(void)
     return qtd;
 }
 
-static void mostrar_item(jan_t *j, area_t *a, lista_t *l)
+static void mostrar_item(jan_t *j, md_t *a, lista_t *l)
 {
     char caminho[96], linha[72];
     formatar_texto(caminho, sizeof caminho, "/sistema/licencas/%s", arquivos[l->sel]);
     int tam = carregar_texto(a, caminho);
-    area_desenhar(j, a);
-    primeira_linha(a->buf, linha, sizeof linha);
+    md_desenhar(j, a);
+    jan_mostrar_area(j, a->x - 1, a->y - 1, a->l + 2, a->a + 2);
+    primeira_linha(a->fonte ? a->fonte : "", linha, sizeof linha);
     registrar("licencas: mostrando %s (%d bytes): %s", itens[l->sel], tam, linha);
 }
 
@@ -172,16 +141,15 @@ static int janela_creditos(void)
     g_retangulo(j, 0, 0, L, A, COR_FUNDO);
     int qtd = ler_indice();
     lista_t lista = { .x = 10, .y = 10, .l = 270, .a = A - 60, .itens = itens, .qtd = qtd, .sel = 0, .topo = 0, .icone = NULL };
-    area_t area;
-    if (!area_iniciar(&area, 290, 10, L - 300, A - 60)) return 1;
-    area.somente_leitura = true;   /* dá para selecionar e copiar, não para mudar */
+    md_t area;
+    md_iniciar(&area, 291, 11, L - 302, A - 62);
     botao_t fechar = { L - 100, A - 40, 90, 28, "Fechar", false };
     if (qtd == 0) {
         static const char aviso[] = "A pasta /sistema/licencas não foi encontrada nesta imagem.";
-        area_definir(&area, aviso, (int)sizeof aviso - 1);
+        md_definir(&area, aviso, (int)sizeof aviso - 1, true);
     }
     lista_desenhar(j, &lista);
-    area_desenhar(j, &area);
+    md_desenhar(j, &area);
     botao_desenhar(j, &fechar);
     rotulo(j, 10, A - 34, "Os textos estão também em /sistema/licencas.", COR_TEXTO_FRACO);
     jan_mostrar(j);
@@ -194,11 +162,12 @@ static int janela_creditos(void)
         if (e.tipo == EV_FECHAR) break;
         if (botao_tratar(j, &fechar, &e)) break;
         if (e.tipo == EV_TECLA && e.tecla == TECLA_ESC) break;
-        area_tratar(j, &area, &e);
-        if (e.tipo == EV_TECLA && area.foco) continue;   /* as setas rolam o texto que tem o foco */
+        /* as setas vão para a lista; PgUp, PgDn, Home, End, Ctrl+C e o mouse, para o texto */
+        if (!(e.tipo == EV_TECLA && (e.tecla == TECLA_CIMA || e.tecla == TECLA_BAIXO)) && md_tratar(j, &area, &e)) continue;
         int anterior = lista.sel, r = lista_tratar(j, &lista, &e);
         if ((r == LISTA_SELECIONOU || r == LISTA_ATIVOU) && lista.sel != anterior) mostrar_item(j, &area, &lista);
     }
+    md_fim(&area);
     jan_fechar(j);
     return 0;
 }
@@ -211,16 +180,15 @@ static int janela_historico(void)
     jan_t *j = jan_abrir("Histórico de versões", L, A);
     if (!j) return 1;
     g_retangulo(j, 0, 0, L, A, COR_FUNDO);
-    area_t area;
-    if (!area_iniciar(&area, 10, 10, L - 20, A - 60)) return 1;
-    area.somente_leitura = true;
+    md_t area;
+    md_iniciar(&area, 11, 11, L - 22, A - 62);
     int tam = carregar_texto(&area, "/sistema/ajuda/versoes.md");
     botao_t fechar = { L - 100, A - 40, 90, 28, "Fechar", false };
-    area_desenhar(j, &area);
+    md_desenhar(j, &area);
     botao_desenhar(j, &fechar);
     jan_mostrar(j);
     char linha[72];
-    primeira_linha(area.buf, linha, sizeof linha);
+    primeira_linha(area.fonte ? area.fonte : "", linha, sizeof linha);
     registrar("historico: pronto (%d bytes): %s", tam, linha);
     evento_t e;
     for (;;) {
@@ -228,8 +196,9 @@ static int janela_historico(void)
         if (e.tipo == EV_FECHAR) break;
         if (botao_tratar(j, &fechar, &e)) break;
         if (e.tipo == EV_TECLA && e.tecla == TECLA_ESC) break;
-        area_tratar(j, &area, &e);
+        md_tratar(j, &area, &e);
     }
+    md_fim(&area);
     jan_fechar(j);
     return 0;
 }
