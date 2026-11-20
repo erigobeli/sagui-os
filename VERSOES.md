@@ -35,6 +35,13 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 - **Cipó:** rolar ou clicar enquanto as imagens chegam não as deixa mais
   faltando: a carga continua depois, e a barra de baixo volta a "Pronto".
 
+- **Cipó:** visual novo. Em cima, a aba com o ícone e o título da página (o
+  "+" abre outra janela, o "x" fecha esta); embaixo, os botões com ícones
+  desenhados, o endereço arredondado com o cadeado do HTTPS e a estrela que
+  guarda ou tira a página dos favoritos, e o menu dos três pontos. Os
+  favoritos ficam numa barra própria, a linha azul mostra a carga e o status
+  virou um balão no canto, por cima da página. Ctrl+D, Ctrl+N, F5 e Ctrl+R.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
