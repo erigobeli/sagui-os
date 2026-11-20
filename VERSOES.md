@@ -36,6 +36,13 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   "IntelliMouse") e manda o evento EV_RODA para a janela sob o cursor. As
   listas, as áreas de texto (o Editor) e o Cipó rolam com ela (H134).
 
+- **Arquivos de cara nova**: barra de
+  comandos (Novo, Renomear, Apagar, Ordenar), barra de endereço com voltar,
+  avançar, subir, atualizar, o caminho clicável e a pesquisa, painel de
+  navegação com o lugar atual marcado, lista em colunas (nome, data de
+  modificação, tipo, tamanho) com ordenação pelo cabeçalho e barra de
+  status (H136).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

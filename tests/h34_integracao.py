@@ -13,6 +13,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import arquivos_ui as ui  # noqa: E402
 from qemu import Maquina, verificar, imagem_console, criar_pendrive, pendrive_qemu, RAIZ  # noqa: E402
 
 NOTA = "Nota salva no pendrive pelo SaguiOS. Ação!"
@@ -103,7 +104,7 @@ def main():
         m.esperar_serial("editor: fechado", 10)
         time.sleep(0.5)
 
-        m.clique(arq["x"] + 8 + 62, arq["y"] + 148 + 22)             # "Remover com segurança"
+        m.clique(*ui.no_painel(m.serial(), arq, "MEUPEN", ejetar=True))   # ejetar o pendrive, no painel (H136)
         m.esperar_serial("notificacao: Pode remover o pendrive.", 15)
         time.sleep(0.5)
         m.captura("H34-4-pode-remover")
@@ -115,7 +116,11 @@ def main():
         png = m.captura("H34-5-pendrive-removido")
         verificar(azuis(png) == 0, f"removido: o ícone some ({azuis(png)} pixels do azul dele)")
 
-        # Espeta de novo, monta pelo ícone e arranca sem desmontar.
+        # Espeta de novo, monta pelo ícone e arranca sem desmontar. O Arquivos
+        # (900x560 desde a H136) cobre o ícone do pendrive: fecha antes.
+        m.clique(arq["x"] + 400, arq["y"] + 300)
+        m.tecla("alt-f4")
+        time.sleep(1)
         espetar(m, pen, "p2")
         m.esperar_serial("usb1: QEMU", 20)
         time.sleep(1)

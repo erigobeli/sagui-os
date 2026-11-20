@@ -24,9 +24,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qemu import Maquina, FalhaTeste, verificar, janela, cor_do_pixel  # noqa: E402
 
-LATERAL = 140
-LISTA_X, LISTA_Y = LATERAL + 6, 70
-ITEM = 20
+LATERAL = 200                      # o visual novo (H136): painel de 200 px
+LISTA_X, LISTA_Y = LATERAL + 1, 92 + 30
+ITEM = 28
 
 
 def esperar(m, texto, tempo=15, desde=0):
