@@ -1501,6 +1501,207 @@ static void abrir_lugar(int k)
     ir(l->caminho);
 }
 
+/* ------------------------------------------------------------ arrastar (H137)
+ *
+ * Segurar um item marcado e mover o mouse arrasta todos os marcados. O nome
+ * (ou "3 itens") vai junto do cursor, com "Mover para ..." quando há um
+ * destino embaixo: uma pasta da lista, uma pasta ou atalho do painel, ou um
+ * pedaço do caminho. Soltar move; entre a memória e o pendrive, copia (os
+ * originais ficam). Soltar na Lixeira manda para a lixeira. */
+static bool arr_pronto, arr_movendo;
+static int arr_x0, arr_y0, arr_mx, arr_my;
+static char arr_destino[160];        /* "" = nenhum destino válido embaixo */
+static char arr_rotulo[48];          /* o nome do destino, para o "Mover para" */
+static int fan_x, fan_y, fan_l, fan_a;   /* onde o fantasma foi desenhado (para apagar) */
+
+static bool mesmo_disco(const char *a, const char *b)
+{
+    bool ua = comeca_com(a, "/usb/") || compara_texto(a, "/usb") == 0;
+    bool ub = comeca_com(b, "/usb/") || compara_texto(b, "/usb") == 0;
+    return ua == ub;
+}
+
+/* Copia um arquivo ou uma pasta inteira (entre discos). */
+static int copiar_tudo(const char *de, const char *para, int nivel)
+{
+    info_arquivo_t inf;
+    int r = info_arquivo(de, &inf);
+    if (r < 0) return r;
+    if (inf.tipo == TIPO_PASTA) {
+        if (nivel > 32) return ERRO_LIMITE;
+        r = criar_pasta(para);
+        if (r < 0) return r;
+        entrada_pasta_t e;
+        for (int i = 0; listar(de, i, &e) == 1; i++) {
+            char a[200], b[200];
+            formatar_texto(a, sizeof a, "%s/%s", de, e.nome);
+            formatar_texto(b, sizeof b, "%s/%s", para, e.nome);
+            r = copiar_tudo(a, b, nivel + 1);
+            if (r < 0) return r;
+        }
+        return 0;
+    }
+    int fe = abrir(de, ABRIR_LER);
+    if (fe < 0) return fe;
+    int fs = abrir(para, ABRIR_ESCREVER | ABRIR_CRIAR);
+    if (fs < 0) { fechar(fe); return fs; }
+    static char bloco[4096];
+    int n;
+    r = 0;
+    while ((n = ler(fe, bloco, sizeof bloco)) > 0)
+        if (escrever_tudo(fs, bloco, (unsigned)n) < 0) { r = ERRO_ES; break; }
+    fechar(fe);
+    fechar(fs);
+    return r;
+}
+
+/* O destino embaixo de (x, y), se dá para soltar lá. */
+static void achar_destino(int x, int y)
+{
+    arr_destino[0] = arr_rotulo[0] = 0;
+    lista.sob = 0;
+    int ls = -1, sg = -1;
+    char c[160] = "";
+    if (x >= lista.x && y >= lista.y && y < lista.y + lista.a) {
+        int i = lista.topo + (y - lista.y - 2) / ITEM_A;
+        if (i >= 0 && i < lista.qtd && tipos[i] == TIPO_PASTA && !marc[i]) {
+            caminho_de(i, c, sizeof c);
+            copia_texto(arr_rotulo, nomes[i], sizeof arr_rotulo);
+            lista.sob = i + 1;
+        }
+    } else if (x < LATERAL + 1 && y >= CORPO_Y) {
+        bool ej;
+        ls = lugar_em(x, y, &ej);
+        if (ls >= 0) { copia_texto(c, lugares[ls].caminho, sizeof c); copia_texto(arr_rotulo, lugares[ls].texto, sizeof arr_rotulo); }
+    } else if (y >= END_Y && y < CORPO_Y) {
+        sg = seg_em(x, y);
+        if (sg >= 0) { copia_texto(c, segs[sg].caminho, sizeof c); copia_texto(arr_rotulo, segs[sg].texto, sizeof arr_rotulo); }
+    }
+    if (ls != lugar_sob) { lugar_sob = ls; ejetar_sob = false; }
+    if (sg != seg_sob) seg_sob = sg;
+    if (!c[0]) return;
+    bool lixeira = compara_texto(c, "/.lixeira") == 0;
+    if (!lixeira) {
+        if (compara_texto(c, pasta) == 0) return;                     /* já está aqui */
+        if (comeca_com(c, "/bin") || comeca_com(c, "/sistema")) return;   /* do sistema */
+        if (comeca_com(c, "/usb") && !(tem_pendrive && pendrive.montado)) return;
+        for (int i = 0; i < lista.qtd; i++) {                         /* uma pasta não vai para dentro dela mesma */
+            if (!marc[i]) continue;
+            char o[160];
+            caminho_de(i, o, sizeof o);
+            int n = (int)tam_texto(o);
+            if (compara_texto_n(c, o, (size_t)n) == 0 && (c[n] == 0 || c[n] == '/')) return;
+        }
+    } else if (na_lixeira()) return;
+    copia_texto(arr_destino, c, sizeof arr_destino);
+}
+
+static void apagar_fantasma(void)
+{
+    if (!fan_l) return;
+    /* redesenha o que estava embaixo: cada parte que o fantasma tocou */
+    if (fan_y < CMD_A) desenhar_cmds();
+    if (fan_y + fan_a > END_Y && fan_y < CORPO_Y) desenhar_endereco();
+    if (fan_x < LATERAL + 1 && fan_y + fan_a > CORPO_Y) desenhar_lateral();
+    if (fan_x + fan_l > lista.x && fan_y < CORPO_Y + CAB_A && fan_y + fan_a > CORPO_Y) cabecalho();
+    if (fan_x + fan_l > lista.x && fan_y + fan_a > lista.y) desenhar_lista();
+    if (fan_y + fan_a > ALT - STATUS_A) desenhar_status();
+    fan_l = 0;
+}
+
+static void desenhar_fantasma(int x, int y)
+{
+    int n = lista_qtd_marcados(&lista), um = -1;
+    for (int i = 0; i < lista.qtd && um < 0; i++) if (marc[i]) um = i;
+    char t1[64], t2[80];
+    if (n == 1 && um >= 0) copia_texto(t1, nomes[um], sizeof t1);
+    else formatar_texto(t1, sizeof t1, "%d itens", n);
+    t2[0] = 0;
+    if (arr_destino[0]) {
+        bool lx = compara_texto(arr_destino, "/.lixeira") == 0;
+        char um_c[160] = "";
+        if (um >= 0) caminho_de(um, um_c, sizeof um_c);
+        formatar_texto(t2, sizeof t2, "%s %s", lx ? "Mandar para a" : mesmo_disco(um_c, arr_destino) ? "Mover para" : "Copiar para", arr_rotulo);
+    }
+    int l1 = g_largura_texto(t1), l2 = t2[0] ? g_largura_texto(t2) : 0;
+    int l = 16 + 22 + (l1 > l2 ? l1 : l2) + 12, a = t2[0] ? 46 : 28;
+    if (l > 300) l = 300;
+    x += 14; y += 10;
+    if (x + l > LARG) x = LARG - l;
+    if (y + a > ALT) y = ALT - a;
+    g_ret_redondo(j, x, y, l, a, 5, 0xEAF3FF, 0xEAF3FF);
+    g_contorno_redondo(j, x, y, l, a, 5, 0x8DB8E8);
+    if (um >= 0) icone(j, x + 8, y + 6, um);
+    g_texto_n(j, x + 30, y + 6, t1, (l - 38) / LETRA_L, C_TEXTO);
+    if (t2[0]) g_texto_n(j, x + 10, y + 26, t2, (l - 18) / LETRA_L, arr_destino[0] ? C_MARCA : C_FRACO);
+    jan_mostrar_area(j, x, y, l, a);
+    fan_x = x; fan_y = y; fan_l = l; fan_a = a;
+}
+
+static void arrastar_mover(int x, int y)
+{
+    if (!arr_movendo) {
+        int dx = x - arr_x0, dy = y - arr_y0;
+        if (dx * dx + dy * dy < 36) return;
+        arr_movendo = true;
+        devagar_i = -1;
+        lista.pendente = 0;   /* arrastou: a seleção fica como está */
+        registrar("arquivos: arrastando %d itens", lista_qtd_marcados(&lista));
+    }
+    arr_mx = x; arr_my = y;
+    char antes[160];
+    copia_texto(antes, arr_destino, sizeof antes);
+    int lsob = lugar_sob, ssob = seg_sob, sob = lista.sob;
+    achar_destino(x, y);
+    bool mudou = compara_texto(antes, arr_destino) != 0 || lsob != lugar_sob || ssob != seg_sob || sob != lista.sob;
+    if (mudou) {   /* o destaque mudou: redesenha tudo o que pode estar marcado */
+        fan_l = 0;
+        desenhar_lista();
+        desenhar_lateral();
+        desenhar_endereco();
+    } else apagar_fantasma();
+    desenhar_fantasma(x, y);
+}
+
+static void arrastar_soltar(void)
+{
+    bool movendo = arr_movendo;
+    arr_pronto = arr_movendo = false;
+    if (!movendo) return;
+    apagar_fantasma();
+    char dest[160];
+    copia_texto(dest, arr_destino, sizeof dest);
+    arr_destino[0] = 0;
+    lista.sob = 0;
+    lugar_sob = seg_sob = -1;
+    if (!dest[0]) { registrar("arquivos: arrastar: solto fora de um destino"); desenhar_tudo(); return; }
+    if (compara_texto(dest, "/.lixeira") == 0) { registrar("arquivos: arrastado para a lixeira"); apagar_item(); return; }
+    static int itens[MAX_ITENS];
+    int n = alvos(itens), feitos = 0;
+    bool copiou = false;
+    for (int k = 0; k < n; k++) {
+        int i = itens[k];
+        char de[200], para[220];
+        caminho_de(i, de, sizeof de);
+        if (protegido(de)) { char m[200]; formatar_texto(m, sizeof m, "%s é do sistema ou é o pendrive:\nnão dá para mover daqui.", de); mensagem("Arquivos", m); continue; }
+        formatar_texto(para, sizeof para, "%s%s%s", dest, compara_texto(dest, "/") == 0 ? "" : "/", nomes[i]);
+        info_arquivo_t inf;
+        if (info_arquivo(para, &inf) == 0) { char m[260]; formatar_texto(m, sizeof m, "Já existe %s.", para); mensagem("Arquivos", m); continue; }
+        int r;
+        if (mesmo_disco(de, dest)) r = renomear(de, para);
+        else { r = copiar_tudo(de, para, 0); copiou = true; }
+        if (r < 0) { char m[240]; formatar_texto(m, sizeof m, "Não consegui %s %s:\n%s", copiou ? "copiar" : "mover", nomes[i], nome_erro(r)); mensagem("Arquivos", m); continue; }
+        registrar("arquivos: %s %s -> %s", copiou ? "copiado" : "movido", de, para);
+        feitos++;
+    }
+    carregar();
+    if (feitos) {
+        char m[120];
+        formatar_texto(m, sizeof m, "%d %s %s para %s", feitos, feitos == 1 ? "item" : "itens", copiou ? (feitos == 1 ? "copiado" : "copiados") : (feitos == 1 ? "movido" : "movidos"), dest);
+        desenhar_rodape(m);
+    }
+}
+
 /* Teclas na caixa de pesquisa: a lista filtra a cada letra. */
 static void tecla_busca(unsigned t)
 {
@@ -1649,6 +1850,12 @@ int principal(int argc, char **argv)
             else if (r == LISTA_DESISTIU) desenhar_rodape("Nome mantido.");
             if (e.tipo == EV_TECLA || r == LISTA_NADA) continue;
         }
+        if (e.tipo == EV_MOVER && (e.botoes & 1) && arr_pronto) { arrastar_mover(e.x, e.y); continue; }
+        if (e.tipo == EV_SOLTOU && arr_pronto) {
+            bool movia = arr_movendo;
+            arrastar_soltar();
+            if (movia) continue;   /* sem arrastar, a lista ainda trata o soltar (o "pendente") */
+        }
         if (e.tipo == EV_MOVER && !(e.botoes & 1)) mover(&e);
         if (e.tipo == EV_CLIQUE && clique_fora_da_lista(&e)) continue;
         if (e.tipo == EV_TECLA && busca_foco) { tecla_busca(e.tecla); continue; }
@@ -1685,6 +1892,12 @@ int principal(int argc, char **argv)
             desenhar_status();
             menu_de_contexto(e.x, e.y);
             continue;
+        }
+        /* Apertou num item marcado: pode ser o começo de um arrastar (H137). */
+        if (e.tipo == EV_CLIQUE && (e.botoes & 1) && e.cliques < 2 && !lista.laco && !lista.editando &&
+            e.y >= lista.y && e.x >= lista.x) {
+            int i = lista.topo + (e.y - lista.y - 2) / ITEM_A;
+            if (i >= 0 && i < lista.qtd && marc[i] && !na_lixeira()) { arr_pronto = true; arr_movendo = false; arr_x0 = e.x; arr_y0 = e.y; }
         }
         if (r == LISTA_EDITOU) { terminar_renomear(); continue; }
         if (r == LISTA_DEVAGAR) { if (!fechou_edicao) { devagar_i = lista.sel; devagar_ms = tempo_ms(); } continue; }

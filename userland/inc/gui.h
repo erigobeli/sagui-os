@@ -124,6 +124,10 @@ typedef struct {
     int  sob;
     int  larg_nome;
     void (*colunas)(jan_t *j, int y, int item);
+    /* Apertar num item que já está marcado junto com outros não desmarca os
+     * outros (pode ser o começo de um arrastar); soltar sem arrastar deixa só
+     * ele marcado. pendente = item + 1; quem arrasta zera. (H137) */
+    int  pendente;
 } lista_t;
 void lista_desenhar(jan_t *j, lista_t *l);
 int  lista_tratar(jan_t *j, lista_t *l, const evento_t *e);

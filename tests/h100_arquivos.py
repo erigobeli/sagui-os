@@ -99,7 +99,7 @@ def main():
 
         # Laço: do vazio à direita da primeira linha até a terceira.
         n = len(m.serial())
-        m.mouse_para(x0 + LISTA_X + 400, y0 + LISTA_Y + 6)
+        m.mouse_para(x0 + LISTA_X + 520, y0 + LISTA_Y + 6)   # na coluna da data: fora do nome (H137)
         m.monitor("mouse_button 1")
         time.sleep(0.2)
         m.mouse_mover(x0 + LISTA_X + 30, y0 + LISTA_Y + 2 + 3 * ITEM + 30)   # até abaixo do último

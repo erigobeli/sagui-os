@@ -43,6 +43,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   modificação, tipo, tamanho) com ordenação pelo cabeçalho e barra de
   status (H136).
 
+- **Arrastar no Arquivos:** arquivos e pastas marcados vão, arrastando, para
+  uma pasta da lista, da árvore do painel, um pedaço do caminho ou a
+  Lixeira. No mesmo disco movem; entre a memória e o pendrive, copiam
+  (H137).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

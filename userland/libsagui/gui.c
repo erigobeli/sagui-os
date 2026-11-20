@@ -703,7 +703,8 @@ static void lista_marcar_laco(lista_t *l)
     int vis = lista_vis(l);
     for (int k = 0; k < vis && l->topo + k < l->qtd; k++) {
         int i = l->topo + k, ry0 = l->y + 2 + k * lista_alt(l), ry1 = ry0 + lista_alt(l) - 1;
-        bool toca = y0 <= ry1 && ry0 <= y1 && x0 <= lista_fim_texto(l, i) && l->x + 3 <= x1;
+        int fim_item = l->colunas && l->larg_nome > 0 ? lista_fim_nome(l) : lista_fim_texto(l, i);
+        bool toca = y0 <= ry1 && ry0 <= y1 && x0 <= fim_item && l->x + 3 <= x1;
         l->marc[i] = toca;
     }
 }
@@ -805,6 +806,12 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
         lista_desenhar(j, l);
         return LISTA_NADA;
     }
+    if (e->tipo == EV_SOLTOU && l->pendente) {   /* soltou sem arrastar: fica só o item apertado */
+        int i = l->pendente - 1;
+        l->pendente = 0;
+        if (i < l->qtd) { lista_desmarcar(l); l->marc[i] = 1; l->sel = i; lista_desenhar(j, l); }
+        return LISTA_SELECIONOU;
+    }
     if (l->claro && e->tipo == EV_MOVER && !(e->botoes & 1)) {   /* a linha sob o mouse */
         int k = (e->y - l->y - 2) / lista_alt(l), i = l->topo + k;
         int sob = dentro(e->x, e->y, l->x, l->y, l->l, l->a) && e->y >= l->y + 2 && k < lista_vis(l) && i < l->qtd ? i + 1 : 0;
@@ -813,7 +820,10 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
     }
     if (e->tipo == EV_CLIQUE && dentro(e->x, e->y, l->x, l->y, l->l, l->a)) {
         int i = l->topo + (e->y - l->y - 2) / lista_alt(l);
-        bool no_item = i >= 0 && i < l->qtd && (e->y - l->y - 2) >= 0 && e->x <= lista_fim_texto(l, i) + 12;
+        /* No item: sobre o nome. Na lista com colunas, a coluna do nome inteira
+         * (o laço começa nas outras colunas ou abaixo das linhas). */
+        int fim_item = l->colunas && l->larg_nome > 0 ? lista_fim_nome(l) : lista_fim_texto(l, i) + 12;
+        bool no_item = i >= 0 && i < l->qtd && (e->y - l->y - 2) >= 0 && e->x <= fim_item;
         if (!l->marc) {
             if (i < 0 || i >= l->qtd) return LISTA_NADA;
             l->sel = i;
@@ -846,7 +856,9 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
          * o começo de um "renomear devagar" (o programa espera o duplo clique
          * não vir antes de abrir a edição). */
         bool era_unico = !ctrl && !shift && e->cliques < 2 && l->sel == i && l->marc[i] && lista_qtd_marcados(l) == 1;
+        l->pendente = 0;
         if (ctrl) l->marc[i] = !l->marc[i];
+        else if (l->marc[i] && lista_qtd_marcados(l) > 1 && e->cliques < 2 && !shift) l->pendente = i + 1;   /* pode ser um arrastar */
         else if (shift && l->sel >= 0) {
             int a = l->sel < i ? l->sel : i, b = l->sel < i ? i : l->sel;
             lista_desmarcar(l);

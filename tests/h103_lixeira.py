@@ -39,7 +39,7 @@ def main():
         a = janela(m.serial(), "Arquivos")
 
         # a.txt é o 1º item: já vem marcado. Delete > Sim.
-        m.clique(*ui.item(a, 0))
+        # o 1º item já vem marcado (clicar nele de novo seria o renomear devagar)
         m.tecla("delete")
         m.esperar_serial('"Apagar"', 10)
         time.sleep(0.8)
@@ -109,7 +109,7 @@ def main():
         m.esperar_serial("arquivos: pasta /tmp/lx (1 itens)", 30)
         time.sleep(1)
         a = janela(m.serial(), "Arquivos")
-        m.clique(*ui.item(a, 0))
+        # o 1º item já vem marcado (clicar nele de novo seria o renomear devagar)
         m.tecla("shift-delete")
         m.esperar_serial('"Apagar"', 10)
         time.sleep(0.8)
