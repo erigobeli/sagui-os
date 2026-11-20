@@ -77,6 +77,9 @@ typedef struct {
     uint8_t colapsa;                    /* border-collapse: collapse (herdado) */
     const char *sombra;                 /* box-shadow (texto; lido na pintura) */
     const char *tsombra;                /* text-shadow (texto; herdado) */
+    uint8_t ajuste;                     /* object-fit: 0 fill, 1 contain, 2 cover, 3 none, 4 scale-down */
+    const char *obj_pos;                /* object-position (texto), NULL = 50% 50% */
+    int32_t razao;                      /* aspect-ratio: largura/altura x 1000, 0 = auto */
 } estilo_t;
 
 typedef struct atr { char *nome, *valor; struct atr *prox; } atr_t;
@@ -124,12 +127,19 @@ typedef struct {
     char comb;          /* combinador À ESQUERDA deste composto: ' ', '>', '+', '~', 0 */
     const char *nao_tag, *nao_classe;
     uint8_t pseudo;     /* 1 ::before, 2 ::after */
+    uint8_t nth_tipo;   /* tem_nth: 1 = só irmãos da mesma tag (*-of-type), 2 = contando do fim (nth-last-*) */
+    uint8_t so_filho, so_tipo, prim_tipo, ult_tipo;   /* :only-child, :only-of-type, :first-of-type, :last-of-type */
+    struct sublista *sub[3]; int nsub;   /* :not(), :is(), :where(), :has() com listas de seletores */
 } composto_t;
 
-typedef struct {
+typedef struct seletor_s {
     composto_t c[MAX_COMP]; int n;
     int espec;
 } seletor_t;
+
+/* A lista de dentro de :not(), :is(), :where() ou :has() (CSS Selectors 4). */
+enum { SUB_NAO, SUB_E, SUB_ONDE, SUB_TEM };
+typedef struct sublista { uint8_t tipo; int n; seletor_t *s; char *comb; int espec; } sublista_t;   /* comb: o de :has(> x) */
 
 typedef struct { int prop; const char *valor; uint8_t importante; } decl_t;
 
@@ -584,7 +594,7 @@ enum {
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
     PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING, PR_FILL, PR_STROKE, PR_SWIDTH, PR_BSPACING, PR_BCOLLAPSE,
-    PR_BSHADOW, PR_TSHADOW,
+    PR_BSHADOW, PR_TSHADOW, PR_OBJFIT, PR_OBJPOS, PR_ASPECT,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -599,7 +609,7 @@ static const char *const nomes_prop[] = {
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
     "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing", "fill", "stroke", "stroke-width", "border-spacing", "border-collapse",
-    "box-shadow", "text-shadow",
+    "box-shadow", "text-shadow", "object-fit", "object-position", "aspect-ratio",
 };
 
 static int achar_prop(const char *p, int n)
@@ -912,6 +922,60 @@ static int palavras(const char *s, int n, const char **p, int *t, int max)
 
 static const char *pular_esp(const char *s, const char *f) { while (s < f && eh_esp(*s)) s++; return s; }
 
+/* an+b de :nth-child() e companhia ("odd", "even", "3", "2n+1", "-n+3"). */
+static void ler_nth(const char *arg, int na, int *pa, int *pb)
+{
+    const char *q = pular_esp(arg, arg + na), *qf = arg + na;
+    while (qf > q && eh_esp(qf[-1])) qf--;
+    /* "an+b of S" não é lido: só o an+b */
+    for (const char *o = q; o + 3 < qf; o++) if (eh_esp(o[0]) && o[1] == 'o' && o[2] == 'f' && eh_esp(o[3])) { qf = o; break; }
+    if (qf - q >= 3 && igual_n(q, "odd", 3)) { *pa = 2; *pb = 1; return; }
+    if (qf - q >= 4 && igual_n(q, "even", 4)) { *pa = 2; *pb = 0; return; }
+    int u, a = 0, b = 0;
+    int v = num100(q, (int)(qf - q), &u);
+    if (u && q + u < qf && q[u] == 'n') { a = v / 100; q += u + 1; }
+    else if (q < qf && *q == 'n') { a = 1; q++; }
+    else if (q + 1 < qf && q[0] == '-' && q[1] == 'n') { a = -1; q += 2; }
+    else if (q + 1 < qf && q[0] == '+' && q[1] == 'n') { a = 1; q += 2; }
+    else if (u) { b = v / 100; q = qf; }
+    q = pular_esp(q, qf);
+    if (q < qf && (*q == '+' || *q == '-')) { bool neg = *q == '-'; q = pular_esp(q + 1, qf); v = num100(q, (int)(qf - q), &u); b = neg ? -v / 100 : v / 100; }
+    *pa = a; *pb = b;
+}
+
+static bool ler_seletor(motor_t *m, const char *s, const char *f, seletor_t *sel);
+
+/* A lista de seletores de :not(), :is(), :where() ou :has(), separada por
+ * vírgulas. Em :has(), cada um é relativo: começa com > + ~ ou nada
+ * (descendente). Os que não dão para ler ficam de fora (lista tolerante). */
+static sublista_t *ler_sublista(motor_t *m, const char *arg, int na, int tipo)
+{
+    seletor_t tmp[16]; char cb[16]; int k = 0;
+    const char *f = arg + na;
+    for (const char *a = arg; a < f && k < 16;) {
+        const char *b = a; int prof = 0;
+        while (b < f && (prof || *b != ',')) { if (*b == '(') prof++; else if (*b == ')') prof--; b++; }
+        const char *q = pular_esp(a, b);
+        char comb = ' ';
+        if (tipo == SUB_TEM && q < b && (*q == '>' || *q == '+' || *q == '~')) { comb = *q; q = pular_esp(q + 1, b); }
+        const char *fim = b;
+        while (fim > q && eh_esp(fim[-1])) fim--;
+        if (fim > q && ler_seletor(m, q, fim, &tmp[k]) && !tmp[k].c[0].pseudo) cb[k++] = comb;
+        a = b + 1;
+    }
+    if (!k) return NULL;
+    sublista_t *sl = m_novo(m, sizeof(sublista_t));
+    seletor_t *v = m_novo(m, k * (int)sizeof(seletor_t));
+    char *c = m_novo(m, k);
+    if (!sl || !v || !c) return NULL;
+    memcpy(v, tmp, (size_t)k * sizeof(seletor_t));
+    memcpy(c, cb, (size_t)k);
+    sl->tipo = (uint8_t)tipo; sl->n = k; sl->s = v; sl->comb = c;
+    for (int i = 0; i < k; i++) if (v[i].espec > sl->espec) sl->espec = v[i].espec;   /* a do mais específico */
+    if (tipo == SUB_ONDE) sl->espec = 0;
+    return sl;
+}
+
 static bool ler_composto(motor_t *m, const char **ps, const char *f, composto_t *c)
 {
     const char *s = *ps;
@@ -982,37 +1046,25 @@ static bool ler_composto(motor_t *m, const char **ps, const char *f, composto_t 
             else if (np == 4 && igual_n(p0, "root", 4)) c->raiz = 1;
             else if (np == 5 && igual_n(p0, "empty", 5)) c->vazio = 1;
             else if (np == 4 && igual_n(p0, "link", 4)) { if (c->na < 3) { c->atr_nome[c->na] = "href"; c->atr_op[c->na] = 0; c->na++; } }
-            else if (np == 9 && igual_n(p0, "nth-child", 9) && arg) {
+            else if (np == 10 && igual_n(p0, "only-child", 10)) c->so_filho = 1;
+            else if (np == 13 && igual_n(p0, "first-of-type", 13)) c->prim_tipo = 1;
+            else if (np == 12 && igual_n(p0, "last-of-type", 12)) c->ult_tipo = 1;
+            else if (np == 12 && igual_n(p0, "only-of-type", 12)) c->so_tipo = 1;
+            else if (np == 7 && igual_n(p0, "checked", 7)) { if (c->na < 3) { c->atr_nome[c->na] = "checked"; c->atr_op[c->na] = 0; c->na++; } }
+            else if (np == 8 && igual_n(p0, "disabled", 8)) { if (c->na < 3) { c->atr_nome[c->na] = "disabled"; c->atr_op[c->na] = 0; c->na++; } }
+            else if (arg && ((np == 9 && igual_n(p0, "nth-child", 9)) || (np == 11 && igual_n(p0, "nth-of-type", 11)) ||
+                             (np == 14 && igual_n(p0, "nth-last-child", 14)) || (np == 16 && igual_n(p0, "nth-last-of-type", 16)))) {
+                if (c->tem_nth) { c->nunca = 1; algo = true; continue; }   /* dois nth no mesmo composto: raro, não casa */
                 c->tem_nth = 1;
-                if (na >= 3 && igual_n(arg, "odd", 3)) { c->nth_a = 2; c->nth_b = 1; }
-                else if (na >= 4 && igual_n(arg, "even", 4)) { c->nth_a = 2; c->nth_b = 0; }
-                else {
-                    int u, a = 0, b = 0;
-                    const char *q = arg, *qf = arg + na;
-                    int v = num100(q, (int)(qf - q), &u);
-                    if (u && q + u < qf && q[u] == 'n') { a = v / 100; q += u + 1; }
-                    else if (q < qf && *q == 'n') { a = 1; q++; }
-                    else if (q + 1 < qf && q[0] == '-' && q[1] == 'n') { a = -1; q += 2; }
-                    else if (u) { b = v / 100; q = qf; }
-                    q = pular_esp(q, qf);
-                    if (q < qf && (*q == '+' || *q == '-')) { bool neg = *q == '-'; q = pular_esp(q + 1, qf); v = num100(q, (int)(qf - q), &u); b = neg ? -v / 100 : v / 100; }
-                    c->nth_a = a; c->nth_b = b;
-                }
-            } else if (np == 3 && igual_n(p0, "not", 3) && arg) {
-                const char *q = pular_esp(arg, arg + na);
-                if (*q == '.') c->nao_classe = m_dup(m, q + 1, na - (int)(q + 1 - arg));
-                else if (eh_letra(*q)) c->nao_tag = m_dup(m, q, na - (int)(q - arg));
-            } else if ((np == 2 && igual_n(p0, "is", 2)) || (np == 5 && igual_n(p0, "where", 5))) {
-                /* :is(a, b): aceita se o primeiro for uma classe ou tag simples */
-                const char *q = pular_esp(arg, arg + na);
-                const char *fim = q;
-                while (fim < arg + na && *fim != ',' && *fim != ')') fim++;
-                composto_t sub;
-                const char *qq = q;
-                if (ler_composto(m, &qq, fim, &sub) && qq == fim) {
-                    if (sub.tag[0] && !c->tag[0]) copia_texto(c->tag, sub.tag, sizeof c->tag);
-                    for (int z = 0; z < sub.nc && c->nc < 6; z++) c->classes[c->nc++] = sub.classes[z];
-                } else c->nunca = 1;
+                c->nth_tipo = (uint8_t)((igual_n(p0 + np - 7, "of-type", 7) ? 1 : 0) | (np > 9 && igual_n(p0, "nth-last", 8) ? 2 : 0));
+                ler_nth(arg, na, &c->nth_a, &c->nth_b);
+            } else if (arg && ((np == 3 && igual_n(p0, "not", 3)) || (np == 2 && igual_n(p0, "is", 2)) ||
+                               (np == 5 && igual_n(p0, "where", 5)) || (np == 3 && igual_n(p0, "has", 3)) ||
+                               (np == 3 && igual_n(p0, "any", 3)) || (np == 7 && igual_n(p0, "matches", 7)))) {
+                int tipo = p0[0] == 'n' ? SUB_NAO : p0[0] == 'w' ? SUB_ONDE : p0[0] == 'h' ? SUB_TEM : SUB_E;
+                sublista_t *sl = c->nsub < 3 ? ler_sublista(m, arg, na, tipo) : NULL;
+                if (sl) c->sub[c->nsub++] = sl;
+                else if (tipo != SUB_NAO) c->nunca = 1;   /* :not() que não deu para ler não exclui nada */
             } else if ((np == 7 && igual_n(p0, "visited", 7)) || (np == 4 && igual_n(p0, "lang", 4)) || (np == 3 && igual_n(p0, "dir", 3))) {
             } else c->nunca = 1;   /* :hover, :focus, :checked... */
             algo = true;
@@ -1048,7 +1100,9 @@ static bool ler_seletor(motor_t *m, const char *s, const char *f, seletor_t *sel
         sel->c[i] = tmp[n - 1 - i];
         sel->c[i].comb = tmp[n - 1 - i].comb;
         composto_t *c = &sel->c[i];
-        sel->espec += (c->id ? 10000 : 0) + (c->nc + c->na + c->primeiro + c->ultimo + c->tem_nth + c->raiz + (c->nao_tag || c->nao_classe)) * 100 + (c->tag[0] ? 1 : 0);
+        sel->espec += (c->id ? 10000 : 0) + (c->nc + c->na + c->primeiro + c->ultimo + c->tem_nth + c->raiz + (c->nao_tag || c->nao_classe) +
+                       c->so_filho + c->so_tipo + c->prim_tipo + c->ult_tipo) * 100 + (c->tag[0] ? 1 : 0);
+        for (int k = 0; k < c->nsub; k++) sel->espec += c->sub[k]->espec;
     }
     sel->n = n;
     return true;
@@ -1069,6 +1123,30 @@ static bool tem_classe(const char *lista, const char *c)
 
 static no_m *irmao_ant(no_m *n) { for (n = n->ant; n; n = n->ant) if (!n->texto) return n; return NULL; }
 static no_m *irmao_prox(no_m *n) { for (n = n->prox; n; n = n->prox) if (!n->texto) return n; return NULL; }
+
+static bool bate_de(const seletor_t *s, int i, no_m *n);
+
+/* :has(): algum descendente (ou filho, ou irmão seguinte) casa. */
+static bool tem_que_casa(const seletor_t *s, char comb, no_m *n)
+{
+    if (comb == '+') { no_m *p = irmao_prox(n); return p && bate_de(s, 0, p); }
+    if (comb == '~') { for (no_m *p = irmao_prox(n); p; p = irmao_prox(p)) if (bate_de(s, 0, p)) return true; return false; }
+    for (no_m *f = n->filho; f; f = f->prox) {
+        if (f->texto) continue;
+        if (bate_de(s, 0, f)) return true;
+        if (comb == ' ' && tem_que_casa(s, ' ', f)) return true;
+    }
+    return false;
+}
+
+static bool bate_sublista(const sublista_t *sl, no_m *n)
+{
+    for (int i = 0; i < sl->n; i++) {
+        bool ok = sl->tipo == SUB_TEM ? tem_que_casa(&sl->s[i], sl->comb[i], n) : bate_de(&sl->s[i], 0, n);
+        if (ok) return sl->tipo != SUB_NAO;
+    }
+    return sl->tipo == SUB_NAO;
+}
 
 static bool bate_composto_m(const composto_t *c, no_m *n)
 {
@@ -1096,15 +1174,21 @@ static bool bate_composto_m(const composto_t *c, no_m *n)
     if (c->ultimo && irmao_prox(n)) return false;
     if (c->raiz && !(igual(n->tag, "html"))) return false;
     if (c->vazio && n->filho) return false;
+    if (c->so_filho && (irmao_ant(n) || irmao_prox(n))) return false;
+    if (c->prim_tipo || c->so_tipo) for (no_m *q = irmao_ant(n); q; q = irmao_ant(q)) if (igual(q->tag, n->tag)) return false;
+    if (c->ult_tipo || c->so_tipo) for (no_m *q = irmao_prox(n); q; q = irmao_prox(q)) if (igual(q->tag, n->tag)) return false;
     if (c->tem_nth) {
         int pos = 1;
-        for (no_m *q = irmao_ant(n); q; q = irmao_ant(q)) pos++;
+        bool tipo = c->nth_tipo & 1;
+        if (c->nth_tipo & 2) { for (no_m *q = irmao_prox(n); q; q = irmao_prox(q)) if (!tipo || igual(q->tag, n->tag)) pos++; }
+        else for (no_m *q = irmao_ant(n); q; q = irmao_ant(q)) if (!tipo || igual(q->tag, n->tag)) pos++;
         int d = pos - c->nth_b;
         if (c->nth_a == 0) { if (d) return false; }
         else if (d % c->nth_a || d / c->nth_a < 0) return false;
     }
     if (c->nao_tag && igual(c->nao_tag, n->tag)) return false;
     if (c->nao_classe && tem_classe(n->classe, c->nao_classe)) return false;
+    for (int k = 0; k < c->nsub; k++) if (!bate_sublista(c->sub[k], n)) return false;
     return true;
 }
 
@@ -2127,6 +2211,22 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_COLOR: if (ler_cor(v, nv, &c, e->cor)) e->cor = c & 0xFFFFFF; break;
     case PR_BSHADOW: e->sombra = nv == 4 && igual_n(v, "none", 4) ? NULL : m_dup(m, v, nv); break;
     case PR_TSHADOW: e->tsombra = nv == 4 && igual_n(v, "none", 4) ? NULL : m_dup(m, v, nv); break;
+    case PR_OBJFIT:
+        e->ajuste = igual_n(v, "contain", 7) ? 1 : igual_n(v, "cover", 5) ? 2 : igual_n(v, "none", 4) ? 3 : igual_n(v, "scale-down", 10) ? 4 : 0;
+        break;
+    case PR_OBJPOS: e->obj_pos = m_dup(m, v, nv); break;
+    case PR_ASPECT: {
+        /* "16 / 9", "16/9", "1.5", "auto 16/9" (o auto só vale sem proporção natural: aqui fica a razão) */
+        const char *q = v, *f = v + nv;
+        if (f - q >= 4 && igual_n(q, "auto", 4)) q += 4;
+        q = pular_esp(q, f);
+        int u1, u2 = 0, a = num100(q, (int)(f - q), &u1), b = 100;
+        if (!u1) { e->razao = 0; break; }
+        q = pular_esp(q + u1, f);
+        if (q < f && *q == '/') { q = pular_esp(q + 1, f); b = num100(q, (int)(f - q), &u2); if (!u2) b = 100; }
+        e->razao = a > 0 && b > 0 ? (int32_t)((int64_t)a * 1000 / b) : 0;
+        break;
+    }
     case PR_BGCOLOR: if (ler_cor(v, nv, &c, e->cor)) e->fundo = (c >> 24) >= 0x40 ? c : 0; break;
     case PR_BGPOS: e->bg_pos = m_dup(m, v, nv); e->bg_px = e->bg_py = NULL; break;
     case PR_BGPOSX: e->bg_px = m_dup(m, v, nv); break;
@@ -4096,7 +4196,8 @@ static void layout_conteudo(no_m *n, int cw, int ch)
     int usado = 0, h;
     int nl, na;
     if (tamanho_natural(n, &nl, &na)) {
-        if (igual(n->tag, "img") && nl > 0) h = muldiv(na, cw, nl);
+        if (e->razao > 0 && ch < 0) h = (int)((int64_t)cw * 1000 / e->razao);   /* aspect-ratio vale mais que a proporção natural */
+        else if (igual(n->tag, "img") && nl > 0) h = muldiv(na, cw, nl);
         else h = na;
         if (!igual(n->tag, "select") && !igual(n->tag, "input") && !igual(n->tag, "textarea") && !igual(n->tag, "video") && !igual(n->tag, "iframe")) {}
         n->a = h;
@@ -4109,6 +4210,14 @@ static void layout_conteudo(no_m *n, int cw, int ch)
     default: h = fluxo(n, cw, &usado); break;
     }
     n->a = h;
+}
+
+/* <img>, <video>, <svg>...: a altura vem do tamanho natural (layout_conteudo cuida do aspect-ratio deles) */
+static bool tamanho_natural_simples(no_m *n)
+{
+    return igual(n->tag, "img") || igual(n->tag, "video") || igual(n->tag, "svg") || igual(n->tag, "canvas") ||
+           igual(n->tag, "iframe") || igual(n->tag, "embed") || igual(n->tag, "object") || igual(n->tag, "input") ||
+           igual(n->tag, "select") || igual(n->tag, "textarea");
 }
 
 static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
@@ -4143,13 +4252,21 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
         if (e->alt.u == U_PCT && (igual(n->tag, "html") || igual(n->tag, "body"))) hh = res_med(&e->alt, mo->vh, e);
         if (hh >= 0) h = e->caixa_borda ? hh : hh + extra_v(n);
     }
+    /* aspect-ratio: sem altura, a largura dá a altura (que ainda cresce se o
+     * conteúdo não couber: é o min-height: auto) */
+    int pela_razao = -1;
+    if (h < 0 && e->razao > 0 && !tamanho_natural_simples(n)) {
+        int base = e->caixa_borda ? w : ccw;
+        int hr = (int)((int64_t)base * 1000 / e->razao);
+        pela_razao = h = e->caixa_borda ? hr : hr + extra_v(n);
+    }
     if (h >= 0 && h < extra_v(n)) h = extra_v(n);   /* border-box nunca fica menor que bordas + padding */
     int ch = h >= 0 ? h - extra_v(n) : -1;
     n->alt_def = ch >= 0 ? ch + 1 : 0;
     layout_conteudo(n, ccw, ch);
     int ah = n->a + extra_v(n);
     if (e->display == D_TABLE) w = n->l;
-    if (h >= 0) ah = h;
+    if (h >= 0 && (pela_razao < 0 || ah < h)) ah = h;
     int mxh = res_med(&e->max_a, -1, e);
     if (mxh >= 0) { if (!e->caixa_borda) mxh += extra_v(n); if (ah > mxh) ah = mxh; }
     int mnh = res_med(&e->min_a, -1, e);
@@ -4742,6 +4859,27 @@ static void svg_no_tamanho(imagem_m *im, int w, int h, uint32_t cor)
     if (im->px) libera(im->px);
     im->px = px; im->l = w; im->a = h; im->alfa = 1;
 }
+/* object-position: o deslocamento (em px) dentro da sobra (sl, sa) da caixa.
+ * Palavras (left, center, right, top, bottom), % e px; o padrão é o centro. */
+static void posicao_objeto(const estilo_t *e, int sl, int sa, int *ox, int *oy)
+{
+    int x = sl / 2, y = sa / 2;
+    if (e->obj_pos) {
+        const char *p[2]; int t[2];
+        int k = palavras(e->obj_pos, (int)tam_texto(e->obj_pos), p, t, 2);
+        for (int i = 0; i < k; i++) {
+            bool vert = (t[i] == 3 && igual_n(p[i], "top", 3)) || (t[i] == 6 && igual_n(p[i], "bottom", 6)) || (k == 2 && i == 1 && !(t[i] == 4 && igual_n(p[i], "left", 4)) && !(t[i] == 5 && igual_n(p[i], "right", 5)));
+            int sobra = vert ? sa : sl, *o = vert ? &y : &x;
+            medida_t md;
+            if ((t[i] == 4 && igual_n(p[i], "left", 4)) || (t[i] == 3 && igual_n(p[i], "top", 3))) *o = 0;
+            else if ((t[i] == 5 && igual_n(p[i], "right", 5)) || (t[i] == 6 && igual_n(p[i], "bottom", 6))) *o = sobra;
+            else if (t[i] == 6 && igual_n(p[i], "center", 6)) *o = sobra / 2;
+            else if (ler_medida_m(p[i], t[i], &md)) *o = md.u == U_PCT ? muldiv(md.v, sobra, 10000) : px_de(&md, e->tam);
+        }
+    }
+    *ox = x; *oy = y;
+}
+
 static void controle(no_m *n, int x, int y)
 {
     estilo_t *e = &n->e;
@@ -4750,9 +4888,31 @@ static void controle(no_m *n, int x, int y)
     if (igual(n->tag, "img")) {
         if (n->img >= 0 && mo->imgs[n->img].px) {
             cmd_t c; memset(&c, 0, sizeof c);
-            svg_no_tamanho(&mo->imgs[n->img], cl, ca, 0xFF000000u | e->cor);
-            c.tipo = C_IMG; c.x = cx; c.y = cy; c.l = cl; c.a = ca; c.img = n->img; c.raio = e->raio;
+            int dx = cx, dy = cy, dl = cl, da = ca;
+            imagem_m *im = &mo->imgs[n->img];
+            int nl = im->svg ? im->nl : im->l, na = im->svg ? im->na : im->a;
+            if (e->ajuste && nl > 0 && na > 0 && cl > 0 && ca > 0) {
+                /* object-fit: o tamanho desenhado; object-position: onde, dentro da caixa */
+                bool largo = (int64_t)nl * ca > (int64_t)na * cl;   /* a imagem é mais larga que a caixa */
+                int cl2 = largo ? cl : (int)((int64_t)nl * ca / na), ca2 = largo ? (int)((int64_t)na * cl / nl) : ca;   /* contain */
+                if (e->ajuste == 1) { dl = cl2; da = ca2; }
+                else if (e->ajuste == 2) { dl = largo ? (int)((int64_t)nl * ca / na) : cl; da = largo ? ca : (int)((int64_t)na * cl / nl); }
+                else if (e->ajuste == 3) { dl = nl; da = na; }
+                else { dl = nl < cl2 ? nl : cl2; da = nl < cl2 ? na : ca2; }
+                int px = 5000, py = 5000;   /* x100 por cento */
+                posicao_objeto(e, cl - dl, ca - da, &px, &py);
+                dx = cx + px; dy = cy + py;
+            }
+            svg_no_tamanho(im, dl, da, 0xFF000000u | e->cor);
+            c.tipo = C_IMG; c.x = dx; c.y = dy; c.l = dl; c.a = da; c.img = n->img; c.raio = e->raio;
             cmd_novo(&c);
+            if (dl > cl || da > ca || dx < cx || dy < cy) {   /* cover e none: recorta na caixa */
+                cmd_t *u = &mo->cmds[mo->n_cmds - 1];
+                if (u->cx0 < cx) u->cx0 = cx;
+                if (u->cy0 < cy) u->cy0 = cy;
+                if (u->cx1 > cx + cl) u->cx1 = cx + cl;
+                if (u->cy1 > cy + ca) u->cy1 = cy + ca;
+            }
         } else {
             const char *alt = atributo_m(n, "alt");
             if (alt && alt[0] && cl > 8) texto_cmd(cx, cy, cl, ca, alt, (int)tam_texto(alt) < cl / larg_letra(e) ? (int)tam_texto(alt) : cl / larg_letra(e), e, 0x6A737C);
