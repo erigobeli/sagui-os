@@ -487,6 +487,13 @@ static void copiar_selecao_area(area_t *a)
 bool area_tratar(jan_t *j, area_t *a, const evento_t *e)
 {
     bool mudou = false;
+    if (e->tipo == EV_RODA && dentro(e->x, e->y, a->x, a->y, a->l, a->a)) {   /* roda: 3 linhas por passo (H134) */
+        int max = total_linhas(a) - area_linhas_visiveis(a);
+        int t = a->topo + 3 * (int)e->tecla;
+        a->topo = t > max ? (max > 0 ? max : 0) : t < 0 ? 0 : t;
+        area_desenhar(j, a);
+        return false;
+    }
     /* Arrastar com o botão apertado estende a seleção. */
     if (e->tipo == EV_MOVER && a->arrastando && (e->botoes & 1)) {
         int p = posicao_em(a, e->x, e->y);
@@ -778,6 +785,13 @@ int lista_tratar(jan_t *j, lista_t *l, const evento_t *e)
             lista_desenhar(j, l);
             return LISTA_SELECIONOU;
         }
+    }
+    if (e->tipo == EV_RODA && dentro(e->x, e->y, l->x, l->y, l->l, l->a)) {   /* roda: 3 itens por passo (H134) */
+        int max = l->qtd - lista_vis(l);
+        int t = l->topo + 3 * (int)e->tecla;
+        l->topo = t > max ? (max > 0 ? max : 0) : t < 0 ? 0 : t;
+        lista_desenhar(j, l);
+        return LISTA_NADA;
     }
     if (e->tipo == EV_CLIQUE && dentro(e->x, e->y, l->x, l->y, l->l, l->a)) {
         int i = l->topo + (e->y - l->y - 2) / LISTA_ALTURA_ITEM;

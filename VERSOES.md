@@ -27,6 +27,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Roda do mouse:** o kernel liga a roda dos mouses PS/2 que têm (o
+  "IntelliMouse") e manda o evento EV_RODA para a janela sob o cursor. As
+  listas, as áreas de texto (o Editor) e o Cipó rolam com ela (H134).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
