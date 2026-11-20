@@ -51,7 +51,7 @@ int main(int argc, char **argv)
     copia_texto(pasta, argv[1], sizeof pasta);
     char *barra = strrchr(pasta, '/');
     if (barra) barra[1] = 0; else pasta[0] = 0;
-    motor_ganchos_t g = { baixar, imagem_decodificar, sem_tela };
+    motor_ganchos_t g = { baixar, imagem_decodificar, sem_tela, NULL };
     motor_t *m = motor_novo(&g);
     motor_ler(m, d, (int)n, argc > 4 ? argv[4] : "http://teste/pagina.html");
     /* Como o navegador: diagrama, e a cada leva de fontes e imagens, de novo. */
