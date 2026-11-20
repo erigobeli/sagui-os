@@ -24,9 +24,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qemu import Maquina, FalhaTeste, verificar, janela, cor_do_pixel  # noqa: E402
 
-LATERAL = 140
-LISTA_X, LISTA_Y = LATERAL + 6, 70
-ITEM = 20
+LATERAL = 200                      # o visual novo (H136): painel de 200 px
+LISTA_X, LISTA_Y = LATERAL + 1, 92 + 30
+ITEM = 28
 
 
 def esperar(m, texto, tempo=15, desde=0):
@@ -99,7 +99,7 @@ def main():
 
         # Laço: do vazio à direita da primeira linha até a terceira.
         n = len(m.serial())
-        m.mouse_para(x0 + LISTA_X + 400, y0 + LISTA_Y + 6)
+        m.mouse_para(x0 + LISTA_X + 520, y0 + LISTA_Y + 6)   # na coluna da data: fora do nome (H137)
         m.monitor("mouse_button 1")
         time.sleep(0.2)
         m.mouse_mover(x0 + LISTA_X + 30, y0 + LISTA_Y + 2 + 3 * ITEM + 30)   # até abaixo do último

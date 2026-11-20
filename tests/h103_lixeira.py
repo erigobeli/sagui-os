@@ -17,6 +17,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import arquivos_ui as ui  # noqa: E402
 from qemu import Maquina, verificar  # noqa: E402
 
 
@@ -38,7 +39,7 @@ def main():
         a = janela(m.serial(), "Arquivos")
 
         # a.txt é o 1º item: já vem marcado. Delete > Sim.
-        m.clique(a["x"] + 146 + 120, a["y"] + 70 + 2 + 0 * 20 + 8)
+        # o 1º item já vem marcado (clicar nele de novo seria o renomear devagar)
         m.tecla("delete")
         m.esperar_serial('"Apagar"', 10)
         time.sleep(0.8)
@@ -54,7 +55,8 @@ def main():
         # nem programas instalados, ele é o 9º ícone: 2ª coluna, 2ª linha.
         m.esperar_serial("[GUI] lixeira cheia", 10)
         verificar(True, "o ícone da Lixeira fica cheio")
-        time.sleep(0.5)
+        m.tecla("alt-f4")                 # o Arquivos (900x560 desde a H136) cobre o ícone
+        time.sleep(1)
         m.captura("H103-0-icone-cheio")
         n = len(m.serial())
         m.clique(20 + 110 + 30, 40 + 92 + 30, duplo=True)
@@ -69,13 +71,18 @@ def main():
         m.captura("H103-1-icone-abre")
         m.tecla("alt-f4")
         time.sleep(1)
+        n = len(m.serial())
+        m.digitar("arquivos /tmp/lx\n", 0.04)
+        m.esperar_serial("arquivos: pronto", 30)
+        time.sleep(1)
+        a = janela(m.serial(), "Arquivos")
 
-        m.clique(a["x"] + 8 + 60, a["y"] + a["a"] - 24 - 38 + 14)   # botão Lixeira, no pé da lateral
+        m.clique(*ui.lixeira(m.serial(), a))                       # Lixeira, no painel (H136)
         m.esperar_serial("arquivos: pasta /.lixeira (1 itens)", 10)
         verificar(True, "o botão Lixeira mostra o arquivo apagado (e esconde o .origens)")
         time.sleep(0.8)
         m.captura("H103-2-lixeira")
-        m.clique(a["x"] + 106 + 55, a["y"] + 7 + 13)   # Restaurar
+        m.clique(*ui.comando(a, "Restaurar", lixeira=True))   # Restaurar
         m.esperar_serial("arquivos: restaurado /.lixeira/a.txt -> /tmp/lx/a.txt", 10)
         verificar(True, "Restaurar devolve o arquivo para /tmp/lx")
         m.esperar_serial("arquivos: pasta /.lixeira (0 itens)", 10)
@@ -102,7 +109,7 @@ def main():
         m.esperar_serial("arquivos: pasta /tmp/lx (1 itens)", 30)
         time.sleep(1)
         a = janela(m.serial(), "Arquivos")
-        m.clique(a["x"] + 146 + 120, a["y"] + 70 + 2 + 8)
+        # o 1º item já vem marcado (clicar nele de novo seria o renomear devagar)
         m.tecla("shift-delete")
         m.esperar_serial('"Apagar"', 10)
         time.sleep(0.8)

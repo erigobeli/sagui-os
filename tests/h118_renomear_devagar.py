@@ -22,8 +22,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qemu import Maquina, FalhaTeste, verificar, janela  # noqa: E402
 
-LATERAL = 140
-LISTA_X, LISTA_Y = LATERAL + 6, 70
+LATERAL = 200                      # o visual novo (H136): painel de 200 px
+LISTA_X, LISTA_Y = LATERAL + 1, 92 + 30
 TERMINAL = (20 + 48, 24 + 16 + 1 * 92 + 30)   # o segundo ícone da coluna
 VAZIO = (60, 725)                              # área de trabalho sem ícone nem janela (embaixo da coluna)
 
@@ -101,7 +101,7 @@ def main():
         esperar(m, "arquivos: pronto", 30, n)
         time.sleep(1)
         a = janela(m.serial(), "Arquivos")
-        linha = (a["x"] + LISTA_X + 40, a["y"] + LISTA_Y + 2 + 10)   # o nome do primeiro item
+        linha = (a["x"] + LISTA_X + 40, a["y"] + LISTA_Y + 2 + 14)   # o nome do primeiro item
         n = len(m.serial())
         vazio = (a["x"] + LISTA_X + 300, a["y"] + LISTA_Y + 250)   # o vazio da lista
         devagar(m, *linha, limpar=vazio)
