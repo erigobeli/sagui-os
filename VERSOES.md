@@ -54,6 +54,12 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   arquivo. O kernel leva o nome junto do cursor e diz o que vai acontecer
   (SIS_ARRASTAR, SIS_ARRASTO, EV_SOLTAR; H138).
 
+- **Menus no painel do Arquivos:** o botão direito no SaguiOS, na Lixeira,
+  no pendrive e nas pastas da árvore abre o menu de cada um (abrir em nova
+  janela, expandir, nova pasta, renomear, apagar, esvaziar a lixeira,
+  ejetar, Sobre o SaguiOS); e "Propriedades" mostra o sistema (versão,
+  arquitetura, memória, espaço), uma pasta ou um arquivo (H139).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

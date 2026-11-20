@@ -1385,7 +1385,10 @@ static void abrir_lixeira(void)
  * só os "Novo", atualizar e voltar. Com vários marcados, o que vale para um
  * só (abrir, renomear) some. A escolha volta pelo índice; "acoes" diz qual é. */
 enum { AC_ABRIR, AC_EDITOR, AC_RENOMEAR, AC_APAGAR, AC_PASTA, AC_TEXTO, AC_PAGINA, AC_ATUALIZAR, AC_VOLTAR,
-       AC_RESTAURAR, AC_APAGAR_VEZ, AC_ESVAZIAR, AC_ORD_NOME, AC_ORD_DATA, AC_ORD_TIPO, AC_ORD_TAMANHO };
+       AC_RESTAURAR, AC_APAGAR_VEZ, AC_ESVAZIAR, AC_ORD_NOME, AC_ORD_DATA, AC_ORD_TIPO, AC_ORD_TAMANHO,
+       AC_PROPRIEDADES,
+       AC_P_ABRIR, AC_P_JANELA, AC_P_EXPANDIR, AC_P_RECOLHER, AC_P_ESVAZIAR, AC_P_EJETAR, AC_P_NOVA, AC_P_RENOMEAR,
+       AC_P_APAGAR, AC_P_SOBRE, AC_P_PROPRIEDADES };   /* AC_P_*: menu do painel (H139) */
 static int acoes[16], qtd_acoes;
 
 static void acao(char *itens, size_t max, const char *texto, int a)
@@ -1436,6 +1439,7 @@ static void menu_de_contexto(int x, int y)
     acao(itens, sizeof itens, "Nova página HTML", AC_PAGINA);
     if (!no_item) acao(itens, sizeof itens, "Atualizar", AC_ATUALIZAR);
     acao(itens, sizeof itens, "Voltar", AC_VOLTAR);
+    if (no_item && marcados == 1) acao(itens, sizeof itens, "Propriedades", AC_PROPRIEDADES);   /* por último (H139) */
     jan_menu(j, x, y, itens);
 }
 
@@ -1833,6 +1837,8 @@ static void mover(const evento_t *e)
     if (l != lugar_sob || ej != ejetar_sob) { lugar_sob = l; ejetar_sob = ej; desenhar_lateral(); }
 }
 
+static void menu_do_painel(int k, int x, int y);   /* H139, mais abaixo */
+
 /* Clique nas barras e no painel; devolve true se foi neles. */
 static bool clique_fora_da_lista(const evento_t *e)
 {
@@ -1863,6 +1869,7 @@ static bool clique_fora_da_lista(const evento_t *e)
     if (e->x < LATERAL + 1) {
         bool ej, seta;
         int k = lugar_em_seta(e->x, e->y, &ej, &seta);
+        if (k >= 0 && (e->botoes & 2)) { menu_do_painel(k, e->x, e->y); return true; }
         if (k < 0 || !(e->botoes & 1)) return true;
         if (ej) remover_pendrive();
         else if (seta) {   /* abre ou fecha o ramo, sem sair da pasta */
@@ -1892,6 +1899,245 @@ static void novo_tamanho(void)
     lista.l = LARG - LATERAL - 1;
     lista.a = ALT - CORPO_Y - CAB_A - STATUS_A;
     calcular_colunas();
+}
+
+/* ------------------------------------------------------------ menus do painel e Propriedades (H139) */
+
+static int menu_lugar = -1;         /* o item do painel do último menu */
+static char menu_caminho[160];
+
+static void medir(const char *c, int nivel, unsigned *arqs, unsigned *pastas, uint32_t *bytes)
+{
+    entrada_pasta_t e;
+    for (int i = 0; listar(c, i, &e) == 1; i++) {
+        if (e.nome[0] == '.') continue;
+        char f[200];
+        formatar_texto(f, sizeof f, "%s%s%s", c, compara_texto(c, "/") == 0 ? "" : "/", e.nome);
+        if (compara_texto(f, "/usb") == 0) continue;   /* o pendrive é outro disco */
+        if (e.tipo == TIPO_PASTA) { (*pastas)++; if (nivel < 24) medir(f, nivel + 1, arqs, pastas, bytes); }
+        else { (*arqs)++; *bytes += e.tamanho; }
+    }
+}
+
+static void tamanho_longo(uint32_t b, char *s, int max)
+{
+    char k[24];
+    texto_tamanho(b, k, sizeof k);
+    formatar_texto(s, (size_t)max, "%s (%u bytes)", k, b);
+}
+
+static void espaco(const char *ponto, char *s, int max)
+{
+    info_espaco_t v[2];
+    s[0] = 0;
+    int n = info_sistema(INFO_DISCOS_ESPACO, v, 2);
+    for (int i = 0; i < n; i++)
+        if (compara_texto(v[i].ponto, ponto) == 0)
+            formatar_texto(s, (size_t)max, "\nEspaço: %u MB livres de %u MB", v[i].livre_kb / 1024, v[i].total_kb / 1024);
+}
+
+/* Propriedades de um caminho (arquivo, pasta, lixeira, pendrive ou o SaguiOS). */
+static void propriedades(const char *c)
+{
+    char t[600], titulo[80], s[64];
+    info_arquivo_t inf;
+    if (compara_texto(c, "/.lixeira") == 0) {
+        unsigned a = 0, p = 0; uint32_t b = 0;
+        medir("/.lixeira", 0, &a, &p, &b);
+        if (tem_pendrive && pendrive.montado) medir("/usb/.lixeira", 0, &a, &p, &b);
+        tamanho_longo(b, s, sizeof s);
+        formatar_texto(t, sizeof t, "Itens: %u arquivos, %u pastas\nTamanho: %s", a, p, s);
+        registrar("arquivos: propriedades da lixeira (%u arquivos)", a);
+        mensagem("Propriedades da Lixeira", t);
+        return;
+    }
+    if (compara_texto(c, "/") == 0) {
+        info_versao_t v;
+        info_memoria_t mem;
+        memset(&v, 0, sizeof v);
+        info_sistema(INFO_VERSAO, &v, sizeof v);
+        info_sistema(INFO_MEMORIA, &mem, sizeof mem);
+        unsigned a = 0, p = 0; uint32_t b = 0;
+        medir("/", 0, &a, &p, &b);
+        char esp[80];
+        espaco("/", esp, sizeof esp);
+        tamanho_longo(b, s, sizeof s);
+        formatar_texto(t, sizeof t, "Sistema: SaguiOS %s\nArquitetura: %s, %u bits\nMemória: %u MB livres de %u MB\n\nArquivos: %u arquivos, %u pastas\nTamanho: %s%s",
+                       v.versao, v.bits == 64 ? "x86-64" : "x86", v.bits ? v.bits : 32, mem.livre_kb / 1024, mem.gerida_kb / 1024, a, p, s, esp);
+        registrar("arquivos: propriedades do SaguiOS (versao %s, %u arquivos)", v.versao, a);
+        mensagem("Propriedades do SaguiOS", t);
+        return;
+    }
+    if (info_arquivo(c, &inf) < 0) return;
+    const char *nome = acha_ultimo_char(c, '/') ? acha_ultimo_char(c, '/') + 1 : c;
+    char local[160];
+    copia_texto(local, c, sizeof local);
+    char *b0 = acha_ultimo_char(local, '/');
+    if (b0 == local) local[1] = 0; else if (b0) *b0 = 0;
+    data_t d;
+    char quando[40] = "não se sabe";
+    if (data_arquivo(c, &d) == 0 && d.ano) texto_data(&d, quando, sizeof quando);
+    if (compara_texto(c, "/usb") == 0) {
+        unsigned a = 0, p = 0; uint32_t b = 0;
+        medir("/usb", 0, &a, &p, &b);
+        char esp[80];
+        espaco("/usb", esp, sizeof esp);
+        formatar_texto(titulo, sizeof titulo, "Propriedades de %s", tem_pendrive && pendrive.rotulo[0] ? pendrive.rotulo : "Pendrive");
+        formatar_texto(t, sizeof t, "Unidade: %s %s\nFormato: %s\nArquivos: %u arquivos, %u pastas%s",
+                       tem_pendrive ? pendrive.fabricante : "", tem_pendrive ? pendrive.produto : "", tem_pendrive ? pendrive.formato : "FAT32", a, p, esp);
+    } else if (inf.tipo == TIPO_PASTA) {
+        unsigned a = 0, p = 0; uint32_t b = 0;
+        medir(c, 0, &a, &p, &b);
+        tamanho_longo(b, s, sizeof s);
+        formatar_texto(titulo, sizeof titulo, "Propriedades de %s", nome);
+        formatar_texto(t, sizeof t, "Tipo: Pasta de arquivos\nLocal: %s\nContém: %u arquivos, %u pastas\nTamanho: %s\nModificado em: %s",
+                       local, a, p, s, quando);
+    } else {
+        char tipo[40] = "Arquivo";
+        int k = -1;
+        for (int i = 0; i < lista.qtd; i++) if (compara_texto(nomes[i], nome) == 0) k = i;
+        if (k >= 0) texto_tipo(k, tipo, sizeof tipo);
+        tamanho_longo(inf.tamanho, s, sizeof s);
+        formatar_texto(titulo, sizeof titulo, "Propriedades de %s", nome);
+        formatar_texto(t, sizeof t, "Tipo: %s\nLocal: %s\nTamanho: %s\nModificado em: %s", tipo, local, s, quando);
+    }
+    registrar("arquivos: propriedades de %s", c);
+    mensagem(titulo, t);
+}
+
+static void esvaziar_tudo(void)
+{
+    static const char *const lix[2] = { "/.lixeira", "/usb/.lixeira" };
+    unsigned a = 0, p = 0; uint32_t b = 0;
+    medir(lix[0], 0, &a, &p, &b);
+    if (tem_pendrive && pendrive.montado) medir(lix[1], 0, &a, &p, &b);
+    if (a + p == 0) { mensagem("Esvaziar lixeira", "A lixeira já está vazia."); return; }
+    if (!confirmar("Esvaziar lixeira", "Apagar de vez tudo o que está na lixeira?")) return;
+    for (int q = 0; q < 2; q++) {
+        info_arquivo_t inf;
+        if (info_arquivo(lix[q], &inf) < 0) continue;
+        int r = apagar_tudo(lix[q], 0);
+        criar_pasta(lix[q]);
+        registrar("arquivos: lixeira esvaziada %s (%d)", lix[q], r);
+    }
+    carregar();
+}
+
+/* Renomear uma pasta da árvore (numa caixa: a árvore não tem edição na linha). */
+static void renomear_lugar(const char *c)
+{
+    const char *nome = acha_ultimo_char(c, '/') ? acha_ultimo_char(c, '/') + 1 : c;
+    char novo[64];
+    copia_texto(novo, nome, sizeof novo);
+    if (!pedir_texto("Renomear", "Novo nome da pasta:", novo, sizeof novo) || !novo[0] || compara_texto(novo, nome) == 0) return;
+    if (acha_char(novo, '/') || novo[0] == '.') { mensagem("Arquivos", "O nome não pode ter / nem começar com ponto."); return; }
+    char para[200];
+    copia_texto(para, c, sizeof para);
+    char *b = acha_ultimo_char(para, '/');
+    if (!b) return;
+    b[1] = 0;
+    junta_texto(para, novo, sizeof para);
+    int r = renomear(c, para);
+    if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui renomear:\n%s", nome_erro(r)); mensagem("Arquivos", m); return; }
+    registrar("arquivos: renomeado %s -> %s", c, para);
+    int n = (int)tam_texto(c);   /* a pasta aberta estava dentro? segue o nome novo */
+    if (compara_texto_n(pasta, c, (size_t)n) == 0 && (pasta[n] == 0 || pasta[n] == '/')) {
+        char nova[160];
+        formatar_texto(nova, sizeof nova, "%s%s", para, pasta + n);
+        copia_texto(pasta, nova, sizeof pasta);
+    }
+    carregar();
+}
+
+static void nova_pasta_em(const char *c)
+{
+    char nome[64], f[200];
+    copia_texto(nome, "Nova pasta", sizeof nome);
+    info_arquivo_t inf;
+    formatar_texto(f, sizeof f, "%s%s%s", c, compara_texto(c, "/") == 0 ? "" : "/", nome);
+    for (int k = 2; info_arquivo(f, &inf) == 0 && k < 1000; k++) {
+        formatar_texto(nome, sizeof nome, "Nova pasta (%d)", k);
+        formatar_texto(f, sizeof f, "%s%s%s", c, compara_texto(c, "/") == 0 ? "" : "/", nome);
+    }
+    int r = criar_pasta(f);
+    if (r < 0) { char m[200]; formatar_texto(m, sizeof m, "Não consegui criar a pasta:\n%s", nome_erro(r)); mensagem("Arquivos", m); return; }
+    registrar("arquivos: criado %s", f);
+    abrir_no(c);
+    ir(c);
+    renomear_na_linha(indice_de(nome));
+}
+
+static void abrir_nova_janela(const char *c)
+{
+    char *argv[3] = { "arquivos", (char *)c, NULL };
+    int pid = executar("/bin/arquivos", argv);
+    registrar("arquivos: nova janela em %s (pid %d)", c, pid);
+}
+
+static void menu_do_painel(int k, int x, int y)
+{
+    static char itens[300];
+    itens[0] = 0;
+    qtd_acoes = 0;
+    menu_lugar = k;
+    lugar_t *l = &lugares[k];
+    copia_texto(menu_caminho, l->caminho, sizeof menu_caminho);
+    bool lixeira = compara_texto(l->caminho, "/.lixeira") == 0;
+    bool raiz = compara_texto(l->caminho, "/") == 0;
+    bool pen = compara_texto(l->caminho, "/usb") == 0;
+    bool sistema = comeca_com(l->caminho, "/bin") || comeca_com(l->caminho, "/sistema");
+    acao(itens, sizeof itens, "Abrir", AC_P_ABRIR);
+    if (!lixeira) acao(itens, sizeof itens, "Abrir em nova janela", AC_P_JANELA);
+    if (l->seta == 1) acao(itens, sizeof itens, "Expandir", AC_P_EXPANDIR);
+    if (l->seta == 2) acao(itens, sizeof itens, "Recolher", AC_P_RECOLHER);
+    if (lixeira) acao(itens, sizeof itens, "Esvaziar lixeira...", AC_P_ESVAZIAR);
+    if (pen && l->ejetar) acao(itens, sizeof itens, "Ejetar", AC_P_EJETAR);
+    if (!lixeira && !sistema && (!pen || pendrive.montado)) acao(itens, sizeof itens, "Nova pasta aqui", AC_P_NOVA);
+    if (!lixeira && !raiz && !pen && !sistema && !l->atalho) {
+        acao(itens, sizeof itens, "Renomear...", AC_P_RENOMEAR);
+        acao(itens, sizeof itens, "Apagar...", AC_P_APAGAR);
+    }
+    if (raiz) acao(itens, sizeof itens, "Sobre o SaguiOS", AC_P_SOBRE);
+    acao(itens, sizeof itens, "Propriedades", AC_P_PROPRIEDADES);
+    registrar("arquivos: menu do painel em %s: %s", l->caminho, itens);
+    jan_menu(j, x, y, itens);
+}
+
+/* Uma escolha do menu do painel; devolve true se era dele. */
+static bool acao_do_painel(int a)
+{
+    if (a < AC_P_ABRIR) return false;
+    char c[160];
+    copia_texto(c, menu_caminho, sizeof c);
+    int k = menu_lugar;
+    switch (a) {
+    case AC_P_ABRIR: if (k >= 0 && k < qtd_lugares && compara_texto(lugares[k].caminho, c) == 0) abrir_lugar(k); else ir(c); break;
+    case AC_P_JANELA: abrir_nova_janela(c); break;
+    case AC_P_EXPANDIR: abrir_no(c); desenhar_lateral(); break;
+    case AC_P_RECOLHER: fechar_no(c); desenhar_lateral(); break;
+    case AC_P_ESVAZIAR: esvaziar_tudo(); break;
+    case AC_P_EJETAR: remover_pendrive(); break;
+    case AC_P_NOVA: nova_pasta_em(c); break;
+    case AC_P_RENOMEAR: renomear_lugar(c); break;
+    case AC_P_APAGAR: {
+        static char um[1][200];
+        copia_texto(um[0], c, sizeof um[0]);
+        if (soltar_caminhos(um, 1, "/.lixeira")) {
+            int n = (int)tam_texto(c);
+            if (compara_texto_n(pasta, c, (size_t)n) == 0 && (pasta[n] == 0 || pasta[n] == '/')) {   /* estava dentro: sobe */
+                char cima[160];
+                copia_texto(cima, c, sizeof cima);
+                char *b = acha_ultimo_char(cima, '/');
+                if (b == cima) cima[1] = 0; else if (b) *b = 0;
+                ir(cima);
+            } else carregar();
+        }
+        break;
+    }
+    case AC_P_SOBRE: { char *argv[2] = { "sobre-o-sistema", NULL }; executar("/bin/sobre-o-sistema", argv); registrar("arquivos: sobre o SaguiOS"); break; }
+    case AC_P_PROPRIEDADES: propriedades(c); break;
+    }
+    return true;
 }
 
 int principal(int argc, char **argv)
@@ -2010,6 +2256,8 @@ int principal(int argc, char **argv)
                 else if (a == AC_APAGAR_VEZ) apagar_item_modo(true);
                 else if (a == AC_ESVAZIAR) esvaziar_lixeira();
                 else if (a >= AC_ORD_NOME && a <= AC_ORD_TAMANHO) ordenar(a - AC_ORD_NOME);
+                else if (a == AC_PROPRIEDADES && lista.sel >= 0) { char c[200]; caminho_de(lista.sel, c, sizeof c); propriedades(c); }
+                else acao_do_painel(a);
             }
             continue;
         }
