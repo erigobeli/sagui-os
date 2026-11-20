@@ -82,6 +82,7 @@
 #define SIS_DISCO_RELER    81   /* (nome) -> 0; reconhece de novo o formato do disco liberado (depois de gravar a tabela) */
 #define SIS_DISCO_LIBERAR  82   /* (nome, resumo) -> 0 se a pessoa digitou o nome do disco na caixa do kernel; ERRO_ACESSO se não (D063) */
 #define SIS_DISCO_TABELA   83   /* (nome, &tabela_disco_t, tamanho) -> 0; a tabela de partições lida e conferida pelo kernel (D066) */
+#define SIS_DATA_ARQUIVO   85   /* (caminho, &data_t) -> 0; a data de modificação (ano 0 = não se sabe) (H135) */
 #define SIS_JANELA_MODO    84   /* (id, modo) -> 0; JAN_MODO_NORMAL, _MAXIMIZADA ou _TELA_CHEIA (D071) */
 #define SIS_MAX            128   /* espaço para as chamadas da versão 2.0 */
 
