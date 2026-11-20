@@ -1164,6 +1164,9 @@ int principal(int argc, char **argv)
         case EV_MOVER:
             tratar_movimento(&e);
             break;
+        case EV_RODA:   /* H134: 3 linhas (48 px) por passo, como as setas */
+            rolar(48 * (int)e.tecla);
+            break;
         case EV_TECLA:
             tratar_tecla(&e);
             break;
