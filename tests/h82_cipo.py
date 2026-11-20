@@ -272,7 +272,7 @@ def main():
             comparar(m, ref, j, "H82-1-css")
             # JavaScript
             antes = len(m.serial())
-            m.clique(j["x"] + 300, j["y"] + 17)
+            m.clique(j["x"] + 300, j["y"] + 36 + 20)
             m.digitar(f"{base}/js.html\n", 0.03)
             s = esperar(m, f"navegador: pronto {base}/js.html", 180, antes)
             time.sleep(2)
