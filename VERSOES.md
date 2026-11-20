@@ -27,6 +27,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Área de trabalho:** o botão direito no ícone da Lixeira, quando ela tem
+  alguma coisa, mostra "Esvaziar lixeira...", que pergunta e apaga de vez o
+  que está na lixeira (a da memória e a do pendrive) (H133).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

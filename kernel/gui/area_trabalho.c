@@ -134,6 +134,8 @@ int area_icone_tipo(int i)
     return i >= QTD_ICONES ? 1 : 0;
 }
 
+bool area_icone_lixeira_cheia(int i) { return i == ICONE_LIXEIRA && lixeira_cheia; }
+
 /* Ações do menu do botão direito. Renomear e remover perguntam (texto ou
  * confirmação) num programa comum, /bin/icone, porque o kernel não tem
  * caixas de texto. */
@@ -151,6 +153,12 @@ void area_icone_acao(int i, int acao)
     else snformatar(caminho, sizeof caminho, "/bin/%s", chave_icone(i));   /* /bin/icone usa o fim do caminho */
     if (acao == ACAO_ABRIR) { area_icone_abrir(i); return; }
     if (acao == ACAO_DESMONTAR) { area_icone_direito(i); return; }
+    if (acao == ACAO_ESVAZIAR) {   /* o Arquivos pergunta e esvazia, sem abrir a janela dele */
+        char *av[] = { "arquivos", "--esvaziar", NULL };
+        int pid = processo_executar("/bin/arquivos", 2, av, NULL);
+        klog("[GUI] lixeira: esvaziar (pid %d)\n", pid);
+        return;
+    }
     if (acao == ACAO_RENOMEAR) { area_editar(i); return; }   /* no lugar, sem janela */
     const char *verbo = acao == ACAO_RENOMEAR ? (i >= QTD_ICONES ? "renomear-programa" : "renomear-icone")
                       : acao == ACAO_REMOVER ? "remover" : "esconder";
