@@ -225,6 +225,20 @@ $(B)/userland/bin/jogos: $(B)/userland/programas/jogos.o $(B)/userland/arte_icon
 	$(LD) $(ULDFLAGS) -o $@.elf $< $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ)
 	objcopy --strip-all $@.elf $@
 
+# As Configurações têm os ícones das páginas num C à parte (mkarte.py --cfg).
+$(B)/gerado/arte_cfg.c: tools/mkarte.py
+	@mkdir -p $(dir $@)
+	$(PY) tools/mkarte.py --cfg $@
+
+$(B)/userland/arte_cfg.o: $(B)/gerado/arte_cfg.c kernel/inc/arte.h
+	@mkdir -p $(dir $@)
+	$(CC) $(UCFLAGS) -c -o $@ $<
+
+$(B)/userland/bin/configuracoes: $(B)/userland/programas/configuracoes.o $(B)/userland/arte_cfg.o $(LIBSAGUI_OBJ) userland/programa.ld
+	@mkdir -p $(dir $@)
+	$(LD) $(ULDFLAGS) -o $@.elf $< $(B)/userland/arte_cfg.o $(LIBSAGUI_OBJ)
+	objcopy --strip-all $@.elf $@
+
 # O instalador mostra os ícones dos discos (D064).
 $(B)/userland/bin/instalar: $(B)/userland/programas/instalar.o $(B)/userland/arte_icones.o $(LIBSAGUI_OBJ) userland/programa.ld
 	@mkdir -p $(dir $@)

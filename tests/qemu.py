@@ -462,3 +462,15 @@ def janela(serial, titulo):
     """Posição da área de conteúdo da última janela com esse título (pelo log)."""
     m = re.findall(rf'criada por \d+: "{re.escape(titulo)}" (\d+)x(\d+) em \((\d+),(\d+)\)', serial)[-1]
     return dict(l=int(m[0]), a=int(m[1]), x=int(m[2]) + 2, y=int(m[3]) + 24, fx=int(m[2]), fy=int(m[3]))
+
+
+def controle(serial, nome, janela_info=None):
+    """Centro, na tela, do controle "nome" que as Configurações registraram
+    por último ("configuracoes: controle <nome> x y l a", relativo à
+    janela). Com janela_info (de janela()), soma a posição da janela."""
+    m = re.findall(rf"configuracoes: controle {re.escape(nome)} (-?\d+) (-?\d+) (\d+) (\d+)", serial)
+    if not m:
+        raise FalhaTeste(f"controle {nome!r} não apareceu no log")
+    x, y, l, a = (int(v) for v in m[-1])
+    ox, oy = (janela_info["x"], janela_info["y"]) if janela_info else (0, 0)
+    return ox + x + l // 2, oy + y + a // 2

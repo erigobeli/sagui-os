@@ -19,7 +19,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import RAIZ, Maquina, verificar, imagem_console, janela  # noqa: E402
+from qemu import controle, RAIZ, Maquina, verificar, imagem_console, janela  # noqa: E402
 
 
 def marcas(s):
@@ -118,7 +118,7 @@ def main():
         time.sleep(0.6)
         j = janela(m.serial(), "Configurações")
         x0, y0 = j["x"], j["y"]
-        m.clique(x0 + 190 + 128 + 60, y0 + 280 + 14)        # botão "Español"
+        m.clique(*controle(m.serial(), "idioma.es", j))
         m.esperar_serial("configuracoes: idioma es", 10)
         verificar("[CONFIG] sistema.idioma = es" in m.serial(), "o botão Español grava sistema.idioma = es")
         time.sleep(0.8)
@@ -136,11 +136,11 @@ def main():
         m.esperar_serial('"Configuración"', 15)
         time.sleep(0.6)
         j = janela(m.serial(), "Configuración")
-        m.clique(j["x"] + 190 + 256 + 60, j["y"] + 280 + 14)  # botão "English"
+        m.clique(*controle(m.serial(), "idioma.en", j))
         m.esperar_serial("configuracoes: idioma en", 10)
         time.sleep(0.8)
         m.captura("H124-configuracoes-en")
-        m.clique(j["x"] + 190 + 60, j["y"] + 280 + 14)        # botão "Português"
+        m.clique(*controle(m.serial(), "idioma.pt", j))
         m.esperar_serial("configuracoes: idioma pt", 10)
         verificar("[CONFIG] sistema.idioma = pt" in m.serial(), "o botão Português volta para sistema.idioma = pt")
     return 0

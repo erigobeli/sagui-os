@@ -10,7 +10,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, janela, cor_do_pixel  # noqa: E402
+from qemu import controle, Maquina, verificar, janela, cor_do_pixel  # noqa: E402
 
 REDE = ["-netdev", "user,id=n0", "-device", "e1000,netdev=n0,mac=52:54:00:12:34:56"]
 X0 = 190
@@ -38,15 +38,15 @@ def main():
         time.sleep(1)
         j = janela(m.serial(), "Configurações")
         m.captura("H47-3-aba-rede")
-        m.clique(j["x"] + X0 + 135, j["y"] + 104 + 14)            # usar manual
+        m.clique(*controle(m.serial(), "rede.modo.manual", j))
         m.esperar_serial("configuracoes: rede manual", 10)
         time.sleep(0.6)
-        m.clique(j["x"] + X0 + 110 + 10, j["y"] + 148 + 10)       # caixa do endereço
+        m.clique(*controle(m.serial(), "rede.ip", j))
         m.tecla("end")
         for _ in range(16):
             m.tecla("backspace", 0.02)
         m.digitar("10.0.2.20")
-        m.clique(j["x"] + X0 + 70, j["y"] + 284 + 14)              # Aplicar
+        m.clique(*controle(m.serial(), "rede.aplicar", j))
         m.esperar_serial("configuracoes: rede manual 10.0.2.20", 10)
         m.esperar_serial("[REDE] configuracao manual aplicada", 10)
         verificar(True, "o modo manual aplica o endereço digitado")

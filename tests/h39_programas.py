@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, criar_pendrive, pendrive_qemu, janela  # noqa: E402
+from qemu import controle, Maquina, verificar, criar_pendrive, pendrive_qemu, janela  # noqa: E402
 
 X0 = 190
 
@@ -35,7 +35,7 @@ def main():
         time.sleep(0.8)
         j = janela(m.serial(), "Configurações")
         m.captura("H39-2-aba-programas")
-        m.clique(j["x"] + X0 + 220 + 45, j["y"] + 76 + 13)       # Remover
+        m.clique(*controle(m.serial(), "remover.0", j))
         m.esperar_serial('"Remover programa"', 10)
         time.sleep(0.5)
         m.tecla("ret")                                           # Sim
@@ -43,7 +43,7 @@ def main():
         m.esperar_serial("programas instalados no pendrive: 0", 10)
         verificar(True, "Remover apaga o programa e o ícone some")
         time.sleep(0.5)
-        m.clique(j["x"] + X0 + 104 + 42, j["y"] + 132 + 60 + 13)  # Esconder: Banana
+        m.clique(*controle(m.serial(), "icone.banana", j))
         m.esperar_serial("ocultos = banana", 10)
         verificar(True, "o ícone de um programa do sistema pode ser escondido")
         time.sleep(1.5)

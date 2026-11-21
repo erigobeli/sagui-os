@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, janela, cor_do_pixel  # noqa: E402
+from qemu import controle, Maquina, verificar, janela, cor_do_pixel  # noqa: E402
 
 POR_COLUNA = (768 - 40) // 92
 
@@ -33,28 +33,31 @@ def main():
         m.esperar_serial("sagui:/$", 120)
         time.sleep(1)
         m.clique(*icone(6), duplo=True)
-        m.esperar_serial("configuracoes: aberto na aba Relógio", 15)
+        m.esperar_serial("configuracoes: aberto na aba Início", 15)
         verificar(True, "o ícone Configurações abre o app")
         time.sleep(0.6)
         j = janela(m.serial(), "Configurações")
         x0, y0 = j["x"], j["y"]
+        m.clique(*controle(m.serial(), "ir.relogio", j))      # página Data e hora
+        m.esperar_serial("configuracoes: aba Relógio", 10)
+        time.sleep(0.6)
         m.captura("H38-1-relogio")
-        X0 = 190
-        for dx, valor in ((0, "25"), (56, "12"), (112, "2026"), (200, "10"), (256, "30")):
-            escrever_caixa(m, x0 + X0 + dx, y0 + 112, valor)
-        m.clique(x0 + X0 + 75, y0 + 150 + 14)
+        for nome, valor in (("dia", "25"), ("mes", "12"), ("ano", "2026"), ("hora", "10"), ("minuto", "30")):
+            cx, cy = controle(m.serial(), "relogio." + nome, j)
+            escrever_caixa(m, cx - 10, cy - 10, valor)
+        m.clique(*controle(m.serial(), "relogio.aplicar", j))
         m.esperar_serial("acertado para 25/12/2026 10:30", 10)
         verificar(True, "Acertar o relógio grava a data no relógio da placa-mãe")
         time.sleep(0.5)
-        m.clique(x0 + 10 + 65, y0 + 16 + 40 + 15)              # aba Aparência
+        m.clique(*controle(m.serial(), "ir.aparencia", j))
         m.esperar_serial("configuracoes: aba Aparência", 10)
         time.sleep(0.4)
-        m.clique(x0 + X0 + 100 + 45, y0 + 76 + 84 + 48 + 12)   # Noite (H81: 4 colunas de 100, linhas de 84)
+        m.clique(*controle(m.serial(), "fundo.noite", j))
         m.esperar_serial("configuracoes: fundo noite", 10)
         time.sleep(1.5)
         png = m.captura("H38-2-aparencia-noite")
         verificar(sum(cor_do_pixel(png, 700, 700)) < 120, "o fundo da área de trabalho ficou escuro (tema Noite)")
-        m.clique(x0 + 10 + 65, y0 + 16 + 200 + 15)             # aba Sobre o computador
+        m.clique(*controle(m.serial(), "ir.sobre", j))
         m.esperar_serial("configuracoes: aba Sobre o computador", 10)
         time.sleep(0.8)
         m.captura("H38-3-sobre")

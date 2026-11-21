@@ -16,7 +16,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, imagem_console, FalhaTeste, janela  # noqa: E402
+from qemu import controle, Maquina, verificar, imagem_console, FalhaTeste, janela  # noqa: E402
 
 # (teclas do QEMU no layout espanhol, o que deve sair, descrição)
 ROTEIRO_ES = [
@@ -106,12 +106,12 @@ def main():
         time.sleep(0.6)
         j = janela(m.serial(), "Configurações")
         x0, y0 = j["x"], j["y"]
-        m.clique(x0 + 190 + 150, y0 + 116 + 14)            # botão "Espanhol (ES)"
+        m.clique(*controle(m.serial(), "teclado.es", j))
         m.esperar_serial("configuracoes: teclado es", 10)
         verificar("[CONFIG] teclado.layout = es" in m.serial(), "o botão Espanhol grava teclado.layout = es")
         time.sleep(0.5)
         m.captura("H90-configuracoes-teclado")
-        m.clique(x0 + 190 + 150, y0 + 80 + 14)             # botão "Português do Brasil (ABNT2)"
+        m.clique(*controle(m.serial(), "teclado.abnt2", j))
         m.esperar_serial("configuracoes: teclado abnt2", 10)
         verificar("[CONFIG] teclado.layout = abnt2" in m.serial(), "o botão ABNT2 volta para teclado.layout = abnt2")
     return 0
