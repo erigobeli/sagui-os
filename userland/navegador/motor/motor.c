@@ -16,6 +16,7 @@
 #include "sagui.h"
 #include "cipo.h"
 #include "motor.h"
+static int muldiv(int a, int b, int c);   /* a * b / c sem divisão de 64 bits (abaixo) */
 
 extern const unsigned char fonte_sagui[256][16];
 
@@ -2224,7 +2225,7 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         if (!u1) { e->razao = 0; break; }
         q = pular_esp(q + u1, f);
         if (q < f && *q == '/') { q = pular_esp(q + 1, f); b = num100(q, (int)(f - q), &u2); if (!u2) b = 100; }
-        e->razao = a > 0 && b > 0 ? (int32_t)((int64_t)a * 1000 / b) : 0;
+        e->razao = a > 0 && b > 0 ? muldiv(a, 1000, b) : 0;
         break;
     }
     case PR_BGCOLOR: if (ler_cor(v, nv, &c, e->cor)) e->fundo = (c >> 24) >= 0x40 ? c : 0; break;
@@ -4196,7 +4197,7 @@ static void layout_conteudo(no_m *n, int cw, int ch)
     int usado = 0, h;
     int nl, na;
     if (tamanho_natural(n, &nl, &na)) {
-        if (e->razao > 0 && ch < 0) h = (int)((int64_t)cw * 1000 / e->razao);   /* aspect-ratio vale mais que a proporção natural */
+        if (e->razao > 0 && ch < 0) h = muldiv(cw, 1000, e->razao);   /* aspect-ratio vale mais que a proporção natural */
         else if (igual(n->tag, "img") && nl > 0) h = muldiv(na, cw, nl);
         else h = na;
         if (!igual(n->tag, "select") && !igual(n->tag, "input") && !igual(n->tag, "textarea") && !igual(n->tag, "video") && !igual(n->tag, "iframe")) {}
@@ -4257,7 +4258,7 @@ static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
     int pela_razao = -1;
     if (h < 0 && e->razao > 0 && !tamanho_natural_simples(n)) {
         int base = e->caixa_borda ? w : ccw;
-        int hr = (int)((int64_t)base * 1000 / e->razao);
+        int hr = muldiv(base, 1000, e->razao);
         pela_razao = h = e->caixa_borda ? hr : hr + extra_v(n);
     }
     if (h >= 0 && h < extra_v(n)) h = extra_v(n);   /* border-box nunca fica menor que bordas + padding */
@@ -4894,9 +4895,9 @@ static void controle(no_m *n, int x, int y)
             if (e->ajuste && nl > 0 && na > 0 && cl > 0 && ca > 0) {
                 /* object-fit: o tamanho desenhado; object-position: onde, dentro da caixa */
                 bool largo = (int64_t)nl * ca > (int64_t)na * cl;   /* a imagem é mais larga que a caixa */
-                int cl2 = largo ? cl : (int)((int64_t)nl * ca / na), ca2 = largo ? (int)((int64_t)na * cl / nl) : ca;   /* contain */
+                int cl2 = largo ? cl : muldiv(nl, ca, na), ca2 = largo ? muldiv(na, cl, nl) : ca;   /* contain */
                 if (e->ajuste == 1) { dl = cl2; da = ca2; }
-                else if (e->ajuste == 2) { dl = largo ? (int)((int64_t)nl * ca / na) : cl; da = largo ? ca : (int)((int64_t)na * cl / nl); }
+                else if (e->ajuste == 2) { dl = largo ? muldiv(nl, ca, na) : cl; da = largo ? ca : muldiv(na, cl, nl); }
                 else if (e->ajuste == 3) { dl = nl; da = na; }
                 else { dl = nl < cl2 ? nl : cl2; da = nl < cl2 ? na : ca2; }
                 int px = 5000, py = 5000;   /* x100 por cento */
