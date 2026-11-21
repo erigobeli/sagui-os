@@ -931,6 +931,13 @@ bool jan_redimensionavel(jan_t *j, int larg_min, int alt_min)
     return janela_opcoes(j->id, JAN_REDIMENSIONAVEL, larg_min, alt_min) >= 0;
 }
 
+/* Fundo de vidro: o pixel com o byte de cima 0xFF (JAN_VIDRO_PIXEL | cor)
+ * mostra o que está atrás da janela, tingido com a cor. */
+bool jan_vidro(jan_t *j)
+{
+    return janela_opcoes(j->id, JAN_VIDRO, 0, 0) >= 0;
+}
+
 void jan_novo_tamanho(jan_t *j, const evento_t *e)
 {
     if (e->tipo != EV_REDIMENSIONAR) return;

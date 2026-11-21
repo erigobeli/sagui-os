@@ -31,9 +31,12 @@ def main():
         def celula(lin, col):
             x0, y0 = j["x"] + 10 + col * 8, j["y"] + 32 + 10 + lin * 16
             return {cor_do_pixel(png, x0 + i, y0 + k) for i in range(8) for k in range(16)}
-        fundo = celula(1, 60)
-        verificar(len(celula(1, 10)) > 1, "as letras que ficaram continuam na tela")
-        verificar(celula(1, 12) == fundo, "Backspace apagou a última letra na tela (não só voltou o cursor)")
+        # O fundo é de vidro (a área de trabalho aparece atrás, escurecida):
+        # célula vazia = nenhum pixel claro como as letras.
+        def vazia(cs):
+            return all(max(p) < 0x80 for p in cs)
+        verificar(not vazia(celula(1, 10)), "as letras que ficaram continuam na tela")
+        verificar(vazia(celula(1, 12)), "Backspace apagou a última letra na tela (não só voltou o cursor)")
         m.tecla("ctrl-c")
         time.sleep(0.5)
         antes = m.serial().count("sagui:")
@@ -60,8 +63,7 @@ def main():
         m.comando("limpar")
         time.sleep(0.8)
         png = m.captura("H79-limpar", guardar=False)
-        fundo = celula(20, 60)
-        vazias = all(celula(l, c) == fundo for l in (3, 8, 15) for c in (0, 5, 20))
+        vazias = all(vazia(celula(l, c)) for l in (3, 8, 15) for c in (0, 5, 20))
         verificar(vazias, "limpar apaga a tela do Terminal (as linhas de baixo ficaram vazias)")
         verificar(len(celula(0, 2)) > 1, "o prompt volta para a primeira linha")
     return 0

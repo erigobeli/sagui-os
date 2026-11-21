@@ -44,6 +44,7 @@ static int cols = 94, lins = 28;
 #define MAX_ABAS 4
 #define HISTORICO 300
 #define COR_FUNDO_T_GLOBAL 0x1C1C1C   /* fundo do texto */
+#define VIDRO_T            JAN_VIDRO_PIXEL   /* marca de vidro no pixel: o fundo da área de trabalho aparece atrás */
 #define COR_T_BARRA     0x141414   /* faixa das abas */
 #define COR_T_ABA    0x262626
 #define COR_T_DESTAQUE       0x5FB33A   /* verde-sagui: aba atual e "+" */
@@ -132,7 +133,8 @@ static uint32_t cor(int i)
     return (c << 16) | (c << 8) | c;
 }
 
-static uint32_t cor_fundo(int i) { return i == 0 ? COR_FUNDO_T_GLOBAL : cor(i); }
+/* O fundo padrão é de vidro; os de cor (ESC [ 4x m) ficam opacos. */
+static uint32_t cor_fundo(int i) { return i == 0 ? (COR_FUNDO_T_GLOBAL | VIDRO_T) : cor(i); }
 
 /* Cor de 24 bits -> a mais perto no cubo de 256 (o Terminal guarda 1 byte por cor). */
 static uint8_t cor_proxima(int r, int g, int b)
@@ -161,7 +163,8 @@ static void desenhar_celula(int l, int c, celula_t ce, bool cursor)
     uint32_t fr = cor(ce.frente < 8 && (ce.attr & A_NEGRITO) ? ce.frente + 8 : ce.frente), fu = cor_fundo(ce.fundo);
     if (ce.attr & A_INVERTIDO) { uint32_t t = fr; fr = fu; fu = t; }
     if (selecionada(l, c)) fu = COR_T_SELECAO;              /* a seleção tinge o fundo, a letra fica */
-    if (cursor) { fu = COR_T_CURSOR; fr = COR_FUNDO_T_GLOBAL; }   /* bloco colorido */
+    if (cursor) { fu = COR_T_CURSOR; fr = COR_FUNDO_T_GLOBAL; }
+    fr &= 0xFFFFFF;   /* a letra é sempre opaca */   /* bloco colorido */
     int x0 = MARGEM + c * LETRA_L, y0 = TOPO + l * LETRA_A;
     const unsigned char *g = fonte_sagui[ce.c];
     for (int y = 0; y < LETRA_A; y++) {
@@ -194,12 +197,12 @@ static void desenhar_linha(aba_t *a, int l)
  * escuras, com o nome apagado. */
 static void desenhar_abas(void)
 {
-    g_retangulo(j, 0, 0, LARG, ABAS_A, COR_T_BARRA);
+    g_retangulo(j, 0, 0, LARG, ABAS_A, COR_T_BARRA | VIDRO_T);
     int x = 6;
     for (int i = 0; i < MAX_ABAS; i++) {
         if (!abas[i].usada) continue;
         bool atual = i == atual_aba;
-        uint32_t fundo = atual ? COR_FUNDO_T_GLOBAL : COR_T_ABA;
+        uint32_t fundo = atual ? (COR_FUNDO_T_GLOBAL | VIDRO_T) : (COR_T_ABA | VIDRO_T);
         g_ret_redondo(j, x, 5, 148, ABAS_A - 5 + 8, 8, fundo, fundo);   /* os cantos de baixo ficam sob a margem */
         g_retangulo(j, x + 12, 13, 6, 6, atual ? COR_T_DESTAQUE : COR_T_FRACO);   /* marcador da aba */
         g_texto_n(j, x + 26, 9, abas[i].nome, 15, atual ? 0xFFFFFF : COR_T_FRACO);
@@ -207,18 +210,18 @@ static void desenhar_abas(void)
         x += 154;
     }
     if (x + 26 < LARG) {
-        g_ret_redondo(j, x + 2, 7, 22, 20, 6, COR_T_ABA, COR_T_ABA);
+        g_ret_redondo(j, x + 2, 7, 22, 20, 6, COR_T_ABA | VIDRO_T, COR_T_ABA | VIDRO_T);
         g_retangulo(j, x + 8, 16, 10, 2, COR_T_DESTAQUE);
         g_retangulo(j, x + 12, 12, 2, 10, COR_T_DESTAQUE);
     }
-    g_retangulo(j, 0, ABAS_A, LARG, MARGEM, COR_FUNDO_T_GLOBAL);
+    g_retangulo(j, 0, ABAS_A, LARG, MARGEM, COR_FUNDO_T_GLOBAL | VIDRO_T);
 }
 
 /* Olhando o histórico (Shift+PgUp): uma barrinha à direita mostra onde. */
 static void desenhar_indicador(aba_t *a)
 {
     int x = LARG - 6, y0 = TOPO, h = LINS * LETRA_A;
-    g_retangulo(j, x, y0, 4, h, COR_FUNDO_T_GLOBAL);
+    g_retangulo(j, x, y0, 4, h, COR_FUNDO_T_GLOBAL | VIDRO_T);
     if (a->olhando <= 0 || a->hist_qtd <= 0) return;
     int total = a->hist_qtd + LINS, alt = h * LINS / total;
     if (alt < 12) alt = 12;
@@ -811,7 +814,7 @@ static void mudar_tamanho(int l, int a_px)
     }
     cols = nc;
     lins = nl;
-    g_retangulo(j, 0, 0, l, a_px, COR_FUNDO_T_GLOBAL);
+    g_retangulo(j, 0, 0, l, a_px, COR_FUNDO_T_GLOBAL | VIDRO_T);
     abas_sujas = true;
     sujar_tudo();
     for (int i = 0; i < MAX_ABAS; i++) if (abas[i].usada && abas[i].avisar_tamanho) avisar_tamanho(&abas[i]);
@@ -827,8 +830,9 @@ int principal(int argc, char **argv)
     if (argc >= 3 && compara_texto(argv[1], "-e") == 0) programa_argv = argv + 2;
     j = jan_abrir("Terminal", LARG, ALT);
     if (!j) return 1;
+    jan_vidro(j);
     jan_redimensionavel(j, 40 * LETRA_L + 2 * MARGEM, 6 * LETRA_A + 2 * MARGEM + ABAS_A);
-    g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO_T_GLOBAL);
+    g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO_T_GLOBAL | VIDRO_T);
     if (abrir_aba() < 0) { imprimir("terminal: não consegui abrir o sagsh\n"); return 1; }
     atual_aba = 0;
     sujar_tudo();

@@ -62,6 +62,7 @@ typedef struct {
     int        antes[4];          /* x, y, largura, altura antes de maximizar */
     bool       encaixada;         /* H94: presa numa metade ou num quarto da tela */
     bool       tela_cheia;        /* D071: o conteúdo cobre a tela toda, sem moldura */
+    bool       vidro;             /* JAN_VIDRO: o fundo do conteúdo é de vidro */
 } janela_t;
 
 static janela_t janelas[MAX_JANELAS];
@@ -1351,6 +1352,52 @@ static void expandir_vidro(void)
     }
 }
 
+static inline uint32_t mistura_k(uint32_t a, uint32_t b, int k)   /* k/256 de b */
+{
+    uint32_t rb = ((a & 0xFF00FF) * (uint32_t)(256 - k) + (b & 0xFF00FF) * (uint32_t)k) >> 8;
+    uint32_t g = ((a & 0x00FF00) * (uint32_t)(256 - k) + (b & 0x00FF00) * (uint32_t)k) >> 8;
+    return (rb & 0xFF00FF) | (g & 0x00FF00);
+}
+
+/* Conteúdo de uma janela de vidro: o pixel marcado (JAN_VIDRO_PIXEL) é a
+ * cor dele por cima do que já está composto atrás da janela; o resto é
+ * copiado como está. Sem desfoque: a área é alta demais para ele (como no
+ * menu Iniciar), e assim um pedaço pode ser refeito sozinho. Com os efeitos
+ * leves, o pixel marcado sai opaco. */
+static void copiar_vidro(janela_t *j, int x, int y, int l, int a)
+{
+    int x0 = x < tela.cx0 ? tela.cx0 : x, y0 = y < tela.cy0 ? tela.cy0 : y;
+    int x1 = x + l > tela.cx1 ? tela.cx1 : x + l, y1 = y + a > tela.cy1 ? tela.cy1 : y + a;
+    for (int py = y0; py < y1; py++) {
+        uint32_t *d = tela.px + py * tela.larg, *o = j->px + (py - y) * j->vl - x;
+        for (int px = x0; px < x1; px++) {
+            uint32_t v = o[px];
+            if ((v & 0xFF000000u) != JAN_VIDRO_PIXEL) { d[px] = v; continue; }
+            d[px] = vidro_efeitos ? mistura_k(d[px], v & 0xFFFFFF, JAN_VIDRO_K) : (v & 0xFFFFFF);
+        }
+    }
+}
+
+/* Os cantos de baixo do conteúdo seguem a curva da moldura: sem isso, a
+ * borda fica redonda por fora e o conteúdo, em quina por dentro (aparece
+ * num fundo escuro). A curva de dentro tem o raio de fora menos a borda. */
+static void arredondar_conteudo(janela_t *j, uint32_t borda)
+{
+    int l = j->larg, a = j->alt, r = VIDRO_CANTO - BORDA;
+    if (2 * r > l || 2 * r > a) return;
+    int x = j->x + BORDA, y = j->y + BARRA_TITULO;
+    for (int lado = 0; lado < 2; lado++)
+        for (int lin = 0; lin < r; lin++)
+            for (int c = 0; c < r; c++) {
+                int cob = suave_amostras_ret(c, a - 1 - lin, l, a, r) * 16;
+                if (cob >= 256) continue;
+                int px = lado ? x + l - 1 - c : x + c, py = y + a - 1 - lin;
+                if (px < tela.cx0 || px >= tela.cx1 || py < tela.cy0 || py >= tela.cy1) continue;
+                uint32_t *p = &tela.px[py * tela.larg + px];
+                *p = mistura_k(borda, *p, cob);
+            }
+}
+
 /* Recompõe o retângulo sujo e mostra. */
 void gui_mostrar(void)
 {
@@ -1371,11 +1418,15 @@ void gui_mostrar(void)
         {
             int vl = j->vl < j->larg ? j->vl : j->larg, va = j->va < j->alt ? j->va : j->alt;
             int cx = j->x + BORDA, cy = j->y + BARRA_TITULO;
-            sup_copiar(&tela, cx, cy, j->px, vl, va, j->vl);
+            if (j->vidro && !j->tela_cheia) copiar_vidro(j, cx, cy, vl, va);
+            else sup_copiar(&tela, cx, cy, j->px, vl, va, j->vl);
             if (vl < j->larg) sup_retangulo(&tela, cx + vl, cy, j->larg - vl, j->alt, 0xF4F4F0);
             if (va < j->alt) sup_retangulo(&tela, cx, cy + va, vl, j->alt - va, 0xF4F4F0);
         }
-        if (!j->tela_cheia) vidro_aplicar_cantos(&tela, j->x, j->y, moldura_l(j), moldura_a(j));
+        if (!j->tela_cheia) {
+            arredondar_conteudo(j, j == f ? tema->titulo_foco : tema->titulo);
+            vidro_aplicar_cantos(&tela, j->x, j->y, moldura_l(j), moldura_a(j));
+        }
     }
     desenhar_anims();
     desenhar_redimensionar();
@@ -2321,6 +2372,7 @@ int32_t sis_janela_opcoes(uint32_t id, uint32_t opcoes, uint32_t minimos, uint32
     (void)d; (void)e;
     janela_t *j = janela_do_processo((int)id);
     if (!j) return ERRO_INVALIDO;
+    if (opcoes & JAN_VIDRO) { j->vidro = true; redesenhar_janela(j); gui_mostrar(); }
     if (!(opcoes & JAN_REDIMENSIONAVEL) || j->redimensionavel) return 0;
     uint32_t max_px = (uint32_t)(video_largura() * video_altura());
     /* Nunca menor que a janela de agora: numa tela de 640x480, o Terminal
