@@ -29,7 +29,7 @@ def main():
         png = m.captura("H79-backspace", guardar=False)
 
         def celula(lin, col):
-            x0, y0 = j["x"] + 4 + col * 8, j["y"] + 24 + 4 + lin * 16
+            x0, y0 = j["x"] + 10 + col * 8, j["y"] + 32 + 10 + lin * 16
             return {cor_do_pixel(png, x0 + i, y0 + k) for i in range(8) for k in range(16)}
         fundo = celula(1, 60)
         verificar(len(celula(1, 10)) > 1, "as letras que ficaram continuam na tela")
