@@ -93,6 +93,43 @@ def main():
         m.clique(x3 + al3 - 18, y + 21)                        # o "x" da terceira (vazia)
         esperar(m, "editor: aba fechada, ficam 2", 10, antes)
         verificar(True, "o x fecha a aba vazia sem perguntar")
+        # Botão do meio numa aba fecha; botão direito no texto: menu de edição.
+        m.tecla("ctrl-n")
+        esperar(m, "editor: aba 3 de 3 (sem nome)", 10, antes)
+        antes = len(m.serial())
+        m.mouse_para(x3 + 40, y + 20)
+        time.sleep(0.3)
+        m.monitor("mouse_button 4")
+        m.monitor("mouse_button 0")
+        esperar(m, "editor: aba fechada, ficam 2", 10, antes)
+        verificar(True, "o botão do meio fecha a aba")
+        antes = len(m.serial())
+        m.clique(x + 300, y + 300, botao=2)
+        esperar(m, "menu aberto", 10, antes)
+        time.sleep(0.5)
+        m.captura("H150-5-menu-do-texto")
+        verificar("4 itens" in m.serial()[antes:] or "5 itens" in m.serial()[antes:], "botão direito no texto abre o menu de edição")
+        m.clique(x + l // 2, y + 20)                          # fecha o menu
+        time.sleep(0.5)
+        # Fechar uma aba com alteração pergunta: Salvar, Não salvar ou Cancelar.
+        m.tecla("ctrl-n")
+        esperar(m, "editor: aba 3 de 3 (sem nome)", 10, antes)
+        m.digitar("rascunho", 0.03)
+        antes = len(m.serial())
+        m.tecla("ctrl-w")
+        time.sleep(1)
+        m.captura("H150-6-pergunta")
+        m.tecla("esc")
+        esperar(m, "editor: pergunta de salvar: 3", 10, antes)
+        verificar("aba fechada" not in m.serial()[antes:], "Cancelar não fecha a aba")
+        antes = len(m.serial())
+        m.tecla("ctrl-w")
+        time.sleep(1)
+        d = janela(m.serial()[antes:], "Editor")
+        m.clique(d["x"] + d["l"] - 16 - 190 + 45, d["y"] + d["a"] - 40 + 13)   # Não salvar
+        esperar(m, "editor: pergunta de salvar: 2", 10, antes)
+        esperar(m, "editor: aba fechada, ficam 2", 10, antes)
+        verificar(True, "Não salvar fecha a aba e descarta o texto")
     return 0
 
 

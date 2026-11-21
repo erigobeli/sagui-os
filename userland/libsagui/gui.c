@@ -879,7 +879,9 @@ static int linhas_de(const char *t)
     return n;
 }
 
-static int dialogo(const char *titulo, const char *texto, const char *b1, const char *b2, caixa_t *caixa)
+/* Até 3 botões. Com 2, b1 fica à direita; com 3, ficam na ordem b1 b2 b3
+ * da esquerda para a direita, e Esc ou fechar escolhem o b3 (cancelar). */
+static int dialogo3(const char *titulo, const char *texto, const char *b1, const char *b2, const char *b3, caixa_t *caixa)
 {
     int alt = 70 + linhas_de(texto) * (LETRA_A + 2) + (caixa ? 34 : 0);
     /* Largura: 380, ou a da linha mais comprida (até 900), para mensagens
@@ -894,8 +896,11 @@ static int dialogo(const char *titulo, const char *texto, const char *b1, const 
     jan_t *j = jan_abrir(titulo, larg, alt);
     if (!j) return 0;
     texto_multilinha(j, 16, 16, texto);
-    botao_t bs[2] = { { larg - 16 - 90, alt - 40, 90, 26, b1, false }, { larg - 16 - 190, alt - 40, 90, 26, b2, false } };
-    int qtd = b2 ? 2 : 1;
+    if (b3 && larg < 16 + 3 * 100 + 16) larg = 16 + 3 * 100 + 16;
+    botao_t bs[3] = { { larg - 16 - 90, alt - 40, 90, 26, b1, false }, { larg - 16 - 190, alt - 40, 90, 26, b2, false },
+                      { larg - 16 - 90, alt - 40, 90, 26, b3, false } };
+    int qtd = b3 ? 3 : b2 ? 2 : 1;
+    if (b3) { bs[0].x = larg - 16 - 290; bs[1].x = larg - 16 - 190; }
     if (caixa) {
         caixa->x = 16; caixa->y = alt - 40 - 36; caixa->l = larg - 32; caixa->foco = true;
         caixa_desenhar(j, caixa);
@@ -906,8 +911,8 @@ static int dialogo(const char *titulo, const char *texto, const char *b1, const 
     evento_t e;
     while (!resposta) {
         if (proximo_evento(j->id, &e, true) != 1) continue;
-        if (e.tipo == EV_FECHAR) { resposta = 2; break; }
-        if (e.tipo == EV_TECLA && e.tecla == TECLA_ESC) { resposta = qtd == 2 ? 2 : 1; break; }
+        if (e.tipo == EV_FECHAR) { resposta = qtd; break; }
+        if (e.tipo == EV_TECLA && e.tecla == TECLA_ESC) { resposta = qtd; break; }
         if (caixa && caixa_tratar(j, caixa, &e)) { resposta = 1; break; }
         if (!caixa && e.tipo == EV_TECLA && e.tecla == '\n') { resposta = 1; break; }
         for (int i = 0; i < qtd; i++)
@@ -915,6 +920,16 @@ static int dialogo(const char *titulo, const char *texto, const char *b1, const 
     }
     jan_fechar(j);
     return resposta;
+}
+
+static int dialogo(const char *titulo, const char *texto, const char *b1, const char *b2, caixa_t *caixa)
+{
+    return dialogo3(titulo, texto, b1, b2, NULL, caixa);
+}
+
+int escolher_entre(const char *titulo, const char *pergunta, const char *b1, const char *b2, const char *b3)
+{
+    return dialogo3(titulo, pergunta, b1, b2, b3, NULL);
 }
 
 bool confirmar(const char *titulo, const char *pergunta)

@@ -12,7 +12,9 @@
  *
  * Visual: em cima, a aba do arquivo (um ponto verde quando há alteração) e
  * o "+" de novo (até 6 abas, cada uma com o seu arquivo; o "x" fecha a
- * aba, Ctrl+W também; Ctrl+Tab passa para a próxima); embaixo delas, os menus Arquivo, Editar e Exibir, e, nos
+ * aba, Ctrl+W e o botão do meio também; Ctrl+Tab passa para a próxima;
+ * o botão direito numa aba tem Nova aba, Fechar e Fechar as outras; no
+ * texto, Recortar, Copiar, Colar e Selecionar tudo); embaixo delas, os menus Arquivo, Editar e Exibir, e, nos
  * programas em C, os botões de compilar à direita. O texto ocupa a janela
  * toda, sem moldura; embaixo, a barra de status com a linha, a coluna, o
  * total de letras e o tipo do arquivo (Exibir liga e desliga). */
@@ -41,7 +43,8 @@ static int qtd_docs, atual;
 #define caminho (docs[atual].cam)
 static bool modificado_mostrado = true;
 static bool status_ligado = true;
-static int menu_aberto = -1;              /* 0 Arquivo, 1 Editar, 2 Exibir, 3 botão direito */
+static int menu_aberto = -1;              /* 0 Arquivo, 1 Editar, 2 Exibir, 3 botão direito no texto, 4 numa aba */
+static int aba_do_menu;                   /* a aba onde o botão direito abriu o menu 4 */
 static int realce = -1;                   /* o menu de cima com o fundo marcado (aberto) */
 static int alt_status(void) { return status_ligado ? STATUS_A : 0; }
 
@@ -364,9 +367,12 @@ static bool salvar_como(void)
 static bool pode_descartar(void)
 {
     if (!area.modificado) return true;
-    if (confirmar("Editor", "O texto tem alterações não salvas.\nSalvar antes?"))
-        return salvar();
-    return true;
+    char p[120];
+    formatar_texto(p, sizeof p, "\"%s\" tem alterações não salvas.\nSalvar antes de fechar?", nome_curto());
+    int r = escolher_entre("Editor", p, "Salvar", "Não salvar", "Cancelar");
+    registrar("editor: pergunta de salvar: %d", r);
+    if (r == 1) return salvar();
+    return r == 2;
 }
 
 /* Menus da faixa de cima. Os itens de C só aparecem para programas em C. */
@@ -522,11 +528,24 @@ int principal(int argc, char **argv)
             }
             continue;
         }
-        /* Botão direito: menu do Editor (H81). */
-        if (e.tipo == EV_CLIQUE && (e.botoes & 2)) {
+        /* Botão direito (H81). Numa aba: o que fazer com as abas. No texto:
+         * editar o que está ali (os itens sem seleção não fazem nada). */
+        if (e.tipo == EV_CLIQUE && (e.botoes & 4) && e.y < ABAS_A) {   /* botão do meio numa aba: fecha */
+            for (int i = 0; i < qtd_docs; i++)
+                if (e.x >= aba_x(i) && e.x < aba_x(i) + aba_l()) { if (fechar_aba(i)) sair = true; break; }
+            continue;
+        }
+        if (e.tipo == EV_CLIQUE && (e.botoes & 2) && e.y < ABAS_A) {
+            aba_do_menu = -1;
+            for (int i = 0; i < qtd_docs; i++) if (e.x >= aba_x(i) && e.x < aba_x(i) + aba_l()) aba_do_menu = i;
+            menu_aberto = 4;
+            jan_menu(j, e.x, e.y, aba_do_menu < 0 ? "Nova aba (Ctrl+N)" : "Nova aba (Ctrl+N)|Fechar a aba (Ctrl+W)|Fechar as outras abas");
+            continue;
+        }
+        if (e.tipo == EV_CLIQUE && (e.botoes & 2) && e.y >= BARRA) {
             menu_aberto = 3;
-            jan_menu(j, e.x, e.y, c ? "Salvar (Ctrl+S)|Salvar como...|Compilar e rodar (Ctrl+R)|Instalar no pendrive"
-                                    : "Salvar (Ctrl+S)|Salvar como...");
+            jan_menu(j, e.x, e.y, c ? "Recortar (Ctrl+X)|Copiar (Ctrl+C)|Colar (Ctrl+V)|Selecionar tudo (Ctrl+A)|Compilar e rodar (Ctrl+R)"
+                                    : "Recortar (Ctrl+X)|Copiar (Ctrl+C)|Colar (Ctrl+V)|Selecionar tudo (Ctrl+A)");
             continue;
         }
         if (e.tipo == EV_MENU) {
@@ -534,9 +553,23 @@ int principal(int argc, char **argv)
             menu_aberto = -1;
             registrar("editor: menu %d %u", m, e.tecla);
             if (m == 3) {
-                if (e.tecla == 0) salvar();
-                else if (e.tecla == 1) salvar_como();
-                else if (e.tecla == 2 || e.tecla == 3) compilar_e_voltar(e.tecla == 3);
+                static const unsigned teclas[4] = { 24, 3, 22, 1 };
+                if (e.tecla < 4) { tecla_na_area(teclas[e.tecla]); atualizar_titulo(); }
+                else if (e.tecla == 4) compilar_e_voltar(false);
+            } else if (m == 4) {
+                if (e.tecla == 0) novo();
+                else if (e.tecla == 1 && aba_do_menu >= 0) { if (fechar_aba(aba_do_menu)) sair = true; }
+                else if (e.tecla == 2 && aba_do_menu >= 0) {   /* fecha as outras, de trás para a frente */
+                    int fica = aba_do_menu;
+                    for (int i = qtd_docs - 1; i >= 0; i--) {
+                        if (i == fica) continue;
+                        int antes = qtd_docs;
+                        fechar_aba(i);
+                        if (qtd_docs == antes) break;                 /* não deu para descartar: para aqui */
+                        if (i < fica) fica--;
+                    }
+                    trocar_aba(fica);
+                }
             } else if (m == 0) {
                 unsigned t = e.tecla;
                 if (!c && t >= 4) t += 2;                             /* sem os itens de C */

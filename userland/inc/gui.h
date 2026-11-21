@@ -134,6 +134,8 @@ int  lista_qtd_marcados(const lista_t *l);
 /* ---- diálogos (janelas próprias, esperam a resposta) ---- */
 bool confirmar(const char *titulo, const char *pergunta);      /* "Tem certeza?" Sim/Não */
 void mensagem(const char *titulo, const char *texto);           /* OK */
+int  escolher_entre(const char *titulo, const char *pergunta,         /* 3 botões: devolve 1, 2 ou 3; */
+              const char *b1, const char *b2, const char *b3);  /* Esc ou fechar = 3 */
 bool pedir_texto(const char *titulo, const char *pergunta, char *resposta, int max);
 
 #endif
