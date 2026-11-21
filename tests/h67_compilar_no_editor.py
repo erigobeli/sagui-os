@@ -42,7 +42,7 @@ def main():
         m.clique(e["x"] + 200, e["y"] + 200)
         m.digitar(COM_ERRO, 0.04)
         antes = len(m.serial())
-        m.clique(e["x"] + 340 + 70, e["y"] + 7 + 13)           # Compilar e rodar
+        m.clique(e["x"] + 700 - 10 - 84 - 8 - 156 + 78, e["y"] + 36 + 5 + 12)   # Compilar e rodar
         s = esperar(m, "editor: erro de compilacao", 60, antes)
         verificar("editor: salvo /tmp/ola.c" in s, "o Editor salvou antes de compilar")
         time.sleep(1)
@@ -54,14 +54,17 @@ def main():
         m.tecla("end", 0.1)
         m.digitar(";", 0.1)
         antes = len(m.serial())
-        m.clique(e["x"] + 340 + 70, e["y"] + 7 + 13)
+        m.clique(e["x"] + 700 - 10 - 84 - 8 - 156 + 78, e["y"] + 36 + 5 + 12)   # Compilar e rodar
         s = esperar(m, "editor: compilou e abriu no Terminal /tmp/ola", 60, antes)
         s = esperar(m, "ola do editor", 30, antes)
         verificar(True, "corrigido, compilou e o programa rodou (escreveu \"ola do editor\")")
         m.captura("H67-2-rodou")
-        # Instalar no pendrive.
+        # Instalar no pendrive. Antes, uma tecla fecha o Terminal do programa
+        # (ele fica por cima dos botões do Editor).
+        m.tecla("ret", 0.2)
+        time.sleep(1)
         antes = len(m.serial())
-        m.clique(e["x"] + 488 + 40, e["y"] + 7 + 13)
+        m.clique(e["x"] + 700 - 10 - 84 + 42, e["y"] + 36 + 5 + 12)   # Instalar
         esperar(m, "editor: instalado /usb/programas/ola", 60, antes)
         m.tecla("ret", 0.2)
         esperar(m, "programas instalados no pendrive: 1", 30, antes)
