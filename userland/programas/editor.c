@@ -355,9 +355,8 @@ static void compilar(bool instalar)
 static bool salvar_como(void)
 {
     char c[160];
-    copia_texto(c, caminho[0] ? caminho : "/tmp/", sizeof c);
-    if (!pedir_texto("Salvar como", "Salvar o arquivo em (ex.: /tmp/nota.txt):", c, sizeof c) || !c[0])
-        return false;
+    copia_texto(c, caminho[0] ? caminho : "/tmp", sizeof c);
+    if (!escolher_arquivo(true, "Salvar como", c, sizeof c) || !c[0]) return false;
     copia_texto(caminho, c, sizeof caminho);
     return salvar();
 }
@@ -438,8 +437,9 @@ static bool aba_vazia(void) { return !caminho[0] && area.tam == 0 && !area.modif
 
 static void abrir_pedindo(void)
 {
-    char c[160] = "/";
-    if (!pedir_texto("Abrir", "Caminho do arquivo:", c, sizeof c)) return;
+    char c[160];
+    copia_texto(c, caminho[0] ? caminho : "/tmp", sizeof c);
+    if (!escolher_arquivo(false, "Abrir", c, sizeof c)) return;
     bool nova = !aba_vazia();
     if (nova && !nova_aba()) return;
     if (!abrir_arquivo(c) && nova) fechar_aba(atual);
