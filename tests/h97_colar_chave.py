@@ -71,7 +71,9 @@ def main():
         time.sleep(1)
         e = janela(m.serial(), "Editor - sem nome")
         png = m.captura("H97-2-editor-texto")
-        barra = cor_do_pixel(png, e["x"] + 400, e["y"] + 20)
+        # Onde ficaria o botão "Instalar" (488 a 568): fora do texto "Ctrl+S salva",
+        # que a fonte suave deixa com tons em volta das letras.
+        barra = cor_do_pixel(png, e["x"] + 530, e["y"] + 20)
         verificar(barra == (0xE6, 0xE9, 0xEC), f"o Editor de um .txt não mostra \"Compilar e rodar\" ({barra})")
         m.clique(e["x"] + 60, e["y"] + 80)
         m.tecla("ctrl-a")
