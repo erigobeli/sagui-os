@@ -269,6 +269,7 @@ static const char *programa_para(const char *nome)
         { ".png", "/bin/visualizador" }, { ".jpg", "/bin/visualizador" }, { ".jpeg", "/bin/visualizador" },
         { ".gif", "/bin/visualizador" }, { ".webp", "/bin/visualizador" }, { ".bmp", "/bin/visualizador" },
         { ".sgi", "/bin/visualizador" }, { ".svg", "/bin/cipo" }, { ".mp4", "/bin/video" },
+        { ".md", "/bin/leitor" }, { ".markdown", "/bin/leitor" },
     };
     for (unsigned k = 0; k < sizeof tabela / sizeof tabela[0]; k++)
         if (termina_com(nome, tabela[k].ext)) return tabela[k].prog;
@@ -701,6 +702,7 @@ static void menu_de_contexto(int x, int y)
             : compara_texto(prog, "/bin/tocador") == 0 ? "Abrir no Tocador"
             : compara_texto(prog, "/bin/cipo") == 0 ? "Abrir no Cipó"
             : compara_texto(prog, "/bin/visualizador") == 0 ? "Abrir no Visualizador"
+            : compara_texto(prog, "/bin/leitor") == 0 ? "Abrir no Leitor"
             : compara_texto(prog, "/bin/video") == 0 ? "Abrir no Vídeo" : "Abrir no Editor";
         acao(itens, sizeof itens, primeiro, AC_ABRIR);
         if (arquivo && compara_texto(primeiro, "Abrir no Editor") != 0) acao(itens, sizeof itens, "Abrir no Editor", AC_EDITOR);

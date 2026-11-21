@@ -205,10 +205,11 @@ def main():
 
     gravar(saida, "gpl-3.txt", ler(os.path.join(raiz, "LICENSE")))
     itens.append(("gpl-3.txt", "SaguiOS (GPL 3)"))
-    gravar(saida, "contribuidores.txt", ler(os.path.join(raiz, "CONTRIBUIDORES.md")))
-    itens.append(("contribuidores.txt", "Quem fez o SaguiOS"))
-    gravar(saida, "creditos.txt", creditos)
-    itens.append(("creditos.txt", "Créditos (resumo)"))
+    # Os que vêm de Markdown ficam .md: a janela os mostra formatados.
+    gravar(saida, "contribuidores.md", ler(os.path.join(raiz, "CONTRIBUIDORES.md")))
+    itens.append(("contribuidores.md", "Quem fez o SaguiOS"))
+    gravar(saida, "creditos.md", creditos)
+    itens.append(("creditos.md", "Créditos (resumo)"))
 
     # Código de terceiros: todas as pastas, sem lista fixa, para que uma pasta
     # nova apareça sozinha na janela.
@@ -220,12 +221,15 @@ def main():
         licencas = sorted(a for a in os.listdir(dir_) if a.upper().startswith(PREFIXOS_LICENCA))
         if not licencas:
             sys.exit(f"mklicencas: terceiros/{pasta}/ não tem arquivo de licença (LICENSE, COPYING...)")
+        # O ORIGEM.md é Markdown; cada licença vai como está, num bloco de
+        # código (a quebra de linha e o recuo dela importam).
         partes = []
         if os.path.exists(os.path.join(dir_, "ORIGEM.md")):
             partes.append(ler(os.path.join(dir_, "ORIGEM.md")))
         for lic in licencas:
-            partes.append(f"==== {lic} (terceiros/{pasta}/{lic}) ====\n\n" + ler(os.path.join(dir_, lic)))
-        arquivo = f"{pasta}.txt"
+            texto = ler(os.path.join(dir_, lic)).replace("```", "` ` `")
+            partes.append(f"## {lic} (terceiros/{pasta}/{lic})\n\n```\n" + texto.rstrip("\n") + "\n```")
+        arquivo = f"{pasta}.md"
         gravar(saida, arquivo, "\n\n".join(p.rstrip("\n") for p in partes))
         itens.append((arquivo, nome_do_terceiro(raiz, pasta, creditos)))
 
