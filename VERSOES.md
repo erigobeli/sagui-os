@@ -34,6 +34,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   ** e ## à mostra aparecem formatados, e as licenças, como texto puro. E
   o **Leitor** (leitor arquivo.md), que o Arquivos usa para abrir os .md.
 
+- **Sagui Code:** as respostas do modelo aparecem formatadas (títulos,
+  negrito, listas, código, tabelas), em vez dos ** e ## à mostra. Arrastar
+  continua selecionando, e o que se copia é o texto original.
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits
