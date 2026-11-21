@@ -38,6 +38,9 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   negrito, listas, código, tabelas), em vez dos ** e ## à mostra. Arrastar
   continua selecionando, e o que se copia é o texto original.
 
+- **Roda do mouse** no texto formatado (o Leitor, o Histórico e os Créditos
+  e licenças) e na conversa do Sagui Code: 3 linhas por passo.
+
 - **Roda do mouse:** o kernel liga a roda dos mouses PS/2 que têm (o
   "IntelliMouse") e manda o evento EV_RODA para a janela sob o cursor. As
   listas, as áreas de texto (o Editor) e o Cipó rolam com ela (H134).
