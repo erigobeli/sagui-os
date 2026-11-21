@@ -32,6 +32,7 @@ void   jan_mostrar(jan_t *j);                                   /* a janela toda
  * Depois, cada EV_REDIMENSIONAR traz o tamanho novo em e.x e e.y: o programa
  * atualiza j->larg e j->alt (jan_novo_tamanho) e redesenha tudo. */
 bool   jan_redimensionavel(jan_t *j, int larg_min, int alt_min);
+bool   jan_vidro(jan_t *j);   /* pixels JAN_VIDRO_PIXEL | cor: o que está atrás, tingido */
 void   jan_novo_tamanho(jan_t *j, const evento_t *e);
 void   jan_mostrar_area(jan_t *j, int x, int y, int l, int a);
 void   jan_menu(jan_t *j, int x, int y, const char *itens);       /* menu próprio; escolha em EV_MENU (H81) */

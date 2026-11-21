@@ -18,7 +18,7 @@ COLS = 94
 
 def celula(j, l, c):
     """Centro aproximado da célula (linha l, coluna c, contando de 0) na tela."""
-    return j["x"] + 4 + c * 8 + 4, j["y"] + 24 + 4 + l * 16 + 8
+    return j["x"] + 10 + c * 8 + 4, j["y"] + 32 + 10 + l * 16 + 8
 
 
 def main():
@@ -32,16 +32,16 @@ def main():
         j = janela(m.serial(), "Terminal")
         # Fundo vermelho (cor 1) atrás de " fundo vermelho ", que começa na coluna 14 da linha 0.
         x, y = celula(j, 0, 15)
-        verificar(cor_do_pixel(png, x - 3, y - 7) == (0xD9, 0x53, 0x4F), "fundo vermelho (cor 41) na célula certa")
+        verificar(cor_do_pixel(png, x - 3, y - 7) == (0xD7, 0x44, 0x3E), "fundo vermelho (cor 41) na célula certa")
         # Moldura: a linha horizontal da caixa (linha 4, coluna 10 = ┌) passa pela linha 7 da célula.
         x, y = celula(j, 4, 11)
-        verificar(cor_do_pixel(png, x, j["y"] + 24 + 4 + 4 * 16 + 7) == (0xD8, 0xDD, 0xE2), "moldura ─ desenhada na linha certa da célula")
+        verificar(cor_do_pixel(png, x, j["y"] + 32 + 10 + 4 * 16 + 7) == (0xCC, 0xCC, 0xCC), "moldura ─ desenhada na linha certa da célula")
         x, y = celula(j, 5, 9)
-        verificar(cor_do_pixel(png, j["x"] + 4 + 9 * 8 + 3, y) == (0xD8, 0xDD, 0xE2), "moldura │ desenhada na coluna certa da célula")
+        verificar(cor_do_pixel(png, j["x"] + 10 + 9 * 8 + 3, y) == (0xCC, 0xCC, 0xCC), "moldura │ desenhada na coluna certa da célula")
         x, y = celula(j, 4, 21)
-        verificar(cor_do_pixel(png, x, j["y"] + 24 + 4 + 4 * 16 + 7) == (0xD8, 0xDD, 0xE2), "conjunto gráfico antigo (ESC ( 0) vira moldura")
+        verificar(cor_do_pixel(png, x, j["y"] + 32 + 10 + 4 * 16 + 7) == (0xCC, 0xCC, 0xCC), "conjunto gráfico antigo (ESC ( 0) vira moldura")
         x, y = celula(j, 8, 0)
-        verificar(cor_do_pixel(png, x, y) == (0xD8, 0xDD, 0xE2), "bloco cheio █")
+        verificar(cor_do_pixel(png, x, y) == (0xCC, 0xCC, 0xCC), "bloco cheio █")
     return 0
 
 

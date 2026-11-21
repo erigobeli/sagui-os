@@ -317,6 +317,11 @@ typedef struct {
 
 /* Opções de janela (SIS_JANELA_OPCOES). */
 #define JAN_REDIMENSIONAVEL 1
+/* Fundo de vidro: os pixels do conteúdo com o byte de cima 0xFF mostram o
+ * que está atrás da janela, misturado com a cor deles (JAN_VIDRO_K/256). */
+#define JAN_VIDRO           2
+#define JAN_VIDRO_PIXEL     0xFF000000u
+#define JAN_VIDRO_K         212
 
 /* Modos de janela (SIS_JANELA_MODO, D071). Só para janela redimensionável.
  * Em tela cheia o conteúdo cobre a tela toda, por cima da barra de cima e

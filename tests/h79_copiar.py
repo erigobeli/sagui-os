@@ -31,7 +31,7 @@ def main():
         t = janela(m.serial(), "Terminal")
 
         def centro(lin, col):
-            return t["x"] + 4 + col * 8 + 4, t["y"] + 24 + 4 + lin * 16 + 8
+            return t["x"] + 10 + col * 8 + 4, t["y"] + 32 + 10 + lin * 16 + 8
 
         # Linha 0: saudação; linha 1: o comando; linha 2: a saída.
         m.comando("echo copie-isto-123")

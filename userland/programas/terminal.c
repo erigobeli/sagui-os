@@ -36,14 +36,21 @@ extern const unsigned char fonte_sagui[256][16];
 static int cols = 94, lins = 28;
 #define COLS cols
 #define LINS lins
-#define MARGEM 4
-#define ABAS_A 24
+#define MARGEM 10
+#define ABAS_A 32
 #define LARG (COLS * LETRA_L + 2 * MARGEM)
 #define ALT  (LINS * LETRA_A + 2 * MARGEM + ABAS_A)
 #define TOPO (ABAS_A + MARGEM)
 #define MAX_ABAS 4
 #define HISTORICO 300
-#define COR_FUNDO_T_GLOBAL 0x12161E
+#define COR_FUNDO_T_GLOBAL 0x1C1C1C   /* fundo do texto */
+#define VIDRO_T            JAN_VIDRO_PIXEL   /* marca de vidro no pixel: o fundo da área de trabalho aparece atrás */
+#define COR_T_BARRA     0x141414   /* faixa das abas */
+#define COR_T_ABA    0x262626
+#define COR_T_DESTAQUE       0x5FB33A   /* verde-sagui: aba atual e "+" */
+#define COR_T_CURSOR         0xE6E6E6
+#define COR_T_SELECAO        0x2F4F7A
+#define COR_T_FRACO    0x8A8A8A
 
 /* Atributos de uma célula. */
 #define A_NEGRITO   1
@@ -106,13 +113,15 @@ static int sel_ini_l = -1, sel_ini_c, sel_fim_l, sel_fim_c;
 
 /* ------------------------------------------------------------ cores */
 
-/* As 16 cores básicas (escuras e claras), nas cores do SaguiOS; 16 a 231 são
- * um cubo 6x6x6; 232 a 255, cinzas. */
+/* As 16 cores básicas: as clássicas, um pouco mais vivas que as de 1980 e
+ * legíveis sobre o fundo grafite; as claras (8 a 15) são um degrau acima. O preto
+ * (0) como letra é um cinza-escuro que ainda aparece; como fundo, é o fundo
+ * do Terminal (cor_fundo). 16 a 231 são um cubo 6x6x6; 232 a 255, cinzas. */
 static uint32_t cor(int i)
 {
     static const uint32_t basicas[16] = {
-        0x12161E, 0xD9534F, 0x5FB33A, 0xE0B92A, 0x2A6FD8, 0xA55EC8, 0x2AA9B8, 0xD8DDE2,
-        0x5A6470, 0xFF7B72, 0x7EE07E, 0xFFDF4A, 0x6FA8FF, 0xD48BF0, 0x5FD7E6, 0xFFFFFF,
+        0x2E2E2E, 0xD7443E, 0x3FB950, 0xD9B634, 0x3B82D6, 0xB45CC8, 0x2AA7C2, 0xCCCCCC,
+        0x6E6E6E, 0xF05A54, 0x56D364, 0xEDCF4F, 0x5C9DEB, 0xCF7BE0, 0x4CC3DB, 0xFFFFFF,
     };
     if (i < 16) return basicas[i];
     if (i < 232) {
@@ -123,6 +132,9 @@ static uint32_t cor(int i)
     uint32_t c = (uint32_t)(8 + (i - 232) * 10);
     return (c << 16) | (c << 8) | c;
 }
+
+/* O fundo padrão é de vidro; os de cor (ESC [ 4x m) ficam opacos. */
+static uint32_t cor_fundo(int i) { return i == 0 ? (COR_FUNDO_T_GLOBAL | VIDRO_T) : cor(i); }
 
 /* Cor de 24 bits -> a mais perto no cubo de 256 (o Terminal guarda 1 byte por cor). */
 static uint8_t cor_proxima(int r, int g, int b)
@@ -148,9 +160,11 @@ static bool selecionada(int l, int c)
 
 static void desenhar_celula(int l, int c, celula_t ce, bool cursor)
 {
-    uint32_t fr = cor(ce.frente < 8 && (ce.attr & A_NEGRITO) ? ce.frente + 8 : ce.frente), fu = cor(ce.fundo);
+    uint32_t fr = cor(ce.frente < 8 && (ce.attr & A_NEGRITO) ? ce.frente + 8 : ce.frente), fu = cor_fundo(ce.fundo);
     if (ce.attr & A_INVERTIDO) { uint32_t t = fr; fr = fu; fu = t; }
-    if (cursor || selecionada(l, c)) { uint32_t t = fr; fr = fu; fu = t; }
+    if (selecionada(l, c)) fu = COR_T_SELECAO;              /* a seleção tinge o fundo, a letra fica */
+    if (cursor) { fu = COR_T_CURSOR; fr = COR_FUNDO_T_GLOBAL; }
+    fr &= 0xFFFFFF;   /* a letra é sempre opaca */   /* bloco colorido */
     int x0 = MARGEM + c * LETRA_L, y0 = TOPO + l * LETRA_A;
     const unsigned char *g = fonte_sagui[ce.c];
     for (int y = 0; y < LETRA_A; y++) {
@@ -178,19 +192,41 @@ static void desenhar_linha(aba_t *a, int l)
     }
 }
 
+/* Abas: a atual tem os cantos de cima redondos, a cor do fundo do texto (as
+ * duas se emendam) e um traço verde embaixo do nome; as outras ficam mais
+ * escuras, com o nome apagado. */
 static void desenhar_abas(void)
 {
-    g_retangulo(j, 0, 0, LARG, ABAS_A, 0x0E2A18);
-    int x = 4;
+    g_retangulo(j, 0, 0, LARG, ABAS_A, COR_T_BARRA | VIDRO_T);
+    int x = 6;
     for (int i = 0; i < MAX_ABAS; i++) {
         if (!abas[i].usada) continue;
-        uint32_t fundo = i == atual_aba ? 0x12161E : 0x1F3D2A;
-        g_retangulo(j, x, 3, 150, ABAS_A - 3, fundo);
-        g_texto_n(j, x + 8, 5, abas[i].nome, 17, i == atual_aba ? 0xFFFFFF : 0x9FB8A4);
+        bool atual = i == atual_aba;
+        uint32_t fundo = atual ? (COR_FUNDO_T_GLOBAL | VIDRO_T) : (COR_T_ABA | VIDRO_T);
+        g_ret_redondo(j, x, 5, 148, ABAS_A - 5 + 8, 8, fundo, fundo);   /* os cantos de baixo ficam sob a margem */
+        g_retangulo(j, x + 12, 13, 6, 6, atual ? COR_T_DESTAQUE : COR_T_FRACO);   /* marcador da aba */
+        g_texto_n(j, x + 26, 9, abas[i].nome, 15, atual ? 0xFFFFFF : COR_T_FRACO);
+        if (atual) g_retangulo(j, x + 26, ABAS_A - 4, 15 * LETRA_L < 110 ? 15 * LETRA_L : 110, 2, COR_T_DESTAQUE);
         x += 154;
     }
-    if (x + 24 < LARG) { g_texto(j, x + 6, 5, "+", 0x9FD8A8); }
-    g_retangulo(j, 0, ABAS_A, LARG, MARGEM, COR_FUNDO_T_GLOBAL);
+    if (x + 26 < LARG) {
+        g_ret_redondo(j, x + 2, 7, 22, 20, 6, COR_T_ABA | VIDRO_T, COR_T_ABA | VIDRO_T);
+        g_retangulo(j, x + 8, 16, 10, 2, COR_T_DESTAQUE);
+        g_retangulo(j, x + 12, 12, 2, 10, COR_T_DESTAQUE);
+    }
+    g_retangulo(j, 0, ABAS_A, LARG, MARGEM, COR_FUNDO_T_GLOBAL | VIDRO_T);
+}
+
+/* Olhando o histórico (Shift+PgUp): uma barrinha à direita mostra onde. */
+static void desenhar_indicador(aba_t *a)
+{
+    int x = LARG - 6, y0 = TOPO, h = LINS * LETRA_A;
+    g_retangulo(j, x, y0, 4, h, COR_FUNDO_T_GLOBAL | VIDRO_T);
+    if (a->olhando <= 0 || a->hist_qtd <= 0) return;
+    int total = a->hist_qtd + LINS, alt = h * LINS / total;
+    if (alt < 12) alt = 12;
+    int y = y0 + (h - alt) * (a->hist_qtd - a->olhando) / a->hist_qtd;
+    g_ret_redondo(j, x, y, 4, alt, 2, COR_T_FRACO, COR_T_FRACO);
 }
 
 static void mostrar(void)
@@ -199,7 +235,9 @@ static void mostrar(void)
     if (abas_sujas) { desenhar_abas(); jan_mostrar_area(j, 0, 0, LARG, ABAS_A + MARGEM); abas_sujas = false; }
     if (suj_l1 < 0) return;
     for (int l = suj_l0; l <= suj_l1; l++) desenhar_linha(a, l);
+    desenhar_indicador(a);
     jan_mostrar_area(j, 0, TOPO + suj_l0 * LETRA_A, LARG, (suj_l1 - suj_l0 + 1) * LETRA_A);
+    if (suj_l0 > 0 || suj_l1 < LINS - 1) jan_mostrar_area(j, LARG - 6, TOPO, 6, LINS * LETRA_A);
     suj_l0 = LINS; suj_l1 = -1;
 }
 
@@ -776,7 +814,7 @@ static void mudar_tamanho(int l, int a_px)
     }
     cols = nc;
     lins = nl;
-    g_retangulo(j, 0, 0, l, a_px, COR_FUNDO_T_GLOBAL);
+    g_retangulo(j, 0, 0, l, a_px, COR_FUNDO_T_GLOBAL | VIDRO_T);
     abas_sujas = true;
     sujar_tudo();
     for (int i = 0; i < MAX_ABAS; i++) if (abas[i].usada && abas[i].avisar_tamanho) avisar_tamanho(&abas[i]);
@@ -792,8 +830,9 @@ int principal(int argc, char **argv)
     if (argc >= 3 && compara_texto(argv[1], "-e") == 0) programa_argv = argv + 2;
     j = jan_abrir("Terminal", LARG, ALT);
     if (!j) return 1;
+    jan_vidro(j);
     jan_redimensionavel(j, 40 * LETRA_L + 2 * MARGEM, 6 * LETRA_A + 2 * MARGEM + ABAS_A);
-    g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO_T_GLOBAL);
+    g_retangulo(j, 0, 0, LARG, ALT, COR_FUNDO_T_GLOBAL | VIDRO_T);
     if (abrir_aba() < 0) { imprimir("terminal: não consegui abrir o sagsh\n"); return 1; }
     atual_aba = 0;
     sujar_tudo();
@@ -844,12 +883,12 @@ int principal(int argc, char **argv)
                 if (e.tecla == 3 && interromper(a)) { sujar_tudo(); continue; }
                 enviar_tecla(a, e.tecla);
             } else if (e.tipo == EV_CLIQUE && e.y < ABAS_A) {
-                int i = e.x / 154, x_mais = 4 + abas_abertas() * 154;
+                int i = (e.x - 6) / 154, x_mais = 6 + abas_abertas() * 154;
                 int k = -1, vista = 0;
                 for (int t = 0; t < MAX_ABAS; t++) if (abas[t].usada) { if (vista == i) k = t; vista++; }
                 if (e.botoes & 2) { if (k >= 0 && abas_abertas() > 1) fechar_aba(k); }   /* botão direito na aba: fecha */
                 else if (k >= 0) { atual_aba = k; abas_sujas = true; sujar_tudo(); }
-                else if (e.x >= x_mais && e.x < x_mais + 24) {
+                else if (e.x >= x_mais && e.x < x_mais + 26) {
                     int nova = abrir_aba();
                     if (nova >= 0) { atual_aba = nova; abas_sujas = true; sujar_tudo(); }
                 }
