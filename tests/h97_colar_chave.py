@@ -71,8 +71,9 @@ def main():
         time.sleep(1)
         e = janela(m.serial(), "Editor - sem nome")
         png = m.captura("H97-2-editor-texto")
-        barra = cor_do_pixel(png, e["x"] + 400, e["y"] + 20)
-        verificar(barra == (0xE6, 0xE9, 0xEC), f"o Editor de um .txt não mostra \"Compilar e rodar\" ({barra})")
+        # Onde ficaria o botão verde "Compilar e rodar" (faixa dos menus, à direita).
+        barra = cor_do_pixel(png, e["x"] + 700 - 10 - 84 - 8 - 156 + 78, e["y"] + 36 + 5 + 12)
+        verificar(barra == (0xFF, 0xFF, 0xFF), f"o Editor de um .txt não mostra \"Compilar e rodar\" ({barra})")
         m.clique(e["x"] + 60, e["y"] + 80)
         m.tecla("ctrl-a")
         m.tecla("ctrl-c")
