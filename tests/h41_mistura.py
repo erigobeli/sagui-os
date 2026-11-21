@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, verificar, SAIDA, janela  # noqa: E402
+from qemu import controle, Maquina, verificar, SAIDA, janela  # noqa: E402
 from h40_som import som_qemu, ler_wav  # noqa: E402
 
 
@@ -41,7 +41,7 @@ def main():
         m.esperar_serial("configuracoes: aberto na aba Som", 15)
         time.sleep(0.8)
         j = janela(m.serial(), "Configurações")
-        m.clique(j["x"] + 190 + 260 + 18, j["y"] + 80 + 14)   # "+"
+        m.clique(*controle(m.serial(), "som.mais", j))
         m.esperar_serial("configuracoes: volume 90", 10)
         verificar(True, "o botão + da aba Som sobe o volume")
         time.sleep(0.5)

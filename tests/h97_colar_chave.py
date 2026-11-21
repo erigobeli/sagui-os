@@ -17,7 +17,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qemu import Maquina, FalhaTeste, verificar, janela, cor_do_pixel, criar_pendrive, pendrive_qemu  # noqa: E402
+from qemu import controle, Maquina, FalhaTeste, verificar, janela, cor_do_pixel, criar_pendrive, pendrive_qemu  # noqa: E402
 
 # Uma chave falsa, do tamanho das de verdade (sk-or-v1- e 64 letras).
 CHAVE = "sk-or-v1-" + "a1b2c3d4e5f60718" * 4
@@ -87,12 +87,12 @@ def main():
         esperar(m, "configuracoes: aberto na aba IA", 15, antes)
         time.sleep(1)
         c = janela(m.serial(), "Configurações")
-        m.clique(c["x"] + 190 + 40, c["y"] + 196 + 10)
+        m.clique(*controle(m.serial(), "ia.chave", c))
         m.tecla("ctrl-v")
         time.sleep(0.5)
         m.captura("H97-3-chave-colada")
         antes = len(m.serial())
-        m.clique(c["x"] + 190 + 60, c["y"] + 256 + 14)
+        m.clique(*controle(m.serial(), "ia.guardar", c))
         esperar(m, "configuracoes: chave do OpenRouter guardada", 15, antes)
         verificar(CHAVE not in m.serial(), "a chave não apareceu no registro do sistema")
         verificar(True, "Ctrl+V colou a chave e Guardar a gravou")
