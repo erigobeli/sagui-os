@@ -16,7 +16,12 @@
  *
  * Copiar e colar: o botão direito no visor abre Copiar, Colar, Recortar
  * (copia e zera) e Limpar; Ctrl+C e Ctrl+V fazem o mesmo pelo teclado. O
- * número colado aceita vírgula ou ponto, sinal e espaços. */
+ * número colado aceita vírgula ou ponto, sinal e espaços.
+ *
+ * Seleção no visor: arrastar sobre o número marca um pedaço dele (dois
+ * cliques ou Ctrl+A, ele todo). Com algo marcado, Copiar e Recortar levam
+ * só o pedaço, Backspace e Delete o apagam, um algarismo ou Colar entram
+ * no lugar dele. Mexer num resultado o transforma no número digitado. */
 #include "sagui.h"
 #include "gui.h"
 
@@ -43,6 +48,17 @@ static char erro[48];
 #define C_IGUAL     0x0B7A3E
 #define C_IGUAL_APER 0x086332
 #define VISOR_A     74
+#define VISOR_FIM   (10 + VISOR_A + 6)
+
+/* Seleção no visor: de sel_a a sel_b (posições entre as letras). */
+static int sel_a = -1, sel_b = -1;
+static bool marcando;
+static int vis_x0, vis_cw = 16, vis_n;    /* onde o número foi desenhado */
+static bool tem_sel(void) { return sel_a >= 0 && sel_a != sel_b; }
+static int sel_ini(void) { return sel_a < sel_b ? sel_a : sel_b; }
+static int sel_fim(void) { return sel_a < sel_b ? sel_b : sel_a; }
+static void sem_sel(void) { sel_a = sel_b = -1; }
+static void apagar_sel(void);
 
 /* ---- aritmética de 64 bits sem a biblioteca do compilador ---- */
 
@@ -171,9 +187,19 @@ static void desenhar_visor(void)
             g_texto(j, LARG - 18 - g_largura_texto(conta), 16, conta, COR_TEXTO_FRACO);
         }
         texto_do_visor(texto, sizeof texto);
-        int larg = (int)tam_texto(texto) * 16;
-        if (larg > LARG - 36) g_texto(j, LARG - 18 - g_largura_texto(texto), 52, texto, COR_TEXTO);
-        else texto_grande(LARG - 18 - larg, 40, texto, COR_TEXTO);
+        vis_n = (int)tam_texto(texto);
+        bool grande = vis_n * 16 <= LARG - 36;
+        vis_cw = grande ? 16 : LETRA_L;
+        vis_x0 = LARG - 18 - vis_n * vis_cw;
+        int ty = grande ? 40 : 52, ta = grande ? 32 : LETRA_A;
+        if (tem_sel() && sel_fim() <= vis_n)   /* o pedaço marcado: fundo azul */
+            g_ret_redondo(j, vis_x0 + sel_ini() * vis_cw - 1, ty - 2, (sel_fim() - sel_ini()) * vis_cw + 2, ta + 4, 3, COR_SELECAO, COR_SELECAO);
+        for (int i = 0; i < vis_n; i++) {
+            char c[2] = { texto[i], 0 };
+            uint32_t cor = tem_sel() && i >= sel_ini() && i < sel_fim() ? COR_BRANCO : COR_TEXTO;
+            if (grande) texto_grande(vis_x0 + i * 16, ty, c, cor);
+            else g_texto(j, vis_x0 + i * LETRA_L, ty, c, cor);
+        }
     }
     jan_mostrar_area(j, 0, 0, LARG, 10 + VISOR_A + 6);
 }
@@ -299,6 +325,14 @@ static int tecla_em(int x, int y)
 
 static void executar_acao(char a)
 {
+    if (tem_sel() && ((a >= '0' && a <= '9') || a == ',' || a == 'B')) {   /* no lugar do marcado */
+        apagar_sel();
+        if (a != 'B') digito(a);
+        desenhar_visor();
+        registrar_visor();
+        return;
+    }
+    sem_sel();
     if (a >= '0' && a <= '9') digito(a);
     else if (a == ',') digito(',');
     else if (a == '+' || a == '-' || a == '*' || a == '/') operador(a);
@@ -308,26 +342,52 @@ static void executar_acao(char a)
     desenhar_visor();
 }
 
-/* ---- copiar e colar ---- */
+/* ---- seleção e copiar e colar ---- */
+
+/* Posição entre letras mais perto do x (0 = antes da primeira). */
+static int posicao_em(int x)
+{
+    int p = (x - vis_x0 + vis_cw / 2) / vis_cw;
+    return p < 0 ? 0 : p > vis_n ? vis_n : p;
+}
+
+/* Um resultado vira o número digitado, para poder ser mexido. */
+static void garantir_entrada(void)
+{
+    if (digitando) return;
+    texto_do_visor(entrada, sizeof entrada);
+    digitando = true;
+}
+
+static void apagar_sel(void)
+{
+    if (!tem_sel()) return;
+    garantir_entrada();
+    int a = sel_ini(), b = sel_fim(), n = (int)tam_texto(entrada);
+    if (b > n) b = n;
+    for (int i = a; i <= n - (b - a); i++) entrada[i] = entrada[i + (b - a)];
+    if (!entrada[0] || compara_texto(entrada, "-") == 0) copia_texto(entrada, "0", sizeof entrada);
+    sem_sel();
+}
 
 static void copiar(void)
 {
     if (erro[0]) return;
     char t[48];
     texto_do_visor(t, sizeof t);
+    if (tem_sel()) {                       /* só o pedaço marcado */
+        int a = sel_ini(), b = sel_fim() < (int)tam_texto(t) ? sel_fim() : (int)tam_texto(t);
+        for (int i = 0; i < b - a; i++) t[i] = t[a + i];
+        t[b - a] = 0;
+    }
     area_copia_gravar(t, (unsigned)tam_texto(t));
     registrar("calculadora: copiado %s", t);
 }
 
-/* Cola um número: aceita vírgula ou ponto, sinal na frente e espaços (que
- * são ignorados, como em "1 234,5"). Outra coisa avisa e não muda nada. */
-static void colar(void)
+/* Lê um número de t: aceita vírgula ou ponto, sinal na frente e espaços
+ * (ignorados, como em "1 234,5"). Devolve false se não for um número. */
+static bool ler_colado(const char *t, char *n)
 {
-    char t[64], n[32];
-    int tam = area_copia_ler(t, sizeof t - 1);
-    if (tam <= 0) return;
-    if (tam > (int)sizeof t - 1) tam = (int)sizeof t - 1;
-    t[tam] = 0;
     int k = 0, dig = 0, dec = -1;
     bool ok = true;
     for (int i = 0; t[i] && ok; i++) {
@@ -344,15 +404,40 @@ static void colar(void)
         ok = false;
     }
     n[k] = 0;
-    if (!ok || !dig) {
+    return ok && dig;
+}
+
+/* Cola: com um pedaço marcado, o colado entra no lugar dele. Outra coisa
+ * que não um número avisa e não muda nada. */
+static void colar(void)
+{
+    char t[64], junto[128], n[32];
+    int tam = area_copia_ler(t, sizeof t - 1);
+    if (tam <= 0) return;
+    if (tam > (int)sizeof t - 1) tam = (int)sizeof t - 1;
+    t[tam] = 0;
+    if (tem_sel() && !erro[0]) {
+        char v[48];
+        texto_do_visor(v, sizeof v);
+        int a = sel_ini(), b = sel_fim();
+        formatar_texto(junto, sizeof junto, "%s", "");
+        int k = 0;
+        for (int i = 0; i < a && v[i]; i++) junto[k++] = v[i];
+        for (int i = 0; t[i] && k < 120; i++) junto[k++] = t[i];
+        for (int i = b; v[i] && k < 126; i++) junto[k++] = v[i];
+        junto[k] = 0;
+    } else copia_texto(junto, t, sizeof junto);
+    if (!ler_colado(junto, n)) {
         copia_texto(erro, "O que foi colado não é um número", sizeof erro);
         registrar("calculadora: colar recusado");
         digitando = false;
+        sem_sel();
         return;
     }
     erro[0] = 0;
     copia_texto(entrada, n, sizeof entrada);
     digitando = true;
+    sem_sel();
     registrar("calculadora: colado %s", entrada);
 }
 
@@ -360,8 +445,13 @@ static void acao_menu(unsigned i)
 {
     if (i == 0) copiar();
     else if (i == 1) colar();
-    else if (i == 2) { copiar(); if (!erro[0]) { if (!digitando) limpar(); copia_texto(entrada, "0", sizeof entrada); digitando = true; } }
-    else if (i == 3) limpar();
+    else if (i == 2) {
+        copiar();
+        if (erro[0]) {}
+        else if (tem_sel()) apagar_sel();
+        else { if (!digitando) limpar(); copia_texto(entrada, "0", sizeof entrada); digitando = true; }
+    }
+    else if (i == 3) { limpar(); sem_sel(); }
     desenhar_visor();
     registrar_visor();
 }
@@ -395,6 +485,22 @@ int principal(int argc, char **argv)
             jan_menu(j, e.x, e.y, "Copiar (Ctrl+C)|Colar (Ctrl+V)|Recortar (Ctrl+X)|Limpar (Esc)");
             continue;
         }
+        if (e.tipo == EV_CLIQUE && (e.botoes & 1) && e.y < VISOR_FIM && !erro[0]) {   /* marcar no visor */
+            if (e.cliques == 2) { sel_a = 0; sel_b = vis_n; }
+            else { sel_a = sel_b = posicao_em(e.x); marcando = true; }
+            desenhar_visor();
+            continue;
+        }
+        if (e.tipo == EV_MOVER && marcando && (e.botoes & 1)) {
+            int p = posicao_em(e.x);
+            if (p != sel_b) { sel_b = p; desenhar_visor(); }
+            continue;
+        }
+        if (e.tipo == EV_SOLTOU && marcando) {
+            marcando = false;
+            if (tem_sel()) registrar("calculadora: selecao %d a %d", sel_ini(), sel_fim());
+            continue;
+        }
         if (e.tipo == EV_CLIQUE && (e.botoes & 1)) {
             apertada = tecla_em(e.x, e.y);
             if (apertada >= 0) { teclas[apertada].b.apertado = true; desenhar_tecla(apertada); }
@@ -414,6 +520,8 @@ int principal(int argc, char **argv)
         if (e.tecla == 3) { acao_menu(0); continue; }        /* Ctrl+C */
         if (e.tecla == 22) { acao_menu(1); continue; }       /* Ctrl+V */
         if (e.tecla == 24) { acao_menu(2); continue; }       /* Ctrl+X */
+        if (e.tecla == 1 && !erro[0]) { sel_a = 0; sel_b = vis_n; desenhar_visor(); continue; }   /* Ctrl+A */
+        if (e.tecla == TECLA_DELETE && tem_sel()) { apagar_sel(); desenhar_visor(); registrar_visor(); continue; }
         unsigned t = e.tecla;
         char a = 0;
         if (t >= '0' && t <= '9') a = (char)t;

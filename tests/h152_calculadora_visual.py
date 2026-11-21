@@ -72,6 +72,28 @@ def main():
         esperar(m, "calculadora: copiado 50", 10, antes)
         esperar(m, "calculadora: visor 0", 10, antes)
         verificar(True, "Ctrl+X copia 50 e zera o visor")
+        # Seleção: 123456, arrastar sobre "23".
+        antes = len(m.serial())
+        m.digitar("c123456", 0.08)
+        time.sleep(0.5)
+        x0 = x + 296 - 18 - 6 * 16
+        m.arrastar(x0 + 16 + 2, y + 56, x0 + 48 + 2, y + 56)
+        esperar(m, "calculadora: selecao 1 a 3", 10, antes)
+        time.sleep(0.5)
+        m.captura("H152-3-selecao")
+        m.tecla("ctrl-c")
+        esperar(m, "calculadora: copiado 23", 10, antes)
+        verificar(True, "arrastar marca 23 e Ctrl+C copia só ele")
+        m.tecla("backspace")
+        esperar(m, "calculadora: visor 1456", 10, antes)
+        verificar(True, "Backspace apaga o pedaço marcado: 1456")
+        antes = len(m.serial())
+        x0 = x + 296 - 18 - 4 * 16
+        m.clique(x0 + 20, y + 56, duplo=True)
+        time.sleep(0.4)
+        m.digitar("9", 0.08)
+        esperar(m, "calculadora: visor 9", 10, antes)
+        verificar(True, "dois cliques marcam tudo e o 9 entra no lugar")
     return 0
 
 
