@@ -850,6 +850,13 @@ bool md_tratar(jan_t *j, md_t *m, const evento_t *e)
             tratou = true;
         }
     } else if (e->tipo == EV_SOLTOU) m->arrastando = false;
+#ifdef EV_RODA
+    else if (e->tipo == EV_RODA && e->x >= m->x && e->x < m->x + m->l && e->y >= m->y && e->y < m->y + m->a) {
+        mudou = rolar(m, 3 * LINHA * (int)e->tecla);   /* 3 linhas por passo, como a área de texto (H134) */
+        registrar("markdown: roda %d, topo %d", (int)e->tecla, m->topo);
+        tratou = true;
+    }
+#endif
     if (mudou) { md_desenhar(j, m); jan_mostrar_area(j, m->x - 1, m->y - 1, m->l + 2, m->a + 2); }
     return tratou;
 }

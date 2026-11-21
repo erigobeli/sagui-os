@@ -1248,6 +1248,13 @@ int principal(int argc, char **argv)
                 area_tratar(j, &entrada, &e);
                 continue;
             }
+#ifdef EV_RODA
+            if (e.tipo == EV_RODA && e.x >= conv_x && e.x < conv_x + conv_l && e.y >= conv_y && e.y < conv_y + conv_a) {
+                rolar(3 * LH * (int)e.tecla);   /* a conversa: 3 linhas por passo */
+                registrar("saguicode-janela: roda %d, rolagem %d", (int)e.tecla, rolagem);
+                continue;
+            }
+#endif
             if (e.tipo == EV_CLIQUE) {
                 /* Sessões: clique abre; botão direito, o menu. */
                 if (e.x >= lista.x && e.x < lista.x + lista.l && e.y >= lista.y && e.y < lista.y + lista.a) {
