@@ -11,7 +11,8 @@
  *           estouro de X e Y (bits 6-7);
  *   byte 1: deslocamento X; byte 2: deslocamento Y (para cima é positivo).
  * O bit 3 sempre ligado é o que permite reencontrar o começo de um pacote
- * se um byte se perder. */
+ * se um byte se perder. Com a roda ligada (i8042.c, H134) o pacote tem um
+ * 4º byte: os passos da roda, com sinal (para baixo é positivo). */
 #include "mouse.h"
 #include "console.h"
 #include "cpu.h"
@@ -22,7 +23,7 @@
 
 #define FILA   64
 
-static uint8_t pacote[3];
+static uint8_t pacote[4];
 static int pos_pacote;
 static int mx, my, larg = 1024, alt = 768;
 static uint8_t botoes;
@@ -32,11 +33,11 @@ static const char canal = 0;
 
 const void *mouse_canal(void) { return &canal; }
 
-static void guardar(int16_t dx, int16_t dy, uint8_t mudaram)
+static void guardar(int16_t dx, int16_t dy, uint8_t mudaram, int8_t roda)
 {
     uint32_t prox = (fim + 1) % FILA;
     if (prox == ini) ini = (ini + 1) % FILA;   /* fila cheia: esquece o mais antigo */
-    fila[fim] = (evento_mouse_t){ (int16_t)mx, (int16_t)my, dx, dy, botoes, mudaram };
+    fila[fim] = (evento_mouse_t){ (int16_t)mx, (int16_t)my, dx, dy, botoes, mudaram, roda };
     fim = prox;
     acordar(&canal);
 }
@@ -59,7 +60,10 @@ static void tratar_pacote(void)
         klog("[MOUSE] botao esquerdo %s em (%d,%d)\n", novos & BOTAO_ESQUERDO ? "apertado" : "solto", mx, my);
     if (mudaram & BOTAO_DIREITO)
         klog("[MOUSE] botao direito %s em (%d,%d)\n", novos & BOTAO_DIREITO ? "apertado" : "solto", mx, my);
-    guardar((int16_t)dx, (int16_t)-dy, mudaram);
+    int8_t roda = i8042_mouse_roda() ? (int8_t)pacote[3] : 0;
+    if (roda < -8 || roda > 7) roda = 0;           /* o IntelliMouse só usa de -8 a 7 */
+    if (roda) klog("[MOUSE] roda %d em (%d,%d)\n", roda, mx, my);
+    guardar((int16_t)dx, (int16_t)-dy, mudaram, roda);
     if (video_ativo()) {
         video_cursor(mx, my, true);
         video_mostrar();
@@ -72,7 +76,7 @@ void mouse_byte(uint8_t b)
 {
     if (pos_pacote == 0 && !(b & 0x08)) return;   /* fora de sincronia: espera um byte 0 válido */
     pacote[pos_pacote++] = b;
-    if (pos_pacote == 3) {
+    if (pos_pacote == (i8042_mouse_roda() ? 4 : 3)) {
         pos_pacote = 0;
         tratar_pacote();
     }
