@@ -94,6 +94,57 @@ def main():
         m.digitar("9", 0.08)
         esperar(m, "calculadora: visor 9", 10, antes)
         verificar(True, "dois cliques marcam tudo e o 9 entra no lugar")
+        # Menu: Colar e Recortar.
+        def menu_item(i):
+            antes = len(m.serial())
+            m.clique(x + 100, y + 40, botao=2)
+            s = esperar(m, "menu aberto", 10, antes)
+            mx, my = [int(v) for v in re.findall(r"menu aberto \(tipo \d+, 4 itens\) em \((\d+),(\d+)\)", s)[-1]]
+            time.sleep(0.4)
+            m.clique(mx + 30, my + 4 + i * 26 + 12)
+        antes = len(m.serial())
+        m.tecla("ctrl-c")
+        esperar(m, "calculadora: copiado 9", 10, antes)
+        m.digitar("c", 0.08)
+        menu_item(1)
+        esperar(m, "calculadora: colado 9", 10, antes)
+        verificar(True, "menu > Colar cola 9")
+        antes = len(m.serial())
+        menu_item(2)
+        esperar(m, "calculadora: copiado 9", 10, antes)
+        esperar(m, "calculadora: visor 0", 10, antes)
+        verificar(True, "menu > Recortar copia 9 e zera")
+        # Colar um texto: "abc" copiado no Editor.
+        t_ = janela(m.serial(), "Terminal")
+        m.clique(t_["x"] + 600, t_["y"] + 300)
+        time.sleep(0.4)
+        antes = len(m.serial())
+        m.digitar("editor\n", 0.05)
+        esperar(m, "editor: pronto", 30, antes)
+        time.sleep(0.8)
+        m.digitar("abc", 0.05)
+        m.tecla("ctrl-a")
+        m.tecla("ctrl-c")
+        time.sleep(0.5)
+        ed = janela(m.serial(), "Editor - sem nome")
+        m.clique(ed["x"] + ed["l"] - 20 + 8 - 2, ed["y"] - 12)   # X da janela
+        time.sleep(1)
+        d = janela(m.serial(), "Editor")
+        m.clique(d["x"] + d["l"] - 16 - 190 + 45, d["y"] + d["a"] - 40 + 13)   # Não salvar
+        esperar(m, "editor: fechado", 10, antes)
+        time.sleep(0.5)
+        m.clique(t_["x"] + t_["l"] - 37, t_["y"] - 12)          # minimiza o Terminal: a Calculadora aparece
+        time.sleep(1.5)
+        antes = len(m.serial())
+        m.clique(x + 100, y + 40)
+        m.digitar("7", 0.08)
+        m.tecla("ctrl-v")
+        esperar(m, "calculadora: colar recusado", 10, antes)
+        time.sleep(0.5)
+        m.captura("H152-4-colar-texto")
+        m.digitar("c7+1\n", 0.08)
+        esperar(m, "calculadora: visor 8", 10, antes)
+        verificar(True, "colar \"abc\" avisa e a calculadora segue funcionando (7 + 1 = 8)")
     return 0
 
 
