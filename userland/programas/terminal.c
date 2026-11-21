@@ -159,7 +159,7 @@ static void desenhar_celula(int l, int c, celula_t ce, bool cursor)
             bool sub = (ce.attr & A_SUBLINHA) && y == 14;
             for (int x = 0; x < 8; x++) {
                 int t = sub ? 15 : tom_letra(g, x, y);
-                p[x] = t == 0 ? fu : t == 15 ? fr : no_tom(fu, fr, t);
+                p[x] = t == 0 ? fu : t == 15 ? fr : no_tom(fu, fr, t) | (fu & 0xFF000000u);   /* a marca de vidro do fundo, se houver */
             }
         }
         return;
