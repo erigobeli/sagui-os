@@ -15,6 +15,7 @@ As letras acentuadas do Latin-1 são compostas aqui: letra base + acento.
   - ç e Ç: cedilha nas linhas 13 e 14.
 Caracteres sem desenho (de controle, ou símbolos raros) usam a "caixa".
 """
+import os
 import sys
 
 LINHAS_ARQUIVO = 13   # linhas 2 a 14 da célula
@@ -204,8 +205,37 @@ def main():
         for c in range(256):
             f.write("    {" + ", ".join(f"0x{v:02X}" for v in fonte[c]) + f"}},  /* 0x{c:02X} */\n")
         f.write("};\n")
+        escrever_suave(f, os.path.join(os.path.dirname(sys.argv[1]), "suave8x16.txt"))
     desenhados = sum(1 for c in range(256) if fonte[c] != caixa)
     print(f"mkfonte: {desenhados} caracteres desenhados -> {sys.argv[2]}")
+
+
+
+def escrever_suave(f, caminho):
+    """A fonte suave (tools/mkfonte_suave.py): 2 faces x 256 letras, 8 x 16
+    tons de 0 a 15, dois pixels por byte (o da esquerda no meio de cima)."""
+    faces, atual = [], None
+    for linha in open(caminho, encoding="utf-8"):
+        linha = linha.strip()
+        if not linha or linha.startswith("#"):
+            continue
+        if linha.startswith("@"):
+            atual = []
+            faces.append(atual)
+            continue
+        if len(linha) != 128:
+            sys.exit(f"mkfonte: letra suave com {len(linha)} tons (devia ter 128)")
+        atual.append(linha)
+    if len(faces) != 2 or any(len(t) != 256 for t in faces):
+        sys.exit("mkfonte: suave8x16.txt devia ter 2 faces de 256 letras")
+    # Duas tabelas separadas: um programa que não usa o negrito não leva a
+    # tabela dele (--gc-sections).
+    for nome, face in (("fonte_suave", faces[0]), ("fonte_suave_negrito", faces[1])):
+        f.write(f"\n/* {nome}[letra][64]: 8 x 16 tons de 0 a 15, dois por byte. */\n")
+        f.write(f"const unsigned char {nome}[256][64] = {{\n")
+        for c, tons in enumerate(face):
+            f.write("    {" + ",".join(f"0x{tons[k]}{tons[k + 1]}" for k in range(0, 128, 2)) + f"}},  /* 0x{c:02X} */\n")
+        f.write("};\n")
 
 
 if __name__ == "__main__":

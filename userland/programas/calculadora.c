@@ -120,15 +120,7 @@ static void escrever_numero(fixo_t v, char *s, size_t max)
 
 /* Texto ampliado (escala 2) para o visor. */
 extern const unsigned char fonte_sagui[256][16];
-static void texto_grande(int x, int y, const char *t, uint32_t cor)
-{
-    for (; *t; t++, x += 16) {
-        const unsigned char *g = fonte_sagui[(uint8_t)*t];
-        for (int lin = 0; lin < 16; lin++)
-            for (int col = 0; col < 8; col++)
-                if (g[lin] & (0x80 >> col)) g_retangulo(j, x + col * 2, y + lin * 2, 2, 2, cor);
-    }
-}
+static void texto_grande(int x, int y, const char *t, uint32_t cor) { g_texto_ampliado(j, x, y, t, cor, 2, false); }
 
 static void desenhar_visor(void)
 {

@@ -263,13 +263,8 @@ static void visor(int x, int y, int v, const char *rotulo)
     if (v < 0) t[0] = '-';
     g_retangulo(jan, x, y, 64, 36, 0x18202A);
     g_moldura(jan, x, y, 64, 36, 0xFFD52E);
-    extern const unsigned char fonte_sagui[256][16];
-    for (int k = 0; k < 3; k++) {
-        const unsigned char *g = fonte_sagui[(uint8_t)t[k]];
-        for (int lin = 0; lin < 16; lin++)
-            for (int col = 0; col < 8; col++)
-                if (g[lin] & (0x80 >> col)) g_retangulo(jan, x + 8 + k * 16 + col * 2, y + 2 + lin * 2, 2, 2, 0xFFD52E);
-    }
+    t[3] = 0;
+    g_texto_ampliado(jan, x + 8, y + 2, t, 0xFFD52E, 2, true);   /* o placar, em dobro e suave */
     g_texto(jan, x, y + 36, rotulo, COR_TEXTO_FRACO);
 }
 

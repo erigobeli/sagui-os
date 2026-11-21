@@ -1114,7 +1114,7 @@ static void desenhar_moldura(janela_t *j, bool foco)
     if (!vidro_efeitos) sup_moldura(&tela, x - 1, y - 1, l + 2, a + 2, 0x101010);
     if (foco && tema->filete) sup_retangulo(&tela, x, y + BARRA_TITULO - 1, l, 1, tema->filete);
     if (tema->titulo_forte) {
-        sup_texto_forte(&tela, x + 11, y + 5, j->titulo, cor_mistura(cor, 0x000000, 3, 5));
+        sup_texto_sombra(&tela, x + 11, y + 5, j->titulo, 6, true);   /* sombra leve, transparente */
         sup_texto_forte(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
     } else sup_texto(&tela, x + 10, y + 4, j->titulo, foco ? tema->texto_foco : tema->texto);
     int bx = x + l - BORDA - 20, by = y + 4, mx = bx - 24, qx = bx - 48;

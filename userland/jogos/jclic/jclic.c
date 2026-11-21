@@ -154,10 +154,8 @@ extern const unsigned char fonte_sagui[256][16];
 /* Uma letra da fonte do sistema ampliada "e" vezes. */
 static void letra(int x, int y, int ch, int e, uint32_t cor)
 {
-    const unsigned char *g = fonte_sagui[(uint8_t)ch];
-    for (int l = 0; l < 16; l++)
-        for (int c = 0; c < 8; c++)
-            if (g[l] & (0x80 >> c)) g_retangulo(j, x + c * e, y + l * e, e, e, cor);
+    char t[2] = { (char)ch, 0 };
+    g_texto_ampliado(j, x, y, t, cor, e, false);
 }
 
 /* Texto quebrado em linhas por palavras, centralizado na caixa, no maior

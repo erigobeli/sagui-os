@@ -5,6 +5,29 @@
 #include "texto.h"
 
 extern const unsigned char fonte_sagui[256][16];
+/* Fonte suave (tools/mkfonte_suave.py): cada pixel da letra tem um tom de
+ * 0 (vazio) a 15 (cheio), já calculado no build; desenhar é só misturar a
+ * cor nesse tom, e só nas bordas da letra (o miolo é cor cheia). As faixas
+ * sem desenho na fonte suave (controle e 0x80-0x9F, as molduras e blocos do
+ * terminal) continuam com a fonte bitmap. */
+extern const unsigned char fonte_suave[256][64], fonte_suave_negrito[256][64];
+static inline bool letra_suave(unsigned c) { return c >= 0x20 && c != 0x7F && (c < 0x80 || c >= 0xA0); }
+static inline int tom_letra(const unsigned char *g, int col, int lin)
+{
+    unsigned char b = g[lin * 4 + (col >> 1)];
+    return col & 1 ? b & 15 : b >> 4;
+}
+/* fundo levado t/15 na direção da cor, sem divisão (t * 17 / 256 ~ t / 15). */
+static inline uint32_t no_tom(uint32_t fundo, uint32_t cor, int t)
+{
+    int a = t * 17 + (t >> 1);
+    uint32_t r = 0;
+    for (int s = 0; s <= 16; s += 8) {
+        int f = (int)((fundo >> s) & 255), c = (int)((cor >> s) & 255);
+        r |= (uint32_t)(f + (((c - f) * a + 128) >> 8)) << s;
+    }
+    return r;
+}
 
 void sup_iniciar(superficie_t *s, uint32_t *px, int larg, int alt)
 {
@@ -86,24 +109,44 @@ int texto_largura(const char *t)
     return n * 8;
 }
 
-void sup_texto(superficie_t *s, int x, int y, const char *t, uint32_t cor)
+static void texto_face(superficie_t *s, int x, int y, const char *t, uint32_t cor, const unsigned char (*face)[64], int op)
 {
     for (; *t; t++, x += 8) {
         if (x >= s->cx1) break;
         if (x + 8 <= s->cx0) continue;
-        const unsigned char *g = fonte_sagui[(uint8_t)*t];
-        for (int j = 0; j < 16; j++)
-            for (int i = 0; i < 8; i++)
-                if (g[j] & (0x80 >> i)) ponto(s, x + i, y + j, cor);
-                else if (quina(g, i, j)) ponto_misturado(s, x + i, y + j, cor, 1, 3);
+        unsigned c = (uint8_t)*t;
+        if (!letra_suave(c)) {
+            const unsigned char *g = fonte_sagui[c];
+            for (int j = 0; j < 16; j++)
+                for (int i = 0; i < 8; i++)
+                    if (g[j] & (0x80 >> i)) ponto(s, x + i, y + j, cor);
+                    else if (quina(g, i, j)) ponto_misturado(s, x + i, y + j, cor, 1, 3);
+            continue;
+        }
+        const unsigned char *g = face[c];
+        for (int j = 0; j < 16; j++) {
+            int yy = y + j;
+            if (yy < s->cy0 || yy >= s->cy1) continue;
+            uint32_t *linha = s->px + yy * s->larg;
+            for (int i = 0; i < 8; i++) {
+                int tt = tom_letra(g, i, j) * op >> 4, xx = x + i;
+                if (!tt || xx < s->cx0 || xx >= s->cx1) continue;
+                linha[xx] = tt >= 15 ? cor : no_tom(linha[xx], cor, tt);
+            }
+        }
     }
 }
 
-/* Texto mais grosso, para títulos: a mesma letra desenhada duas vezes. */
-void sup_texto_forte(superficie_t *s, int x, int y, const char *t, uint32_t cor)
+void sup_texto(superficie_t *s, int x, int y, const char *t, uint32_t cor) { texto_face(s, x, y, t, cor, fonte_suave, 16); }
+
+/* Texto mais grosso, para títulos: a face negrita da fonte suave, na mesma
+ * largura (antes era a letra desenhada duas vezes, e as letras colavam). */
+void sup_texto_forte(superficie_t *s, int x, int y, const char *t, uint32_t cor) { texto_face(s, x, y, t, cor, fonte_suave_negrito, 16); }
+
+/* Sombra suave para texto: a letra em preto, transparente (op/16). */
+void sup_texto_sombra(superficie_t *s, int x, int y, const char *t, int op, bool forte)
 {
-    sup_texto(s, x, y, t, cor);
-    sup_texto(s, x + 1, y, t, cor);
+    texto_face(s, x, y, t, 0x000000, forte ? fonte_suave_negrito : fonte_suave, op);
 }
 
 /* Ícone ARGB (tools/mkarte.py): o alfa diz quanto da cor cobre o fundo. */

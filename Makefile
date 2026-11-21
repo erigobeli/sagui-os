@@ -175,7 +175,7 @@ $(B)/kernel/%.asm.o: kernel/%.asm
 	$(AS) -f $(KASM_FMT) -I kernel/arch/ -o $@ $<
 
 # A fonte é desenhada em texto (tools/fonte/) e vira C no build.
-$(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/mkfonte.py
+$(B)/gerado/fonte8x16.c: tools/fonte/sagui8x16.txt tools/fonte/suave8x16.txt tools/mkfonte.py
 	@mkdir -p $(dir $@)
 	$(PY) tools/mkfonte.py $< $@
 

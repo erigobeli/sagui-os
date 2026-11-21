@@ -152,6 +152,18 @@ static void desenhar_celula(int l, int c, celula_t ce, bool cursor)
     if (ce.attr & A_INVERTIDO) { uint32_t t = fr; fr = fu; fu = t; }
     if (cursor || selecionada(l, c)) { uint32_t t = fr; fr = fu; fu = t; }
     int x0 = MARGEM + c * LETRA_L, y0 = TOPO + l * LETRA_A;
+    if (letra_suave(ce.c)) {   /* fonte suave: a letra no tom sobre o fundo; negrito com a face negrita */
+        const unsigned char *g = ((ce.attr & A_NEGRITO) ? fonte_suave_negrito : fonte_suave)[ce.c];
+        for (int y = 0; y < LETRA_A; y++) {
+            uint32_t *p = j->px + (y0 + y) * j->larg + x0;
+            bool sub = (ce.attr & A_SUBLINHA) && y == 14;
+            for (int x = 0; x < 8; x++) {
+                int t = sub ? 15 : tom_letra(g, x, y);
+                p[x] = t == 0 ? fu : t == 15 ? fr : no_tom(fu, fr, t) | (fu & 0xFF000000u);   /* a marca de vidro do fundo, se houver */
+            }
+        }
+        return;
+    }
     const unsigned char *g = fonte_sagui[ce.c];
     for (int y = 0; y < LETRA_A; y++) {
         uint32_t *p = j->px + (y0 + y) * j->larg + x0;
