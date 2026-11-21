@@ -55,12 +55,12 @@ def main():
         esperar(m, "editor: pronto", 20, antes)
         time.sleep(1)
         e = janela(m.serial(), "Editor - sem nome")
-        m.clique(e["x"] + 60, e["y"] + 40 + 4 + 30)
+        m.clique(e["x"] + 60, e["y"] + 70 + 10 + 30)
         png0 = m.captura("H79-editor-vazio", guardar=False)
         m.tecla("ctrl-v")
         time.sleep(0.8)
         png = m.captura("H79-colado-no-editor")
-        linha = [(e["x"] + 6 + 5 + k, e["y"] + 40 + 4 + 4 + 8) for k in range(0, 14 * 8)]
+        linha = [(e["x"] + 14 + k, e["y"] + 70 + 10 + 8) for k in range(0, 14 * 8)]
         mudou = sum(cor_do_pixel(png, x, y) != cor_do_pixel(png0, x, y) for x, y in linha)
         verificar(mudou > 20, f"Ctrl+V colou o texto no Editor ({mudou} pixels mudaram na primeira linha)")
 

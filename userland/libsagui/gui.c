@@ -300,7 +300,11 @@ bool caixa_tratar(jan_t *j, caixa_t *c, const evento_t *e)
 
 #define BARRA_ROLAGEM 12
 
-int area_linhas_visiveis(area_t *a) { return (a->a - 8) / LETRA_A; }
+/* Margem do texto dentro da área: a lisa respira mais. */
+#define MX(a) ((a)->lisa ? 14 : 5)
+#define MY(a) ((a)->lisa ? 10 : 4)
+
+int area_linhas_visiveis(area_t *a) { return (a->a - 2 * MY(a)) / LETRA_A; }
 
 bool area_iniciar(area_t *a, int x, int y, int l, int al)
 {
@@ -391,31 +395,40 @@ void area_desenhar(jan_t *j, area_t *a)
 {
     int texto_l = a->l - BARRA_ROLAGEM;
     g_retangulo(j, a->x, a->y, a->l, a->a, COR_BRANCO);
-    g_moldura(j, a->x, a->y, a->l, a->a, a->foco ? COR_DESTAQUE : COR_BORDA);
-    int vis = area_linhas_visiveis(a), cabem = (texto_l - 10) / LETRA_L;
+    if (!a->lisa) g_moldura(j, a->x, a->y, a->l, a->a, a->foco ? COR_DESTAQUE : COR_BORDA);
+    int vis = area_linhas_visiveis(a), cabem = (texto_l - 2 * MX(a)) / LETRA_L;
     int lin_cur, col_cur;
     linha_coluna(a, a->cursor, &lin_cur, &col_cur);
     int pos = inicio_da_linha(a, a->topo);
     for (int k = 0; k < vis && pos <= a->tam; k++) {
         int n = tamanho_da_linha(a, pos);
         int mostra = n < cabem ? n : cabem, s0, s1;
-        g_texto_n(j, a->x + 5, a->y + 4 + k * LETRA_A, a->buf + pos, mostra, COR_TEXTO);
+        g_texto_n(j, a->x + MX(a), a->y + MY(a) + k * LETRA_A, a->buf + pos, mostra, COR_TEXTO);
         if (selecao(a, &s0, &s1)) {
             /* O trecho selecionado desta linha: fundo azul e letras brancas. */
             int i0 = s0 > pos ? s0 - pos : 0, i1 = s1 < pos + n ? s1 - pos : n + (s1 > pos + n ? 1 : 0);
             if (i1 > mostra) i1 = mostra;
             if (i0 < i1) {
-                g_retangulo(j, a->x + 5 + i0 * LETRA_L, a->y + 4 + k * LETRA_A, (i1 - i0) * LETRA_L, LETRA_A, COR_SELECAO);
-                g_texto_n(j, a->x + 5 + i0 * LETRA_L, a->y + 4 + k * LETRA_A, a->buf + pos + i0, i1 - i0 > n - i0 ? n - i0 : i1 - i0, COR_BRANCO);
+                g_retangulo(j, a->x + MX(a) + i0 * LETRA_L, a->y + MY(a) + k * LETRA_A, (i1 - i0) * LETRA_L, LETRA_A, COR_SELECAO);
+                g_texto_n(j, a->x + MX(a) + i0 * LETRA_L, a->y + MY(a) + k * LETRA_A, a->buf + pos + i0, i1 - i0 > n - i0 ? n - i0 : i1 - i0, COR_BRANCO);
             }
         }
         if (a->foco && !a->somente_leitura && a->topo + k == lin_cur && col_cur <= cabem)
-            g_retangulo(j, a->x + 5 + col_cur * LETRA_L, a->y + 4 + k * LETRA_A, 2, LETRA_A, COR_TEXTO);
+            g_retangulo(j, a->x + MX(a) + col_cur * LETRA_L, a->y + MY(a) + k * LETRA_A, 2, LETRA_A, COR_TEXTO);
         pos += n + 1;
         if (pos > a->tam) break;
     }
     /* Barra de rolagem: o "polegar" mostra que parte do texto está à vista. */
     int bx = a->x + a->l - BARRA_ROLAGEM, total = total_linhas(a);
+    if (a->lisa) {   /* só o polegar, fino e redondo, e só quando o texto não cabe */
+        if (total > vis) {
+            int tr = a->a - 8, pa = tr * vis / total < 24 ? 24 : tr * vis / total;
+            int py = (tr - pa) * a->topo / (total - vis);
+            g_ret_redondo(j, bx + 4, a->y + 4 + py, 5, pa, 2, 0xB4BBC2, 0xB4BBC2);
+        }
+        jan_mostrar_area(j, a->x, a->y, a->l, a->a);
+        return;
+    }
     g_retangulo(j, bx, a->y + 1, BARRA_ROLAGEM - 1, a->a - 2, 0xE4E7EA);
     int trilho = a->a - 4;
     int pol_a = total <= vis ? trilho : trilho * vis / total;
@@ -457,7 +470,7 @@ static void mover_vertical(area_t *a, int delta)
 /* Posição do texto sob o ponto (x, y) da janela. */
 static int posicao_em(area_t *a, int x, int y)
 {
-    int lin = a->topo + (y - a->y - 4) / LETRA_A, col = (x - a->x - 5 + LETRA_L / 2) / LETRA_L;
+    int lin = a->topo + (y - a->y - MY(a)) / LETRA_A, col = (x - a->x - MX(a) + LETRA_L / 2) / LETRA_L;
     int total = total_linhas(a);
     if (lin >= total) lin = total - 1;
     if (lin < 0) lin = 0;
@@ -866,7 +879,9 @@ static int linhas_de(const char *t)
     return n;
 }
 
-static int dialogo(const char *titulo, const char *texto, const char *b1, const char *b2, caixa_t *caixa)
+/* Até 3 botões. Com 2, b1 fica à direita; com 3, ficam na ordem b1 b2 b3
+ * da esquerda para a direita, e Esc ou fechar escolhem o b3 (cancelar). */
+static int dialogo3(const char *titulo, const char *texto, const char *b1, const char *b2, const char *b3, caixa_t *caixa)
 {
     int alt = 70 + linhas_de(texto) * (LETRA_A + 2) + (caixa ? 34 : 0);
     /* Largura: 380, ou a da linha mais comprida (até 900), para mensagens
@@ -881,8 +896,11 @@ static int dialogo(const char *titulo, const char *texto, const char *b1, const 
     jan_t *j = jan_abrir(titulo, larg, alt);
     if (!j) return 0;
     texto_multilinha(j, 16, 16, texto);
-    botao_t bs[2] = { { larg - 16 - 90, alt - 40, 90, 26, b1, false }, { larg - 16 - 190, alt - 40, 90, 26, b2, false } };
-    int qtd = b2 ? 2 : 1;
+    if (b3 && larg < 16 + 3 * 100 + 16) larg = 16 + 3 * 100 + 16;
+    botao_t bs[3] = { { larg - 16 - 90, alt - 40, 90, 26, b1, false }, { larg - 16 - 190, alt - 40, 90, 26, b2, false },
+                      { larg - 16 - 90, alt - 40, 90, 26, b3, false } };
+    int qtd = b3 ? 3 : b2 ? 2 : 1;
+    if (b3) { bs[0].x = larg - 16 - 290; bs[1].x = larg - 16 - 190; }
     if (caixa) {
         caixa->x = 16; caixa->y = alt - 40 - 36; caixa->l = larg - 32; caixa->foco = true;
         caixa_desenhar(j, caixa);
@@ -893,8 +911,8 @@ static int dialogo(const char *titulo, const char *texto, const char *b1, const 
     evento_t e;
     while (!resposta) {
         if (proximo_evento(j->id, &e, true) != 1) continue;
-        if (e.tipo == EV_FECHAR) { resposta = 2; break; }
-        if (e.tipo == EV_TECLA && e.tecla == TECLA_ESC) { resposta = qtd == 2 ? 2 : 1; break; }
+        if (e.tipo == EV_FECHAR) { resposta = qtd; break; }
+        if (e.tipo == EV_TECLA && e.tecla == TECLA_ESC) { resposta = qtd; break; }
         if (caixa && caixa_tratar(j, caixa, &e)) { resposta = 1; break; }
         if (!caixa && e.tipo == EV_TECLA && e.tecla == '\n') { resposta = 1; break; }
         for (int i = 0; i < qtd; i++)
@@ -902,6 +920,16 @@ static int dialogo(const char *titulo, const char *texto, const char *b1, const 
     }
     jan_fechar(j);
     return resposta;
+}
+
+static int dialogo(const char *titulo, const char *texto, const char *b1, const char *b2, caixa_t *caixa)
+{
+    return dialogo3(titulo, texto, b1, b2, NULL, caixa);
+}
+
+int escolher_entre(const char *titulo, const char *pergunta, const char *b1, const char *b2, const char *b3)
+{
+    return dialogo3(titulo, pergunta, b1, b2, b3, NULL);
 }
 
 bool confirmar(const char *titulo, const char *pergunta)
