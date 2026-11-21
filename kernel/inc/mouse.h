@@ -12,6 +12,7 @@ typedef struct {
     int16_t  dx, dy;
     uint8_t  botoes;        /* estado atual dos botões */
     uint8_t  mudaram;       /* botões que mudaram neste pacote */
+    int8_t   roda;          /* passos da roda (positivo = para baixo); 0 sem roda */
 } evento_mouse_t;
 
 bool mouse_iniciar(void);

@@ -27,6 +27,24 @@ versão é lançada, o que estava lá vira a seção dessa versão.
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
 
+- **Markdown formatado:** um componente da libsagui (markdown.h) mostra
+  Markdown com títulos, negrito, itálico, código, listas, citações, tabelas
+  e links (o clique abre no Cipó). O "Histórico" e os "Créditos e
+  licenças" da janela Sobre usam o componente: os textos que vinham com
+  ** e ## à mostra aparecem formatados, e as licenças, como texto puro. E
+  o **Leitor** (leitor arquivo.md), que o Arquivos usa para abrir os .md.
+
+- **Sagui Code:** as respostas do modelo aparecem formatadas (títulos,
+  negrito, listas, código, tabelas), em vez dos ** e ## à mostra. Arrastar
+  continua selecionando, e o que se copia é o texto original.
+
+- **Roda do mouse** no texto formatado (o Leitor, o Histórico e os Créditos
+  e licenças) e na conversa do Sagui Code: 3 linhas por passo.
+
+- **Roda do mouse:** o kernel liga a roda dos mouses PS/2 que têm (o
+  "IntelliMouse") e manda o evento EV_RODA para a janela sob o cursor. As
+  listas, as áreas de texto (o Editor) e o Cipó rolam com ela (H134).
+
 ## Versões lançadas
 
 ### 3.0.0 (novembro de 2026): 64 bits

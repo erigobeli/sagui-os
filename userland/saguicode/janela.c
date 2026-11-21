@@ -30,6 +30,7 @@
  * (aspas curvas, travessão, reticências) pelo equivalente mais próximo. */
 #include "agente.h"
 #include "gui.h"
+#include "markdown.h"
 
 #define TOPO_A       44      /* barra de cima */
 #define LATERAL_L    214     /* coluna das sessões */
@@ -133,6 +134,8 @@ typedef struct {
     char    resumo[120];       /* ferramenta: a linha do resultado */
     int     estado;            /* ferramenta: F_* */
     int     y, a;              /* posição na conversa (calculada ao desenhar) */
+    md_t   *md;                /* resposta: o Markdown formatado (refeito quando o texto ou a largura mudam) */
+    unsigned md_n; int md_l;
 } bloco_t;
 
 static bloco_t *blocos;
@@ -170,7 +173,10 @@ static bloco_t *novo_bloco(int tipo)
 
 static void limpar_blocos(void)
 {
-    for (int i = 0; i < qtd_blocos; i++) libera(blocos[i].t.d);
+    for (int i = 0; i < qtd_blocos; i++) {
+        libera(blocos[i].t.d);
+        if (blocos[i].md) { md_fim(blocos[i].md); libera(blocos[i].md); }
+    }
     qtd_blocos = 0;
     rolagem = 0;
     seguir = true;
@@ -273,6 +279,27 @@ static void caixa_do_bloco(const bloco_t *b, int *x, int *l)
     *l = l0;
 }
 
+/* A resposta do modelo vem em Markdown: formatada (títulos, negrito, listas,
+ * código, tabelas). A formatação é refeita quando chega texto novo ou a
+ * largura muda; a seleção continua no texto original (md_posicao). */
+static md_t *md_do_bloco(bloco_t *b, int l)
+{
+    if (!b->md) {
+        b->md = aloca(sizeof(md_t));
+        if (!b->md) return NULL;
+        md_iniciar(b->md, 0, 0, l, 0);
+        b->md->embutido = true;
+        b->md_n = (unsigned)-1;
+    }
+    if (b->md_n != b->t.n || b->md_l != l) {
+        b->md->l = l;
+        b->md->embutido = true;
+        md_definir(b->md, b->t.d ? b->t.d : "", (int)b->t.n, false);
+        b->md_n = b->t.n; b->md_l = l;
+    }
+    return b->md;
+}
+
 static int altura_do_bloco(const bloco_t *b)
 {
     int x, l;
@@ -282,7 +309,10 @@ static int altura_do_bloco(const bloco_t *b)
     int linhas = contar_linhas(b->t.d ? b->t.d : "", (int)b->t.n, cols);
     switch (b->tipo) {
     case B_USUARIO:    return LH + linhas * LH + 14;
-    case B_ASSISTENTE: return LH + linhas * LH + 8;
+    case B_ASSISTENTE: {
+        md_t *md = md_do_bloco((bloco_t *)b, l - 20);
+        return md ? LH + md->altura + 8 : LH + linhas * LH + 8;
+    }
     case B_FERRAMENTA: return 2 * LH + 10;
     case B_INFO:       return linhas * LH + 4;
     default:           return linhas * LH + 12;
@@ -318,7 +348,11 @@ static void desenhar_bloco(const bloco_t *b, int sy)
     case B_ASSISTENTE:
         ret_cortado(x, sy, 3, b->a, 0xF2B21C);
         texto_cortado(x + 10, sy + 2, "Sagui Code", 10, COR_TEXTO_FRACO);
-        linhas_desenhar(t, n, x + 10, sy + 2 + LH, cols, COR_TEXTO);
+        {
+            md_t *md = md_do_bloco((bloco_t *)b, l - 20);
+            if (md) md_desenhar_em(j, md, x + 10, sy + 2 + LH, vis0, vis1, desenho_s0, desenho_s1);
+            else linhas_desenhar(t, n, x + 10, sy + 2 + LH, cols, COR_TEXTO);
+        }
         break;
     case B_FERRAMENTA: {
         ret_cortado(x, sy, l, b->a, COR_FERR_BORDA);
@@ -408,6 +442,11 @@ static bool ponto_em(int x, int y, ponto_t *r)
         int tx = bx + (b->tipo == B_FERRAMENTA ? 24 : 10);
         r->bloco = i;
         if (dy < 0) { r->pos = 0; return true; }
+        if (b->tipo == B_ASSISTENTE && b->md) {   /* formatada: a posição vem das peças */
+            r->pos = md_posicao(b->md, x - tx, dy);
+            if (r->pos > n) r->pos = n;
+            return true;
+        }
         int lin = dy / LH, p = 0, k, prox;
         if (b->tipo == B_FERRAMENTA) {
             /* Uma linha só (a descrição); a de baixo, o resultado, conta como o fim. */
@@ -565,6 +604,11 @@ static void ui_resposta(void *ctx, const char *utf8)
     assistente_aberto = false;
     desenhar_conversa();
     registrar("saguicode-janela: resposta mostrada (%u letras)", (unsigned)tam_texto(utf8));
+    if (qtd_blocos && blocos[qtd_blocos - 1].tipo == B_ASSISTENTE && blocos[qtd_blocos - 1].md) {
+        char r[200];
+        md_resumo(blocos[qtd_blocos - 1].md, r, sizeof r);
+        registrar("saguicode-janela: resposta formatada: %s", r);
+    }
 }
 
 static void ui_ferramenta(void *ctx, const char *nome, const char *args, const char *descricao)
@@ -1204,6 +1248,13 @@ int principal(int argc, char **argv)
                 area_tratar(j, &entrada, &e);
                 continue;
             }
+#ifdef EV_RODA
+            if (e.tipo == EV_RODA && e.x >= conv_x && e.x < conv_x + conv_l && e.y >= conv_y && e.y < conv_y + conv_a) {
+                rolar(3 * LH * (int)e.tecla);   /* a conversa: 3 linhas por passo */
+                registrar("saguicode-janela: roda %d, rolagem %d", (int)e.tecla, rolagem);
+                continue;
+            }
+#endif
             if (e.tipo == EV_CLIQUE) {
                 /* Sessões: clique abre; botão direito, o menu. */
                 if (e.x >= lista.x && e.x < lista.x + lista.l && e.y >= lista.y && e.y < lista.y + lista.a) {
