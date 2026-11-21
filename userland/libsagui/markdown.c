@@ -24,9 +24,11 @@ struct md_peca {
     uint32_t cor;
     int t, n;            /* o texto, em m->letras */
     int link;            /* o endereço, em m->letras; -1 = não é link */
+    int src;             /* onde a primeira letra está no texto original (-1: não está) */
 };
 
-#define MARGEM 12
+static int margem_atual = 12;
+#define MARGEM margem_atual   /* 0 quando o texto vai embutido noutra área */
 #define ROLAGEM 12
 #define LINHA 18                 /* altura de uma linha de texto (16 + 2) */
 #define C_TEXTO 0x1E2328
@@ -66,7 +68,7 @@ static md_peca_t *nova_peca(md_t *m, int tipo)
     }
     md_peca_t *p = &m->pecas[m->qtd++];
     memset(p, 0, sizeof *p);
-    p->tipo = (uint8_t)tipo; p->link = -1; p->escala = 1;
+    p->tipo = (uint8_t)tipo; p->link = -1; p->escala = 1; p->src = -1;
     return p;
 }
 
@@ -82,6 +84,7 @@ typedef struct { uint8_t negrito, italico, codigo, risca; int link; } estilo_t;
 #define MAX_LETRAS 6000
 static char car[MAX_LETRAS];
 static uint8_t est[MAX_LETRAS];
+static int origem[MAX_LETRAS];   /* a posição de cada letra no texto original */
 static estilo_t estilos[256];
 static int qtd_car, qtd_estilos;
 
@@ -94,9 +97,10 @@ static int estilo_id(estilo_t e)
     return qtd_estilos++;
 }
 
-static void por(char c, estilo_t e)
+static void por(char c, estilo_t e, int src)
 {
     if (qtd_car >= MAX_LETRAS) return;
+    origem[qtd_car] = src;
     car[qtd_car] = c;
     est[qtd_car++] = (uint8_t)estilo_id(e);
 }
@@ -115,24 +119,27 @@ static int achar(const char *s, int i, int n, const char *marca)
     return -1;
 }
 
-/* Lê os trechos de s[0..n) para car/est, a partir do estilo "base". */
-static void trechos(md_t *m, const char *s, int n, estilo_t base)
+/* Lê os trechos de s[0..n) para car/est, a partir do estilo "base". "mapa"
+ * diz onde cada letra de s está no texto original (NULL: s é um pedaço do
+ * próprio texto). */
+#define POS(i) (mapa ? mapa[(i)] : (int)(s - m->fonte) + (i))
+static void trechos(md_t *m, const char *s, int n, estilo_t base, const int *mapa)
 {
     estilo_t e = base;
     for (int i = 0; i < n; i++) {
         char c = s[i];
-        if (c == '\\' && i + 1 < n && pontuacao(s[i + 1])) { por(s[++i], e); continue; }
+        if (c == '\\' && i + 1 < n && pontuacao(s[i + 1])) { i++; por(s[i], e, POS(i)); continue; }
         if (c == '`') {
             int k = 1;
             while (i + k < n && s[i + k] == '`') k++;
             char marca[8]; int nk = k < 7 ? k : 7;
             memset(marca, '`', (size_t)nk); marca[nk] = 0;
             int f = achar(s, i + k, n, marca);
-            if (f < 0) { for (int q = 0; q < k; q++) por('`', e); i += k - 1; continue; }
+            if (f < 0) { for (int q = 0; q < k; q++) por('`', e, POS(i + q)); i += k - 1; continue; }
             estilo_t ec = e; ec.codigo = 1;
             int a = i + k, b = f;
             if (b - a >= 2 && s[a] == ' ' && s[b - 1] == ' ') { a++; b--; }
-            for (int q = a; q < b; q++) por(s[q], ec);
+            for (int q = a; q < b; q++) por(s[q], ec, POS(q));
             i = f + k - 1;
             m->cont[3]++;
             continue;
@@ -162,9 +169,9 @@ static void trechos(md_t *m, const char *s, int n, estilo_t base)
             if (g >= 0) {
                 estilo_t ei = e; ei.italico = 1;
                 const char *pre = "[imagem: ";
-                for (const char *q = pre; *q; q++) por(*q, ei);
-                for (int q = i + 2; q < f; q++) por(s[q], ei);
-                por(']', ei);
+                for (const char *q = pre; *q; q++) por(*q, ei, POS(i));
+                for (int q = i + 2; q < f; q++) por(s[q], ei, POS(q));
+                por(']', ei, POS(f));
                 i = g;
                 continue;
             }
@@ -176,7 +183,7 @@ static void trechos(md_t *m, const char *s, int n, estilo_t base)
                 int fim_url = f + 2;
                 while (fim_url < g && s[fim_url] != ' ') fim_url++;   /* [t](url "título") */
                 estilo_t el = e; el.link = guardar(m, s + f + 2, fim_url - f - 2);
-                trechos(m, s + i + 1, f - i - 1, el);
+                trechos(m, s + i + 1, f - i - 1, el, mapa ? mapa + i + 1 : NULL);
                 i = g;
                 m->cont[4]++;
                 continue;
@@ -187,7 +194,7 @@ static void trechos(md_t *m, const char *s, int n, estilo_t base)
             if (f > i + 1) {
                 if (comeca_com(s + i + 1, "http://") || comeca_com(s + i + 1, "https://")) {
                     estilo_t el = e; el.link = guardar(m, s + i + 1, f - i - 1);
-                    for (int q = i + 1; q < f; q++) por(s[q], el);
+                    for (int q = i + 1; q < f; q++) por(s[q], el, POS(q));
                     i = f;
                     m->cont[4]++;
                     continue;
@@ -195,9 +202,10 @@ static void trechos(md_t *m, const char *s, int n, estilo_t base)
                 if (letra(s[i + 1]) || s[i + 1] == '/') { i = f; continue; }   /* uma marca de HTML (<br>, <details>...) some */
             }
         }
-        por(c, e);
+        por(c, e, POS(i));
     }
 }
+#undef POS
 
 /* ------------------------------------------------------------ quebra de linhas */
 
@@ -230,7 +238,7 @@ static void assentar(md_t *m, int x, int x_volta, int *y, int largura, int escal
             int corte = a + cabe;
             for (int k = a; k < corte;) {
                 int s = est[k], f = k;
-                while (f < corte && est[f] == s) f++;
+                while (f < corte && est[f] == s && (f == k || origem[f] == origem[f - 1] + 1)) f++;
                 md_peca_t *p = nova_peca(m, P_TEXTO);
                 if (!p) return;
                 estilo_t e = estilos[s];
@@ -238,6 +246,7 @@ static void assentar(md_t *m, int x, int x_volta, int *y, int largura, int escal
                 p->t = guardar(m, car + k, f - k); p->n = f - k; p->escala = (uint8_t)escala;
                 p->negrito = (uint8_t)(negrito_base || e.negrito); p->italico = e.italico; p->risca = e.risca;
                 p->cor = e.link >= 0 ? C_LINK : e.codigo ? C_CODIGO : cor; p->link = e.link; p->sublinha = e.link >= 0;
+                p->src = origem[k];
                 k = f;
             }
             *y += altura_linha;
@@ -248,7 +257,9 @@ static void assentar(md_t *m, int x, int x_volta, int *y, int largura, int escal
         /* as peças da palavra: um pedaço por estilo */
         for (int k = a; k < i;) {
             int s = est[k], f = k;
-            while (f < i && est[f] == s) f++;
+            /* um pedaço por estilo, e contínuo no texto original (os ** e ` que
+             * somem no meio partem o pedaço: a seleção usa essa posição) */
+            while (f < i && est[f] == s && (f == k || origem[f] == origem[f - 1] + 1)) f++;
             estilo_t e = estilos[s];
             int px = cx + (k - a) * lw, pl = (f - k) * lw;
             if (e.codigo) retangulo(m, px, *y - 1, pl, 18 * escala, C_CODIGO_FUNDO);
@@ -258,6 +269,7 @@ static void assentar(md_t *m, int x, int x_volta, int *y, int largura, int escal
             p->t = guardar(m, car + k, f - k); p->n = f - k; p->escala = (uint8_t)escala;
             p->negrito = (uint8_t)(negrito_base || e.negrito); p->italico = e.italico; p->risca = e.risca;
             p->cor = e.link >= 0 ? C_LINK : e.codigo ? C_CODIGO : cor; p->link = e.link; p->sublinha = e.link >= 0;
+            p->src = origem[k];
             k = f;
         }
         cx += w;
@@ -265,11 +277,11 @@ static void assentar(md_t *m, int x, int x_volta, int *y, int largura, int escal
     *y += altura_linha;
 }
 
-static void escrever_trecho(md_t *m, const char *s, int n, int x, int x_volta, int *y, int largura, int escala, bool negrito, uint32_t cor)
+static void escrever_trecho(md_t *m, const char *s, int n, const int *mapa, int x, int x_volta, int *y, int largura, int escala, bool negrito, uint32_t cor)
 {
     qtd_car = 0; qtd_estilos = 0;
     estilo_t e = { 0, 0, 0, 0, -1 };
-    trechos(m, s, n, e);
+    trechos(m, s, n, e, mapa);
     assentar(m, x, x_volta, y, largura, escala, negrito, cor, LINHA * escala);
 }
 
@@ -353,6 +365,8 @@ static int celulas(linha_t l, linha_t *c, int max)
 /* Junta as linhas [a, b) de um parágrafo num texto só (quebra dura com
  * dois espaços no fim vira um espaço também: as linhas são curtas). */
 static char junto[MAX_LETRAS];
+static int junto_src[MAX_LETRAS];
+static md_t *em_montagem;   /* o md_t sendo montado (para a origem das letras juntadas) */
 static int juntar(int a, int b, int tira)
 {
     int k = 0;
@@ -363,8 +377,9 @@ static int juntar(int a, int b, int tira)
         else if (ini > l.n) ini = l.n;
         int n = l.n;
         while (n > ini && l.s[n - 1] == ' ') n--;
-        if (k && k < MAX_LETRAS - 1) junto[k++] = ' ';
-        for (int q = ini; q < n && k < MAX_LETRAS - 1; q++) junto[k++] = l.s[q];
+        int base = (int)(l.s - em_montagem->fonte);
+        if (k && k < MAX_LETRAS - 1) { junto_src[k] = base - 1; junto[k++] = ' '; }   /* a quebra de linha vira espaço */
+        for (int q = ini; q < n && k < MAX_LETRAS - 1; q++) { junto_src[k] = base + q; junto[k++] = l.s[q]; }
     }
     junto[k] = 0;
     return k;
@@ -408,12 +423,14 @@ static void tabela(md_t *m, int a, int b, int x0, int *y, int largura)
             if (c < k) {
                 /* numa célula, \| é a barra (até dentro de `código`) */
                 static char cel_txt[1024];
+                static int cel_src[1024];
                 int q = 0;
                 for (int z = 0; z < cs[c].n && q < 1023; z++) {
                     if (cs[c].s[z] == '\\' && z + 1 < cs[c].n && cs[c].s[z + 1] == '|') continue;
+                    cel_src[q] = (int)(cs[c].s - m->fonte) + z;
                     cel_txt[q++] = cs[c].s[z];
                 }
-                escrever_trecho(m, cel_txt, q, x + 8, x + 8, &yy, col[c] - 16, 1, r == a, C_TEXTO);
+                escrever_trecho(m, cel_txt, q, cel_src, x + 8, x + 8, &yy, col[c] - 16, 1, r == a, C_TEXTO);
             }
             else yy += LINHA;
             if (yy + 4 > ymax) ymax = yy + 4;
@@ -435,7 +452,9 @@ static void montar_pecas(md_t *m)
 {
     m->qtd = 0; m->nl = 0; m->titulo[0] = 0;
     memset(m->cont, 0, sizeof m->cont);
-    int largura = m->l - ROLAGEM - 2 * MARGEM;
+    em_montagem = m;
+    margem_atual = m->embutido ? 0 : 12;
+    int largura = m->l - (m->embutido ? 0 : ROLAGEM) - 2 * MARGEM;
     if (largura < 80) largura = 80;
     /* as linhas do texto */
     int nlin = 0;
@@ -453,7 +472,7 @@ static void montar_pecas(md_t *m)
         for (int i = 0; i < nlin; i++) {
             qtd_car = 0; qtd_estilos = 0;
             estilo_t e = { 0, 0, 0, 0, -1 };
-            for (int k = 0; k < linhas[i].n; k++) por(linhas[i].s[k] == '\t' ? ' ' : linhas[i].s[k], e);
+            for (int k = 0; k < linhas[i].n; k++) por(linhas[i].s[k] == '\t' ? ' ' : linhas[i].s[k], e, (int)(linhas[i].s - m->fonte) + k);
             if (!qtd_car) { y += LINHA; continue; }
             int r = recuo(linhas[i]) * LETRA_L;
             assentar(m, MARGEM, MARGEM + (r < largura / 2 ? r : 0), &y, largura, 1, 0, C_TEXTO, LINHA);
@@ -477,7 +496,7 @@ static void montar_pecas(md_t *m)
             for (int q = i + 1; q < f; q++) {
                 qtd_car = 0; qtd_estilos = 0;
                 estilo_t e = { 0, 0, 0, 0, -1 };
-                for (int c = 0; c < linhas[q].n; c++) por(linhas[q].s[c] == '\t' ? ' ' : linhas[q].s[c], e);
+                for (int c = 0; c < linhas[q].n; c++) por(linhas[q].s[c] == '\t' ? ' ' : linhas[q].s[c], e, (int)(linhas[q].s - m->fonte) + c);
                 if (!qtd_car) { y += LINHA; continue; }
                 assentar(m, MARGEM + 10, MARGEM + 10, &y, largura - 20, 1, 0, C_TEXTO, LINHA);
             }
@@ -499,7 +518,7 @@ static void montar_pecas(md_t *m)
                 while (b > a && (l.s[b - 1] == '#' || l.s[b - 1] == ' ')) b--;
                 if (!primeiro) y += nivel <= 2 ? 14 : 10;
                 if (!m->titulo[0]) { int c = b - a < 79 ? b - a : 79; memcpy(m->titulo, l.s + a, (size_t)c); m->titulo[c] = 0; }
-                escrever_trecho(m, l.s + a, b - a, MARGEM, MARGEM, &y, largura, nivel == 1 ? 2 : 1, true, nivel <= 2 ? C_TITULO : nivel <= 3 ? C_TEXTO : C_FRACO);
+                escrever_trecho(m, l.s + a, b - a, NULL, MARGEM, MARGEM, &y, largura, nivel == 1 ? 2 : 1, true, nivel <= 2 ? C_TITULO : nivel <= 3 ? C_TEXTO : C_FRACO);
                 if (nivel <= 2) { y += 2; retangulo(m, MARGEM, y, largura, 1, C_LINHA); y += 6; }
                 else y += 4;
                 m->cont[0]++;
@@ -518,16 +537,18 @@ static void montar_pecas(md_t *m)
         if (k <= 3 && l.s[k] == '>') {
             int f = i, y0 = y;
             static char cit[MAX_LETRAS];
+            static int cit_src[MAX_LETRAS];
             int nc = 0;
             while (f < nlin && !vazia(linhas[f])) {
                 linha_t q = linhas[f];
                 int r = recuo(q), ini = r < q.n && q.s[r] == '>' ? r + 1 : r;
                 if (ini < q.n && q.s[ini] == ' ') ini++;
-                if (nc && nc < MAX_LETRAS - 1) cit[nc++] = ' ';
-                for (int c = ini; c < q.n && nc < MAX_LETRAS - 1; c++) cit[nc++] = q.s[c];
+                int base = (int)(q.s - m->fonte);
+                if (nc && nc < MAX_LETRAS - 1) { cit_src[nc] = base - 1; cit[nc++] = ' '; }
+                for (int c = ini; c < q.n && nc < MAX_LETRAS - 1; c++) { cit_src[nc] = base + c; cit[nc++] = q.s[c]; }
                 f++;
             }
-            escrever_trecho(m, cit, nc, MARGEM + 16, MARGEM + 16, &y, largura - 16, 1, false, C_FRACO);
+            escrever_trecho(m, cit, nc, cit_src, MARGEM + 16, MARGEM + 16, &y, largura - 16, 1, false, C_FRACO);
             retangulo(m, MARGEM + 2, y0 - 2, 3, y - y0 + 2, C_CITACAO);
             y += 8;
             m->cont[7]++;
@@ -569,7 +590,7 @@ static void montar_pecas(md_t *m)
                 if (p) { p->x = x; p->y = y; p->l = nt * LETRA_L; p->a = LINHA; p->t = guardar(m, t, nt); p->n = nt; p->cor = C_FRACO; }
             } else retangulo(m, x + 4, y + 7, 5, 5, nivel ? C_FRACO : C_TEXTO);
             int n = juntar(i, f, ini);
-            escrever_trecho(m, junto, n, x + 22, x + 22, &y, largura - (x + 22 - MARGEM), 1, false, C_TEXTO);
+            escrever_trecho(m, junto, n, junto_src, x + 22, x + 22, &y, largura - (x + 22 - MARGEM), 1, false, C_TEXTO);
             y += 3;
             /* espaço depois da lista inteira, não de cada item */
             bool n2; int v2;
@@ -594,7 +615,7 @@ static void montar_pecas(md_t *m)
             int n = juntar(i, f, k);
             if (!primeiro) y += 14;
             if (!m->titulo[0]) { int c = n < 79 ? n : 79; memcpy(m->titulo, junto, (size_t)c); m->titulo[c] = 0; }
-            escrever_trecho(m, junto, n, MARGEM, MARGEM, &y, largura, nivel == 1 ? 2 : 1, true, C_TITULO);
+            escrever_trecho(m, junto, n, junto_src, MARGEM, MARGEM, &y, largura, nivel == 1 ? 2 : 1, true, C_TITULO);
             y += 2; retangulo(m, MARGEM, y, largura, 1, C_LINHA); y += 6;
             m->cont[0]++;
             i = f + 1;
@@ -602,7 +623,7 @@ static void montar_pecas(md_t *m)
             continue;
         }
         int n = juntar(i, f, k);
-        escrever_trecho(m, junto, n, MARGEM, MARGEM, &y, largura, 1, false, C_TEXTO);
+        escrever_trecho(m, junto, n, junto_src, MARGEM, MARGEM, &y, largura, 1, false, C_TEXTO);
         y += 8;
         i = f;
         primeiro = false;
@@ -635,15 +656,17 @@ static void letra_px(jan_t *j, int x, int y, unsigned char ch, const md_peca_t *
     }
 }
 
-void md_desenhar(jan_t *j, md_t *m)
+/* As peças com o começo em (ox, oy), recortadas em [c0, c2) x [c1, c3); o que
+ * está entre as posições s0 e s1 do texto original fica marcado. */
+static void desenhar_pecas(jan_t *j, const md_t *m, int ox, int oy, int c0, int c1, int c2, int c3, int s0, int s1)
 {
-    int c0 = m->x, c1 = m->y, c2 = m->x + m->l - ROLAGEM, c3 = m->y + m->a;
     if (c2 > j->larg) c2 = j->larg;
     if (c3 > j->alt) c3 = j->alt;
-    g_retangulo(j, m->x, m->y, m->l, m->a, COR_BRANCO);
+    if (c0 < 0) c0 = 0;
+    if (c1 < 0) c1 = 0;
     for (int i = 0; i < m->qtd; i++) {
-        md_peca_t *p = &m->pecas[i];
-        int y = m->y + p->y - m->topo, x = m->x + p->x;
+        const md_peca_t *p = &m->pecas[i];
+        int y = oy + p->y, x = ox + p->x;
         if (y >= c3 || y + p->a <= c1) continue;
         if (p->tipo == P_RET) {
             int ya = y < c1 ? c1 : y, yb = y + p->a > c3 ? c3 : y + p->a;
@@ -653,7 +676,24 @@ void md_desenhar(jan_t *j, md_t *m)
         }
         const char *t = m->letras + p->t;
         int lw = LETRA_L * p->escala;
-        for (int k = 0; k < p->n; k++) letra_px(j, x + k * lw, y, (unsigned char)t[k], p, c0, c1, c2, c3);
+        /* o trecho marcado desta peça: fundo azul e letras brancas */
+        int i0 = 0, i1 = 0;
+        if (s0 >= 0 && p->src >= 0) {
+            i0 = s0 > p->src ? s0 - p->src : 0;
+            i1 = s1 < p->src + p->n ? s1 - p->src : p->n;
+            if (i1 > i0) {
+                int ya = y < c1 ? c1 : y, yb = y + 16 * p->escala + 1 > c3 ? c3 : y + 16 * p->escala + 1;
+                int xa = x + i0 * lw, xb = x + i1 * lw;
+                if (xa < c0) xa = c0;
+                if (xb > c2) xb = c2;
+                for (int yy = ya; yy < yb; yy++) for (int xx = xa; xx < xb; xx++) j->px[yy * j->larg + xx] = 0x2A6FD8;
+            }
+        }
+        md_peca_t q = *p;
+        for (int k = 0; k < p->n; k++) {
+            q.cor = k >= i0 && k < i1 ? COR_BRANCO : p->cor;
+            letra_px(j, x + k * lw, y, (unsigned char)t[k], &q, c0, c1, c2, c3);
+        }
         int base = y + 15 * p->escala;
         if (p->sublinha && base >= c1 && base < c3)
             for (int xx = x; xx < x + p->l && xx < c2; xx++) if (xx >= c0) j->px[base * j->larg + xx] = p->cor;
@@ -661,6 +701,40 @@ void md_desenhar(jan_t *j, md_t *m)
         if (p->risca && meio >= c1 && meio < c3)
             for (int xx = x; xx < x + p->l && xx < c2; xx++) if (xx >= c0) j->px[meio * j->larg + xx] = p->cor;
     }
+}
+
+void md_desenhar_em(jan_t *j, const md_t *m, int x, int y, int c1, int c3, int s0, int s1)
+{
+    desenhar_pecas(j, m, x, y, x, c1, x + m->l, c3, s0, s1);
+}
+
+/* A posição do texto original sob o ponto (px, py), relativo ao começo do
+ * conteúdo: o lugar entre duas letras mais perto, na linha do ponto. */
+int md_posicao(const md_t *m, int px, int py)
+{
+    int melhor = -1, melhor_d = 1 << 30, prox_y = 1 << 30, prox_src = -1;
+    for (int i = 0; i < m->qtd; i++) {
+        const md_peca_t *p = &m->pecas[i];
+        if (p->tipo != P_TEXTO || p->src < 0) continue;
+        if (py < p->y) { if (p->y < prox_y || (p->y == prox_y && p->x < 0)) { prox_y = p->y; prox_src = p->src; } continue; }
+        if (py >= p->y + p->a) continue;
+        int lw = LETRA_L * p->escala;
+        int d = px < p->x ? p->x - px : px >= p->x + p->l ? px - (p->x + p->l) + 1 : 0;
+        if (d < melhor_d) {
+            melhor_d = d;
+            int c = (px - p->x + lw / 2) / lw;
+            melhor = p->src + (c < 0 ? 0 : c > p->n ? p->n : c);
+        }
+    }
+    if (melhor >= 0) return melhor;
+    if (prox_src >= 0) return prox_src;
+    return m->n;
+}
+
+void md_desenhar(jan_t *j, md_t *m)
+{
+    g_retangulo(j, m->x, m->y, m->l, m->a, COR_BRANCO);
+    desenhar_pecas(j, m, m->x, m->y - m->topo, m->x, m->y, m->x + m->l - ROLAGEM, m->y + m->a, -1, -1);
     /* a barra de rolagem */
     int bx = m->x + m->l - ROLAGEM;
     g_retangulo(j, bx, m->y, ROLAGEM, m->a, 0xF2F4F6);
