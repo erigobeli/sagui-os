@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""H152 - Calculadora: visual novo e copiar/colar.
+
+Critérios:
+  - o "=" é verde, os algarismos brancos e as operações cinza;
+  - o visor mostra a conta em andamento ("12 ×") em cima;
+  - botão direito no visor: menu com Copiar, Colar, Recortar e Limpar;
+    Copiar leva o número do visor;
+  - Ctrl+V cola o número e a conta segue com ele; Ctrl+X recorta (copia e
+    zera o visor).
+"""
+import os
+import re
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qemu import Maquina, FalhaTeste, verificar, janela, cor_do_pixel  # noqa: E402
+
+
+def esperar(m, texto, tempo=20, desde=0):
+    fim = time.time() + tempo
+    while time.time() < fim:
+        if texto in m.serial()[desde:]:
+            return m.serial()[desde:]
+        time.sleep(0.2)
+    raise FalhaTeste(f"tempo esgotado esperando {texto!r}; fim: {m.serial()[-400:]!r}")
+
+
+def main():
+    with Maquina("h152", "ide") as m:
+        m.esperar_serial("sagui:/$", 120)
+        time.sleep(1)
+        m.comando("calculadora")
+        m.esperar_serial("calculadora: pronta", 20)
+        time.sleep(0.5)
+        c = janela(m.serial(), "Calculadora")
+        x, y = c["x"], c["y"]
+        m.digitar("12*", 0.08)
+        time.sleep(0.6)
+        png = m.captura("H152-1-calculadora")
+        tecla = lambda col, lin: (x + 10 + col * 70 + 6, y + 92 + lin * 58 + 25)
+        verificar(cor_do_pixel(png, *tecla(3, 3)) == (0x0B, 0x7A, 0x3E), "o = é verde")
+        verificar(cor_do_pixel(png, *tecla(0, 1)) == (0xFF, 0xFF, 0xFF), "os algarismos são brancos")
+        verificar(cor_do_pixel(png, *tecla(3, 1)) == (0xE9, 0xEC, 0xEF), "as operações são cinza")
+        conta = sum(cor_do_pixel(png, x + 200 + k, y + 22) != (0xF3, 0xF5, 0xF7) for k in range(80))
+        verificar(conta > 5, f"a conta em andamento aparece em cima ({conta} pixels)")
+        antes = len(m.serial())
+        m.digitar("4\n", 0.08)
+        esperar(m, "calculadora: visor 48", 10, antes)
+        # Botão direito no visor > Copiar.
+        antes = len(m.serial())
+        m.clique(x + 100, y + 40, botao=2)
+        s = esperar(m, "menu aberto", 10, antes)
+        mx, my = [int(v) for v in re.findall(r"menu aberto \(tipo \d+, 4 itens\) em \((\d+),(\d+)\)", s)[-1]]
+        time.sleep(0.5)
+        m.captura("H152-2-menu")
+        m.clique(mx + 30, my + 4 + 12)
+        esperar(m, "calculadora: copiado 48", 10, antes)
+        verificar(True, "botão direito no visor > Copiar leva 48")
+        # Ctrl+V cola e a conta segue.
+        antes = len(m.serial())
+        m.digitar("c", 0.08)
+        m.tecla("ctrl-v")
+        esperar(m, "calculadora: colado 48", 10, antes)
+        m.digitar("+2\n", 0.08)
+        esperar(m, "calculadora: visor 50", 10, antes)
+        verificar(True, "Ctrl+V cola 48 e 48 + 2 = 50")
+        # Ctrl+X recorta: copia 50 e zera.
+        antes = len(m.serial())
+        m.tecla("ctrl-x")
+        esperar(m, "calculadora: copiado 50", 10, antes)
+        esperar(m, "calculadora: visor 0", 10, antes)
+        verificar(True, "Ctrl+X copia 50 e zera o visor")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
