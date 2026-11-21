@@ -7,7 +7,9 @@ Critérios:
     o cursor;
   - o menu Arquivo abre embaixo do nome; Exibir esconde e mostra a barra de
     status (a área de texto cresce até o fim da janela);
-  - num programa em C, o botão verde "Compilar e rodar" fica à direita.
+  - num programa em C, o botão verde "Compilar e rodar" fica à direita;
+  - abas: Ctrl+N abre outra aba, um clique na primeira volta para ela, o
+    "x" fecha a aba vazia e o texto da primeira continua lá.
 """
 import os
 import sys
@@ -40,7 +42,7 @@ def main():
         e = janela(m.serial(), "Editor - sem nome")
         x, y, l, a = e["x"], e["y"], 700, 480
         png0 = m.captura("H150-0-vazio", guardar=False)
-        verificar(cor_do_pixel(png0, x + 8 + 210 - 18, y + 21) == (0xFF, 0xFF, 0xFF), "sem alteração, a aba não tem o ponto")
+        verificar(cor_do_pixel(png0, x + 8 + 210 - 18, y + 21) != (0x0B, 0x7A, 0x3E), "sem alteração, a aba não tem o ponto (tem o x de fechar)")
         m.clique(x + 300, y + 200)
         m.digitar(PROGRAMA, 0.03)
         time.sleep(1)
@@ -73,6 +75,24 @@ def main():
         time.sleep(0.8)
         png3 = m.captura("H150-3-sem-status", guardar=False)
         verificar(cor_do_pixel(png3, x + 400, y + a - 3) == (0xFF, 0xFF, 0xFF), "Exibir esconde a barra de status")
+        # Abas.
+        antes = len(m.serial())
+        m.tecla("ctrl-n")
+        esperar(m, "editor: aba 2 de 2 (sem nome)", 10, antes)
+        m.digitar("segunda aba", 0.03)
+        time.sleep(0.8)
+        m.captura("H150-4-duas-abas")
+        m.clique(x + 8 + 40, y + 20)
+        esperar(m, "editor: aba 1 de 2 (ola.c)", 10, antes)
+        verificar(True, "Ctrl+N abre outra aba e o clique volta para a primeira")
+        m.tecla("ctrl-n")
+        esperar(m, "editor: aba 3 de 3 (sem nome)", 10, antes)
+        antes = len(m.serial())
+        al3 = min(210, (l - 8 - 40) // 3 - 4)                   # largura de cada aba com 3 abertas
+        x3 = x + 8 + 2 * (al3 + 4)
+        m.clique(x3 + al3 - 18, y + 21)                        # o "x" da terceira (vazia)
+        esperar(m, "editor: aba fechada, ficam 2", 10, antes)
+        verificar(True, "o x fecha a aba vazia sem perguntar")
     return 0
 
 

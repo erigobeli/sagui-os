@@ -11,7 +11,8 @@
  * programa ganha um ícone na área de trabalho.
  *
  * Visual: em cima, a aba do arquivo (um ponto verde quando há alteração) e
- * o "+" de novo; embaixo dela, os menus Arquivo, Editar e Exibir, e, nos
+ * o "+" de novo (até 6 abas, cada uma com o seu arquivo; o "x" fecha a
+ * aba, Ctrl+W também; Ctrl+Tab passa para a próxima); embaixo delas, os menus Arquivo, Editar e Exibir, e, nos
  * programas em C, os botões de compilar à direita. O texto ocupa a janela
  * toda, sem moldura; embaixo, a barra de status com a linha, a coluna, o
  * total de letras e o tipo do arquivo (Exibir liga e desliga). */
@@ -31,20 +32,27 @@ static int larg_jan = 700, alt_jan = 480;
 #define COR_STATUS  0xF6F7F8
 
 static jan_t *j;
-static area_t area;
-static char caminho[160];
+/* Cada aba é um texto aberto. "area" e "caminho" são os da aba atual. */
+#define MAX_ABAS 6
+typedef struct { area_t a; char cam[160]; } doc_t;
+static doc_t docs[MAX_ABAS];
+static int qtd_docs, atual;
+#define area    (docs[atual].a)
+#define caminho (docs[atual].cam)
 static bool modificado_mostrado = true;
 static bool status_ligado = true;
 static int menu_aberto = -1;              /* 0 Arquivo, 1 Editar, 2 Exibir, 3 botão direito */
 static int realce = -1;                   /* o menu de cima com o fundo marcado (aberto) */
 static int alt_status(void) { return status_ligado ? STATUS_A : 0; }
 
-static const char *nome_curto(void)
+static const char *nome_de(int i)
 {
-    if (!caminho[0]) return "sem nome";
-    const char *b = acha_ultimo_char(caminho, '/');
-    return b ? b + 1 : caminho;
+    const char *c = docs[i].cam;
+    if (!c[0]) return "sem nome";
+    const char *b = acha_ultimo_char(c, '/');
+    return b ? b + 1 : c;
 }
+static const char *nome_curto(void) { return nome_de(atual); }
 
 static void desenhar_barra(void);
 
@@ -72,7 +80,10 @@ static bool eh_programa_c(void)
 /* ------------------------------------------------------------ desenho */
 
 #define ABA_X 8
-#define ABA_L 210
+/* Largura de cada aba: até 210, menos quando há muitas. */
+static int aba_l(void) { int l = (LARG - ABA_X - 40) / (qtd_docs ? qtd_docs : 1) - 4; return l > 210 ? 210 : l; }
+static int aba_x(int i) { return ABA_X + i * (aba_l() + 4); }
+static int mais_x(void) { return aba_x(qtd_docs) + 4; }
 static const char *const menus[3] = { "Arquivo", "Editar", "Exibir" };
 static int menu_x(int i) { int x = 8; for (int k = 0; k < i; k++) x += g_largura_texto(menus[k]) + 22; return x; }
 static int menu_l(int i) { return g_largura_texto(menus[i]) + 22; }
@@ -88,14 +99,28 @@ static void desenhar_barra(void)
 {
     /* Faixa da aba: a aba do arquivo, branca, se emenda com os menus. */
     g_retangulo(j, 0, 0, LARG, ABAS_A, COR_FAIXA);
-    g_ret_redondo(j, ABA_X, 6, ABA_L, ABAS_A - 6 + 10, 8, COR_BRANCO, COR_BRANCO);
-    char nome[24];
-    int n = (int)tam_texto(nome_curto());
-    if (n > 20) n = 20;
-    copia_texto(nome, nome_curto(), (size_t)n + 1);
-    g_texto(j, ABA_X + 14, 13, nome, COR_TEXTO);
-    if (area.modificado) g_ret_redondo(j, ABA_X + ABA_L - 22, 17, 8, 8, 4, COR_DESTAQUE, COR_DESTAQUE);   /* não salvo */
-    int px = ABA_X + ABA_L + 8;                                    /* "+": texto novo */
+    int al = aba_l();
+    for (int i = 0; i < qtd_docs; i++) {
+        int x = aba_x(i);
+        bool sel = i == atual;
+        if (sel) g_ret_redondo(j, x, 6, al, ABAS_A - 6 + 10, 8, COR_BRANCO, COR_BRANCO);
+        else if (i + 1 != atual && i + 1 < qtd_docs) g_retangulo(j, x + al + 1, 13, 1, 16, 0xC9CED4);   /* divisória */
+        char nome[32];
+        int n = (int)tam_texto(nome_de(i)), cabe = (al - 44) / LETRA_L;
+        if (cabe > 30) cabe = 30;
+        if (n > cabe) n = cabe < 0 ? 0 : cabe;
+        copia_texto(nome, nome_de(i), (size_t)n + 1);
+        g_texto(j, x + 14, 13, nome, sel ? COR_TEXTO : COR_TEXTO_FRACO);
+        if (docs[i].a.modificado) g_ret_redondo(j, x + al - 22, 17, 8, 8, 4, COR_DESTAQUE, COR_DESTAQUE);   /* não salvo */
+        else {                                                     /* "x": fecha a aba */
+            uint32_t cx = sel ? COR_TEXTO_FRACO : 0x9AA3AC;
+            for (int k = 0; k < 8; k++) {
+                g_retangulo(j, x + al - 22 + k, 17 + k, 1, 1, cx);
+                g_retangulo(j, x + al - 22 + 7 - k, 17 + k, 1, 1, cx);
+            }
+        }
+    }
+    int px = mais_x();                                             /* "+": aba nova */
     g_retangulo(j, px + 6, 20, 12, 2, COR_TEXTO_FRACO);
     g_retangulo(j, px + 11, 15, 2, 12, COR_TEXTO_FRACO);
     /* Menus. */
@@ -350,27 +375,68 @@ static void abrir_menu(int i)
     menu_aberto = realce = i;
     desenhar_barra();
     jan_mostrar_area(j, 0, ABAS_A, LARG, MENU_A);
-    const char *itens = i == 0 ? (eh_programa_c() ? "Novo (Ctrl+N)|Abrir... (Ctrl+O)|Salvar (Ctrl+S)|Salvar como...|Compilar e rodar (Ctrl+R)|Instalar no pendrive|Fechar"
-                                                 : "Novo (Ctrl+N)|Abrir... (Ctrl+O)|Salvar (Ctrl+S)|Salvar como...|Fechar")
+    const char *itens = i == 0 ? (eh_programa_c() ? "Nova aba (Ctrl+N)|Abrir... (Ctrl+O)|Salvar (Ctrl+S)|Salvar como...|Compilar e rodar (Ctrl+R)|Instalar no pendrive|Fechar a aba (Ctrl+W)"
+                                                 : "Nova aba (Ctrl+N)|Abrir... (Ctrl+O)|Salvar (Ctrl+S)|Salvar como...|Fechar a aba (Ctrl+W)")
                       : i == 1 ? "Recortar (Ctrl+X)|Copiar (Ctrl+C)|Colar (Ctrl+V)|Selecionar tudo (Ctrl+A)"
                       : status_ligado ? "Esconder a barra de status" : "Mostrar a barra de status";
     jan_menu(j, menu_x(i) - 2, BARRA - 4, itens);
 }
 
-static void novo(void)
+static void redesenhar_tudo(void);
+
+static void trocar_aba(int i)
 {
-    if (!pode_descartar()) return;
-    area_definir(&area, "", 0);
-    caminho[0] = 0;
-    forcar_titulo();
-    area_desenhar(j, &area);
+    if (i < 0 || i >= qtd_docs) return;
+    area.foco = false;
+    atual = i;
+    area.foco = true;
+    modificado_mostrado = !area.modificado;
+    atualizar_titulo();
+    redesenhar_tudo();
+    registrar("editor: aba %d de %d (%s)", atual + 1, qtd_docs, nome_curto());
 }
+
+/* Aba nova, vazia. Devolve false quando já há MAX_ABAS. */
+static bool nova_aba(void)
+{
+    if (qtd_docs >= MAX_ABAS) { mensagem("Editor", "Dá para ter até 6 abas abertas.\nFeche uma para abrir outra."); return false; }
+    doc_t *d = &docs[qtd_docs];
+    memset(d, 0, sizeof *d);
+    if (!area_iniciar(&d->a, 0, BARRA, LARG, ALT - BARRA - alt_status())) return false;
+    d->a.lisa = true;
+    qtd_docs++;
+    trocar_aba(qtd_docs - 1);
+    return true;
+}
+
+/* Fecha a aba i (pergunta antes se há alteração). Devolve true se a
+ * última aba fechou (o Editor termina). */
+static bool fechar_aba(int i)
+{
+    if (i != atual) trocar_aba(i);
+    if (!pode_descartar()) return false;
+    libera(docs[i].a.buf);
+    for (int k = i; k + 1 < qtd_docs; k++) docs[k] = docs[k + 1];
+    qtd_docs--;
+    registrar("editor: aba fechada, ficam %d", qtd_docs);
+    if (qtd_docs == 0) return true;
+    atual = i < qtd_docs ? i : qtd_docs - 1;
+    trocar_aba(atual);
+    return false;
+}
+
+static void novo(void) { nova_aba(); }
+
+/* A aba atual está vazia e sem nome? Então o arquivo aberto vai nela. */
+static bool aba_vazia(void) { return !caminho[0] && area.tam == 0 && !area.modificado; }
 
 static void abrir_pedindo(void)
 {
-    if (!pode_descartar()) return;
     char c[160] = "/";
-    if (pedir_texto("Abrir", "Caminho do arquivo:", c, sizeof c)) abrir_arquivo(c);
+    if (!pedir_texto("Abrir", "Caminho do arquivo:", c, sizeof c)) return;
+    bool nova = !aba_vazia();
+    if (nova && !nova_aba()) return;
+    if (!abrir_arquivo(c) && nova) fechar_aba(atual);
 }
 
 /* Editar: os mesmos atalhos da área de texto. */
@@ -394,7 +460,8 @@ static void compilar_e_voltar(bool instalar)
 int principal(int argc, char **argv)
 {
     j = jan_abrir("Editor - sem nome", LARG, ALT);
-    if (!j || !area_iniciar(&area, 0, BARRA, LARG, ALT - BARRA - STATUS_A)) return 1;
+    if (!j || !area_iniciar(&docs[0].a, 0, BARRA, LARG, ALT - BARRA - STATUS_A)) return 1;
+    qtd_docs = 1;
     area.lisa = true;
     jan_redimensionavel(j, 580, 200);
     area.foco = true;
@@ -412,8 +479,11 @@ int principal(int argc, char **argv)
             desenhar_barra();
             jan_mostrar_area(j, 0, ABAS_A, LARG, MENU_A);
         }
-        if (e.tipo == EV_FECHAR) {
-            if (pode_descartar()) break;
+        if (e.tipo == EV_FECHAR) {                         /* cada aba com alteração pergunta */
+            bool ok = true;
+            for (int i = 0; i < qtd_docs && ok; i++)
+                if (docs[i].a.modificado) { trocar_aba(i); ok = pode_descartar(); }
+            if (ok) break;
             continue;
         }
         if (e.tipo == EV_REDIMENSIONAR) {                   /* H78: a área de texto acompanha a janela */
@@ -428,11 +498,20 @@ int principal(int argc, char **argv)
         if (e.tipo == EV_TECLA && e.tecla == 19) { salvar(); continue; }                 /* Ctrl+S */
         if (e.tipo == EV_TECLA && e.tecla == 14) { novo(); continue; }                   /* Ctrl+N */
         if (e.tipo == EV_TECLA && e.tecla == 15) { abrir_pedindo(); continue; }          /* Ctrl+O */
+        if (e.tipo == EV_TECLA && e.tecla == 23) { if (fechar_aba(atual)) break; continue; }   /* Ctrl+W */
+        if (e.tipo == EV_TECLA && e.tecla == '\t' && (e.modificadores & 2)) { trocar_aba((atual + 1) % qtd_docs); continue; }   /* Ctrl+Tab */
         if (c && e.tipo == EV_TECLA && e.tecla == 18 && (e.modificadores & 2)) { compilar(false); continue; }   /* Ctrl+R */
         if (e.tipo == EV_CLIQUE && (e.botoes & 1) && e.y < BARRA) {
-            if (e.y < ABAS_A) {                              /* o "+" ao lado da aba */
-                int px = ABA_X + ABA_L + 8;
-                if (e.x >= px && e.x < px + 24) novo();
+            if (e.y < ABAS_A) {                              /* abas: trocar, "x" fecha; "+" abre outra */
+                int px = mais_x(), al = aba_l();
+                if (e.x >= px && e.x < px + 24) { novo(); continue; }
+                for (int i = 0; i < qtd_docs; i++) {
+                    int x = aba_x(i);
+                    if (e.x < x || e.x >= x + al) continue;
+                    if (e.x >= x + al - 28 && e.x < x + al - 10) { if (fechar_aba(i)) sair = true; }
+                    else if (i != atual) trocar_aba(i);
+                    break;
+                }
             } else {
                 for (int i = 0; i < 3; i++)
                     if (e.x >= menu_x(i) - 2 && e.x < menu_x(i) - 2 + menu_l(i)) { abrir_menu(i); break; }
@@ -466,7 +545,7 @@ int principal(int argc, char **argv)
                 else if (t == 2) salvar();
                 else if (t == 3) salvar_como();
                 else if (t == 4 || t == 5) compilar_e_voltar(t == 5);
-                else if (t == 6 && pode_descartar()) sair = true;
+                else if (t == 6 && fechar_aba(atual)) sair = true;
             } else if (m == 1) {
                 static const unsigned teclas[4] = { 24, 3, 22, 1 };
                 if (e.tecla < 4) tecla_na_area(teclas[e.tecla]);
