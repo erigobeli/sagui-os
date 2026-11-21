@@ -12,6 +12,9 @@ typedef struct {
     bool (*imagem)(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a);
     /* Pixels atuais de um <canvas> (data-sagui-canvas); NULL se não houver. */
     const uint32_t *(*tela)(int id, int *l, int *a);
+    /* Opcional: as folhas de estilo da página, todas de uma vez, antes de
+     * serem pedidas uma a uma pelo baixar (o navegador busca juntas). */
+    void (*adiantar)(const char *const *urls, int n);
 } motor_ganchos_t;
 
 /* Tipos de alvo de clique. */
@@ -50,6 +53,8 @@ uint32_t motor_fundo(motor_t *m);
 /* Estatísticas para o log: nós, caixas, comandos de pintura. */
 void     motor_numeros(motor_t *m, int *nos, int *cmds, int *imgs);
 int      motor_links(motor_t *m);                 /* quantos links a página tem */
+int      motor_imagens_proximas(motor_t *m, const char **urls, int max);   /* as que ainda vêm (H129) */
+bool     motor_imagens_faltam(motor_t *m);   /* H129: o navegador retoma depois de uma interrupção */
 int      motor_imagens_total(motor_t *m);         /* quantas imagens a página pede (2.1) */
 int      motor_ancora(motor_t *m, const char *nome);   /* y do id/name, ou -1 (2.1) */
 /* Campo de texto com foco: recebe a digitação dentro da própria caixa. */

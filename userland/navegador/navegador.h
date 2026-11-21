@@ -78,6 +78,7 @@ typedef struct {
 /* Busca um endereço (http, https ou arquivo do SaguiOS). cab recebe os
  * cabeçalhos da resposta (pode ser NULL). Devolve a situação HTTP ou -1. */
 int rede_buscar(const char *url, rede_resposta_t *r, unsigned max, char *cab, int max_cab);
+int rede_lote(const char *const *urls, int n, rede_resposta_t *rs, unsigned max);   /* H129 */
 
 /* ---- endereços (enderecos.c) ---- */
 #define MAX_URL_NAV 1024
