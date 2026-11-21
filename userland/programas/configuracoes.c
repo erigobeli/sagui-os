@@ -56,7 +56,6 @@ static const char *const p_nome[QTD_P] = { "Início", "Sobre o computador", "Dat
 static const char *const p_log[QTD_P] = { "Início", "Sobre o computador", "Relógio", "Aparência", "Teclado", "Rede", "Som", "Programas", "IA" };
 static const int p_grupo[QTD_P] = { 0, 0, 0, 1, 1, 2, 2, 3, 3 };
 static const char *const grupos[4] = { "", "Personalização", "Conexões e som", "Programas" };
-static const uint32_t p_cor[QTD_P] = { 0x0B7A3E, 0x5A6470, 0xD9822B, 0x7B4FC9, 0x2A6FD8, 0x1E8FB8, 0xD0457A, 0x3C8C5A, 0x9A5B2E };
 static const char *const p_palavras[QTD_P] = {
     "inicio resumo",
     "sobre computador processador memoria tela versao dispositivos pci",
@@ -166,179 +165,22 @@ static void caixa(const char *nome, caixa_t *c, int x, int y, int l)
     ctl(nome, x, y, l, LETRA_A + 8);
 }
 
-/* Ícones das páginas: desenhos de 16 x 16 em branco ('#') sobre a cor. */
-static const char *const ic_casa[16] = {
-    "................",
-    "................",
-    "................",
-    ".......##.......",
-    ".....######.....",
-    "...##########...",
-    "..############..",
-    "....########....",
-    "....########....",
-    "....###..###....",
-    "....###..###....",
-    "....###..###....",
-    "....###..###....",
-    "................",
-    "................",
-    "................",
-};
-static const char *const ic_info[16] = {
-    "................",
-    "....########....",
-    "...##......##...",
-    "..#....##....#..",
-    "..#....##....#..",
-    ".#............#.",
-    ".#....###.....#.",
-    ".#.....##.....#.",
-    ".#.....##.....#.",
-    ".#.....##.....#.",
-    "..#...####...#..",
-    "..#..........#..",
-    "...##......##...",
-    "....########....",
-    "................",
-    "................",
-};
-static const char *const ic_relogio[16] = {
-    "................",
-    "....########....",
-    "...##......##...",
-    "..#....##....#..",
-    "..#....##....#..",
-    ".#.....##.....#.",
-    ".#.....##.....#.",
-    ".#.....#####..#.",
-    ".#............#.",
-    ".#............#.",
-    "..#..........#..",
-    "..#..........#..",
-    "...##......##...",
-    "....########....",
-    "................",
-    "................",
-};
-static const char *const ic_paleta[16] = {
-    "................",
-    "....#######.....",
-    "..###########...",
-    ".####.###.####..",
-    ".#############..",
-    "####.##########.",
-    "################",
-    "#######...######",
-    "######.....#####",
-    "#######...######",
-    ".##############.",
-    ".#####.#######..",
-    "..###...####....",
-    "................",
-    "................",
-    "................",
-};
-static const char *const ic_teclado[16] = {
-    "................",
-    "................",
-    "................",
-    "################",
-    "#..............#",
-    "#.##.##.##.##..#",
-    "#..............#",
-    "#.##.##.##.##..#",
-    "#..............#",
-    "#...########...#",
-    "#..............#",
-    "################",
-    "................",
-    "................",
-    "................",
-    "................",
-};
-static const char *const ic_globo[16] = {
-    "................",
-    "....########....",
-    "...##..##..##...",
-    "..#...#..#...#..",
-    ".#...#....#...#.",
-    ".##############.",
-    ".#..#......#..#.",
-    ".#..#......#..#.",
-    ".##############.",
-    ".#...#....#...#.",
-    "..#...#..#...#..",
-    "...##..##..##...",
-    "....########....",
-    "................",
-    "................",
-    "................",
-};
-static const char *const ic_som[16] = {
-    "................",
-    "................",
-    ".......#........",
-    "......##...#....",
-    ".....###....#...",
-    "#####.##..#..#..",
-    "#####.##...#.#..",
-    "#####.##...#.#..",
-    "#####.##...#.#..",
-    "#####.##..#..#..",
-    ".....###....#...",
-    "......##...#....",
-    ".......#........",
-    "................",
-    "................",
-    "................",
-};
-static const char *const ic_apps[16] = {
-    "................",
-    "................",
-    "...####..####...",
-    "...####..####...",
-    "...####..####...",
-    "...####..####...",
-    "................",
-    "................",
-    "...####..####...",
-    "...####..####...",
-    "...####..####...",
-    "...####..####...",
-    "................",
-    "................",
-    "................",
-    "................",
-};
-static const char *const ic_ia[16] = {
-    "................",
-    ".......#........",
-    ".......#........",
-    "......###.......",
-    "......###.......",
-    "....#######.....",
-    "..###########...",
-    "....#######.....",
-    "......###.......",
-    "......###....#..",
-    ".......#....###.",
-    ".......#.....#..",
-    "................",
-    "................",
-    "................",
-    "................",
-};
-static const char *const *const p_ic[QTD_P] = { ic_casa, ic_info, ic_relogio, ic_paleta, ic_teclado, ic_globo, ic_som, ic_apps, ic_ia };
-static uint32_t paleta_branca(char c) { return c == '#' ? COR_BRANCO : 0xFF000000; }
+/* Ícones das páginas: desenhados por tools/mkarte.py (--cfg), no mesmo
+ * estilo dos ícones dos programas; 28 pixels na lateral, 40 no resto. */
+extern const uint32_t arte_px_cfg_inicio_28[], arte_px_cfg_sobre_28[], arte_px_cfg_relogio_28[], arte_px_cfg_aparencia_28[],
+                      arte_px_cfg_teclado_28[], arte_px_cfg_rede_28[], arte_px_cfg_som_28[], arte_px_cfg_programas_28[], arte_px_cfg_ia_28[];
+extern const uint32_t arte_px_cfg_inicio_40[], arte_px_cfg_sobre_40[], arte_px_cfg_relogio_40[], arte_px_cfg_aparencia_40[],
+                      arte_px_cfg_teclado_40[], arte_px_cfg_rede_40[], arte_px_cfg_som_40[], arte_px_cfg_programas_40[], arte_px_cfg_ia_40[];
+static const uint32_t *const ic28[QTD_P] = { arte_px_cfg_inicio_28, arte_px_cfg_sobre_28, arte_px_cfg_relogio_28, arte_px_cfg_aparencia_28,
+                                             arte_px_cfg_teclado_28, arte_px_cfg_rede_28, arte_px_cfg_som_28, arte_px_cfg_programas_28, arte_px_cfg_ia_28 };
+static const uint32_t *const ic40[QTD_P] = { arte_px_cfg_inicio_40, arte_px_cfg_sobre_40, arte_px_cfg_relogio_40, arte_px_cfg_aparencia_40,
+                                             arte_px_cfg_teclado_40, arte_px_cfg_rede_40, arte_px_cfg_som_40, arte_px_cfg_programas_40, arte_px_cfg_ia_40 };
 
-/* Ícone de uma página: quadrado redondo de cor com o desenho em branco
- * (em dobro a partir de 32 pixels). */
+/* Ícone de uma página, em (x, y), com o lado pedido (até 30: o de 28; mais: o de 40). */
 static void icone(int p, int x, int y, int tam)
 {
-    g_ret_redondo(j, x, y, tam, tam, tam / 4, p_cor[p], p_cor[p]);
-    int esc = tam >= 32 ? 2 : 1, d = 16 * esc;
-    g_desenho(j, x + (tam - d) / 2, y + (tam - d) / 2, p_ic[p], 16, 16, paleta_branca, esc);
+    if (tam <= 30) g_imagem(j, x + (tam - 28) / 2, y + (tam - 28) / 2, ic28[p], 28, 28);
+    else g_imagem(j, x + (tam - 40) / 2, y + (tam - 40) / 2, ic40[p], 40, 40);
 }
 
 /* ------------------------------------------------------------ recado */
@@ -918,7 +760,7 @@ static void sobre_desenhar(void)
     nome_processador(cpu, sizeof cpu);
     registrar("configuracoes: processador %s, memoria %u MB", cpu, m.ram_total_kb / 1024);
     cartao(CX, y, CL, 64);
-    icone(P_INICIO, CX + 18, y + 14, 36);
+    icone(P_SISTEMA, CX + 18, y + 14, 36);
     formatar_texto(t, sizeof t, "SaguiOS %s", v.versao);
     g_texto(j, CX + 70, y + 14, t, C_TEXTO);
     g_texto(j, CX + 71, y + 14, t, C_TEXTO);
@@ -1185,8 +1027,8 @@ static void desenhar_lado(void)
             if (grupos[grupo][0]) { y += 6; g_texto(j, 18, y, traduzir(grupos[grupo]), C_FRACO); y += 22; }
         }
         if (p == pagina) g_ret_redondo(j, 8, y, LADO - 16, 34, 8, C_SEL_LADO, C_SEL_LADO);
-        icone(p, 16, y + 6, 22);
-        g_texto(j, 48, y + 9, traduzir(p_nome[p]), C_TEXTO);
+        icone(p, 12, y + 3, 28);
+        g_texto(j, 46, y + 9, traduzir(p_nome[p]), C_TEXTO);
         char nome[32];
         formatar_texto(nome, sizeof nome, "ir.%s", p_curto[p]);
         ctl(nome, 8, y, LADO - 16, 34);

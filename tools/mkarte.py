@@ -747,6 +747,98 @@ def instalar_sistema(t):
     t.poligono([(27, 9), (37, 9), (37, 18.5), (42.5, 18.5), (32, 27.5), (21.5, 18.5), (27, 18.5)], seta)
 
 
+
+# ---------------------------------------------------------------------------
+# As páginas das Configurações (lateral, Início e cabeçalhos): o mesmo
+# estilo dos programas, uma cor por página.
+# ---------------------------------------------------------------------------
+
+def cfg_inicio(t):
+    """Início: uma casa branca na caixa verde."""
+    estilo_app(t, 0x4CC47A, 0x0B7A3E)
+    t.poligono([(CX, 14.5), (49, 29.5), (15, 29.5)], BRANCO)
+    t.traco([(CX, 14.5), (49, 29.5), (15, 29.5), (CX, 14.5)], 2.4, BRANCO)
+    t.ret(19.5, 28, 44.5, 47, 2, BRANCO)
+    t.ret(28.5, 35.5, 35.5, 47, 1.5, 0x0E7A40)
+
+
+def cfg_sobre(t):
+    """Sobre o computador: um monitor branco com a tela escura, na caixa cinza."""
+    estilo_app(t, 0x9DB0C4, 0x4A5E74)
+    t.ret(13.5, 16, 50.5, 41, 3, BRANCO)
+    t.ret(16.5, 19, 47.5, 37, 1.5, vertical(0x2E6FBF, 0x1B3F70, 19, 37))
+    t.ret(28.5, 41, 35.5, 46, 0, BRANCO)
+    t.ret(22, 45.5, 42, 48.5, 1.5, BRANCO)
+
+
+def cfg_relogio(t):
+    """Data e hora: um relógio branco com os ponteiros, na caixa laranja."""
+    estilo_app(t, 0xFFB35A, 0xE86E12)
+    t.disco(CX, CY, 16, BRANCO)
+    for k in range(12):
+        a = k * math.pi / 6
+        r0 = 12.2 if k % 3 else 11
+        t.traco([(CX + r0 * math.cos(a), CY + r0 * math.sin(a)), (CX + 13.8 * math.cos(a), CY + 13.8 * math.sin(a))],
+                1.4 if k % 3 else 2, 0xC86414)
+    t.traco([(CX, CY), (CX, CY - 9.5)], 3, 0x5A3010)
+    t.traco([(CX, CY), (CX + 7.5, CY + 3.5)], 3, 0x5A3010)
+    t.disco(CX, CY, 2.2, 0xE86E12)
+
+
+def cfg_aparencia(t):
+    """Aparência: uma paleta de pintor branca com tintas, na caixa roxa."""
+    estilo_app(t, 0xB98AF5, 0x6A2FC8)
+    paleta = bezier((CX, 14), (52, 14), (54, 40), (40, 46), n=20) + bezier((40, 46), (34, 48.5), (33, 41), (27, 44.5), n=10)[1:] \
+        + bezier((27, 44.5), (12, 52), (8, 22), (CX, 14), n=20)[1:]
+    t.poligono(paleta, BRANCO)
+    t.disco(36.5, 37, 3.6, 0x6A2FC8)                       # o furo do dedo
+    for (x, y, c) in ((21, 25, 0xF04A4A), (29, 20, 0xFFC928), (39, 21.5, 0x3CB44A), (44.5, 29, 0x2A7AF0)):
+        t.disco(x, y, 3.4, c)
+
+
+def cfg_teclado(t):
+    """Idioma e teclado: um teclado branco com as teclas, na caixa azul."""
+    estilo_app(t, 0x5AAEFA, 0x1A56C0)
+    t.ret(12.5, 20, 51.5, 43, 4, BRANCO)
+    for lin, y in enumerate((24, 30)):
+        for k in range(6):
+            x = 16 + k * 5.6 + (1.4 if lin else 0)
+            t.ret(x, y, x + 3.8, y + 3.6, 0.9, 0x1A56C0, 0.75)
+    t.ret(21, 36.5, 43, 39.8, 1.2, 0x1A56C0, 0.75)          # espaço
+
+
+def cfg_rede(t):
+    """Rede: as ondas do sinal (três arcos e o ponto), em branco na caixa ciano."""
+    estilo_app(t, 0x46CFEF, 0x0A78B0)
+    for r in (8, 15, 22):
+        t.anel(CX, 44, r, 3.6, BRANCO, -math.pi * 0.78, -math.pi * 0.22)
+    t.disco(CX, 44, 3.4, BRANCO)
+
+
+def cfg_som(t):
+    """Som: o alto-falante e duas ondas, em branco na caixa rosa."""
+    estilo_app(t, 0xF4709C, 0xC0285A)
+    t.poligono([(14, 25.5), (21, 25.5), (31, 16.5), (31, 45.5), (21, 36.5), (14, 36.5)], BRANCO)
+    t.traco([(14, 25.5), (21, 25.5), (31, 16.5), (31, 45.5), (21, 36.5), (14, 36.5), (14, 25.5)], 2, BRANCO)
+    t.anel(31, CY, 8, 3.2, BRANCO, -0.85, 0.85)
+    t.anel(31, CY, 15, 3.2, BRANCO, -0.85, 0.85)
+
+
+def cfg_programas(t):
+    """Programas: quatro quadradinhos arredondados, em branco na caixa verde-água."""
+    estilo_app(t, 0x5ED3A8, 0x1A8A62)
+    for x, y in ((16, 15), (34, 15), (16, 33), (34, 33)):
+        t.ret(x, y, x + 14, y + 14, 3.5, BRANCO)
+    t.ret(34, 33, 48, 47, 3.5, 0xFFD84A)
+
+
+def cfg_ia(t):
+    """IA: duas estrelas de quatro pontas (um brilho), na caixa anil."""
+    estilo_app(t, 0x8F86FA, 0x3A2BC0)
+    t.poligono(estrela(29, 33, 15, 4.2, 4, -math.pi / 2), BRANCO)
+    t.poligono(estrela(43.5, 19, 7, 2.2, 4, -math.pi / 2), 0xFFE07A)
+
+
 ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("calculadora", calculadora),
           ("banana", banana), ("sagui3d", sagui3d), ("sobre", sobre), ("pendrive", pendrive),
           ("configuracoes", configuracoes), ("cipo", cipo), ("instalado", instalado), ("tocador", tocador),
@@ -755,6 +847,11 @@ ICONES = [("arquivos", arquivos), ("terminal", terminal), ("editor", editor), ("
           ("chuva", chuva), ("triangulos", triangulos), ("componentes", componentes), ("energia", energia),
           ("lupa", lupa), ("lixeira", lixeira), ("lixeira_cheia", lixeira_cheia),
           ("visualizador", visualizador), ("disco", disco), ("instalar_sistema", instalar_sistema)]
+# Os das páginas das Configurações vão num arquivo à parte (mkarte.py --cfg),
+# ligado só ao app: o kernel não carrega estes pixels.
+ICONES_CFG = [("cfg_inicio", cfg_inicio), ("cfg_sobre", cfg_sobre), ("cfg_relogio", cfg_relogio),
+              ("cfg_aparencia", cfg_aparencia), ("cfg_teclado", cfg_teclado), ("cfg_rede", cfg_rede),
+              ("cfg_som", cfg_som), ("cfg_programas", cfg_programas), ("cfg_ia", cfg_ia)]
 TAMANHOS = [(64, ""), (40, "_40"), (20, "_20")]   # 20: o rodapé e a busca do menu Iniciar
 
 
@@ -768,12 +865,16 @@ def gerar(desenhar, tam):
 
 
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("uso: mkarte.py <saida.c>")
-    with open(sys.argv[1], "w", encoding="utf-8") as f:
+    args = sys.argv[1:]
+    cfg = "--cfg" in args
+    args = [a for a in args if a != "--cfg"]
+    if len(args) != 1:
+        sys.exit("uso: mkarte.py [--cfg] <saida.c>")
+    icones, tamanhos = (ICONES_CFG, [(40, "_40"), (28, "_28")]) if cfg else (ICONES, TAMANHOS)
+    with open(args[0], "w", encoding="utf-8") as f:
         f.write("/* Gerado por tools/mkarte.py. Não edite. */\n#include \"arte.h\"\n\n")
-        for tam, sufixo in TAMANHOS:
-            for nome, desenhar in ICONES:
+        for tam, sufixo in tamanhos:
+            for nome, desenhar in icones:
                 px = gerar(desenhar, tam)
                 f.write(f"const uint32_t arte_px_{nome}{sufixo}[{tam * tam}] = {{\n")
                 for k in range(0, len(px), 8):
