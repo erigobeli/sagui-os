@@ -42,12 +42,39 @@ void   g_contorno_redondo(jan_t *j, int x, int y, int l, int a, int raio, uint32
 void   g_linha(jan_t *j, int x0, int y0, int x1, int y1, uint32_t cor);
 void   g_texto(jan_t *j, int x, int y, const char *t, uint32_t cor);
 void   g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor);
+void   g_texto_forte(jan_t *j, int x, int y, const char *t, uint32_t cor);            /* negrito */
+void   g_texto_n_forte(jan_t *j, int x, int y, const char *t, int n, uint32_t cor);
 void   g_desenho(jan_t *j, int x, int y, const char *const *linhas, int l, int a,
                  uint32_t (*paleta)(char), int escala);   /* paleta devolve 0xFF000000 = transparente */
 void   g_imagem(jan_t *j, int x, int y, const uint32_t *px, int l, int a);   /* ARGB com alfa (H92) */
 void   g_relevo(jan_t *j, int x, int y, int l, int a, bool afundado);
 int    g_largura_texto(const char *t);
 #define LETRA_L 8
+
+/* Fonte suave (tools/mkfonte_suave.py): cada pixel da letra tem um tom de
+ * 0 (vazio) a 15 (cheio), já calculado no build; desenhar é só misturar a
+ * cor nesse tom, e só nas bordas da letra (o miolo é cor cheia). As faixas
+ * sem desenho na fonte suave (controle e 0x80-0x9F, as molduras e blocos do
+ * terminal) continuam com a fonte bitmap. */
+extern const unsigned char fonte_suave[256][64], fonte_suave_negrito[256][64];
+static inline bool letra_suave(unsigned c) { return c >= 0x20 && c != 0x7F && (c < 0x80 || c >= 0xA0); }
+static inline int tom_letra(const unsigned char *g, int col, int lin)
+{
+    unsigned char b = g[lin * 4 + (col >> 1)];
+    return col & 1 ? b & 15 : b >> 4;
+}
+/* fundo levado t/15 na direção da cor, sem divisão (t * 17 / 256 ~ t / 15). */
+static inline uint32_t no_tom(uint32_t fundo, uint32_t cor, int t)
+{
+    int a = t * 17 + (t >> 1);
+    uint32_t r = 0;
+    for (int s = 0; s <= 16; s += 8) {
+        int f = (int)((fundo >> s) & 255), c = (int)((cor >> s) & 255);
+        r |= (uint32_t)(f + (((c - f) * a + 128) >> 8)) << s;
+    }
+    return r;
+}
+
 #define LETRA_A 16
 
 /* ---- rótulo ---- */
