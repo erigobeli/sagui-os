@@ -44,6 +44,8 @@ void   g_texto(jan_t *j, int x, int y, const char *t, uint32_t cor);
 void   g_texto_n(jan_t *j, int x, int y, const char *t, int n, uint32_t cor);
 void   g_texto_forte(jan_t *j, int x, int y, const char *t, uint32_t cor);            /* negrito */
 void   g_texto_n_forte(jan_t *j, int x, int y, const char *t, int n, uint32_t cor);
+void   g_texto_sombra(jan_t *j, int x, int y, const char *t, uint32_t cor);            /* sombra suave, sobre imagem */
+void   g_texto_ampliado(jan_t *j, int x, int y, const char *t, uint32_t cor, int esc, bool forte);
 void   g_desenho(jan_t *j, int x, int y, const char *const *linhas, int l, int a,
                  uint32_t (*paleta)(char), int escala);   /* paleta devolve 0xFF000000 = transparente */
 void   g_imagem(jan_t *j, int x, int y, const uint32_t *px, int l, int a);   /* ARGB com alfa (H92) */

@@ -434,11 +434,11 @@ static bool fundo_imagem(const char *caminho)
 
 static void texto_com_sombra(superficie_t *s, int x, int y, const char *t, uint32_t cor)
 {
-    /* Contorno escuro embaixo e à direita: o nome continua legível em cima
-     * da imagem da Mata Atlântica (H81, do Robson). */
-    sup_texto(s, x + 1, y + 1, t, 0x101010);
-    sup_texto(s, x + 1, y, t, 0x101010);
-    sup_texto(s, x, y + 1, t, 0x101010);
+    /* Sombra suave e transparente embaixo e à direita: o nome continua
+     * legível em cima da imagem da Mata Atlântica (H81, do Robson), sem o
+     * contorno preto duro de antes. */
+    sup_texto_sombra(s, x + 1, y + 1, t, 10, false);
+    sup_texto_sombra(s, x, y + 1, t, 5, false);
     sup_texto(s, x, y, t, cor);
 }
 

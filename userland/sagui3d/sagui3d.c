@@ -61,19 +61,13 @@ static void figura_na_janela(int id, int x, int y, int esc, int luz)
 /* Texto ampliado (títulos): cada pixel da letra vira um quadrado. */
 static void texto_grande(int x, int y, const char *t, uint32_t cor, int esc)
 {
-    for (; *t; t++, x += 8 * esc) {
-        const unsigned char *g = fonte_sagui[(uint8_t)*t];
-        for (int lin = 0; lin < 16; lin++)
-            for (int col = 0; col < 8; col++)
-                if (g[lin] & (0x80 >> col)) g_retangulo(j, x + col * esc, y + lin * esc, esc, esc, cor);
-    }
+    g_texto_ampliado(j, x, y, t, cor, esc, true);
 }
 
 static void texto_centro(int y, const char *t, uint32_t cor)
 {
     int x = (JAN_L - g_largura_texto(t)) / 2;
-    g_texto(j, x + 1, y + 1, t, 0x000000);
-    g_texto(j, x, y, t, cor);
+    g_texto_sombra(j, x, y, t, cor);
 }
 
 static void ampliar_vista(void)

@@ -109,7 +109,7 @@ int texto_largura(const char *t)
     return n * 8;
 }
 
-static void texto_face(superficie_t *s, int x, int y, const char *t, uint32_t cor, const unsigned char (*face)[64])
+static void texto_face(superficie_t *s, int x, int y, const char *t, uint32_t cor, const unsigned char (*face)[64], int op)
 {
     for (; *t; t++, x += 8) {
         if (x >= s->cx1) break;
@@ -129,19 +129,25 @@ static void texto_face(superficie_t *s, int x, int y, const char *t, uint32_t co
             if (yy < s->cy0 || yy >= s->cy1) continue;
             uint32_t *linha = s->px + yy * s->larg;
             for (int i = 0; i < 8; i++) {
-                int tt = tom_letra(g, i, j), xx = x + i;
+                int tt = tom_letra(g, i, j) * op >> 4, xx = x + i;
                 if (!tt || xx < s->cx0 || xx >= s->cx1) continue;
-                linha[xx] = tt == 15 ? cor : no_tom(linha[xx], cor, tt);
+                linha[xx] = tt >= 15 ? cor : no_tom(linha[xx], cor, tt);
             }
         }
     }
 }
 
-void sup_texto(superficie_t *s, int x, int y, const char *t, uint32_t cor) { texto_face(s, x, y, t, cor, fonte_suave); }
+void sup_texto(superficie_t *s, int x, int y, const char *t, uint32_t cor) { texto_face(s, x, y, t, cor, fonte_suave, 16); }
 
 /* Texto mais grosso, para títulos: a face negrita da fonte suave, na mesma
  * largura (antes era a letra desenhada duas vezes, e as letras colavam). */
-void sup_texto_forte(superficie_t *s, int x, int y, const char *t, uint32_t cor) { texto_face(s, x, y, t, cor, fonte_suave_negrito); }
+void sup_texto_forte(superficie_t *s, int x, int y, const char *t, uint32_t cor) { texto_face(s, x, y, t, cor, fonte_suave_negrito, 16); }
+
+/* Sombra suave para texto: a letra em preto, transparente (op/16). */
+void sup_texto_sombra(superficie_t *s, int x, int y, const char *t, int op, bool forte)
+{
+    texto_face(s, x, y, t, 0x000000, forte ? fonte_suave_negrito : fonte_suave, op);
+}
 
 /* Ícone ARGB (tools/mkarte.py): o alfa diz quanto da cor cobre o fundo. */
 /* O mesmo que cor_mistura(a, b, al, 255), sem as três divisões: t / 255,

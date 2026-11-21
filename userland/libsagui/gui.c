@@ -124,7 +124,14 @@ static inline void quina(jan_t *j, const unsigned char *g, int x, int y, int i, 
     }
 }
 
+/* op: opacidade em 16 avos (16 = cheio; a sombra usa menos). */
+static void texto_face_op(jan_t *j, int x, int y, const char *t, int n, uint32_t cor, const unsigned char (*face)[64], int op);
 static void texto_face(jan_t *j, int x, int y, const char *t, int n, uint32_t cor, const unsigned char (*face)[64])
+{
+    texto_face_op(j, x, y, t, n, cor, face, 16);
+}
+
+static void texto_face_op(jan_t *j, int x, int y, const char *t, int n, uint32_t cor, const unsigned char (*face)[64], int op)
 {
     for (int k = 0; k < n && t[k]; k++, x += LETRA_L) {
         if (x >= j->larg) break;
@@ -144,9 +151,9 @@ static void texto_face(jan_t *j, int x, int y, const char *t, int n, uint32_t co
             if ((unsigned)yy >= (unsigned)j->alt) continue;
             uint32_t *linha = j->px + yy * j->larg;
             for (int col = 0; col < 8; col++) {
-                int tt = tom_letra(g, col, lin), xx = x + col;
+                int tt = tom_letra(g, col, lin) * op >> 4, xx = x + col;
                 if (!tt || (unsigned)xx >= (unsigned)j->larg) continue;
-                linha[xx] = tt == 15 ? cor : no_tom(linha[xx], cor, tt);
+                linha[xx] = tt >= 15 ? cor : no_tom(linha[xx], cor, tt);
             }
         }
     }
@@ -158,6 +165,42 @@ void g_texto(jan_t *j, int x, int y, const char *t, uint32_t cor) { texto_face(j
  * de desenhar a letra duas vezes, que colava uma letra na outra. */
 void g_texto_n_forte(jan_t *j, int x, int y, const char *t, int n, uint32_t cor) { texto_face(j, x, y, t, n, cor, fonte_suave_negrito); }
 void g_texto_forte(jan_t *j, int x, int y, const char *t, uint32_t cor) { texto_face(j, x, y, t, 1 << 30, cor, fonte_suave_negrito); }
+
+/* Texto sobre imagem (fundo, jogos): uma sombra suave e transparente,
+ * deslocada 1 pixel, no lugar de um contorno preto duro. */
+void g_texto_sombra(jan_t *j, int x, int y, const char *t, uint32_t cor)
+{
+    texto_face_op(j, x + 1, y + 1, t, 1 << 30, 0x000000, fonte_suave, 9);
+    texto_face_op(j, x, y + 1, t, 1 << 30, 0x000000, fonte_suave, 4);
+    texto_face(j, x, y, t, 1 << 30, cor, fonte_suave);
+}
+
+/* Texto ampliado "esc" vezes (visores, títulos de jogos), com os tons da
+ * fonte suave: cada tom cobre um quadrado de esc x esc. */
+void g_texto_ampliado(jan_t *j, int x, int y, const char *t, uint32_t cor, int esc, bool forte)
+{
+    for (; *t; t++, x += 8 * esc) {
+        unsigned c = (uint8_t)*t;
+        if (!letra_suave(c)) {
+            const unsigned char *g = fonte_sagui[c];
+            for (int lin = 0; lin < 16; lin++)
+                for (int col = 0; col < 8; col++)
+                    if (g[lin] & (0x80 >> col)) g_retangulo(j, x + col * esc, y + lin * esc, esc, esc, cor);
+            continue;
+        }
+        const unsigned char *g = (forte ? fonte_suave_negrito : fonte_suave)[c];
+        for (int lin = 0; lin < 16 * esc; lin++) {
+            int yy = y + lin;
+            if ((unsigned)yy >= (unsigned)j->alt) continue;
+            uint32_t *linha = j->px + yy * j->larg;
+            for (int col = 0; col < 8 * esc; col++) {
+                int tt = tom_letra(g, col / esc, lin / esc), xx = x + col;
+                if (!tt || (unsigned)xx >= (unsigned)j->larg) continue;
+                linha[xx] = tt == 15 ? cor : no_tom(linha[xx], cor, tt);
+            }
+        }
+    }
+}
 
 int g_largura_texto(const char *t) { return (int)tam_texto(t) * LETRA_L; }
 
