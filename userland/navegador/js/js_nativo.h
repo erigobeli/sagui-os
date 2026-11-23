@@ -2619,6 +2619,10 @@ void js_coletar(void)
 {
     if (!global || gc_proibido) return;
     em_pilha_grande(gc_coletar);
+    /* As pilhas do interpretador (4 MB) e a grande (2 MB) só servem com um
+     * script rodando: voltam ao sistema e são pedidas de novo na próxima vez. */
+    if (pilha_js) { libera(pilha_js); pilha_js = NULL; lim_pilha = NULL; }
+    if (pilha_ext) { libera(pilha_ext); pilha_ext = NULL; }
 }
 int js_vivo(void) { return global && (vivo || quadros_vivos); }
 int js_animando(void) { return global && vivo == 2; }   /* há requestAnimationFrame pendente */
