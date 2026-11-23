@@ -4,7 +4,7 @@
  * Lima Barbosa no #6): o sagui atravessa a mata pulando de cipó em cipó; o
  * navegador atravessa a web pulando de link em link.
  *
- *   ( [ícone] título da página   x ) +                         <- a aba
+ *   ( [ícone] página 1   x )( [ícone] página 2   x ) +           <- as abas
  *   (<) (>) (R) (casa) ( cadeado  endereço ............. estrela )  (:)
  *   [favorito] [favorito] [favorito] ...                       <- favoritos
  *   +------------------------------------------------------------------+-+
@@ -12,7 +12,8 @@
  *   | (balão: o link sob o mouse, "Carregando...", erros)              | |
  *   +------------------------------------------------------------------+-+
  *
- * O "+" abre outra janela do Cipó; o "x" da aba fecha esta. A estrela
+ * O "+" abre outra aba na mesma janela; o "x" (ou o botão do meio do
+ * mouse) fecha a aba, e fechar a última fecha a janela. A estrela
  * guarda a página nos favoritos (ou tira, se já está), e eles aparecem na
  * barra de baixo. O (:) abre o menu.
  *
@@ -34,7 +35,8 @@
  *
  * Teclado: setas, PgUp/PgDn, Home/End rolam; Backspace volta; Ctrl+L vai
  * para o endereço; Ctrl+D guarda nos favoritos; F5 e Ctrl+R recarregam;
- * Ctrl+N abre outra janela. Favoritos ficam em /usb/.saguios/favoritos.txt (ou
+ * Ctrl+T abre outra aba, Ctrl+W fecha a aba, Ctrl+Tab passa para a
+ * próxima e Ctrl+N abre outra janela. Favoritos ficam em /usb/.saguios/favoritos.txt (ou
  * /tmp/favoritos.txt sem pendrive), uma linha "endereço<TAB>título" cada. */
 #include "navegador.h"
 
@@ -44,7 +46,7 @@
 static int larg_jan = 960, alt_jan = 660;
 #define LARG       larg_jan
 #define ALT        alt_jan
-#define ABAS       36             /* a faixa da aba */
+#define ABAS       36             /* a faixa das abas */
 #define FERR       40             /* os botões e o endereço */
 #define FAVS       30             /* a barra dos favoritos */
 #define BARRA      (ABAS + FERR + FAVS)
@@ -67,8 +69,24 @@ static char link_sob_mouse[MAX_URL];
 static char titulo_js[128];       /* document.title = (vale mais que o <title>) */
 static int progresso;             /* 0 = parado; 1 a 100 = a linha azul embaixo do endereço */
 
-static struct { char url[MAX_URL]; int rolagem; } hist[MAX_HIST];
+typedef struct { char url[MAX_URL]; int rolagem; } passo_hist_t;
+static passo_hist_t hist[MAX_HIST];
 static int hist_qtd, hist_pos = -1;
+
+/* As abas: a da frente usa as variáveis acima (motor, histórico, rolagem).
+ * As de trás guardam o endereço, o histórico, a rolagem e o título; a
+ * página delas é aberta de novo quando a aba volta para a frente (o motor,
+ * os scripts e as fontes da web são um só por janela). */
+#define MAX_ABAS 8
+typedef struct {
+    char url[MAX_URL];
+    char titulo[64];
+    int rolagem, hist_qtd, hist_pos;
+    passo_hist_t hist[MAX_HIST];
+} aba_t;
+static aba_t *abas[MAX_ABAS];
+static int qtd_abas, aba_atual;
+static int aba_sob = -1, fechar_sob = -1;   /* a aba e o "x" sob o mouse */
 
 /* Barra de endereço própria (a caixa_t do kit só guarda 128 letras). */
 static struct { char t[MAX_URL]; int cursor, inicio; bool foco, tudo; } ende;   /* tudo: texto todo selecionado */
@@ -210,7 +228,7 @@ static void icone(int x, int y, int qual, uint32_t cor)
 /* ------------------------------------------------------------ desenho */
 
 /* Os botões da barra: as posições dependem da largura da janela. */
-enum { BT_VOLTAR, BT_AVANCAR, BT_RECARREGAR, BT_CASA, BT_ESTRELA, BT_MENU, BT_NOVA, BT_FECHAR_ABA, QTD_BT };
+enum { BT_VOLTAR, BT_AVANCAR, BT_RECARREGAR, BT_CASA, BT_ESTRELA, BT_MENU, BT_NOVA, QTD_BT };
 static struct { int x, y, l, a; } botoes[QTD_BT];
 static int sob = -1, apertado = -1;   /* botão sob o mouse e o que está sendo apertado */
 static int fav_sob = -1;
@@ -219,15 +237,25 @@ static int fav_sob = -1;
 #define ENDE_A 32
 #define ENDE_L (LARG - ENDE_X - 48)
 #define ABA_X  8
-#define ABA_L  (LARG - 60 < 240 ? LARG - 60 : 240)
+#define ABA_Y  6
+
+/* A largura de cada aba: 240, ou menos quando não cabem todas. */
+static int aba_l(void)
+{
+    int n = qtd_abas > 0 ? qtd_abas : 1, l = (LARG - ABA_X - 48) / n;
+    return l > 240 ? 240 : l;
+}
+#define ABA_L aba_l()
+/* O "x" de cada aba; nas abas estreitas, só a da frente tem. */
+static bool aba_tem_x(int i) { return i == aba_atual || ABA_L >= 90; }
+#define ABA_X_FECHAR(i) (ABA_X + (i) * ABA_L + ABA_L - 28)
 
 static void posicionar_botoes(void)
 {
     for (int i = 0; i < 4; i++) { botoes[i].x = 8 + i * 34; botoes[i].y = ABAS + 4; botoes[i].l = botoes[i].a = 32; }
     botoes[BT_ESTRELA].x = ENDE_X + ENDE_L - 34; botoes[BT_ESTRELA].y = ENDE_Y + 2; botoes[BT_ESTRELA].l = 30; botoes[BT_ESTRELA].a = 28;
     botoes[BT_MENU].x = LARG - 40; botoes[BT_MENU].y = ABAS + 4; botoes[BT_MENU].l = botoes[BT_MENU].a = 32;
-    botoes[BT_FECHAR_ABA].x = ABA_X + ABA_L - 28; botoes[BT_FECHAR_ABA].y = 12; botoes[BT_FECHAR_ABA].l = botoes[BT_FECHAR_ABA].a = 20;
-    botoes[BT_NOVA].x = ABA_X + ABA_L + 6; botoes[BT_NOVA].y = 6; botoes[BT_NOVA].l = botoes[BT_NOVA].a = 28;
+    botoes[BT_NOVA].x = ABA_X + (qtd_abas > 0 ? qtd_abas : 1) * ABA_L + 6; botoes[BT_NOVA].y = 6; botoes[BT_NOVA].l = botoes[BT_NOVA].a = 28;
 }
 
 static bool ativo(int i)
@@ -272,18 +300,37 @@ static void titulo_da_pagina(char *t, int max)
     utf8_para_sistema(t);
 }
 
-static void desenhar_aba(void)
+static void desenhar_abas(void)
 {
     g_retangulo(j, 0, 0, LARG, ABAS, C_FAIXA);
-    /* a aba: branca, de cantos redondos em cima, emendada na barra de baixo */
-    g_ret_redondo(j, ABA_X, 6, ABA_L, ABAS, 8, COR_BRANCO, COR_BRANCO);
-    int ic = progresso ? IC_ESPERA : comeca_com(url_atual, "sagui:") ? IC_FOLHA : IC_MUNDO;
-    icone(ABA_X + 12, 6 + 9, ic, ic == IC_FOLHA ? COR_DESTAQUE : ic == IC_ESPERA ? COR_SELECAO : C_FRACO);
-    char t[128];
-    titulo_da_pagina(t, sizeof t);
-    int cabe = (ABA_L - 12 - 16 - 8 - 34) / LETRA_L;
-    g_texto_n(j, ABA_X + 36, 6 + 9, t, cabe, COR_TEXTO);
-    desenhar_botao(BT_FECHAR_ABA, IC_FECHAR, COR_BRANCO);
+    int l = ABA_L;
+    for (int i = 0; i < qtd_abas; i++) {
+        int x = ABA_X + i * l;
+        bool frente = i == aba_atual;
+        uint32_t fundo = C_FAIXA;
+        if (frente) {
+            /* a da frente: branca, de cantos redondos em cima, emendada na barra de baixo */
+            fundo = COR_BRANCO;
+            g_ret_redondo(j, x, ABA_Y, l, ABAS, 8, fundo, fundo);
+        } else if (aba_sob == i) {
+            fundo = C_ABA_SOB;
+            g_ret_redondo(j, x + 2, ABA_Y + 2, l - 4, ABAS - ABA_Y - 6, 8, fundo, fundo);
+        } else if (i + 1 != aba_atual && i + 1 < qtd_abas && aba_sob != i + 1)
+            g_retangulo(j, x + l - 1, ABA_Y + 8, 1, 16, C_APAGADO);   /* o risco entre duas abas de trás */
+        const char *u = frente ? url_atual : abas[i]->url;
+        int ic = frente && progresso ? IC_ESPERA : comeca_com(u, "sagui:") ? IC_FOLHA : IC_MUNDO;
+        icone(x + 12, ABA_Y + 9, ic, ic == IC_FOLHA ? COR_DESTAQUE : ic == IC_ESPERA ? COR_SELECAO : C_FRACO);
+        char t[128];
+        if (frente) titulo_da_pagina(t, sizeof t);
+        else copia_texto(t, abas[i]->titulo, sizeof t);
+        int cabe = (l - 12 - 16 - 8 - (aba_tem_x(i) ? 34 : 4)) / LETRA_L;
+        if (cabe > 0) g_texto_n(j, x + 36, ABA_Y + 9, t, cabe, frente ? COR_TEXTO : C_ICONE);
+        if (aba_tem_x(i)) {
+            int fx = ABA_X_FECHAR(i), fy = ABA_Y + 6;
+            if (fechar_sob == i) g_ret_redondo(j, fx, fy, 20, 20, 10, frente ? C_SOB : C_APERTO, frente ? C_SOB : C_APERTO);
+            icone(fx + 2, fy + 2, IC_FECHAR, C_ICONE);
+        }
+    }
     desenhar_botao(BT_NOVA, IC_MAIS, C_FAIXA);
 }
 
@@ -345,7 +392,7 @@ static void desenhar_favoritos(void)
 
 static void desenhar_barra(void)
 {
-    desenhar_aba();
+    desenhar_abas();
     g_retangulo(j, 0, ABAS, LARG, FERR, COR_BRANCO);
     desenhar_botao(BT_VOLTAR, IC_VOLTAR, COR_BRANCO);
     desenhar_botao(BT_AVANCAR, IC_AVANCAR, COR_BRANCO);
@@ -1349,14 +1396,99 @@ static void favoritar(void)
 }
 
 /* O menu dos três pontos. */
-static const char *const itens_menu = "Nova janela|Página inicial|Favoritos|Adicionar aos favoritos|Recarregar";
-enum { M_NOVA, M_INICIO, M_FAVORITOS, M_FAVORITAR, M_RECARREGAR };
+static const char *const itens_menu = "Nova aba|Nova janela|Página inicial|Favoritos|Adicionar aos favoritos|Recarregar";
+enum { M_ABA, M_NOVA, M_INICIO, M_FAVORITOS, M_FAVORITAR, M_RECARREGAR };
 
 static void nova_janela(void)
 {
     char *args[] = { "navegador", NULL };
     int pid = executar("/bin/navegador", args);
     registrar("navegador: nova janela pid %d", pid);
+}
+
+/* ------------------------------------------------------------ abas */
+
+/* A aba da frente vai para trás: guarda o que é preciso para reabrir. */
+static void guardar_aba(void)
+{
+    aba_t *a = abas[aba_atual];
+    guardar_rolagem();
+    copia_texto(a->url, url_atual, sizeof a->url);
+    a->rolagem = rolagem;
+    titulo_da_pagina(a->titulo, sizeof a->titulo);
+    a->hist_qtd = hist_qtd;
+    a->hist_pos = hist_pos;
+    memcpy(a->hist, hist, sizeof hist);
+}
+
+/* A aba i vem para a frente: o histórico volta e a página abre de novo. */
+static void trazer_aba(int i)
+{
+    aba_t *a = abas[i];
+    aba_atual = i;
+    hist_qtd = a->hist_qtd;
+    hist_pos = a->hist_pos;
+    memcpy(hist, a->hist, sizeof hist);
+    rolagem = a->rolagem;
+    aba_sob = fechar_sob = -1;
+    posicionar_botoes();
+    registrar("navegador: aba %d de %d", i + 1, qtd_abas);
+    carregar(a->url[0] ? a->url : "sagui:inicio", false, a->rolagem);
+}
+
+static void trocar_aba(int i)
+{
+    if (i == aba_atual || i < 0 || i >= qtd_abas) return;
+    guardar_aba();
+    trazer_aba(i);
+}
+
+/* Outra aba, logo depois das outras, já na frente. */
+static void nova_aba(const char *url)
+{
+    if (qtd_abas == MAX_ABAS) { definir_status("Já são 8 abas nesta janela; feche uma para abrir outra."); return; }
+    aba_t *a = aloca(sizeof *a);
+    if (!a) { definir_status("Não há memória para outra aba."); return; }
+    memset(a, 0, sizeof *a);
+    if (qtd_abas > 0) guardar_aba();
+    abas[qtd_abas] = a;
+    aba_atual = qtd_abas++;
+    hist_qtd = 0;
+    hist_pos = -1;
+    rolagem = 0;
+    url_atual[0] = 0;
+    aba_sob = fechar_sob = -1;
+    posicionar_botoes();
+    registrar("navegador: nova aba, agora %d", qtd_abas);
+    carregar(url ? url : "sagui:inicio", true, 0);
+}
+
+/* Fecha a aba i; fechar a última fecha a janela. */
+static void fechar_aba(int i)
+{
+    if (i < 0 || i >= qtd_abas) return;
+    if (qtd_abas == 1) { registrar("navegador: aba fechada"); jan_fechar(j); sair(0); }
+    libera(abas[i]);
+    for (int k = i; k < qtd_abas - 1; k++) abas[k] = abas[k + 1];
+    qtd_abas--;
+    registrar("navegador: aba fechada, ficam %d", qtd_abas);
+    aba_sob = fechar_sob = -1;
+    if (i == aba_atual) { trazer_aba(i < qtd_abas ? i : qtd_abas - 1); return; }
+    if (i < aba_atual) aba_atual--;
+    posicionar_botoes();
+    desenhar_tudo();
+}
+
+/* A aba sob (x, y), e se o ponto está no "x" dela. */
+static int aba_em(int x, int y, bool *no_x)
+{
+    *no_x = false;
+    if (y < ABA_Y || y >= ABAS || x < ABA_X) return -1;
+    int i = (x - ABA_X) / ABA_L;
+    if (i >= qtd_abas) return -1;
+    int fx = ABA_X_FECHAR(i), fy = ABA_Y + 6;
+    *no_x = aba_tem_x(i) && x >= fx && x < fx + 20 && y >= fy && y < fy + 20;
+    return i;
 }
 
 /* ------------------------------------------------------------ eventos */
@@ -1423,6 +1555,9 @@ static void tratar_tecla(const evento_t *e)
     if ((t == 12 || t == 'l') && ctrl) { focar_endereco(); return; }
     if ((t == 4 || t == 'd') && ctrl) { favoritar(); return; }
     if ((t == 14 || t == 'n') && ctrl) { nova_janela(); return; }
+    if ((t == 20 || t == 't') && ctrl) { nova_aba(NULL); return; }
+    if ((t == 23 || t == 'w') && ctrl) { fechar_aba(aba_atual); return; }
+    if (t == '\t' && ctrl) { if (qtd_abas > 1) trocar_aba((aba_atual + 1) % qtd_abas); return; }
     if (t == TECLA_F5 || ((t == 18 || t == 'r') && ctrl)) { if (url_atual[0]) carregar(url_atual, false, rolagem); return; }
     if (ende.foco) {
         if (t == '\n' || t == '\r') {
@@ -1471,6 +1606,13 @@ static void abrir_link(const char *href)
 static void tratar_clique(const evento_t *e)
 {
     if (e->y < BARRA) {
+        bool no_x;
+        int ab = aba_em(e->x, e->y, &no_x);
+        if (ab >= 0) {
+            if (no_x) fechar_aba(ab);
+            else trocar_aba(ab);
+            return;
+        }
         int b = botao_em(e->x, e->y);
         if (b >= 0 && ativo(b)) {
             apertado = b;
@@ -1483,8 +1625,7 @@ static void tratar_clique(const evento_t *e)
             case BT_CASA: carregar("sagui:inicio", true, 0); break;
             case BT_ESTRELA: favoritar(); break;
             case BT_MENU: jan_menu(j, LARG - 228, ABAS + FERR - 2, itens_menu); break;
-            case BT_NOVA: nova_janela(); break;
-            case BT_FECHAR_ABA: registrar("navegador: aba fechada"); jan_fechar(j); sair(0); break;
+            case BT_NOVA: nova_aba(NULL); break;
             }
             apertado = -1;
             desenhar_tudo();
@@ -1561,7 +1702,12 @@ static void tratar_movimento(const evento_t *e)
     }
     /* o botão e o favorito sob o mouse ficam com fundo */
     int b = e->y < BARRA ? botao_em(e->x, e->y) : -1, f = e->y < BARRA ? favorito_em(e->x, e->y) : -1;
-    if (b != sob || f != fav_sob) { sob = b; fav_sob = f; mostrar_barra(); }
+    bool no_x;
+    int ab = aba_em(e->x, e->y, &no_x), fx = no_x ? ab : -1;
+    if (b != sob || f != fav_sob || ab != aba_sob || fx != fechar_sob) {
+        sob = b; fav_sob = f; aba_sob = ab; fechar_sob = fx;
+        mostrar_barra();
+    }
     char novo[MAX_URL] = "";
     if (f >= 0) copia_texto(novo, favs[f].url, sizeof novo);
     if (motor && e->y >= BARRA && e->x < VISTA_L) {
@@ -1608,7 +1754,7 @@ int principal(int argc, char **argv)
     ler_favoritos();
     registrar("navegador: janela %d", j->id);
     http_guardar_conexoes(true);   /* as imagens e o CSS reaproveitam a conexão da página (H129) */
-    carregar(argc > 1 ? argv[1] : "sagui:inicio", true, 0);
+    nova_aba(argc > 1 ? argv[1] : NULL);
     for (;;) {
         /* o script pediu outra página (location.href, assign, replace, reload) */
         char u[MAX_URL]; int subst = 0;
@@ -1646,6 +1792,11 @@ int principal(int argc, char **argv)
             break;
         case EV_CLIQUE:
             if (e.botoes & 1) tratar_clique(&e);
+            else if (e.botoes & 4) {   /* o botão do meio fecha a aba */
+                bool no_x;
+                int ab = aba_em(e.x, e.y, &no_x);
+                if (ab >= 0) fechar_aba(ab);
+            }
             break;
         case EV_SOLTOU:
             arrastando_rolagem = false;
@@ -1658,7 +1809,8 @@ int principal(int argc, char **argv)
             break;
         case EV_MENU:
             registrar("navegador: menu %u", e.tecla);
-            if (e.tecla == M_NOVA) nova_janela();
+            if (e.tecla == M_ABA) nova_aba(NULL);
+            else if (e.tecla == M_NOVA) nova_janela();
             else if (e.tecla == M_INICIO) carregar("sagui:inicio", true, 0);
             else if (e.tecla == M_FAVORITOS) carregar("sagui:favoritos", true, 0);
             else if (e.tecla == M_FAVORITAR) { if (!favoritado()) favoritar(); }

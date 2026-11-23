@@ -9,7 +9,8 @@ Critérios:
   - um clique no favorito da barra abre a página;
   - o menu dos três pontos abre os Favoritos;
   - a casa volta à página inicial; F5 recarrega;
-  - Ctrl+N e o "+" abrem outra janela do Cipó; o "x" da aba fecha a janela.
+  - Ctrl+N abre outra janela do Cipó; o "x" da única aba fecha a janela;
+    o "+" abre outra aba na mesma janela (as abas: H154).
 """
 import os
 import sys
@@ -75,14 +76,14 @@ def main():
         esperar(m, "navegador: pronto /tmp/a.html", 30, n)
         verificar(True, "um clique no favorito da barra abre a página")
 
-        # O menu: o terceiro item abre os Favoritos.
+        # O menu: o quarto item abre os Favoritos.
         n = len(m.serial())
         m.clique(*botao(j, "menu"))
         esperar(m, "navegador: botao 5", 10, n)
         time.sleep(0.8)
         m.captura("H140-2-menu")
-        m.clique(j["x"] + LARG - 228 + 60, j["y"] + 91 + 26 * 2)
-        esperar(m, "navegador: menu 2", 10, n)
+        m.clique(j["x"] + LARG - 228 + 60, j["y"] + 91 + 26 * 3)
+        esperar(m, "navegador: menu 3", 10, n)
         esperar(m, "navegador: pronto sagui:favoritos", 30, n)
         verificar(True, "o menu dos três pontos abre os Favoritos")
 
@@ -120,10 +121,9 @@ def main():
         time.sleep(1.5)
         n = len(m.serial())
         m.clique(j["x"] + 8 + 240 + 6 + 14, j["y"] + 6 + 14)   # o "+" da primeira janela
-        esperar(m, "navegador: nova janela pid", 10, n)
+        esperar(m, "navegador: nova aba, agora 2", 10, n)
         esperar(m, "navegador: pronto sagui:inicio", 30, n)
-        verificar(True, "o x da aba fechou a segunda janela, e o + abriu outra")
-
+        verificar(True, "o x da aba fechou a segunda janela, e o + abriu outra aba")
 
 if __name__ == "__main__":
     main()
