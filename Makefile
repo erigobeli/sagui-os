@@ -114,7 +114,7 @@ PROGRAMAS += $(B)/userland/bin/navegador $(B)/userland/bin/cipo
 # O visualizador de imagens usa os decodificadores do Cipó (PNG, JPEG, GIF e
 # WebP); o DEFLATE vem da libsagui.
 IMAGENS_OBJ := $(patsubst %.c,$(B)/nav/%.o,userland/navegador/imagens.c userland/navegador/png.c \
-                 userland/navegador/jpeg.c terceiros/libwebp-vp8/vp8.c)
+                 userland/navegador/jpeg.c userland/navegador/webp_sem_perda.c terceiros/libwebp-vp8/vp8.c)
 VISUALIZADOR_OBJ := $(B)/nav/userland/visualizador/visualizador.o $(IMAGENS_OBJ)
 PROGRAMAS += $(B)/userland/bin/visualizador
 # O tocador de vídeo (H82): MP4 com H.264 e AAC, do pull request #6.
