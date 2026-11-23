@@ -100,8 +100,7 @@ static int ler_byte(canal_t *c)
         int n = canal_ler(c, c->buf, sizeof c->buf);
         if (n > 0) { c->tam = (unsigned)n; c->pos = 1; return (unsigned char)c->buf[0]; }
         if (n < 0) return -1;                           /* fim ou erro */
-        if (tempo_ms() - inicio > 30000) return -1;
-        dormir(5);
+        if (tempo_ms() - inicio > 30000 || rede_esperar(5)) return -1;
     }
 }
 

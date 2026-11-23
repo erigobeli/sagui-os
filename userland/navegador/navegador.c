@@ -58,38 +58,44 @@ static int larg_jan = 960, alt_jan = 660;
 #define MAX_RECURSO (6 * 1024 * 1024)
 #define MAX_HIST   64
 
+/* O estado de cada aba. As variáveis da página (aqui e no JavaScript, no
+ * motor e nos gráficos, cujos objetos o Makefile põe nas mesmas seções)
+ * ficam juntas entre _aba_dados_ini/_fim e _aba_bss_ini/_fim (programa.ld).
+ * Trocar de aba é guardar essas duas faixas da memória e pôr as da outra
+ * aba no lugar: a página de trás fica como estava, com os scripts parados. */
+#define POR_ABA   __attribute__((section(".bss.aba")))
+#define POR_ABA_I __attribute__((section(".data.aba")))
+
 static jan_t *j;
-static motor_t *motor;            /* a página atual */
-static int altura;                /* altura da página diagramada */
-static char url_atual[MAX_URL];
-static int rolagem;
-static char status[200];
-static char status_pronto[sizeof status];   /* "Pronto: ..." da página atual: não aparece no balão */
+static motor_t *motor POR_ABA;            /* a página atual */
+static int altura POR_ABA;                /* altura da página diagramada */
+static char url_atual[MAX_URL] POR_ABA;
+static int rolagem POR_ABA;
+static char status[200] POR_ABA;
+static char status_pronto[sizeof status] POR_ABA;   /* "Pronto: ..." da página atual: não aparece no balão */
 static char link_sob_mouse[MAX_URL];
-static char titulo_js[128];       /* document.title = (vale mais que o <title>) */
-static int progresso;             /* 0 = parado; 1 a 100 = a linha azul embaixo do endereço */
+static char titulo_js[128] POR_ABA;       /* document.title = (vale mais que o <title>) */
+static int progresso POR_ABA;             /* 0 = parado; 1 a 100 = a linha azul embaixo do endereço */
 
 typedef struct { char url[MAX_URL]; int rolagem; } passo_hist_t;
-static passo_hist_t hist[MAX_HIST];
-static int hist_qtd, hist_pos = -1;
+static passo_hist_t hist[MAX_HIST] POR_ABA;
+static int hist_qtd POR_ABA, hist_pos POR_ABA_I = -1;
+static bool interrompida POR_ABA;   /* a carga foi interrompida: abre de novo ao voltar à aba */
 
-/* As abas: a da frente usa as variáveis acima (motor, histórico, rolagem).
- * As de trás guardam o endereço, o histórico, a rolagem e o título; a
- * página delas é aberta de novo quando a aba volta para a frente (o motor,
- * os scripts e as fontes da web são um só por janela). */
+/* As abas: a da frente usa as variáveis marcadas com POR_ABA; as de trás
+ * guardam uma cópia delas (veja trocar_aba). */
 #define MAX_ABAS 8
 typedef struct {
-    char url[MAX_URL];
+    char url[MAX_URL];        /* para desenhar as abas de trás */
     char titulo[64];
-    int rolagem, hist_qtd, hist_pos;
-    passo_hist_t hist[MAX_HIST];
+    uint8_t *estado;          /* as duas faixas de estado, uma depois da outra */
 } aba_t;
 static aba_t *abas[MAX_ABAS];
 static int qtd_abas, aba_atual;
 static int aba_sob = -1, fechar_sob = -1;   /* a aba e o "x" sob o mouse */
 
 /* Barra de endereço própria (a caixa_t do kit só guarda 128 letras). */
-static struct { char t[MAX_URL]; int cursor, inicio; bool foco, tudo; } ende;   /* tudo: texto todo selecionado */
+static struct { char t[MAX_URL]; int cursor, inicio; bool foco, tudo; } ende POR_ABA;   /* tudo: texto todo selecionado */
 
 /* Os favoritos, lidos do arquivo para a barra e para a estrela. */
 #define MAX_FAV 24
@@ -97,6 +103,8 @@ static struct { char url[MAX_URL]; char titulo[48]; int x, l; } favs[MAX_FAV];
 static int qtd_favs;
 
 static void carregar(const char *pedido, bool novo_no_historico, int rolagem_inicial);
+static void tratar_movimento(const evento_t *e);
+static int aba_em(int x, int y, bool *no_x);
 static void pasta_config(char *out, int max);
 
 /* ------------------------------------------------------------ cores e ícones */
@@ -595,8 +603,8 @@ static int charset_em(const char *t, int n)
  * navegar. (#6) */
 #define CACHE_N 48
 #define CACHE_MAX (6u << 20)
-static struct { char *url; uint8_t *d; unsigned n; } cache[CACHE_N];
-static int qtd_cache; static unsigned cache_total;
+static struct { char *url; uint8_t *d; unsigned n; } cache[CACHE_N] POR_ABA;
+static int qtd_cache POR_ABA; static unsigned cache_total POR_ABA;
 
 static void cache_limpar(void)
 {
@@ -612,7 +620,7 @@ static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
 }
 
 /* Para onde vai o tempo de uma página (registrado em "navegador: tempos"). */
-static struct { unsigned rede, n_rede, decod, n_decod, diag, n_diag, desenho; } perf;
+static struct { unsigned rede, n_rede, decod, n_decod, diag, n_diag, desenho; } perf POR_ABA;
 
 /* Evento que chegou enquanto a página carregava (tratado depois, no laço). */
 static evento_t evento_guardado;
@@ -639,7 +647,7 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
 
 /* Imagens que chegaram juntas (pipelining, H129), esperando o motor pedir. */
 #define ADIANTADAS 16
-static struct { char *url; uint8_t *d; unsigned n; } adiantadas[ADIANTADAS];
+static struct { char *url; uint8_t *d; unsigned n; } adiantadas[ADIANTADAS] POR_ABA;
 
 static void soltar_adiantadas(void)
 {
@@ -750,8 +758,8 @@ static void js_alerta(const char *t)
  * libera os pixels que recebe, então sai sempre uma cópia. */
 #define IMGC_N   48
 #define IMGC_MAX (16u << 20)
-static struct { unsigned n, hash; uint32_t *px; int l, a; } imgc[IMGC_N];
-static int qtd_imgc; static unsigned imgc_total;
+static struct { unsigned n, hash; uint32_t *px; int l, a; } imgc[IMGC_N] POR_ABA;
+static int qtd_imgc POR_ABA; static unsigned imgc_total POR_ABA;
 
 static void imgc_limpar(void)
 {
@@ -793,9 +801,9 @@ static const motor_ganchos_t ganchos_motor = { baixar_recurso, decodificar, tela
 /* Layout pedido por um script (medidas): um motor à parte diagrama o DOM
  * atual com o CSS em cache e devolve as caixas. Fica vivo para o
  * getComputedStyle até o próximo pedido ou a próxima página. (#6) */
-static motor_t *medidor;
-static char *medidor_html;     /* H96: o DOM que o medidor diagramou por último */
-static int medidor_n = -1;
+static motor_t *medidor POR_ABA;
+static char *medidor_html POR_ABA;     /* H96: o DOM que o medidor diagramou por último */
+static int medidor_n POR_ABA_I = -1;
 static int js_layout(const char *html, int n, int *caixas, int qtd)
 {
     /* Scripts pedem medidas muitas vezes sem mudar o DOM (rolagem,
@@ -821,7 +829,7 @@ static struct fonte *js_fonte(const char *fam, int peso, int ital, int larg) { r
 
 /* iframes: cada quadro tem o seu motor (para pintar e para achar o clique). (#6) */
 #define MAX_QM 16
-static struct { int tela; motor_t *m; } qm[MAX_QM];
+static struct { int tela; motor_t *m; } qm[MAX_QM] POR_ABA;
 static int js_quadro_pintar(int tela, const char *html, int n, const char *url, int l, int a)
 {
     int k = 0;
@@ -1005,8 +1013,8 @@ static void guardar_rolagem(void)
     if (hist_pos >= 0) hist[hist_pos].rolagem = rolagem;
 }
 
-static unsigned custo_diagramar;   /* ms da última diagramação */
-static bool falta_diagramar;       /* chegaram imagens que ainda não estão na tela */
+static unsigned custo_diagramar POR_ABA;   /* ms da última diagramação */
+static bool falta_diagramar POR_ABA;       /* chegaram imagens que ainda não estão na tela */
 
 static void diagramar(void)
 {
@@ -1096,6 +1104,72 @@ static void mostrar_titulo(void)
     titulo_janela(j->id, titulo);
 }
 
+/* A página da aba da frente sai da memória: motores, scripts, fontes da web, cache. */
+static void soltar_pagina(void)
+{
+    if (medidor) { motor_fim(medidor); medidor = NULL; }
+    if (medidor_html) { libera(medidor_html); medidor_html = NULL; }
+    medidor_n = -1;
+    if (motor) { motor_fim(motor); motor = NULL; }
+    quadros_esquecer();
+    motor_fontes_limpar();
+    js_fim();
+    cache_limpar();
+    imgc_limpar();
+    soltar_adiantadas();
+}
+
+/* Durante a carga, a janela continua atendendo: o mouse sobre a barra
+ * acende os botões e as abas; um clique na barra, uma tecla de atalho, o
+ * menu ou o fechar desistem da carga, e o evento é tratado em seguida. */
+static bool atender_na_carga(void)
+{
+    static unsigned ultimo;
+    unsigned agora = tempo_ms();
+    if (agora - ultimo < 30) return false;
+    ultimo = agora;
+    evento_t e;
+    while (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
+        if (e.tipo == EV_MOVER) { if (e.y < BARRA && !motor) tratar_movimento(&e); continue; }
+        if (e.tipo == EV_SOLTOU) continue;
+#ifdef EV_RODA
+        if (e.tipo == EV_RODA) continue;
+#endif
+        if (e.tipo == EV_CLIQUE) {
+            if (e.y >= BARRA) continue;           /* a página ainda não está na tela */
+            bool no_x;
+            if (aba_em(e.x, e.y, &no_x) == aba_atual && !no_x) continue;
+        }
+        if (e.tipo == EV_TECLA && !(e.modificadores & 2) && e.tecla != TECLA_ESC && e.tecla != TECLA_F5) continue;
+        evento_guardado = e;
+        tem_evento_guardado = true;
+        return true;
+    }
+    return false;
+}
+
+/* A carga desistiu (veja atender_na_carga): a aba fica com o endereço, e abre de novo quando voltar. */
+static void interromper(const char *url, bool novo_no_historico)
+{
+    rede_gancho_espera = NULL;
+    rede_desistiu = false;
+    if (motor) { motor_fim(motor); motor = NULL; }
+    copia_texto(url_atual, url, sizeof url_atual);
+    definir_endereco(url);
+    if (novo_no_historico) {
+        if (hist_pos < MAX_HIST - 1) hist_pos++;
+        else memmove(&hist[0], &hist[1], sizeof hist[0] * (MAX_HIST - 1));
+        copia_texto(hist[hist_pos].url, url, sizeof hist[hist_pos].url);
+        hist[hist_pos].rolagem = 0;
+        hist_qtd = hist_pos + 1;
+    }
+    interrompida = true;
+    progresso = 0;
+    copia_texto(status, "Carregamento interrompido.", sizeof status);
+    registrar("navegador: carga interrompida %s", url);
+    desenhar_tudo();
+}
+
 static void carregar(const char *pedido, bool novo_no_historico, int rolagem_inicial)
 {
     char url[MAX_URL];
@@ -1131,16 +1205,7 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     desenhar_barra();
     jan_mostrar(j);
     unsigned inicio = tempo_ms();
-    /* a página anterior: motores, scripts, fontes da web, cache */
-    if (medidor) { motor_fim(medidor); medidor = NULL; }
-    if (medidor_html) { libera(medidor_html); medidor_html = NULL; }
-    medidor_n = -1;
-    if (motor) { motor_fim(motor); motor = NULL; }
-    quadros_esquecer();
-    motor_fontes_limpar();
-    js_fim();
-    cache_limpar();
-    imgc_limpar();
+    soltar_pagina();
     copia_texto(url_atual, url, sizeof url_atual);
 
     memset(&perf, 0, sizeof perf);
@@ -1153,8 +1218,11 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     else {
         rede_resposta_t r;
         t_pagina = tempo_ms();
+        rede_desistiu = false;
+        rede_gancho_espera = atender_na_carga;
         situacao = rede_buscar(url, &r, MAX_PAGINA, NULL, 0);
         t_pagina = tempo_ms() - t_pagina;
+        if (rede_desistiu) { libera(r.d); interromper(url, novo_no_historico); return; }
         definir_progresso(45);
         copia_texto(tipo, r.tipo[0] ? r.tipo : "text/html", sizeof tipo);
         copia_texto(final, r.final[0] ? r.final : url, sizeof final);
@@ -1209,6 +1277,7 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     copia_texto(url_atual, final[0] && !comeca_com(url, "sagui:") ? final : url, sizeof url_atual);
     if (acha_char(url, '#') && !acha_char(url_atual, '#')) junta_texto(url_atual, acha_char(url, '#'), sizeof url_atual);
     t_scripts = tempo_ms();
+    if (!rede_gancho_espera) { rede_desistiu = false; rede_gancho_espera = atender_na_carga; }
     pag.d = rodar_scripts(pag.d, &pag.n);
     t_scripts = tempo_ms() - t_scripts;
     unsigned rede_antes = perf.rede, diag_antes = perf.diag;
@@ -1217,6 +1286,9 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     t_ler = tempo_ms() - t_ler;
     unsigned css_rede = perf.rede - rede_antes, ler_diag = perf.diag - diag_antes;
     libera(pag.d);
+    if (rede_desistiu) { interromper(url, novo_no_historico); return; }
+    rede_gancho_espera = NULL;
+    interrompida = false;
     copia_texto(url_atual, url, sizeof url_atual);
     rolagem = rolagem_inicial;
     if (frag && motor) { int y = motor_ancora(motor, frag + 1); if (y >= 0) rolagem = y - 4; }
@@ -1284,8 +1356,8 @@ static void clique_js(int id)
     if (h) reler(h, n);
 }
 
-static unsigned ult_tique, hash_viva;
-static int js_rol;
+static unsigned ult_tique POR_ABA, hash_viva POR_ABA;
+static int js_rol POR_ABA;
 
 static unsigned hash_texto(const char *h, int n) { unsigned x = 2166136261u; for (int i = 0; i < n; i++) x = (x ^ (uint8_t)h[i]) * 16777619u; return x; }
 
@@ -1408,39 +1480,53 @@ static void nova_janela(void)
 
 /* ------------------------------------------------------------ abas */
 
-/* A aba da frente vai para trás: guarda o que é preciso para reabrir. */
+extern uint8_t _aba_dados_ini[], _aba_dados_fim[], _aba_bss_ini[], _aba_bss_fim[];
+#define TAM_DADOS ((unsigned)(_aba_dados_fim - _aba_dados_ini))
+#define TAM_BSS   ((unsigned)(_aba_bss_fim - _aba_bss_ini))
+static uint8_t *estado_inicial;   /* as faixas como o programa começou: o estado de uma aba nova */
+
+static void estado_guardar(uint8_t *e)
+{
+    memcpy(e, _aba_dados_ini, TAM_DADOS);
+    memcpy(e + TAM_DADOS, _aba_bss_ini, TAM_BSS);
+}
+static void estado_por(const uint8_t *e)
+{
+    memcpy(_aba_dados_ini, e, TAM_DADOS);
+    memcpy(_aba_bss_ini, e + TAM_DADOS, TAM_BSS);
+}
+
+/* A aba da frente vai para trás. */
 static void guardar_aba(void)
 {
     aba_t *a = abas[aba_atual];
-    guardar_rolagem();
     copia_texto(a->url, url_atual, sizeof a->url);
-    a->rolagem = rolagem;
     titulo_da_pagina(a->titulo, sizeof a->titulo);
-    a->hist_qtd = hist_qtd;
-    a->hist_pos = hist_pos;
-    memcpy(a->hist, hist, sizeof hist);
+    estado_guardar(a->estado);
 }
 
-/* A aba i vem para a frente: o histórico volta e a página abre de novo. */
+/* A aba i vem para a frente como estava; se a carga dela foi interrompida, abre de novo. */
 static void trazer_aba(int i)
 {
-    aba_t *a = abas[i];
     aba_atual = i;
-    hist_qtd = a->hist_qtd;
-    hist_pos = a->hist_pos;
-    memcpy(hist, a->hist, sizeof hist);
-    rolagem = a->rolagem;
+    estado_por(abas[i]->estado);
     aba_sob = fechar_sob = -1;
+    link_sob_mouse[0] = 0;
     posicionar_botoes();
     registrar("navegador: aba %d de %d", i + 1, qtd_abas);
-    carregar(a->url[0] ? a->url : "sagui:inicio", false, a->rolagem);
+    mostrar_titulo();
+    if (interrompida || (!motor && url_atual[0])) { carregar(url_atual, false, rolagem); return; }
+    ult_tique = tempo_ms();
+    desenhar_tudo();
 }
 
 static void trocar_aba(int i)
 {
     if (i == aba_atual || i < 0 || i >= qtd_abas) return;
+    unsigned t0 = tempo_ms();
     guardar_aba();
     trazer_aba(i);
+    registrar("navegador: troca de aba em %u ms", tempo_ms() - t0);
 }
 
 /* Outra aba, logo depois das outras, já na frente. */
@@ -1448,16 +1534,16 @@ static void nova_aba(const char *url)
 {
     if (qtd_abas == MAX_ABAS) { definir_status("Já são 8 abas nesta janela; feche uma para abrir outra."); return; }
     aba_t *a = aloca(sizeof *a);
-    if (!a) { definir_status("Não há memória para outra aba."); return; }
+    uint8_t *e = aloca(TAM_DADOS + TAM_BSS);
+    if (!a || !e) { libera(a); libera(e); definir_status("Não há memória para outra aba."); return; }
     memset(a, 0, sizeof *a);
+    a->estado = e;
     if (qtd_abas > 0) guardar_aba();
     abas[qtd_abas] = a;
     aba_atual = qtd_abas++;
-    hist_qtd = 0;
-    hist_pos = -1;
-    rolagem = 0;
-    url_atual[0] = 0;
+    estado_por(estado_inicial);
     aba_sob = fechar_sob = -1;
+    link_sob_mouse[0] = 0;
     posicionar_botoes();
     registrar("navegador: nova aba, agora %d", qtd_abas);
     carregar(url ? url : "sagui:inicio", true, 0);
@@ -1468,6 +1554,11 @@ static void fechar_aba(int i)
 {
     if (i < 0 || i >= qtd_abas) return;
     if (qtd_abas == 1) { registrar("navegador: aba fechada"); jan_fechar(j); sair(0); }
+    /* a página da aba sai da memória: motores, scripts, imagens */
+    if (i != aba_atual) { guardar_aba(); estado_por(abas[i]->estado); }
+    soltar_pagina();
+    if (i != aba_atual) estado_por(abas[aba_atual]->estado);
+    libera(abas[i]->estado);
     libera(abas[i]);
     for (int k = i; k < qtd_abas - 1; k++) abas[k] = abas[k + 1];
     qtd_abas--;
@@ -1747,6 +1838,9 @@ static void mudar_tamanho(const evento_t *e)
 
 int principal(int argc, char **argv)
 {
+    estado_inicial = aloca(TAM_DADOS + TAM_BSS);
+    if (!estado_inicial) return 1;
+    estado_guardar(estado_inicial);
     j = jan_abrir(NOME_NAVEGADOR, LARG, ALT);
     if (!j) { imprimir_em(ERROS, "navegador: não consegui abrir a janela\n"); return 1; }
     jan_redimensionavel(j, 520, 300);

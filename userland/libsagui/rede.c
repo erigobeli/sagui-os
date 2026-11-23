@@ -24,6 +24,17 @@ int rede_receber(int s, void *d, unsigned max, unsigned *origem) { return chamar
 int rede_fechar(int s)                         { return chamar4(SIS_REDE_FECHAR, (unsigned)s, 0, 0, 0); }
 int rede_estado(int s)                         { return chamar4(SIS_REDE_ESTADO, (unsigned)s, 0, 0, 0); }
 
+bool (*rede_gancho_espera)(void);
+bool rede_desistiu;
+
+bool rede_esperar(unsigned ms)
+{
+    if (!rede_desistiu && rede_gancho_espera && rede_gancho_espera()) rede_desistiu = true;
+    if (rede_desistiu) return true;
+    dormir(ms);
+    return false;
+}
+
 /* Abre uma conexão TCP e espera ficar pronta (até "ms" milissegundos). */
 int tcp_conectar(unsigned ip, int porta, unsigned ms)
 {
@@ -36,8 +47,7 @@ int tcp_conectar(unsigned ip, int porta, unsigned ms)
         int e = rede_estado(s);
         if (e == 1) return s;
         if (e < 0) { rede_fechar(s); return ERRO_REDE; }
-        if (tempo_ms() - inicio > ms) { rede_fechar(s); return ERRO_REDE; }
-        dormir(10);
+        if (tempo_ms() - inicio > ms || rede_esperar(10)) { rede_fechar(s); return ERRO_REDE; }
     }
 }
 
@@ -50,8 +60,7 @@ int tcp_enviar_tudo(int s, const void *dados, unsigned n)
         int r = rede_enviar(s, p + feito, n - feito);
         if (r < 0) return r;
         if (r > 0) { feito += (unsigned)r; parado_desde = tempo_ms(); continue; }
-        if (tempo_ms() - parado_desde > 30000) return ERRO_REDE;
-        dormir(5);
+        if (tempo_ms() - parado_desde > 30000 || rede_esperar(5)) return ERRO_REDE;
     }
     return (int)n;
 }
@@ -147,7 +156,7 @@ int dns_resolver(const char *nome, unsigned *ip)
         for (int espera = 0; espera < 100; espera++) {   /* até 2 s */
             unsigned char resp[512];
             int n = rede_receber(s, resp, sizeof resp, NULL);
-            if (n <= 0) { dormir(20); continue; }
+            if (n <= 0) { if (rede_esperar(20)) { rede_fechar(s); return ERRO_REDE; } continue; }
             if (n < 12 || resp[0] != m[0] || resp[1] != m[1]) continue;
             if ((resp[3] & 0x0F) == 3) { resultado = ERRO_NAO_EXISTE; break; }   /* o nome não existe */
             int perguntas = (resp[4] << 8) | resp[5], respostas = (resp[6] << 8) | resp[7];
