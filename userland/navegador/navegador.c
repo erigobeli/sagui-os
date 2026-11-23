@@ -1153,13 +1153,14 @@ static void interromper(const char *url, bool novo_no_historico)
     desenhar_tudo();
 }
 
-/* Prévia: numa página grande, o começo do HTML (64 KB depois do <body>) é
- * lido, diagramado e pintado antes do resto. Na Wikipédia isso é a primeira
- * tela inteira por uma fração do custo: o artigo do Gato tem 1,3 MB, e
- * diagramar tudo leva dez vezes mais que esse começo. Depois os scripts
- * rodam e a página inteira substitui a prévia. */
-#define PREVIA_MIN   (256u * 1024)
-#define PREVIA_BYTES (64u * 1024)
+/* Prévia: numa página grande, o começo do HTML (192 KB depois do <body>) é
+ * lido, diagramado e pintado antes do resto. Na Wikipédia isso já é a
+ * primeira tela inteira, igual pixel a pixel à da página toda (no artigo do
+ * Gato, de 1,3 MB, o primeiro parágrafo vem depois do quadro de informações,
+ * a 175 KB do começo), por menos de um terço do custo de diagramar tudo.
+ * Depois os scripts rodam e a página inteira substitui a prévia. */
+#define PREVIA_MIN   (512u * 1024)
+#define PREVIA_BYTES (192u * 1024)
 static bool previa(const char *h, uint32_t n)
 {
     uint32_t corpo = 0;
