@@ -107,6 +107,7 @@ typedef struct {
     bool por_rede;            /* passou a vez esperando a rede */
     bool redimensionar;       /* a janela mudou de tamanho enquanto a aba estava atrás */
     char inicial[MAX_URL];
+    bool focar;               /* aba nova em branco: o cursor vai para o endereço */
     evento_t fila[FILA_ABA];
     int f_ini, f_n;
 } aba_t;
@@ -1569,9 +1570,11 @@ static void enfileirar(aba_t *a, const evento_t *e)
 static void tratar_evento(const evento_t *e);
 
 /* O laço de cada aba (o que antes era o laço do programa). */
+static void focar_endereco(void);
 static void laco_aba(void)
 {
     carregar(rodando->inicial[0] ? rodando->inicial : "sagui:inicio", true, 0);
+    if (rodando->focar) { rodando->focar = false; focar_endereco(); }
     for (;;) {
         /* o script pediu outra página (location.href, assign, replace, reload) */
         char u[MAX_URL]; int subst = 0;
@@ -1715,6 +1718,7 @@ static void nova_aba(const char *url)
     if (qtd_abas == MAX_ABAS) { usar_estado(abas[aba_atual]); definir_status("Já são 8 abas nesta janela; feche uma para abrir outra."); return; }
     aba_t *a = criar_aba(url);
     if (!a) { if (qtd_abas) { usar_estado(abas[aba_atual]); definir_status("Não há memória para outra aba."); } return; }
+    a->focar = !url;   /* sem endereço (o "+", Ctrl+T, o menu): já pronta para digitar */
     abas[qtd_abas] = a;
     aba_atual = qtd_abas++;
     aba_sob = fechar_sob = -1;

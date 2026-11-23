@@ -2,7 +2,8 @@
 """H154 - abas do Cipó na mesma janela.
 
 Critérios:
-  - o "+" e o Ctrl+T abrem outra aba na mesma janela (nenhum processo novo);
+  - o "+" e o Ctrl+T abrem outra aba na mesma janela (nenhum processo novo),
+    já com o cursor no endereço;
   - um clique numa aba de trás traz a página dela de volta como estava,
     sem abrir de novo;
   - Ctrl+Tab passa para a próxima aba;
@@ -95,14 +96,15 @@ def main():
         m.tecla("ctrl-t")
         esperar(m, "navegador: nova aba, agora 3", 10, n)
         esperar(m, "navegador: pronto sagui:inicio", 30, n)
-        m.tecla("ctrl-l")
+        time.sleep(0.5)
+        # sem Ctrl+L: a aba nova já vem com o cursor no endereço
         m.digitar("/tmp/c.html\n", 0.04)
         esperar(m, "navegador: pronto /tmp/c.html", 30, n)
         time.sleep(1)
         m.mouse_para(*aba(j, 1, 3))
         time.sleep(0.8)
         m.captura("H154-1-tres-abas")
-        verificar(True, "Ctrl+T abriu a terceira aba")
+        verificar(True, "Ctrl+T abriu a terceira aba, já com o cursor no endereço")
 
         # Clique na primeira aba: a página A volta.
         n = len(m.serial())
