@@ -284,6 +284,8 @@ def main():
             verificar("js: t1 42 get st 9 23 57 1 TypeError!" in s, "classes, closures, desestruturação e exceções")
             verificar('js: t2 {"a":[1,{"b":"c"}],"d":null} x2y aBC 34 3' in s, "JSON, modelos e regex")
             verificar("js: t3 0.30 3.5 2 -2 123 undefined nn 2" in s, "números e operadores novos")
+            verificar("js: t13 undefined undefined undefined 1 undefined 0" in s,
+                      "?. com null para a cadeia inteira (nem avalia os argumentos)")
             verificar("js: t4 5" in s, "async e promessas")
             verificar("js: t5 1 app BODY" in s, "DOM e eventos de carga")
             verificar("js: t7 0,1,4,true, 2+4+6 1 7true" in s, "geradores: next, yield*, throw e return")

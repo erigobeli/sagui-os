@@ -52,7 +52,7 @@ typedef struct fdef { str *nome; no *params; no *corpo; str **vars; int nv, cv; 
 struct no { short k, op; no *a, *b, *c, *d, *prox; str *s; double n; fdef *f; const char *fonte; };
 
 enum { K_NUM, K_STR, K_TPL, K_ID, K_THIS, K_SUPER, K_NULL, K_TRUE, K_FALSE, K_RE, K_ARR, K_OBJ, K_PROP, K_FUNC, K_CLASS,
-       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD, K_BIG, K_TPLSTR,
+       K_SEQ, K_COND, K_BIN, K_AND, K_OR, K_NN, K_UN, K_UPD, K_ASG, K_MEM, K_IDX, K_CALL, K_NEW, K_SPREAD, K_AWAIT, K_TIPO, K_DEL, K_NEWT, K_YIELD, K_BIG, K_TPLSTR, K_OPTC,
        S_VAR, S_DECL, S_EXP, S_BLOCK, S_IF, S_FOR, S_FORIN, S_WHILE, S_DO, S_RET, S_BRK, S_CONT, S_THROW, S_TRY, S_SWITCH, S_CASE, S_LABEL, S_FUNC, S_CLASS, S_VAZIO };
 enum { KW_NADA, KW_VAR, KW_LET, KW_CONST, KW_FUNCTION, KW_RETURN, KW_IF, KW_ELSE, KW_FOR, KW_WHILE, KW_DO, KW_BREAK, KW_CONTINUE, KW_NEW, KW_DELETE, KW_TYPEOF,
        KW_VOID, KW_THIS, KW_NULL, KW_TRUE, KW_FALSE, KW_IN, KW_INSTANCEOF, KW_THROW, KW_TRY, KW_CATCH, KW_FINALLY, KW_SWITCH, KW_CASE, KW_DEFAULT, KW_CLASS, KW_EXTENDS,
@@ -1135,11 +1135,23 @@ static no *argumentos(void)
     exige(')');
     return l.pri;
 }
+/* a?.b.c(): se a é null/undefined, a cadeia inteira dá undefined (o resto
+ * nem é avaliado). O elo "?." que acha o nulo liga "curto"; os elos de
+ * depois veem e devolvem undefined; K_OPTC, no topo da cadeia, desliga. */
+static int curto;
+static no *sufixos_cadeia(no *x, int sem_call, int *teve_opt);
 static no *sufixos(no *x, int sem_call)
+{
+    int teve_opt = 0;
+    x = sufixos_cadeia(x, sem_call, &teve_opt);
+    return teve_opt ? N2(K_OPTC, x, NULL) : x;
+}
+static no *sufixos_cadeia(no *x, int sem_call, int *teve_opt)
 {
     for (;;) {
         if (L.tk == '.' || L.tk == OP(O_OPT)) {
             int opt = L.tk != '.';
+            if (opt) *teve_opt = 1;
             prox();
             if (opt && L.tk == '(') { prox(); no *c = N2(K_CALL, x, argumentos()); c->op = 1; x = c; continue; }
             if (opt && L.tk == '[') { prox(); no *m = N2(K_IDX, x, expr()); m->op = 1; exige(']'); x = m; continue; }
@@ -1962,6 +1974,7 @@ static val ev(no *x, env *e)
         for (no *h = x->a; h; h = h->prox) r = concat(r.s, to_str(h->k == K_STR ? vS(h->s) : ev(h->a, e)));
         return r;
     }
+    case K_OPTC: { val v = ev(x->a, e); curto = 0; return v; }
     case K_TPLSTR: {   /* o mesmo objeto congelado a cada avaliação do mesmo lugar */
         if (x->f) return vO((obj *)x->f);
         obj *r = novo_arr(0), *w = novo_arr(0);
@@ -2108,13 +2121,15 @@ static val ev(no *x, env *e)
     case K_MEM: {
         if (x->a->k == K_SUPER) { obj *c = casa_atual(); return c && c->proto ? get_o(c->proto, intern(x->s), qa->este) : vU(); }
         val o = ev(x->a, e);
-        if (x->op && (o.t == U || o.t == NUL)) return vU();
+        if (curto) return vU();
+        if (x->op && (o.t == U || o.t == NUL)) { curto = 1; return vU(); }
         no_atual = x;
         return get(o, x->s);
     }
     case K_IDX: {
         val o = ev(x->a, e);
-        if (x->op && (o.t == U || o.t == NUL)) return vU();
+        if (curto) return vU();
+        if (x->op && (o.t == U || o.t == NUL)) { curto = 1; return vU(); }
         return get_i(o, ev(x->b, e));
     }
     case K_CALL: {
@@ -2131,13 +2146,15 @@ static val ev(no *x, env *e)
             if (c->a->k == K_SUPER) { obj *h = casa_atual(); este = qa->este; f = h && h->proto ? get_o(h->proto, intern(c->s), este) : vU(); }
             else {
                 este = ev(c->a, e);
-                if (c->op && (este.t == U || este.t == NUL)) return vU();
+                if (curto) return vU();
+                if (c->op && (este.t == U || este.t == NUL)) { curto = 1; return vU(); }
                 no_atual = c;
                 f = get(este, c->s);
             }
-        } else if (c->k == K_IDX) { este = ev(c->a, e); if (c->op && (este.t == U || este.t == NUL)) return vU(); f = get_i(este, ev(c->b, e)); }
+        } else if (c->k == K_IDX) { este = ev(c->a, e); if (curto) return vU(); if (c->op && (este.t == U || este.t == NUL)) { curto = 1; return vU(); } f = get_i(este, ev(c->b, e)); }
         else f = ev(c, e);
-        if (x->op && (f.t == U || f.t == NUL)) return vU();
+        if (curto) return vU();
+        if (x->op && (f.t == U || f.t == NUL)) { curto = 1; return vU(); }
         int n = avaliar_args(x->b, e, &a);
         if (f.t != OB || (f.o->cl != C_FN && !(f.o->cl == C_PX && px_chamavel(f.o)))) {
             /* como o V8: "nome is not a function" (sem efeitos colaterais: nada de getters aqui) */
