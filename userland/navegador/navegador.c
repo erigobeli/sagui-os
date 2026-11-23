@@ -1153,6 +1153,31 @@ static void interromper(const char *url, bool novo_no_historico)
     desenhar_tudo();
 }
 
+/* Prévia: numa página grande, o começo do HTML (64 KB depois do <body>) é
+ * lido, diagramado e pintado antes do resto. Na Wikipédia isso é a primeira
+ * tela inteira por uma fração do custo: o artigo do Gato tem 1,3 MB, e
+ * diagramar tudo leva dez vezes mais que esse começo. Depois os scripts
+ * rodam e a página inteira substitui a prévia. */
+#define PREVIA_MIN   (256u * 1024)
+#define PREVIA_BYTES (64u * 1024)
+static bool previa(const char *h, uint32_t n)
+{
+    uint32_t corpo = 0;
+    for (uint32_t i = 0; i + 5 < n / 2; i++)
+        if (h[i] == '<' && sem_caixa(h + i + 1, "body", 4)) { corpo = i; break; }
+    uint32_t corte = corpo + PREVIA_BYTES;
+    if (corte > n / 2) return false;
+    while (corte > corpo && h[corte - 1] != '>') corte--;   /* não corta no meio de uma marca */
+    if (corte <= corpo) return false;
+    unsigned t0 = tempo_ms();
+    ler_pagina(h, (int)corte);
+    if (!motor) return false;
+    rolagem = 0;
+    desenhar_tudo();
+    registrar("navegador: previa (%u KB do HTML) em %u ms", corte / 1024, tempo_ms() - t0);
+    return true;
+}
+
 static void carregar(const char *pedido, bool novo_no_historico, int rolagem_inicial)
 {
     char url[MAX_URL];
@@ -1257,6 +1282,14 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     if (comeca_com(pag.d, "<html><head><meta charset=\"iso-8859-1\">")) pag.d = para_utf8(pag.d, &pag.n, 0);
     copia_texto(url_atual, final[0] && !comeca_com(url, "sagui:") ? final : url, sizeof url_atual);
     if (acha_char(url, '#') && !acha_char(url_atual, '#')) junta_texto(url_atual, acha_char(url, '#'), sizeof url_atual);
+    /* Prévia só quando a página abre no topo (sem âncora nem rolagem guardada). */
+    unsigned t_previa = 0;
+    if (!comeca_com(url, "sagui:") && comeca_com(tipo, "text/html") && pag.n >= PREVIA_MIN && rolagem_inicial == 0 && !acha_char(url, '#')) {
+        t_previa = tempo_ms();
+        if (previa(pag.d, pag.n)) t_previa = tempo_ms() - inicio;
+        else t_previa = 0;
+        if (cancelada()) { libera(pag.d); interromper(url, novo_no_historico); return; }
+    }
     t_scripts = tempo_ms();
     pag.d = rodar_scripts(pag.d, &pag.n);
     t_scripts = tempo_ms() - t_scripts;
@@ -1294,8 +1327,8 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     unsigned t_des = tempo_ms();
     desenhar_tudo();
     t_des = tempo_ms() - t_des;
-    registrar("navegador: tempos da pagina: rede %u ms, scripts %u ms, ler %u ms (css pela rede %u ms, diagramar %u ms), desenhar %u ms",
-              t_pagina, t_scripts, t_ler, css_rede, ler_diag, t_des);
+    registrar("navegador: tempos da pagina: rede %u ms, scripts %u ms, ler %u ms (css pela rede %u ms, diagramar %u ms), desenhar %u ms, previa na tela em %u ms",
+              t_pagina, t_scripts, t_ler, css_rede, ler_diag, t_des, t_previa);
     memset(&perf, 0, sizeof perf);
     unsigned t_imgs = tempo_ms();
     carregar_imagens();
