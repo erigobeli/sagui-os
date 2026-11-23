@@ -1999,6 +1999,9 @@ static void tratar_evento(const evento_t *e)
     case EV_CLIQUE: if (e->botoes & 1) tratar_clique(e); break;
     case EV_SOLTOU: arrastando_rolagem = false; break;
     case EV_MOVER: tratar_movimento(e); break;
+#ifdef EV_RODA
+    case EV_RODA: rolar(48 * (int)e->tecla); break;   /* H134: 3 linhas (48 px) por passo */
+#endif
     case EV_TECLA: tratar_tecla(e); break;
     case EV_MENU:
         registrar("navegador: menu %u", e->tecla);
