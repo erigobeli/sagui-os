@@ -41,6 +41,8 @@ typedef struct {
     uint8_t display, position, flutua, limpa, branco, alinha, peso, italico, sublinha, risca, maiusc;
     uint8_t lista, visivel, corta, caixa_borda, dir, quebra, justifica, alinha_itens, alinha_si, alinha_conteudo;
     uint8_t vert;
+    uint8_t just_si, just_itens;
+    int16_t desfoque;                  /* filter: blur(px) */        /* justify-self / justify-items (grid): 0 normal, 1 start, 2 center, 3 end, 4 stretch */
     medida_t larg, alt, min_l, max_l, min_a, max_a, base;
     medida_t marg[4], pad[4], pos[4];   /* top right bottom left */
     int16_t borda[4]; uint32_t cor_borda[4];
@@ -618,7 +620,7 @@ enum {
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
     PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING, PR_FILL, PR_STROKE, PR_SWIDTH, PR_BSPACING, PR_BCOLLAPSE,
-    PR_BSHADOW, PR_TSHADOW, PR_OBJFIT, PR_OBJPOS, PR_ASPECT,
+    PR_BSHADOW, PR_TSHADOW, PR_OBJFIT, PR_OBJPOS, PR_ASPECT, PR_JSELF, PR_JITEMS, PR_FILTER,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -633,7 +635,7 @@ static const char *const nomes_prop[] = {
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
     "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing", "fill", "stroke", "stroke-width", "border-spacing", "border-collapse",
-    "box-shadow", "text-shadow", "object-fit", "object-position", "aspect-ratio",
+    "box-shadow", "text-shadow", "object-fit", "object-position", "aspect-ratio", "justify-self", "justify-items", "filter",
 };
 
 static int achar_prop(const char *p, int n)
@@ -2232,7 +2234,7 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_BSTYLE: if (igual(v, "none") || igual(v, "hidden")) for (int i = 0; i < 4; i++) e->borda[i] = 0;
         else for (int i = 0; i < 4; i++) if (!e->borda[i] && !e->cor_borda[i]) { e->borda[i] = 3; e->cor_borda[i] = 0xFF000000u | e->cor; }
         break;
-    case PR_RADIUS: if (ler_medida_m(v, palavras(v, nv, p, t, 1) ? t[0] : nv, &md)) e->raio = (int16_t)(md.u == U_PCT ? (md.v >= 5000 ? 999 : md.v / 10) : px_de(&md, e->tam)); break;
+    case PR_RADIUS: if (ler_medida_m(v, palavras(v, nv, p, t, 1) ? t[0] : nv, &md)) e->raio = (int16_t)(md.u == U_PCT ? -(md.v > 5000 ? 5000 : md.v) : px_de(&md, e->tam)); break;   /* negativo: porcentagem (x100) da caixa */
     case PR_COLOR: if (ler_cor(v, nv, &c, e->cor)) e->cor = c & 0xFFFFFF; break;
     case PR_BSHADOW: e->sombra = nv == 4 && igual_n(v, "none", 4) ? NULL : m_dup(m, v, nv); break;
     case PR_TSHADOW: e->tsombra = nv == 4 && igual_n(v, "none", 4) ? NULL : m_dup(m, v, nv); break;
@@ -2373,6 +2375,19 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
     case PR_AITEMS: case PR_PITEMS:
         e->alinha_itens = strstr_m(v, "center") ? 1 : strstr_m(v, "end") ? 2 : (strstr_m(v, "start") || strstr_m(v, "baseline")) ? 3 : 0;
         break;
+    case PR_FILTER: {   /* só o blur(): os outros filtros (brilho, cor) ficam de fora */
+        const char *b = NULL;
+        for (int i = 0; i + 5 <= nv && !b; i++) if (igual_n(v + i, "blur(", 5)) b = v + i;
+        e->desfoque = 0;
+        if (b) { medida_t d; int k = 0; while (b[5 + k] && b[5 + k] != ')') k++; if (ler_medida_m(b + 5, k, &d)) e->desfoque = (int16_t)px_de(&d, e->tam); }
+        break;
+    }
+    case PR_JSELF: case PR_JITEMS: {
+        uint8_t j = strstr_m(v, "center") ? 2 : (strstr_m(v, "end") || strstr_m(v, "right")) ? 3 :
+                    (strstr_m(v, "start") || strstr_m(v, "left")) ? 1 : strstr_m(v, "stretch") ? 4 : 0;
+        if (prop == PR_JSELF) e->just_si = j; else e->just_itens = j;
+        break;
+    }
     case PR_ASELF: e->alinha_si = strstr_m(v, "center") ? 2 : strstr_m(v, "end") ? 3 : strstr_m(v, "start") ? 4 : strstr_m(v, "stretch") ? 1 : 0; break;
     case PR_GROW: { int u; int x = num100(v, nv, &u); if (u) e->cresce = (int16_t)(x > 30000 ? 30000 : x); break; }
     case PR_SHRINK: { int u; int x = num100(v, nv, &u); if (u) e->encolhe = (int16_t)(x > 30000 ? 30000 : x); break; }
@@ -2752,6 +2767,16 @@ static int muldiv(int a, int b, int c)
     }
     if (q > 0x7FFFFFFF) q = 0x7FFFFFFF;
     return neg ? -(int)q : (int)q;
+}
+
+/* border-radius em px para uma caixa l x a: a porcentagem (guardada negativa,
+ * x100) é do lado menor; nunca passa da metade dele. */
+static int raio_px(const estilo_t *e, int l, int a)
+{
+    int menor = l < a ? l : a, r = e->raio;
+    if (r < 0) r = muldiv(menor, -r, 10000);
+    if (r * 2 > menor) r = menor / 2;
+    return r < 0 ? 0 : r;
 }
 
 static int res_med(const medida_t *v, int base, const estilo_t *e)
@@ -4088,6 +4113,15 @@ static int grid(no_m *n, int cw)
         int lw = res_med(&c->e.larg, ww, &c->e);
         int lar = lw >= 0 ? (c->e.caixa_borda ? lw : lw + extra_h(c)) : ww - c->ml - c->mr;
         if (lar > ww - c->ml - c->mr && lw < 0) lar = ww - c->ml - c->mr;
+        /* justify-self start/center/end com largura auto: a largura do conteúdo, não a da área */
+        uint8_t js = c->e.just_si ? c->e.just_si : e->just_itens;
+        if (lw < 0 && js >= 1 && js <= 3) {
+            int mx = medir_max(c) - c->ml - c->mr;
+            if (mx < lar) lar = mx;
+        }
+        int mxw = res_med(&c->e.max_l, ww, &c->e), mnw = res_med(&c->e.min_l, ww, &c->e);
+        if (mxw >= 0 && lar > mxw + (c->e.caixa_borda ? 0 : extra_h(c))) lar = mxw + (c->e.caixa_borda ? 0 : extra_h(c));
+        if (mnw > 0 && lar < mnw + (c->e.caixa_borda ? 0 : extra_h(c))) lar = mnw + (c->e.caixa_borda ? 0 : extra_h(c));
         layout_no(c, ww, lar, -1);
         int h = c->a + c->mt + c->mb;
         if (it[q].lspan <= 1 && h > alt[it[q].lin]) alt[it[q].lin] = h;
@@ -4111,7 +4145,9 @@ static int grid(no_m *n, int cw)
         uint8_t al = c->e.alinha_si ? (c->e.alinha_si == 1 ? 0 : c->e.alinha_si - 1) : e->alinha_itens;
         if (livre > 0 && al == 0 && c->e.alt.u == U_AUTO) { layout_no(c, ww, c->l, alt_area - c->mt - c->mb); livre = 0; }
         int dx = 0;
-        if (e->justifica == 1 || (c->e.marg[3].u == U_AUTO && c->e.marg[1].u == U_AUTO)) dx = (ww - c->l - c->ml - c->mr) / 2;
+        uint8_t js = c->e.just_si ? c->e.just_si : e->just_itens;
+        if (js == 2 || e->justifica == 1 || (c->e.marg[3].u == U_AUTO && c->e.marg[1].u == U_AUTO)) dx = (ww - c->l - c->ml - c->mr) / 2;
+        else if (js == 3) dx = ww - c->l - c->ml - c->mr;
         c->x = xs[it[q].col] + c->ml + (dx > 0 ? dx : 0);
         c->y = ys[it[q].lin] + c->mt + (al == 1 ? livre / 2 : al == 2 ? livre : 0);
     }
@@ -4742,8 +4778,7 @@ static void sombras_caixa(no_m *n, int x, int y)
         s = ler_sombra(s, e, &cam[nc], &ok);
         if (ok && !cam[nc].dentro) nc++;   /* inset: fica para depois */
     }
-    int raio = e->raio > n->a / 2 ? n->a / 2 : e->raio;
-    if (raio * 2 > n->l) raio = n->l / 2;
+    int raio = raio_px(e, n->l, n->a);
     for (int i = nc - 1; i >= 0; i--) {
         sombra_t *o = &cam[i];
         cmd_t c; memset(&c, 0, sizeof c);
@@ -4780,16 +4815,26 @@ static void desenhar_caixa(no_m *n, int x, int y)
         c.x = x + (n->l - l) / 2; c.y = y + (n->a - a) / 2; c.l = l; c.a = a;
         cmd_novo(&c);
     }
-    if (e->fundo && !e->mascara) {
+    if (e->fundo && !e->mascara && e->desfoque > 0 && n->l > 0 && n->a > 0) {
+        /* filter: blur(r) num fundo liso: a caixa vira um borrão (desvio r), pintado
+         * como a sombra, mas sem o recorte do lado de dentro */
         cmd_t c; memset(&c, 0, sizeof c);
-        c.tipo = C_RET; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.cor = e->fundo; c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
+        int d = e->desfoque * 2 > 200 ? 200 : e->desfoque * 2;
+        c.tipo = C_SOMBRA; c.cor = e->fundo;
+        c.x = x - d; c.y = y - d; c.l = n->l + 2 * d; c.a = n->a + 2 * d;
+        c.q[0] = d; c.q[1] = d; c.q[2] = n->l; c.q[3] = n->a; c.q[4] = raio_px(e, n->l, n->a);
+        c.tam = (int16_t)d;
+        cmd_novo(&c);
+    } else if (e->fundo && !e->mascara) {
+        cmd_t c; memset(&c, 0, sizeof c);
+        c.tipo = C_RET; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.cor = e->fundo; c.raio = (int16_t)raio_px(e, n->l, n->a);
         cmd_novo(&c);
     }
     if (e->grad && !e->mascara && n->l > 0 && n->a > 0) {
         grad_m *G = grad_montar(e->grad, n->l, n->a, e);
         if (G) {
             cmd_t c; memset(&c, 0, sizeof c);
-            c.tipo = C_GRAD; c.grad = G; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
+            c.tipo = C_GRAD; c.grad = G; c.x = x; c.y = y; c.l = n->l; c.a = n->a; c.raio = (int16_t)raio_px(e, n->l, n->a);
             cmd_novo(&c);
         }
     }
@@ -4798,7 +4843,7 @@ static void desenhar_caixa(no_m *n, int x, int y)
         cmd_t c; memset(&c, 0, sizeof c);
         c.tipo = C_BORDA; c.x = x; c.y = y; c.l = n->l; c.a = n->a;
         for (int i = 0; i < 4; i++) { c.bw[i] = (int16_t)n->bl[i]; c.bc[i] = e->cor_borda[i] ? e->cor_borda[i] : 0xFF000000u | e->cor; }
-        c.raio = e->raio > n->a / 2 ? (int16_t)(n->a / 2) : e->raio;
+        c.raio = (int16_t)raio_px(e, n->l, n->a);
         cmd_novo(&c);
     }
 }
@@ -4916,7 +4961,7 @@ static void fundo_imagem(no_m *n, int x, int y)
         for (int i = 0; i < nx; i++) {
             cmd_t c; memset(&c, 0, sizeof c);
             c.tipo = C_IMG; c.img = n->bg_img;
-            c.x = sx0 + i * (l + gx); c.y = sy0 + j * (a + gy); c.l = l; c.a = a; c.raio = e->raio;
+            c.x = sx0 + i * (l + gx); c.y = sy0 + j * (a + gy); c.l = l; c.a = a; c.raio = (int16_t)raio_px(e, n->l, n->a);
             c.peso = (uint8_t)((rx == 0 || rx == 3 ? 1 : 0) | (ry == 0 || ry == 3 ? 2 : 0));   /* ladrilha no eixo */
             cmd_novo(&c);
         }
@@ -4978,7 +5023,7 @@ static void controle(no_m *n, int x, int y)
                 dx = cx + px; dy = cy + py;
             }
             svg_no_tamanho(im, dl, da, 0xFF000000u | e->cor);
-            c.tipo = C_IMG; c.x = dx; c.y = dy; c.l = dl; c.a = da; c.img = n->img; c.raio = e->raio;
+            c.tipo = C_IMG; c.x = dx; c.y = dy; c.l = dl; c.a = da; c.img = n->img; c.raio = (int16_t)raio_px(e, n->l, n->a);
             cmd_novo(&c);
             if (dl > cl || da > ca || dx < cx || dy < cy) {   /* cover e none: recorta na caixa */
                 cmd_t *u = &mo->cmds[mo->n_cmds - 1];
