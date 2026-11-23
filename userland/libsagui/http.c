@@ -26,6 +26,7 @@
  * repetido uma vez numa conexão nova. */
 #include "sagui.h"
 #include "http.h"
+#include "compactar.h"
 
 /* ------------------------------------------------------------ endereço */
 
@@ -279,6 +280,41 @@ int http_pedir(const char *metodo, const char *url_inicial, const char *extra, c
     return http_pedir_completo(metodo, url_inicial, extra, corpo, n_corpo, receptor, ctx, resp, NULL);
 }
 
+/* Conteúdo compactado (Content-Encoding: gzip): o texto de uma página chega
+ * com um quinto do tamanho. O corpo compactado é juntado aqui e, inteiro,
+ * descompactado e passado ao receptor de quem pediu, em blocos. */
+typedef struct { uint8_t *d; uint32_t n, cap; } juntado_t;
+#define MAX_COMPACTADO (32u * 1024 * 1024)
+static int juntar(void *p, const char *dados, unsigned n)
+{
+    juntado_t *j = p;
+    if (j->n + n > MAX_COMPACTADO) return -1;
+    if (j->n + n > j->cap) {
+        uint32_t cap = j->cap ? j->cap * 2 : 64 * 1024;
+        while (cap < j->n + n) cap *= 2;
+        uint8_t *novo = aloca(cap);
+        if (!novo) return -1;
+        if (j->d) { memcpy(novo, j->d, j->n); libera(j->d); }
+        j->d = novo;
+        j->cap = cap;
+    }
+    memcpy(j->d + j->n, dados, n);
+    j->n += n;
+    return 0;
+}
+
+static int entregar_descompactado(juntado_t *j, http_receptor_t receptor, void *ctx, http_resposta_t *resp)
+{
+    uint8_t *saida = NULL;
+    int n = gzip_descompactar(j->d, j->n, &saida, NULL, 0);
+    if (n < 0) { copia_texto(resp->erro, "conteúdo compactado inválido", sizeof resp->erro); return ERRO_REDE; }
+    int ok = 0;
+    for (int i = 0; i < n && ok == 0; i += 16384)
+        if (receptor(ctx, (const char *)saida + i, (unsigned)(n - i < 16384 ? n - i : 16384)) < 0) ok = ERRO_INVALIDO;
+    libera(saida);
+    return ok;
+}
+
 /* O mesmo, mostrando os cabeçalhos de cada resposta (H82: os cookies e o
  * fetch do Cipó precisam deles). "cabecalhos" recebe primeiro a linha de
  * situação ("HTTP/1.1 200 OK") e depois cada linha "Nome: valor", com o
@@ -307,7 +343,7 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
         if (corpo) formatar_texto(tamanho_corpo, sizeof tamanho_corpo, "Content-Length: %u\r\n", n_corpo);
         int n = formatar_texto(pedido, sizeof pedido,
                                "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: SaguiOS/3.0.0 (+https://github.com/erigobeli/sagui-os)\r\nAccept: */*\r\n"
-                               "Accept-Encoding: identity\r\nConnection: %s\r\n%s%s\r\n", metodo, u.caminho, host,
+                               "Accept-Encoding: gzip\r\nConnection: %s\r\n%s%s\r\n", metodo, u.caminho, host,
                                guardar_ligado ? "keep-alive" : "close", extra ? extra : "", tamanho_corpo);
         if (n >= (int)sizeof pedido - 1) { canal_fechar(&c); copia_texto(resp->erro, "cabeçalhos grandes demais", sizeof resp->erro); return ERRO_INVALIDO; }
         char linha[2048];   /* Set-Cookie e Content-Security-Policy passam fácil de 512 */
@@ -329,7 +365,7 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
         resp->situacao = texto_para_int(linha + 9);
         if (cabecalhos) cabecalhos(ctx, url, linha);
         long tamanho = -1;
-        bool pedacos = false;
+        bool pedacos = false, compactado = false;
         bool fica = guardar_ligado && compara_texto_n(linha, "HTTP/1.1", 8) == 0;   /* a conexão pode ser guardada */
         char destino[MAX_URL_HTTP] = "";
         resp->tipo[0] = 0;
@@ -338,6 +374,7 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
             if (cabecalhos) cabecalhos(ctx, url, linha);
             if (cabecalho(linha, "Content-Length", &v)) tamanho = texto_para_int(v);
             else if (cabecalho(linha, "Transfer-Encoding", &v) && compara_texto_n(v, "chunked", 7) == 0) pedacos = true;
+            else if (cabecalho(linha, "Content-Encoding", &v) && compara_texto_n(v, "gzip", 4) == 0) compactado = true;
             else if (cabecalho(linha, "Location", &v)) copia_texto(destino, v, sizeof destino);
             else if (cabecalho(linha, "Content-Type", &v)) copia_texto(resp->tipo, v, sizeof resp->tipo);
             else if (cabecalho(linha, "Connection", &v) && compara_texto_n(v, "close", 5) == 0) fica = false;
@@ -355,7 +392,13 @@ int http_pedir_completo(const char *metodo, const char *url_inicial, const char 
             continue;
         }
         copia_texto(resp->url_final, url, sizeof resp->url_final);
-        int ok = ler_corpo(&c, tamanho, pedacos, receptor, ctx, resp);
+        int ok;
+        if (compactado && !sem_corpo) {
+            juntado_t j = { NULL, 0, 0 };
+            ok = ler_corpo(&c, tamanho, pedacos, juntar, &j, resp);
+            if (ok == 0 && j.n) ok = entregar_descompactado(&j, receptor, ctx, resp);
+            libera(j.d);
+        } else ok = ler_corpo(&c, tamanho, pedacos, receptor, ctx, resp);
         if (fica && ok == 0 && c.pos == c.tam) guardar_conexao(&u, &c);
         else canal_fechar(&c);
         if (ok < 0 && !resp->erro[0]) copia_texto(resp->erro, ok == ERRO_INVALIDO ? "parado por quem pediu" : "a conexão caiu no meio", sizeof resp->erro);
