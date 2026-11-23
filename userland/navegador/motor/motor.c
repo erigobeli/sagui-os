@@ -93,6 +93,7 @@ typedef struct no_m {
     char *t; int nt;                /* texto */
     atr_t *atr;
     const char *id, *classe;
+    uint32_t fcl;                   /* um bit por classe (filtro_classes), para descartar seletores sem ler a lista */
     struct no_m *pai, *filho, *ult, *prox, *ant;
     estilo_t e;
     var_m_t *vars;
@@ -122,6 +123,7 @@ typedef struct {
     char tag[12];
     const char *id;
     const char *classes[6]; int nc;
+    uint32_t fcl;       /* os bits das classes (filtro_classes): o nó precisa ter todos */
     const char *atr_nome[3], *atr_valor[3]; char atr_op[3]; int na;
     uint8_t primeiro, ultimo, nunca, raiz, vazio;
     int nth_a, nth_b; uint8_t tem_nth;
@@ -273,6 +275,23 @@ static char minusc(char c) { return c >= 'A' && c <= 'Z' ? (char)(c + 32) : c; }
 static bool eh_letra(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 static bool eh_dig(char c) { return c >= '0' && c <= '9'; }
 static bool eh_esp(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
+
+/* Um bit (de 32) para cada classe da lista "a b c", pelo hash do nome. Um
+ * seletor .x.y só pode casar com um nó que tenha os bits de x e de y: sem
+ * eles, não precisa ler a lista de classes do nó. */
+static uint32_t filtro_classes(const char *lista)
+{
+    uint32_t f = 0;
+    if (!lista) return 0;
+    for (const char *p = lista; *p;) {
+        while (*p && eh_esp(*p)) p++;
+        if (!*p) break;
+        uint32_t h = 2166136261u;
+        while (*p && !eh_esp(*p)) h = (h ^ (uint8_t)*p++) * 16777619u;
+        f |= 1u << (h & 31);
+    }
+    return f;
+}
 static bool igual_n(const char *a, const char *b, int n)
 {
     for (int i = 0; i < n; i++) if (minusc(a[i]) != minusc(b[i])) return false;
@@ -542,6 +561,7 @@ static void ler_html_m(motor_t *m, const char *h, int n)
         e->atr = atrs;
         e->id = atributo_m(e, "id");
         e->classe = atributo_m(e, "class");
+        e->fcl = filtro_classes(e->classe);
         if (igual(nome, "body")) m->corpo = e;
         bool vazio = na_lista(nome, vazios) || auto_fecha;
         if (igual(nome, "script") || igual(nome, "style") || igual(nome, "textarea") || igual(nome, "title") || igual(nome, "xmp") || igual(nome, "noscript")) {
@@ -994,7 +1014,7 @@ static bool ler_composto(motor_t *m, const char **ps, const char *f, composto_t 
             const char *i0 = s;
             while (s < f && (eh_letra(*s) || eh_dig(*s) || *s == '-' || *s == '_' || *s == '\\' || (uint8_t)*s >= 0x80)) { if (*s == '\\' && s + 1 < f) s++; s++; }
             char *nm = m_dup(m, i0, (int)(s - i0));
-            if (t == '#') c->id = nm; else if (c->nc < 6) c->classes[c->nc++] = nm; else c->nunca = 1;
+            if (t == '#') c->id = nm; else if (c->nc < 6) { c->classes[c->nc++] = nm; c->fcl |= filtro_classes(nm); } else c->nunca = 1;
             algo = true; continue;
         }
         if (*s == '[') {
@@ -1154,6 +1174,7 @@ static bool bate_composto_m(const composto_t *c, no_m *n)
     if (n->texto || c->nunca || n->tag[0] == '#') return false;   /* o nó do documento não é elemento: `* html` nunca casa */
     if (c->tag[0] && !igual(c->tag, n->tag)) return false;
     if (c->id && (!n->id || !igual(c->id, n->id))) return false;
+    if ((n->fcl & c->fcl) != c->fcl) return false;   /* falta alguma classe, com certeza */
     for (int i = 0; i < c->nc; i++) if (!tem_classe(n->classe, c->classes[i])) return false;
     for (int i = 0; i < c->na; i++) {
         const char *v = atributo_m(n, c->atr_nome[i]);
@@ -2638,6 +2659,31 @@ static void estilizar_tudo(motor_t *m, no_m *n)
     }
 }
 
+/* Os nós cujos filhos o normalizar mexeu: só eles precisam de estilo de novo. */
+#define MAX_MEXIDOS 512
+static no_m *mexidos[MAX_MEXIDOS];
+static int n_mexidos;   /* > MAX_MEXIDOS: mexeu demais, estiliza tudo */
+static void mexeu(no_m *n)
+{
+    if (n_mexidos > 0 && n_mexidos <= MAX_MEXIDOS && mexidos[n_mexidos - 1] == n) return;
+    if (n_mexidos < MAX_MEXIDOS) mexidos[n_mexidos] = n;
+    n_mexidos++;
+}
+
+/* Estilo de novo para os filhos de n (e tudo abaixo), como faria o
+ * estilizar_tudo da raiz: o filtro de ancestrais leva n e os de cima. */
+static void restilizar_filhos(motor_t *m, no_m *n)
+{
+    if (!n->filho) return;
+    no_m *cadeia[256];
+    int k = 0;
+    for (no_m *a = n; a && k < 256; a = a->pai) cadeia[k++] = a;
+    if (k == 256) { filtro_ativo = 0; estilizar_tudo(m, n->filho); filtro_ativo = 1; return; }
+    for (int i = k - 1; i >= 0; i--) filtro_no(cadeia[i], 1);
+    estilizar_tudo(m, n->filho);
+    for (int i = 0; i < k; i++) filtro_no(cadeia[i], -1);
+}
+
 /* Textos soltos dentro de flex/grid/tabela viram um bloco anônimo; células
  * soltas ganham uma linha. */
 static void normalizar(motor_t *m, no_m *n)
@@ -2647,6 +2693,7 @@ static void normalizar(motor_t *m, no_m *n)
     if (d != D_FLEX && d != D_IFLEX && d != D_GRID) return;
     for (no_m *c = n->filho; c;) {
         if (!(c->texto || c->e.display == D_INLINE)) { c = c->prox; continue; }
+        mexeu(n);
         no_m *ini = c, *fim = c;
         bool so_esp = true;
         while (fim && (fim->texto || fim->e.display == D_INLINE)) {
@@ -3004,6 +3051,24 @@ static int larg_texto(const estilo_t *e, const char *t, int n)
 }
 static int larg_car(const estilo_t *e, char ch) { return larg_texto(e, &ch, 1); }
 
+/* Palavra só de letras e algarismos latinos (ASCII e U+00C0..U+023F, menos
+ * × e ÷): pela UAX #14 não tem onde quebrar por dentro, e o maior trecho
+ * inquebrável é ela inteira. É o caso da quase totalidade das palavras. */
+static bool palavra_inteira(const char *t, int n)
+{
+    for (int i = 0; i < n; i++) {
+        uint8_t b = (uint8_t)t[i];
+        if ((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')) continue;
+        if (b >= 0xC3 && b <= 0xC8 && i + 1 < n && ((uint8_t)t[i + 1] & 0xC0) == 0x80) {
+            if (b == 0xC3 && ((uint8_t)t[i + 1] == 0x97 || (uint8_t)t[i + 1] == 0xB7)) return false;
+            i++;
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
 /* maior trecho inquebrável de uma palavra (oportunidades da UAX #14) */
 static int maior_trecho(const estilo_t *e, const char *t, int nt)
 {
@@ -3041,7 +3106,7 @@ static void medir_inline(no_m *n, int *mx, int *mn, int *linha)
                 int k = i;
                 /* em pre o espaço é parte do trecho: só o \n quebra (senão k não anda) */
                 while (k < c->nt && (e->branco == 1 ? c->t[k] != '\n' : !eh_esp(c->t[k]))) k++;
-                int w = larg_texto(e, c->t + i, k - i), m = e->branco == 1 ? w : maior_trecho(e, c->t + i, k - i);
+                int w = larg_texto(e, c->t + i, k - i), m = e->branco == 1 || palavra_inteira(c->t + i, k - i) ? w : maior_trecho(e, c->t + i, k - i);
                 if (m > *mn) *mn = m;
                 *linha += w;
                 i = k;
@@ -3207,7 +3272,8 @@ static void colocar_float(no_m *f, no_m *bloco, contexto_t *ctx, int cw, int y)
 static void palavra_quebravel(no_m *c, const estilo_t *e, int i, int k, int alvo, bool ascii)
 {
     int n = 0;
-    for (int p = i; p < k;) { uint32_t cp; p += utf8_ler(c->t + p, k - p, &cp); n++; }
+    if (!palavra_inteira(c->t + i, k - i))
+        for (int p = i; p < k;) { uint32_t cp; p += utf8_ler(c->t + p, k - p, &cp); n++; }
     uint32_t *cps = n > 1 && e->branco != 2 ? aloca((unsigned)n * 4 + 4) : NULL;
     uint8_t *r = cps ? aloca((unsigned)n + 2) : NULL;
     if (!r) {
@@ -3241,7 +3307,6 @@ static void coletar_no(no_m *c, no_m *n, int alvo, contexto_t *ctx, no_m *bloco_
         if (c->texto) {
             if (c->texto == 2 || !c->nt) return;
             const estilo_t *e = &n->e;
-            if (e->visivel) { item_t it = { c, e, NULL, 0, larg_texto(e, c->t, c->nt), altura_linha(e), 1, -1 }; it.l = 0; (void)it; }
             int i = 0;
             while (i < c->nt) {
                 char ch = c->t[i];
@@ -5792,8 +5857,10 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
         memset(filtro, 0, sizeof filtro);
         filtro_ativo = 1;
         estilizar_tudo(m, m->raiz);
+        n_mexidos = 0;
         normalizar(m, m->raiz);
-        estilizar_tudo(m, m->raiz);
+        if (n_mexidos > MAX_MEXIDOS) estilizar_tudo(m, m->raiz);
+        else for (int i = 0; i < n_mexidos; i++) restilizar_filhos(m, mexidos[i]);
         filtro_ativo = 0;
     }
     limpar_layout(m->raiz);
