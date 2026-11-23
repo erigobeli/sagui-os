@@ -25,12 +25,12 @@ int rede_fechar(int s)                         { return chamar4(SIS_REDE_FECHAR,
 int rede_estado(int s)                         { return chamar4(SIS_REDE_ESTADO, (unsigned)s, 0, 0, 0); }
 
 bool (*rede_gancho_espera)(void);
+void (*ceder_vez)(void);
 bool rede_desistiu;
 
 bool rede_esperar(unsigned ms)
 {
-    if (!rede_desistiu && rede_gancho_espera && rede_gancho_espera()) rede_desistiu = true;
-    if (rede_desistiu) return true;
+    if (rede_gancho_espera) return rede_desistiu = rede_gancho_espera();   /* o gancho espera (passa a vez) */
     dormir(ms);
     return false;
 }

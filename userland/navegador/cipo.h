@@ -115,4 +115,13 @@ const uint32_t *tela2d_pixels(int id, int *l, int *a);
 uint32_t *tela2d_px_escrita(int id, int *l, int *a);   /* para pintar nela (iframes) */
 unsigned tela2d_versao(void);                          /* muda a cada desenho */
 void     tela2d_liberar_todas(void);
+/* Revezamento (Cipó com abas): o motor e o JavaScript chamam CIPO_CEDER()
+ * de tempos em tempos no meio de um trabalho longo; o navegador passa a vez
+ * se a fatia de tempo acabou. Fora do navegador (testes no computador), o
+ * ponteiro não existe e nada acontece. js_descontar empurra os limites de
+ * tempo dos scripts pelo tempo em que a aba ficou parada. */
+extern void (*cipo_ceder)(void) __attribute__((weak));
+#define CIPO_CEDER() ((&cipo_ceder && cipo_ceder) ? cipo_ceder() : (void)0)
+void js_descontar(unsigned ms);
+
 #endif

@@ -1507,7 +1507,9 @@ static void html_ler(const char *h, int n, dn *base)
 {
     dn *cur = base;
     int i = 0;
+    unsigned vez = 0;
     while (i < n) {
+        if (!(++vez & 255)) CIPO_CEDER();
         if (h[i] != '<' || i + 1 >= n || !(id_ini((uint8_t)h[i + 1]) || h[i + 1] == '/' || h[i + 1] == '!' || h[i + 1] == '?')) {
             int j = i + 1;
             while (j < n && h[j] != '<') j++;
@@ -1677,6 +1679,8 @@ static void serial_css_sombra(buf *b, dn *st)
 }
 static void serial(buf *b, dn *d, int final)
 {
+    static unsigned vez;
+    if (!(++vez & 255)) CIPO_CEDER();
     if (d->tipo == 3) { b_por(b, d->txt->s, d->txt->n); return; }
     if (d->tipo == 9 || d->tipo == 11) { serial_filhos(b, d, final); return; }
     if (final && host_atual && d->tag == I("slot")) { serial_slot(b, d, final); return; }

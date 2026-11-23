@@ -80,15 +80,35 @@ static int progresso POR_ABA;             /* 0 = parado; 1 a 100 = a linha azul 
 typedef struct { char url[MAX_URL]; int rolagem; } passo_hist_t;
 static passo_hist_t hist[MAX_HIST] POR_ABA;
 static int hist_qtd POR_ABA, hist_pos POR_ABA_I = -1;
-static bool interrompida POR_ABA;   /* a carga foi interrompida: abre de novo ao voltar à aba */
+static bool interrompida POR_ABA;   /* a carga foi interrompida: abre de novo com F5 */
 
 /* As abas: a da frente usa as variáveis marcadas com POR_ABA; as de trás
- * guardam uma cópia delas (veja trocar_aba). */
+ * guardam uma cópia delas (veja usar_estado). */
 #define MAX_ABAS 8
+/* Cada aba roda o seu trabalho (carregar, scripts, imagens, eventos) numa
+ * corrotina com pilha própria. O laço principal lê os eventos da janela,
+ * cuida das abas e dá a vez às corrotinas: a da frente quando tem o que
+ * fazer, e as de trás enquanto estão carregando. O trabalho longo passa a
+ * vez a cada FATIA_MS (na rede, no motor e no JavaScript), então a janela
+ * nunca fica parada esperando uma página. */
+enum { A_NOVA, A_ESPERA, A_DORME, A_OCUPADA, A_RODANDO };
+#define FILA_ABA 64
 typedef struct {
     char url[MAX_URL];        /* para desenhar as abas de trás */
     char titulo[64];
+    bool carregando;
     uint8_t *estado;          /* as duas faixas de estado, uma depois da outra */
+    char *pilha;
+    void *esp;                /* onde a corrotina parou */
+    int situacao;             /* A_... */
+    unsigned acordar;         /* A_DORME: o próximo tique dos scripts */
+    unsigned parou_em;        /* quando passou a vez (para descontar dos limites do JavaScript) */
+    bool cancelar;            /* a carga em curso deve desistir */
+    bool por_rede;            /* passou a vez esperando a rede */
+    bool redimensionar;       /* a janela mudou de tamanho enquanto a aba estava atrás */
+    char inicial[MAX_URL];
+    evento_t fila[FILA_ABA];
+    int f_ini, f_n;
 } aba_t;
 static aba_t *abas[MAX_ABAS];
 static int qtd_abas, aba_atual;
@@ -103,6 +123,7 @@ static struct { char url[MAX_URL]; char titulo[48]; int x, l; } favs[MAX_FAV];
 static int qtd_favs;
 
 static void carregar(const char *pedido, bool novo_no_historico, int rolagem_inicial);
+void (*cipo_ceder)(void);   /* o motor e o JavaScript chamam no meio do trabalho (cipo.h) */
 static void tratar_movimento(const evento_t *e);
 static int aba_em(int x, int y, bool *no_x);
 static void pasta_config(char *out, int max);
@@ -623,8 +644,7 @@ static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
 static struct { unsigned rede, n_rede, decod, n_decod, diag, n_diag, desenho; } perf POR_ABA;
 
 /* Evento que chegou enquanto a página carregava (tratado depois, no laço). */
-static evento_t evento_guardado;
-static bool tem_evento_guardado;
+static bool tem_evento(void);
 
 static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *cab, int cmax, char *final, int fmax)
 {
@@ -1050,16 +1070,8 @@ static void carregar_imagens(void)
 {
     unsigned ultimo = tempo_ms();
     while (motor) {
-        evento_t e;
-        if (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
-            if (e.tipo != EV_MOVER) {
-                /* Uma ação do usuário interrompe; o evento é tratado depois, no laço principal. */
-                evento_guardado = e;
-                tem_evento_guardado = true;
-                break;
-            }
-        }
-        if (tem_evento_guardado) break;
+        /* Uma ação do usuário interrompe; o evento é tratado depois, no laço da aba. */
+        if (tem_evento()) break;
         adiantar_imagens();
         if (!motor_imagens(motor, 2)) break;
         falta_diagramar = true;
@@ -1079,7 +1091,7 @@ static void carregar_imagens(void)
     }
     /* Interrompida, a diagramação fica para quando as imagens voltarem: o
      * clique ou a rolagem são tratados antes. */
-    if (motor && falta_diagramar && !tem_evento_guardado) {
+    if (motor && falta_diagramar && !tem_evento()) {
         falta_diagramar = false;
         diagramar();
         desenhar_pagina();
@@ -1088,7 +1100,7 @@ static void carregar_imagens(void)
     if (motor) {
         int nos, cmds, imgs;
         motor_numeros(motor, &nos, &cmds, &imgs);
-        registrar("navegador: imagens %s (%d de %d)", tem_evento_guardado ? "interrompidas" : "prontas", imgs, motor_imagens_total(motor));
+        registrar("navegador: imagens %s (%d de %d)", tem_evento() ? "interrompidas" : "prontas", imgs, motor_imagens_total(motor));
     }
 }
 
@@ -1101,7 +1113,7 @@ static void mostrar_titulo(void)
     copia_texto(curto, t, sizeof curto);
     if (tam_texto(t) >= sizeof curto) copia_texto(curto + sizeof curto - 4, "...", 4);
     formatar_texto(titulo, sizeof titulo, "%s - " NOME_NAVEGADOR, curto);
-    titulo_janela(j->id, titulo);
+    if (j->id >= 0) titulo_janela(j->id, titulo);
 }
 
 /* A página da aba da frente sai da memória: motores, scripts, fontes da web, cache. */
@@ -1119,40 +1131,10 @@ static void soltar_pagina(void)
     soltar_adiantadas();
 }
 
-/* Durante a carga, a janela continua atendendo: o mouse sobre a barra
- * acende os botões e as abas; um clique na barra, uma tecla de atalho, o
- * menu ou o fechar desistem da carga, e o evento é tratado em seguida. */
-static bool atender_na_carga(void)
-{
-    static unsigned ultimo;
-    unsigned agora = tempo_ms();
-    if (agora - ultimo < 30) return false;
-    ultimo = agora;
-    evento_t e;
-    while (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
-        if (e.tipo == EV_MOVER) { if (e.y < BARRA && !motor) tratar_movimento(&e); continue; }
-        if (e.tipo == EV_SOLTOU) continue;
-#ifdef EV_RODA
-        if (e.tipo == EV_RODA) continue;
-#endif
-        if (e.tipo == EV_CLIQUE) {
-            if (e.y >= BARRA) continue;           /* a página ainda não está na tela */
-            bool no_x;
-            if (aba_em(e.x, e.y, &no_x) == aba_atual && !no_x) continue;
-        }
-        if (e.tipo == EV_TECLA && !(e.modificadores & 2) && e.tecla != TECLA_ESC && e.tecla != TECLA_F5) continue;
-        evento_guardado = e;
-        tem_evento_guardado = true;
-        return true;
-    }
-    return false;
-}
-
-/* A carga desistiu (veja atender_na_carga): a aba fica com o endereço, e abre de novo quando voltar. */
+static bool cancelada(void);
+/* A carga desistiu (Esc, outro endereço, a aba fechando): a aba fica com o endereço. */
 static void interromper(const char *url, bool novo_no_historico)
 {
-    rede_gancho_espera = NULL;
-    rede_desistiu = false;
     if (motor) { motor_fim(motor); motor = NULL; }
     copia_texto(url_atual, url, sizeof url_atual);
     definir_endereco(url);
@@ -1218,11 +1200,9 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     else {
         rede_resposta_t r;
         t_pagina = tempo_ms();
-        rede_desistiu = false;
-        rede_gancho_espera = atender_na_carga;
         situacao = rede_buscar(url, &r, MAX_PAGINA, NULL, 0);
-        t_pagina = tempo_ms() - t_pagina;
-        if (rede_desistiu) { libera(r.d); interromper(url, novo_no_historico); return; }
+            t_pagina = tempo_ms() - t_pagina;
+        if (cancelada()) { libera(r.d); interromper(url, novo_no_historico); return; }
         definir_progresso(45);
         copia_texto(tipo, r.tipo[0] ? r.tipo : "text/html", sizeof tipo);
         copia_texto(final, r.final[0] ? r.final : url, sizeof final);
@@ -1250,7 +1230,7 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
             int cs = charset_em(tipo, (int)tam_texto(tipo));
             if (cs < 0) cs = charset_em((const char *)r.d, r.n < 2048 ? (int)r.n : 2048);
             uint32_t n = r.n;
-            char *u8 = para_utf8((char *)r.d, &n, cs);
+                    char *u8 = para_utf8((char *)r.d, &n, cs);
             pag.d = u8; pag.n = n; pag.cap = n + 1;
         } else {
             /* Texto puro: cada linha como veio, em letra de máquina de escrever. */
@@ -1277,7 +1257,6 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     copia_texto(url_atual, final[0] && !comeca_com(url, "sagui:") ? final : url, sizeof url_atual);
     if (acha_char(url, '#') && !acha_char(url_atual, '#')) junta_texto(url_atual, acha_char(url, '#'), sizeof url_atual);
     t_scripts = tempo_ms();
-    if (!rede_gancho_espera) { rede_desistiu = false; rede_gancho_espera = atender_na_carga; }
     pag.d = rodar_scripts(pag.d, &pag.n);
     t_scripts = tempo_ms() - t_scripts;
     unsigned rede_antes = perf.rede, diag_antes = perf.diag;
@@ -1286,8 +1265,7 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     t_ler = tempo_ms() - t_ler;
     unsigned css_rede = perf.rede - rede_antes, ler_diag = perf.diag - diag_antes;
     libera(pag.d);
-    if (rede_desistiu) { interromper(url, novo_no_historico); return; }
-    rede_gancho_espera = NULL;
+    if (cancelada()) { interromper(url, novo_no_historico); return; }
     interrompida = false;
     copia_texto(url_atual, url, sizeof url_atual);
     rolagem = rolagem_inicial;
@@ -1496,78 +1474,274 @@ static void estado_por(const uint8_t *e)
     memcpy(_aba_bss_ini, e + TAM_DADOS, TAM_BSS);
 }
 
-/* A aba da frente vai para trás. */
-static void guardar_aba(void)
+/* ---- corrotinas */
+
+#define PILHA_ABA (512 * 1024)
+#define FATIA_MS  20
+void aba_troca(void **salvar, void *novo);
+__asm__(".text\n.globl aba_troca\naba_troca:\n"
+        "\tmovl 4(%esp), %eax\n\tmovl 8(%esp), %edx\n"
+        "\tpushl %ebp\n\tpushl %ebx\n\tpushl %esi\n\tpushl %edi\n"
+        "\tmovl %esp, (%eax)\n\tmovl %edx, %esp\n"
+        "\tpopl %edi\n\tpopl %esi\n\tpopl %ebx\n\tpopl %ebp\n\tret\n");
+
+static aba_t *rodando;            /* a aba cuja corrotina está rodando (NULL: o laço principal) */
+static aba_t *carregada;          /* a aba cujo estado está nas faixas */
+static void *esp_principal;
+static unsigned fatia_ini;
+static jan_t *jan_real, jan_fundo;   /* as abas de trás desenham num quadro que ninguém vê */
+static aba_t *fechando[MAX_ABAS * 2];
+static int qtd_fechando;
+
+/* As faixas passam a ser as da aba a. */
+static void usar_estado(aba_t *a)
 {
-    aba_t *a = abas[aba_atual];
-    copia_texto(a->url, url_atual, sizeof a->url);
-    titulo_da_pagina(a->titulo, sizeof a->titulo);
-    estado_guardar(a->estado);
+    if (carregada == a) return;
+    if (carregada) {
+        copia_texto(carregada->url, url_atual, sizeof carregada->url);
+        titulo_da_pagina(carregada->titulo, sizeof carregada->titulo);
+        carregada->carregando = progresso != 0;
+        estado_guardar(carregada->estado);
+    }
+    estado_por(a->estado);
+    carregada = a;
 }
 
-/* A aba i vem para a frente como estava; se a carga dela foi interrompida, abre de novo. */
-static void trazer_aba(int i)
+static bool tem_evento(void) { return rodando && rodando->f_n > 0; }
+static bool cancelada(void) { return rodando && rodando->cancelar; }
+
+/* Dentro da aba: passa a vez ao laço principal. */
+static void passar_vez(int situacao)
 {
-    aba_atual = i;
-    estado_por(abas[i]->estado);
-    aba_sob = fechar_sob = -1;
-    link_sob_mouse[0] = 0;
+    aba_t *a = rodando;
+    a->situacao = situacao;
+    a->parou_em = tempo_ms();
+    aba_troca(&a->esp, esp_principal);
+}
+
+/* Chamado pelo motor e pelo JavaScript no meio do trabalho: passa a vez se a fatia acabou. */
+static void ceder_cpu(void)
+{
+    if (rodando && tempo_ms() - fatia_ini >= FATIA_MS) passar_vez(A_OCUPADA);
+}
+
+/* As esperas da rede (rede_esperar na libsagui): passa a vez; true desiste do pedido. */
+static bool ceder_rede(void)
+{
+    if (!rodando) { dormir(2); return false; }
+    rodando->por_rede = true;
+    passar_vez(A_OCUPADA);
+    rodando->por_rede = false;
+    return rodando->cancelar;
+}
+
+/* O próximo evento da fila da aba; sem nenhum, passa a vez até chegar um (ou até "ms", se não for 0). */
+static bool pegar_evento(evento_t *e, unsigned ms)
+{
+    aba_t *a = rodando;
+    a->cancelar = false;   /* o trabalho anterior terminou */
+    if (!a->f_n) {
+        a->acordar = tempo_ms() + ms;
+        passar_vez(ms ? A_DORME : A_ESPERA);
+        a->cancelar = false;
+    }
+    if (!a->f_n) return false;
+    *e = a->fila[a->f_ini];
+    a->f_ini = (a->f_ini + 1) % FILA_ABA;
+    a->f_n--;
+    return true;
+}
+
+static void enfileirar(aba_t *a, const evento_t *e)
+{
+    /* movimentos seguidos viram um só */
+    if (e->tipo == EV_MOVER && a->f_n) {
+        evento_t *ult = &a->fila[(a->f_ini + a->f_n - 1) % FILA_ABA];
+        if (ult->tipo == EV_MOVER) { *ult = *e; return; }
+    }
+    if (a->f_n == FILA_ABA) return;
+    a->fila[(a->f_ini + a->f_n) % FILA_ABA] = *e;
+    a->f_n++;
+}
+
+#define EV_MOSTRAR 100   /* a aba voltou para a frente: desenha a página */
+
+static void tratar_evento(const evento_t *e);
+
+/* O laço de cada aba (o que antes era o laço do programa). */
+static void laco_aba(void)
+{
+    carregar(rodando->inicial[0] ? rodando->inicial : "sagui:inicio", true, 0);
+    for (;;) {
+        /* o script pediu outra página (location.href, assign, replace, reload) */
+        char u[MAX_URL]; int subst = 0;
+        if (js_navegacao(u, sizeof u, &subst)) {
+            registrar("navegador: o script navegou para %s", u);
+            if (subst && hist_pos >= 0) { hist_pos--; hist_qtd = hist_pos + 1; }
+            carregar(u, true, 0);
+            continue;
+        }
+        evento_t e;
+        if (!tem_evento() && motor && motor_imagens_faltam(motor)) {
+            /* Um clique, a rolagem ou o menu interromperam as imagens: tratado o
+             * evento, elas continuam de onde pararam (H129). */
+            carregar_imagens();
+            /* terminaram: a barra volta a dizer "Pronto", não "Baixando" a última imagem */
+            if (motor && !motor_imagens_faltam(motor) && status_pronto[0]) definir_status(status_pronto);
+            continue;
+        }
+        if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
+            /* página viva: timers e animações no ritmo deles, sem travar os eventos */
+            unsigned passo = js_animando() ? 16 : 100;
+            if (!tem_evento() && (tempo_ms() - ult_tique >= passo || rolagem != js_rol)) { pagina_viva(); continue; }
+            unsigned falta = passo - (tempo_ms() - ult_tique);
+            if (!pegar_evento(&e, falta > passo ? 1 : falta)) continue;
+        } else if (!pegar_evento(&e, 0)) continue;
+        tratar_evento(&e);
+    }
+}
+static void inicio_aba(void) { laco_aba(); }
+
+/* Dá a vez à aba a (até ela passar a vez de novo). */
+static void rodar_aba(aba_t *a)
+{
+    usar_estado(a);
+    bool frente = a == abas[aba_atual];
+    j = frente ? jan_real : &jan_fundo;
+    unsigned fora = a->situacao == A_NOVA ? 0 : tempo_ms() - a->parou_em;
+    if (a->situacao == A_OCUPADA && fora > 0) js_descontar(fora);   /* o tempo parado não conta nos limites dos scripts */
+    if (frente && a->redimensionar) {
+        a->redimensionar = false;
+        evento_t r = { 0 };
+        r.tipo = EV_REDIMENSIONAR;
+        enfileirar(a, &r);
+    }
+    rede_desistiu = a->cancelar;
+    rodando = a;
+    a->situacao = A_RODANDO;
+    fatia_ini = tempo_ms();
+    aba_troca(&esp_principal, a->esp);
+    rodando = NULL;
+    j = jan_real;
+    unsigned durou = tempo_ms() - fatia_ini;
+    if (durou > 150) registrar("navegador: fatia longa %u ms", durou);   /* a janela ficou esse tempo sem atender */
+}
+
+static bool pode_rodar(aba_t *a, bool frente)
+{
+    if (a->situacao == A_NOVA || a->situacao == A_OCUPADA) return true;
+    if (!frente) return false;   /* atrás, só o trabalho começado continua; os scripts esperam */
+    if (a->f_n) return true;
+    return a->situacao == A_DORME && (int)(tempo_ms() - a->acordar) >= 0;
+}
+
+/* A aba sai da memória: a página, o estado e a pilha. */
+static void destruir_aba(aba_t *a)
+{
+    usar_estado(a);
+    soltar_pagina();
+    carregada = NULL;
+    libera(a->estado);
+    libera(a->pilha);
+    libera(a);
+}
+
+static aba_t *criar_aba(const char *url)
+{
+    aba_t *a = aloca(sizeof *a);
+    uint8_t *e = aloca(TAM_DADOS + TAM_BSS);
+    char *p = aloca(PILHA_ABA);
+    if (!a || !e || !p) { libera(a); libera(e); libera(p); return NULL; }
+    memset(a, 0, sizeof *a);
+    a->estado = e;
+    memcpy(e, estado_inicial, TAM_DADOS + TAM_BSS);
+    a->pilha = p;
+    copia_texto(a->inicial, url ? url : "sagui:inicio", sizeof a->inicial);
+    copia_texto(a->url, a->inicial, sizeof a->url);
+    /* a pilha começa como se aba_troca tivesse parado ali: 4 registros e a volta para inicio_aba */
+    uint32_t *sp = (uint32_t *)(((uint32_t)(p + PILHA_ABA) & ~(uint32_t)15) - 16);
+    *--sp = 0;
+    *--sp = (uint32_t)inicio_aba;
+    for (int i = 0; i < 4; i++) *--sp = 0;
+    a->esp = sp;
+    a->situacao = A_NOVA;
+    return a;
+}
+
+/* A faixa das abas, desenhada pelo laço principal (com as faixas da aba da frente). */
+static void mostrar_abas(void)
+{
+    usar_estado(abas[aba_atual]);
+    desenhar_abas();
+    jan_mostrar_area(j, 0, 0, LARG, ABAS);
+}
+
+/* A página da aba da frente: ela mesma desenha quando pega o evento; se está
+ * ocupada (carregando), a barra e o aviso aparecem já. */
+static void mostrar_frente(void)
+{
+    aba_t *a = abas[aba_atual];
+    usar_estado(a);
     posicionar_botoes();
-    registrar("navegador: aba %d de %d", i + 1, qtd_abas);
     mostrar_titulo();
-    if (interrompida || (!motor && url_atual[0])) { carregar(url_atual, false, rolagem); return; }
     ult_tique = tempo_ms();
-    desenhar_tudo();
+    if (a->situacao == A_OCUPADA || a->situacao == A_NOVA) {
+        desenhar_barra();
+        g_retangulo(j, 0, BARRA, LARG, VISTA_A, COR_BRANCO);
+        g_texto(j, 16, BARRA + 16, "Carregando...", C_FRACO);
+        jan_mostrar(j);
+    } else {
+        evento_t m = { 0 };
+        m.tipo = EV_MOSTRAR;
+        enfileirar(a, &m);
+    }
 }
 
 static void trocar_aba(int i)
 {
     if (i == aba_atual || i < 0 || i >= qtd_abas) return;
     unsigned t0 = tempo_ms();
-    guardar_aba();
-    trazer_aba(i);
+    aba_atual = i;
+    aba_sob = fechar_sob = -1;
+    link_sob_mouse[0] = 0;
+    registrar("navegador: aba %d de %d", i + 1, qtd_abas);
+    mostrar_frente();
     registrar("navegador: troca de aba em %u ms", tempo_ms() - t0);
 }
 
 /* Outra aba, logo depois das outras, já na frente. */
 static void nova_aba(const char *url)
 {
-    if (qtd_abas == MAX_ABAS) { definir_status("Já são 8 abas nesta janela; feche uma para abrir outra."); return; }
-    aba_t *a = aloca(sizeof *a);
-    uint8_t *e = aloca(TAM_DADOS + TAM_BSS);
-    if (!a || !e) { libera(a); libera(e); definir_status("Não há memória para outra aba."); return; }
-    memset(a, 0, sizeof *a);
-    a->estado = e;
-    if (qtd_abas > 0) guardar_aba();
+    if (qtd_abas == MAX_ABAS) { usar_estado(abas[aba_atual]); definir_status("Já são 8 abas nesta janela; feche uma para abrir outra."); return; }
+    aba_t *a = criar_aba(url);
+    if (!a) { if (qtd_abas) { usar_estado(abas[aba_atual]); definir_status("Não há memória para outra aba."); } return; }
     abas[qtd_abas] = a;
     aba_atual = qtd_abas++;
-    estado_por(estado_inicial);
     aba_sob = fechar_sob = -1;
     link_sob_mouse[0] = 0;
-    posicionar_botoes();
     registrar("navegador: nova aba, agora %d", qtd_abas);
-    carregar(url ? url : "sagui:inicio", true, 0);
+    mostrar_frente();
 }
 
-/* Fecha a aba i; fechar a última fecha a janela. */
+/* Fecha a aba i; fechar a última fecha a janela. Uma aba ocupada (no
+ * meio de uma carga) desiste e sai da memória quando parar. */
 static void fechar_aba(int i)
 {
     if (i < 0 || i >= qtd_abas) return;
-    if (qtd_abas == 1) { registrar("navegador: aba fechada"); jan_fechar(j); sair(0); }
-    /* a página da aba sai da memória: motores, scripts, imagens */
-    if (i != aba_atual) { guardar_aba(); estado_por(abas[i]->estado); }
-    soltar_pagina();
-    if (i != aba_atual) estado_por(abas[aba_atual]->estado);
-    libera(abas[i]->estado);
-    libera(abas[i]);
+    if (qtd_abas == 1) { registrar("navegador: aba fechada"); jan_fechar(jan_real); sair(0); }
+    aba_t *a = abas[i];
     for (int k = i; k < qtd_abas - 1; k++) abas[k] = abas[k + 1];
     qtd_abas--;
     registrar("navegador: aba fechada, ficam %d", qtd_abas);
+    if (a->situacao == A_OCUPADA && qtd_fechando < MAX_ABAS * 2) { a->cancelar = true; fechando[qtd_fechando++] = a; }
+    else destruir_aba(a);
     aba_sob = fechar_sob = -1;
-    if (i == aba_atual) { trazer_aba(i < qtd_abas ? i : qtd_abas - 1); return; }
+    if (i == aba_atual) { aba_atual = i < qtd_abas ? i : qtd_abas - 1; registrar("navegador: aba %d de %d", aba_atual + 1, qtd_abas); mostrar_frente(); return; }
     if (i < aba_atual) aba_atual--;
+    usar_estado(abas[aba_atual]);
     posicionar_botoes();
-    desenhar_tudo();
+    desenhar_barra();
+    jan_mostrar_area(j, 0, 0, LARG, BARRA);
 }
 
 /* A aba sob (x, y), e se o ponto está no "x" dela. */
@@ -1645,10 +1819,6 @@ static void tratar_tecla(const evento_t *e)
     bool ctrl = (e->modificadores & 2) != 0;
     if ((t == 12 || t == 'l') && ctrl) { focar_endereco(); return; }
     if ((t == 4 || t == 'd') && ctrl) { favoritar(); return; }
-    if ((t == 14 || t == 'n') && ctrl) { nova_janela(); return; }
-    if ((t == 20 || t == 't') && ctrl) { nova_aba(NULL); return; }
-    if ((t == 23 || t == 'w') && ctrl) { fechar_aba(aba_atual); return; }
-    if (t == '\t' && ctrl) { if (qtd_abas > 1) trocar_aba((aba_atual + 1) % qtd_abas); return; }
     if (t == TECLA_F5 || ((t == 18 || t == 'r') && ctrl)) { if (url_atual[0]) carregar(url_atual, false, rolagem); return; }
     if (ende.foco) {
         if (t == '\n' || t == '\r') {
@@ -1697,13 +1867,6 @@ static void abrir_link(const char *href)
 static void tratar_clique(const evento_t *e)
 {
     if (e->y < BARRA) {
-        bool no_x;
-        int ab = aba_em(e->x, e->y, &no_x);
-        if (ab >= 0) {
-            if (no_x) fechar_aba(ab);
-            else trocar_aba(ab);
-            return;
-        }
         int b = botao_em(e->x, e->y);
         if (b >= 0 && ativo(b)) {
             apertado = b;
@@ -1716,7 +1879,6 @@ static void tratar_clique(const evento_t *e)
             case BT_CASA: carregar("sagui:inicio", true, 0); break;
             case BT_ESTRELA: favoritar(); break;
             case BT_MENU: jan_menu(j, LARG - 228, ABAS + FERR - 2, itens_menu); break;
-            case BT_NOVA: nova_aba(NULL); break;
             }
             apertado = -1;
             desenhar_tudo();
@@ -1793,12 +1955,7 @@ static void tratar_movimento(const evento_t *e)
     }
     /* o botão e o favorito sob o mouse ficam com fundo */
     int b = e->y < BARRA ? botao_em(e->x, e->y) : -1, f = e->y < BARRA ? favorito_em(e->x, e->y) : -1;
-    bool no_x;
-    int ab = aba_em(e->x, e->y, &no_x), fx = no_x ? ab : -1;
-    if (b != sob || f != fav_sob || ab != aba_sob || fx != fechar_sob) {
-        sob = b; fav_sob = f; aba_sob = ab; fechar_sob = fx;
-        mostrar_barra();
-    }
+    if (b != sob || f != fav_sob) { sob = b; fav_sob = f; mostrar_barra(); }
     char novo[MAX_URL] = "";
     if (f >= 0) copia_texto(novo, favs[f].url, sizeof novo);
     if (motor && e->y >= BARRA && e->x < VISTA_L) {
@@ -1816,11 +1973,8 @@ static void tratar_movimento(const evento_t *e)
 
 /* A janela mudou de tamanho (H78): só o layout muda, nada é baixado de novo;
  * o script recebe resize (e pode mudar a página). */
-static void mudar_tamanho(const evento_t *e)
+static void mudar_tamanho(void)
 {
-    jan_novo_tamanho(j, e);
-    larg_jan = j->larg;
-    alt_jan = j->alt;
     posicionar_botoes();
     if (motor) {
         int alt_antes = altura;
@@ -1836,80 +1990,191 @@ static void mudar_tamanho(const evento_t *e)
     registrar("navegador: tamanho %dx%d, pagina com altura %d", LARG, ALT, altura);
 }
 
+/* Um evento, dentro da aba da frente. */
+static void tratar_evento(const evento_t *e)
+{
+    switch (e->tipo) {
+    case EV_MOSTRAR: posicionar_botoes(); desenhar_tudo(); break;
+    case EV_REDIMENSIONAR: mudar_tamanho(); break;
+    case EV_CLIQUE: if (e->botoes & 1) tratar_clique(e); break;
+    case EV_SOLTOU: arrastando_rolagem = false; break;
+    case EV_MOVER: tratar_movimento(e); break;
+    case EV_TECLA: tratar_tecla(e); break;
+    case EV_MENU:
+        registrar("navegador: menu %u", e->tecla);
+        if (e->tecla == M_INICIO) carregar("sagui:inicio", true, 0);
+        else if (e->tecla == M_FAVORITOS) carregar("sagui:favoritos", true, 0);
+        else if (e->tecla == M_FAVORITAR) { if (!favoritado()) favoritar(); }
+        else if (e->tecla == M_RECARREGAR) { if (url_atual[0]) carregar(url_atual, false, rolagem); }
+        break;
+    }
+}
+
+/* O laço principal decide o que é dele (as abas, a janela) e o que vai
+ * para a fila da aba da frente. Com a aba ocupada (carregando), o mouse
+ * sobre a faixa das abas responde, o endereço aceita digitação, e Esc, F5,
+ * Enter no endereço e os botões da barra fazem a carga desistir. */
+static void despachar(const evento_t *e)
+{
+    aba_t *f = abas[aba_atual];
+    bool ocupada = f->situacao == A_OCUPADA || f->situacao == A_NOVA;
+    switch (e->tipo) {
+    case EV_FECHAR:
+        jan_fechar(jan_real);
+        sair(0);
+    case EV_REDIMENSIONAR:
+        jan_novo_tamanho(jan_real, e);
+        larg_jan = jan_real->larg;
+        alt_jan = jan_real->alt;
+        libera(jan_fundo.px);
+        jan_fundo.px = aloca((unsigned)(LARG * ALT) * 4);
+        jan_fundo.larg = jan_fundo.px ? LARG : 0;
+        jan_fundo.alt = jan_fundo.px ? ALT : 0;
+        for (int i = 0; i < qtd_abas; i++) abas[i]->redimensionar = true;
+        f->redimensionar = false;
+        usar_estado(f);
+        posicionar_botoes();
+        enfileirar(f, e);
+        if (ocupada) { desenhar_barra(); jan_mostrar(jan_real); }
+        return;
+    case EV_CLIQUE: {
+        bool no_x;
+        int ab = aba_em(e->x, e->y, &no_x);
+        if (e->botoes & 4) { if (ab >= 0) fechar_aba(ab); return; }   /* o botão do meio fecha a aba */
+        if (!(e->botoes & 1)) return;
+        if (ab >= 0) { if (no_x) fechar_aba(ab); else trocar_aba(ab); return; }
+        if (e->y < ABAS) {
+            usar_estado(f);
+            if (botao_em(e->x, e->y) == BT_NOVA) { registrar("navegador: botao %d", BT_NOVA); nova_aba(NULL); }
+            return;
+        }
+        if (ocupada && e->y < BARRA) {
+            usar_estado(f);
+            int b = botao_em(e->x, e->y);
+            if (e->x >= ENDE_X && e->x < ENDE_X + ENDE_L - 34 && e->y >= ENDE_Y && e->y < ENDE_Y + ENDE_A) {
+                /* o endereço, já: o primeiro clique seleciona tudo */
+                bool primeiro = !ende.foco;
+                ende.tudo = primeiro;
+                ende.foco = true;
+                int c = ende.inicio + (e->x - ENDE_X - 38 + LETRA_L / 2) / LETRA_L, n = (int)tam_texto(ende.t);
+                ende.cursor = primeiro ? n : c < 0 ? 0 : c > n ? n : c;
+                desenhar_barra();
+                jan_mostrar_area(jan_real, 0, 0, LARG, BARRA);
+                return;
+            }
+            if (b == BT_VOLTAR || b == BT_AVANCAR || b == BT_RECARREGAR || b == BT_CASA || favorito_em(e->x, e->y) >= 0) f->cancelar = true;
+        }
+        enfileirar(f, e);
+        return;
+    }
+    case EV_MOVER: {
+        bool no_x;
+        int ab = aba_em(e->x, e->y, &no_x), fx = no_x ? ab : -1;
+        if (ab != aba_sob || fx != fechar_sob) { aba_sob = ab; fechar_sob = fx; mostrar_abas(); }
+        enfileirar(f, e);
+        return;
+    }
+    case EV_TECLA: {
+        unsigned t = e->tecla;
+        bool ctrl = (e->modificadores & 2) != 0;
+        if ((t == 14 || t == 'n') && ctrl) { nova_janela(); return; }
+        if ((t == 20 || t == 't') && ctrl) { nova_aba(NULL); return; }
+        if ((t == 23 || t == 'w') && ctrl) { fechar_aba(aba_atual); return; }
+        if (t == '\t' && ctrl) { if (qtd_abas > 1) trocar_aba((aba_atual + 1) % qtd_abas); return; }
+        if (ocupada) {
+            usar_estado(f);
+            bool enter = t == '\n' || t == '\r';
+            if (t == TECLA_ESC || t == TECLA_F5 || ((t == 18 || t == 'r') && ctrl) || (ende.foco && enter)) {
+                f->cancelar = true;
+                if (t == TECLA_ESC && !ende.foco) return;   /* Esc só para a carga */
+            } else if (ende.foco && !ctrl) {
+                /* digitar no endereço não espera a página */
+                if (ende.tudo) {
+                    ende.tudo = false;
+                    if (t == 8 || t == TECLA_DELETE || (t >= 32 && t < 256)) { ende.t[0] = 0; ende.cursor = 0; ende.inicio = 0; }
+                    if (t == 8 || t == TECLA_DELETE) { desenhar_barra(); jan_mostrar_area(jan_real, 0, 0, LARG, BARRA); return; }
+                }
+                editar_texto(ende.t, sizeof ende.t, &ende.cursor, t);
+                desenhar_barra();
+                jan_mostrar_area(jan_real, 0, 0, LARG, BARRA);
+                return;
+            }
+        }
+        enfileirar(f, e);
+        return;
+    }
+    case EV_MENU:
+        if (e->tecla == M_ABA) { registrar("navegador: menu %u", e->tecla); nova_aba(NULL); return; }
+        if (e->tecla == M_NOVA) { registrar("navegador: menu %u", e->tecla); nova_janela(); return; }
+        if (ocupada && e->tecla != M_FAVORITAR) f->cancelar = true;
+        enfileirar(f, e);
+        return;
+    default:
+        enfileirar(f, e);
+    }
+}
+
 int principal(int argc, char **argv)
 {
     estado_inicial = aloca(TAM_DADOS + TAM_BSS);
     if (!estado_inicial) return 1;
     estado_guardar(estado_inicial);
-    j = jan_abrir(NOME_NAVEGADOR, LARG, ALT);
+    jan_real = j = jan_abrir(NOME_NAVEGADOR, LARG, ALT);
     if (!j) { imprimir_em(ERROS, "navegador: não consegui abrir a janela\n"); return 1; }
+    jan_fundo.id = -1;
+    jan_fundo.px = aloca((unsigned)(LARG * ALT) * 4);
+    jan_fundo.larg = LARG;
+    jan_fundo.alt = ALT;
     jan_redimensionavel(j, 520, 300);
     posicionar_botoes();
     ler_favoritos();
     registrar("navegador: janela %d", j->id);
     http_guardar_conexoes(true);   /* as imagens e o CSS reaproveitam a conexão da página (H129) */
+    rede_gancho_espera = ceder_rede;
+    cipo_ceder = ceder_cpu;
+    ceder_vez = ceder_cpu;
     nova_aba(argc > 1 ? argv[1] : NULL);
+    if (!qtd_abas) return 1;
     for (;;) {
-        /* o script pediu outra página (location.href, assign, replace, reload) */
-        char u[MAX_URL]; int subst = 0;
-        if (js_navegacao(u, sizeof u, &subst)) {
-            registrar("navegador: o script navegou para %s", u);
-            if (subst && hist_pos >= 0) { hist_pos--; hist_qtd = hist_pos + 1; }
-            carregar(u, true, 0);
-            continue;
-        }
+        aba_t *f = abas[aba_atual];
+        /* tem trabalho? senão, dorme até um evento (ou até o próximo tique dos scripts) */
+        bool trabalho = pode_rodar(f, true) || qtd_fechando > 0;
+        for (int i = 0; i < qtd_abas && !trabalho; i++) if (pode_rodar(abas[i], false)) trabalho = true;
         evento_t e;
-        if (tem_evento_guardado) { e = evento_guardado; tem_evento_guardado = false; }
-        else if (motor && motor_imagens_faltam(motor)) {
-            /* Um clique, a rolagem ou o menu interromperam as imagens: tratado o
-             * evento, elas continuam de onde pararam (antes ficavam faltando, H129). */
-            carregar_imagens();
-            /* terminaram: a barra volta a dizer "Pronto", não "Baixando" a última imagem */
-            if (motor && !motor_imagens_faltam(motor) && status_pronto[0]) definir_status(status_pronto);
-            continue;
+        if (!trabalho) {
+            if (f->situacao == A_DORME) {
+                int falta = (int)(f->acordar - tempo_ms());
+                if (proximo_evento(jan_real->id, &e, false) == 1) despachar(&e);
+                else if (falta > 0) dormir((unsigned)(falta < 10 ? falta : 10));
+            } else if (proximo_evento(jan_real->id, &e, true) == 1) despachar(&e);
         }
-        else if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
-            /* página viva: timers e animações no ritmo deles, sem travar os eventos */
-            if (proximo_evento(j->id, &e, false) != 1) {
-                unsigned passo = js_animando() ? 16 : 100;
-                if (tempo_ms() - ult_tique >= passo || rolagem != js_rol) pagina_viva();
-                else dormir(10);
-                continue;
-            }
-        } else if (proximo_evento(j->id, &e, true) != 1) continue;
-        switch (e.tipo) {
-        case EV_FECHAR:
-            jan_fechar(j);
-            return 0;
-        case EV_REDIMENSIONAR:
-            mudar_tamanho(&e);
-            break;
-        case EV_CLIQUE:
-            if (e.botoes & 1) tratar_clique(&e);
-            else if (e.botoes & 4) {   /* o botão do meio fecha a aba */
-                bool no_x;
-                int ab = aba_em(e.x, e.y, &no_x);
-                if (ab >= 0) fechar_aba(ab);
-            }
-            break;
-        case EV_SOLTOU:
-            arrastando_rolagem = false;
-            break;
-        case EV_MOVER:
-            tratar_movimento(&e);
-            break;
-        case EV_TECLA:
-            tratar_tecla(&e);
-            break;
-        case EV_MENU:
-            registrar("navegador: menu %u", e.tecla);
-            if (e.tecla == M_ABA) nova_aba(NULL);
-            else if (e.tecla == M_NOVA) nova_janela();
-            else if (e.tecla == M_INICIO) carregar("sagui:inicio", true, 0);
-            else if (e.tecla == M_FAVORITOS) carregar("sagui:favoritos", true, 0);
-            else if (e.tecla == M_FAVORITAR) { if (!favoritado()) favoritar(); }
-            else if (e.tecla == M_RECARREGAR) { if (url_atual[0]) carregar(url_atual, false, rolagem); }
-            break;
+        while (proximo_evento(jan_real->id, &e, false) == 1) despachar(&e);
+        /* a da frente primeiro; depois as de trás que estão carregando, e as que estão fechando */
+        bool so_rede = true, rodou = false;
+        f = abas[aba_atual];
+        if (pode_rodar(f, true)) { rodar_aba(f); rodou = true; so_rede = so_rede && f->por_rede; }
+        for (int i = 0; i < qtd_abas; i++) {
+            aba_t *a = abas[i];
+            if (a == abas[aba_atual] || !pode_rodar(a, false)) continue;
+            bool antes = a->carregando;
+            char tit[64];
+            copia_texto(tit, a->titulo, sizeof tit);
+            rodar_aba(a);
+            rodou = true;
+            so_rede = so_rede && a->por_rede;
+            usar_estado(abas[aba_atual]);   /* guarda o título e o andamento da de trás */
+            if (antes != a->carregando || compara_texto(tit, a->titulo) != 0) mostrar_abas();
         }
+        for (int i = 0; i < qtd_fechando; i++) {
+            aba_t *a = fechando[i];
+            rodar_aba(a);
+            rodou = true;
+            if (a->situacao != A_OCUPADA) {
+                destruir_aba(a);
+                fechando[i--] = fechando[--qtd_fechando];
+            }
+        }
+        if (qtd_abas) usar_estado(abas[aba_atual]);
+        if (rodou && so_rede) dormir(2);   /* todas esperando a rede: não gira à toa */
     }
 }

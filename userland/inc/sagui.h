@@ -91,9 +91,13 @@ int      tcp_conectar(unsigned ip, int porta, unsigned ms);     /* socket pronto
 int      tcp_enviar_tudo(int s, const void *dados, unsigned n);
 /* As esperas da rede (DNS, conexão, envio, resposta, TLS) passam por aqui.
  * Um programa que precisa continuar atendendo a janela durante um pedido
- * põe um gancho: ele roda a cada espera, e devolver true desiste do pedido
- * (rede_desistiu fica true até o programa zerar). */
+ * põe um gancho: ele faz a espera no lugar de dormir (o Cipó passa a vez a
+ * outra aba), e devolver true desiste do pedido (rede_desistiu guarda a
+ * última resposta, para o TLS parar de ler). */
 extern bool (*rede_gancho_espera)(void);
+/* Trabalhos longos de CPU da libsagui (TLS, descompressão) chamam ceder_vez
+ * de tempos em tempos; um programa que reveza trabalhos põe a função aqui. */
+extern void (*ceder_vez)(void);
 extern bool rede_desistiu;
 bool     rede_esperar(unsigned ms);                             /* true = desistir */
 int      modo_terminal(int modo);

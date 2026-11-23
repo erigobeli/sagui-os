@@ -192,6 +192,7 @@ void mont_potencia(const Montgomery *m, u32 *r, const u32 *base, const u32 *expo
     int comecou = 0;
     for (u32 i = 32 * kexp; i-- > 0; ) {
         u32 bit = (expoente[i >> 5] >> (i & 31)) & 1;
+        if (!(i & 7)) CEDER_VEZ();
         if (comecou) mont_multiplicar(m, acum, acum, acum);
         if (bit) {
             mont_multiplicar(m, acum, acum, base);

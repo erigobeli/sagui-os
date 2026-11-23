@@ -10,7 +10,9 @@ Critérios:
   - o "x" fecha a aba; Ctrl+W fecha a da frente;
   - o histórico é de cada aba: voltar não sai da aba;
   - durante uma carga demorada, a janela continua atendendo: um clique em
-    outra aba interrompe a carga e troca na hora; ao voltar, a página abre.
+    outra aba troca na hora, e a página continua carregando atrás; ao
+    voltar, ela já está pronta, sem abrir de novo;
+  - Esc no meio da carga desiste dela.
 """
 import http.server
 import os
@@ -153,14 +155,22 @@ def main():
         m.clique(*aba(j, 0, 2))
         esperar(m, "navegador: aba 1 de 2", 3, n)
         dt = time.time() - t0
-        verificar("navegador: carga interrompida" in m.serial()[n:] and dt < 3,
-                  f"durante a carga, o clique na aba 1 interrompeu e trocou em {dt:.1f} s")
-        m.captura("H154-3-carga-interrompida")
+        verificar("navegador: carga interrompida" not in m.serial()[n:] and dt < 3,
+                  f"durante a carga, o clique na aba 1 trocou em {dt:.1f} s, sem interromper")
+        m.captura("H154-3-carga-atras")
+        esperar(m, "navegador: pronto " + lenta, 30, n)
+        verificar(True, "a página lenta terminou de carregar atrás")
         n = len(m.serial())
         m.clique(*aba(j, 1, 2))
         esperar(m, "navegador: aba 2 de 2", 5, n)
-        esperar(m, "navegador: pronto " + lenta, 30, n)
-        verificar(True, "de volta à aba 2, a página interrompida abriu")
+        verificar(sem_recarga(m, n), "de volta à aba 2, a página lenta já estava pronta")
+        # Esc no meio da carga desiste.
+        n = len(m.serial())
+        m.tecla("f5")
+        time.sleep(1.5)
+        m.tecla("esc")
+        esperar(m, "navegador: carga interrompida", 5, n)
+        verificar(True, "Esc desistiu da carga")
         servidor.shutdown()
 
         # JavaScript vivo nas duas abas: cada uma conta no seu ritmo, e a de

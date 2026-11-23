@@ -171,9 +171,15 @@ static bool garantir(leitor_t *l, uint32_t extra)
     return true;
 }
 
+/* Os trabalhos longos passam a vez (sagui.h); fraca porque este arquivo
+ * também é compilado nos testes no computador, onde ela não existe. */
+extern void (*ceder_vez)(void) __attribute__((weak));
+
 static void bloco_codificado(leitor_t *l, const huffman_t *lit, const huffman_t *dist)
 {
+    unsigned vez = 0;
     for (;;) {
+        if (!(++vez & 8191) && &ceder_vez && ceder_vez) ceder_vez();
         int s = decodificar(l, lit);
         if (s < 0) return;
         if (s < 256) {
