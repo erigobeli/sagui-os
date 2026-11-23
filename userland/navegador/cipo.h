@@ -123,5 +123,6 @@ void     tela2d_liberar_todas(void);
 extern void (*cipo_ceder)(void) __attribute__((weak));
 #define CIPO_CEDER() ((&cipo_ceder && cipo_ceder) ? cipo_ceder() : (void)0)
 void js_descontar(unsigned ms);
+void js_coletar(void);   /* lixo do JS, com a página parada (aba que saiu da frente) */
 
 #endif

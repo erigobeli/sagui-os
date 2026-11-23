@@ -2611,6 +2611,15 @@ char *js_tique(int ms, int *saida_tam)
     *saida_tam = saida_n;
     return saida;
 }
+/* Coleta o lixo do JavaScript fora da execução (a aba saiu da frente e
+ * está parada): o que sobrou da página volta para as outras abas. Roda na
+ * pilha grande, que o coletor conhece; sem JS ativo, as raízes são os
+ * globais e as corrotinas paradas. */
+void js_coletar(void)
+{
+    if (!global || gc_proibido) return;
+    em_pilha_grande(gc_coletar);
+}
 int js_vivo(void) { return global && (vivo || quadros_vivos); }
 int js_animando(void) { return global && vivo == 2; }   /* há requestAnimationFrame pendente */
 int js_ativo(void) { return global != NULL; }

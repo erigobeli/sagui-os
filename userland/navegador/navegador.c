@@ -1700,10 +1700,20 @@ static void mostrar_frente(void)
     }
 }
 
+/* A aba sai da frente: parada, o lixo do JavaScript dela é coletado, para
+ * a memória servir às outras. Ocupada (no meio de um script), fica. */
+static void aliviar(aba_t *a)
+{
+    if (!a || (a->situacao != A_ESPERA && a->situacao != A_DORME)) return;
+    usar_estado(a);
+    js_coletar();
+}
+
 static void trocar_aba(int i)
 {
     if (i == aba_atual || i < 0 || i >= qtd_abas) return;
     unsigned t0 = tempo_ms();
+    aliviar(abas[aba_atual]);
     aba_atual = i;
     aba_sob = fechar_sob = -1;
     link_sob_mouse[0] = 0;
@@ -1718,6 +1728,7 @@ static void nova_aba(const char *url)
     if (qtd_abas == MAX_ABAS) { usar_estado(abas[aba_atual]); definir_status("Já são 8 abas nesta janela; feche uma para abrir outra."); return; }
     aba_t *a = criar_aba(url);
     if (!a) { if (qtd_abas) { usar_estado(abas[aba_atual]); definir_status("Não há memória para outra aba."); } return; }
+    if (qtd_abas) aliviar(abas[aba_atual]);
     a->focar = !url;   /* sem endereço (o "+", Ctrl+T, o menu): já pronta para digitar */
     abas[qtd_abas] = a;
     aba_atual = qtd_abas++;
