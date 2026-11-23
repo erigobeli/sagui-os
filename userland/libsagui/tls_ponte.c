@@ -79,8 +79,12 @@ static void amb_data(void *ctx, int *ano, int *mes, int *dia, int *hora, int *mi
 
 /* ------------------------------------------------------------ raízes */
 
+/* Lidas do disco na primeira conexão segura do programa; as seguintes
+ * (o Cipó abre dezenas por página) usam as mesmas. */
+static int qtd_raizes;
 static int carregar_raizes(void)
 {
+    if (qtd_raizes > 0) return qtd_raizes;
     int n = 0;
     unsigned usado = 0;
     entrada_pasta_t e;
@@ -98,6 +102,7 @@ static int carregar_raizes(void)
         usado += e.tamanho;
         n++;
     }
+    qtd_raizes = n;
     return n;
 }
 

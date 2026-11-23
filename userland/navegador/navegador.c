@@ -1169,12 +1169,14 @@ static bool previa(const char *h, uint32_t n)
     if (corte > n / 2) return false;
     while (corte > corpo && h[corte - 1] != '>') corte--;   /* não corta no meio de uma marca */
     if (corte <= corpo) return false;
-    unsigned t0 = tempo_ms();
+    unsigned t0 = tempo_ms(), rede0 = perf.rede;
     ler_pagina(h, (int)corte);
     if (!motor) return false;
+    unsigned t_ler = tempo_ms() - t0;
     rolagem = 0;
     desenhar_tudo();
-    registrar("navegador: previa (%u KB do HTML) em %u ms", corte / 1024, tempo_ms() - t0);
+    registrar("navegador: previa (%u KB do HTML) em %u ms: css pela rede %u ms, ler e diagramar %u ms (diagramar %u ms)",
+              corte / 1024, tempo_ms() - t0, perf.rede - rede0, t_ler - (perf.rede - rede0), custo_diagramar);
     return true;
 }
 
