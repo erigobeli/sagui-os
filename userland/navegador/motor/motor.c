@@ -2693,7 +2693,6 @@ static void normalizar(motor_t *m, no_m *n)
     if (d != D_FLEX && d != D_IFLEX && d != D_GRID) return;
     for (no_m *c = n->filho; c;) {
         if (!(c->texto || c->e.display == D_INLINE)) { c = c->prox; continue; }
-        mexeu(n);
         no_m *ini = c, *fim = c;
         bool so_esp = true;
         while (fim && (fim->texto || fim->e.display == D_INLINE)) {
@@ -2701,11 +2700,12 @@ static void normalizar(motor_t *m, no_m *n)
             else for (int i = 0; i < fim->nt; i++) if (!eh_esp(fim->t[i])) { so_esp = false; break; }
             fim = fim->prox;
         }
-        if (so_esp) {   /* tira o espaço */
+        if (so_esp) {   /* tira o espaço (o estilo de um texto não muda com isso: não precisa estilizar de novo) */
             for (no_m *q = ini; q != fim; q = q->prox) q->e.display = D_NONE, q->texto = q->texto ? 2 : 0;
             c = fim;
             continue;
         }
+        mexeu(n);
         if (!ini->texto && ini->prox == fim && ini->e.display == D_INLINE) { ini->e.display = D_BLOCK; c = fim; continue; }
         no_m *a = m_novo(m, sizeof(no_m));
         if (!a) return;
@@ -2738,6 +2738,11 @@ static int muldiv(int a, int b, int c)
     int neg = (a < 0) ^ (b < 0) ^ (c < 0);
     uint32_t ua = (uint32_t)(a < 0 ? -a : a), ub = (uint32_t)(b < 0 ? -b : b), uc = (uint32_t)(c < 0 ? -c : c);
     uint64_t p = (uint64_t)ua * ub, q = 0, r = 0;
+    if (!(p >> 32)) {   /* o produto cabe em 32 bits (o caso comum): a divisão de 32 bits basta */
+        uint32_t q32 = (uint32_t)p / uc;
+        if (q32 > 0x7FFFFFFF) q32 = 0x7FFFFFFF;
+        return neg ? -(int)q32 : (int)q32;
+    }
     for (int i = 63; i >= 0; i--) {
         r = (r << 1) | ((p >> i) & 1);
         if (r >= uc) { r -= uc; q |= (uint64_t)1 << i; }
