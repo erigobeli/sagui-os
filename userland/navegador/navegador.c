@@ -1336,6 +1336,11 @@ static void clique_js(int id)
 }
 
 static unsigned ult_tique POR_ABA, hash_viva POR_ABA;
+/* Quanto custou o último quadro de animação: o próximo só vem depois do
+ * dobro disso (no mínimo 16 ms). Sem aceleração de vídeo, um quadro de
+ * canvas em tela cheia pode custar centenas de ms; pedido a cada 16 ms, a
+ * aba tomaria o processador inteiro e o resto do sistema travaria. */
+static unsigned custo_quadro POR_ABA, quadros_n POR_ABA, quadros_ms POR_ABA, quadros_js POR_ABA, quadros_desde POR_ABA;
 static int js_rol POR_ABA;
 
 static unsigned hash_texto(const char *h, int n) { unsigned x = 2166136261u; for (int i = 0; i < n; i++) x = (x ^ (uint8_t)h[i]) * 16777619u; return x; }
@@ -1347,6 +1352,7 @@ static void pagina_viva(void)
     char *hr = NULL, *h;
     if (rolagem != js_rol) { js_rol = rolagem; hr = js_rolar(0, js_rol, &nr); }   /* scroll e observadores antes dos timers */
     h = js_tique((int)(agora - ult_tique > 1000 ? 1000 : agora - ult_tique), &n);
+    quadros_js += tempo_ms() - agora;
     if (h) libera(hr); else { h = hr; n = nr; }   /* vale o estado mais novo */
     ult_tique = agora;
     int px, py;
@@ -1595,8 +1601,21 @@ static void laco_aba(void)
         }
         if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
             /* página viva: timers e animações no ritmo deles, sem travar os eventos */
-            unsigned passo = js_animando() ? 16 : 100;
-            if (!tem_evento() && (tempo_ms() - ult_tique >= passo || rolagem != js_rol)) { pagina_viva(); continue; }
+            unsigned passo = js_animando() ? (custo_quadro * 2 > 16 ? (custo_quadro * 2 < 1000 ? custo_quadro * 2 : 1000) : 16) : 100;
+            if (!tem_evento() && (tempo_ms() - ult_tique >= passo || rolagem != js_rol)) {
+                unsigned t0 = tempo_ms();
+                pagina_viva();
+                custo_quadro = tempo_ms() - t0;
+                quadros_ms += custo_quadro;
+                quadros_n++;
+                if (tempo_ms() - quadros_desde >= 10000) {
+                    if (quadros_desde) registrar("navegador: animacao: %u quadros em 10 s, %u ms cada (%u de script), um a cada %u ms",
+                                                 quadros_n, quadros_ms / quadros_n, quadros_js / quadros_n, passo);
+                    quadros_n = quadros_ms = quadros_js = 0;
+                    quadros_desde = tempo_ms();
+                }
+                continue;
+            }
             unsigned falta = passo - (tempo_ms() - ult_tique);
             if (!pegar_evento(&e, falta > passo ? 1 : falta)) continue;
         } else if (!pegar_evento(&e, 0)) continue;
