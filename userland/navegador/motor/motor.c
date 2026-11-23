@@ -42,7 +42,9 @@ typedef struct {
     uint8_t lista, visivel, corta, caixa_borda, dir, quebra, justifica, alinha_itens, alinha_si, alinha_conteudo;
     uint8_t vert;
     uint8_t just_si, just_itens;
-    int16_t desfoque;                  /* filter: blur(px) */        /* justify-self / justify-items (grid): 0 normal, 1 start, 2 center, 3 end, 4 stretch */
+    int16_t desfoque;                  /* filter: blur(px) */
+    uint8_t g_fluxo_col;               /* grid-auto-flow: column */
+    medida_t g_auto_col;               /* grid-auto-columns (U_AUTO: auto) */        /* justify-self / justify-items (grid): 0 normal, 1 start, 2 center, 3 end, 4 stretch */
     medida_t larg, alt, min_l, max_l, min_a, max_a, base;
     medida_t marg[4], pad[4], pos[4];   /* top right bottom left */
     int16_t borda[4]; uint32_t cor_borda[4];
@@ -620,7 +622,7 @@ enum {
     PR_ACONTENT, PR_PITEMS, PR_OVX, PR_OVY, PR_BTW, PR_BRW, PR_BBW, PR_BLW, PR_BTC, PR_BRC, PR_BBC, PR_BLC, PR_PCONTENT, PR_TDLINE,
     PR_GTA, PR_GAREA, PR_OPACITY, PR_MINLINE, PR_MBLOCK, PR_PINLINE, PR_PBLOCK, PR_BGIMAGE, PR_BGSIZE, PR_MASK, PR_CONTENT, PR_TRANSFORM, PR_FFAMILY,
     PR_BGPOS, PR_BGREP, PR_BGPOSX, PR_BGPOSY, PR_FSTRETCH, PR_FVS, PR_LSPACING, PR_FILL, PR_STROKE, PR_SWIDTH, PR_BSPACING, PR_BCOLLAPSE,
-    PR_BSHADOW, PR_TSHADOW, PR_OBJFIT, PR_OBJPOS, PR_ASPECT, PR_JSELF, PR_JITEMS, PR_FILTER,
+    PR_BSHADOW, PR_TSHADOW, PR_OBJFIT, PR_OBJPOS, PR_ASPECT, PR_JSELF, PR_JITEMS, PR_FILTER, PR_GAFLOW, PR_GACOLS,
     PR_CUSTOM, PR_QTD
 };
 static const char *const nomes_prop[] = {
@@ -635,7 +637,7 @@ static const char *const nomes_prop[] = {
     "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "place-content", "text-decoration-line",
     "grid-template-areas", "grid-area", "opacity", "-margin-inline", "-margin-block", "-padding-inline", "-padding-block", "background-image", "background-size", "mask-image", "content", "transform", "font-family",
     "background-position", "background-repeat", "background-position-x", "background-position-y", "font-stretch", "font-variation-settings", "letter-spacing", "fill", "stroke", "stroke-width", "border-spacing", "border-collapse",
-    "box-shadow", "text-shadow", "object-fit", "object-position", "aspect-ratio", "justify-self", "justify-items", "filter",
+    "box-shadow", "text-shadow", "object-fit", "object-position", "aspect-ratio", "justify-self", "justify-items", "filter", "grid-auto-flow", "grid-auto-columns",
 };
 
 static int achar_prop(const char *p, int n)
@@ -2093,7 +2095,8 @@ static void tamanho_fonte(estilo_t *e, const char *v, const estilo_t *pai)
     medida_t md;
     if (!ler_medida_m(v, (int)tam_texto(v), &md)) return;
     int t = md.u == U_PX ? md.v : md.u == U_EM ? md.v * pt / 100 : md.u == U_REM ? md.v * 16 / 100 : md.u == U_PCT ? md.v * pt / 10000 :
-            md.u == U_VW ? md.v * 1024 / 10000 : (md.u == U_FR ? 16 : pt);
+            md.u == U_VW ? md.v * (mo && mo->vw > 0 ? mo->vw : 1024) / 10000 : md.u == U_VH ? md.v * (mo && mo->vh > 0 ? mo->vh : 768) / 10000 :
+            md.u == U_CALC ? calc_px(md.v, pt, pt) : (md.u == U_FR ? 16 : pt);   /* calc/clamp: % e em são do tamanho do pai */
     if (t < 6) t = 6;
     if (t > 96) t = 96;
     e->tam = (int16_t)t;
@@ -2382,6 +2385,8 @@ static void aplicar(motor_t *m, no_m *n, int prop, const char *v0, const estilo_
         if (b) { medida_t d; int k = 0; while (b[5 + k] && b[5 + k] != ')') k++; if (ler_medida_m(b + 5, k, &d)) e->desfoque = (int16_t)px_de(&d, e->tam); }
         break;
     }
+    case PR_GAFLOW: e->g_fluxo_col = strstr_m(v, "column") ? 1 : 0; break;
+    case PR_GACOLS: if (ler_medida_m(v, nv, &md)) e->g_auto_col = md; break;
     case PR_JSELF: case PR_JITEMS: {
         uint8_t j = strstr_m(v, "center") ? 2 : (strstr_m(v, "end") || strstr_m(v, "right")) ? 3 :
                     (strstr_m(v, "start") || strstr_m(v, "left")) ? 1 : strstr_m(v, "stretch") ? 4 : 0;
@@ -4006,6 +4011,13 @@ static int grid(no_m *n, int cw)
     int qtd = 0;
     for (no_m *c = n->filho; c; c = c->prox) if (!c->texto && c->e.display != D_NONE && !fora_do_fluxo(c)) qtd++;
     if (!qtd) return 0;
+    /* grid-auto-flow: column sem colunas definidas: uma coluna por item, todas
+     * na mesma linha, da largura de grid-auto-columns (o que passar da caixa
+     * fica para a rolagem/corte do overflow) */
+    if (e->g_fluxo_col && !e->n_col && !e->areas) {
+        nt = qtd < MAX_TRILHAS ? qtd : MAX_TRILHAS;
+        for (int i = 0; i < nt; i++) tr[i] = e->g_auto_col;
+    }
     typedef struct { no_m *c; int lin, col, span, lspan; } gi_t;
     /* áreas nomeadas: "a a b" "c c b" */
     char *anome[24]; int ar0[24], ac0[24], ar1[24], ac1[24], nareas = 0, acols = 0;
