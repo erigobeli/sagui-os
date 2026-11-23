@@ -196,6 +196,8 @@ uint32_t *svg_rasterizar(const char *xml, int n, int l, int a, uint32_t cor);
 struct motor {
     motor_ganchos_t g;
     bloco_m *blocos;
+    bloco_m *blocos_lay;   /* o que só vale até a próxima diagramação (linhas, itens, comandos) */
+    bool lay;              /* m_novo vai para blocos_lay */
     no_m *raiz, *corpo;
     int qtd_nos;
     char url[600];
@@ -234,13 +236,14 @@ struct motor {
 static void *m_novo(struct motor *m, int n)
 {
     n = (n + 7) & ~7;
-    bloco_m *b = m->blocos;
+    bloco_m **lista = m->lay ? &m->blocos_lay : &m->blocos;
+    bloco_m *b = *lista;
     if (!b || b->usado + n > b->cap) {
         int cap = n > 60000 ? n : 65536 - (int)sizeof(bloco_m);
         b = aloca(sizeof(bloco_m) + (size_t)cap);
         if (!b) return NULL;
-        b->prox = m->blocos; b->usado = 0; b->cap = cap;
-        m->blocos = b;
+        b->prox = *lista; b->usado = 0; b->cap = cap;
+        *lista = b;
     }
     void *p = (char *)(b + 1) + b->usado;
     b->usado += n;
@@ -5554,6 +5557,7 @@ void motor_fim(motor_t *m)
         if (m->faces[i].f && !fonte_em_cache(m->faces[i].f)) fonte_fechar(m->faces[i].f);
     }
     while (m->blocos) { bloco_m *b = m->blocos; m->blocos = b->prox; libera(b); }
+    while (m->blocos_lay) { bloco_m *b = m->blocos_lay; m->blocos_lay = b->prox; libera(b); }
     libera(m);
     n_folhas = 0;
 }
@@ -5869,6 +5873,13 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
         filtro_ativo = 0;
     }
     limpar_layout(m->raiz);
+    /* O que a diagramação anterior alocou (linhas, itens, contextos, comandos,
+     * alvos) não serve mais: volta inteiro, em vez de se acumular a cada
+     * diagramação (eram uns 5 MB a cada vez na Wikipédia). */
+    while (m->blocos_lay) { bloco_m *b = m->blocos_lay; m->blocos_lay = b->prox; libera(b); }
+    m->cmds = NULL; m->cap_cmds = 0; m->regs = NULL; m->cap_regs = 0; m->alvos = NULL; m->cap_alvos = 0;
+    itens = NULL; cap_itens = 0;
+    m->lay = true;
     m->n_alvos = 0;
     n_itens = 0;
     m->raiz->e.display = D_BLOCK;
@@ -5885,6 +5896,7 @@ static int layout_interno(motor_t *m, int largura, int altura_tela)
     achatar(m->raiz, 0, 0, 0, 0, largura, altura_tela);
     achatar_adiados(0, 0);
     ordenar_camadas();
+    m->lay = false;
     int h = m->raiz->a;
     for (int i = 0; i < m->n_cmds; i++) {
         cmd_t *c = &m->cmds[i];
