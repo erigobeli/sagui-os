@@ -23,9 +23,32 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
+- **Cipó:** abas na mesma janela: o "+" e o Ctrl+T abrem outra (já com o
+  cursor no endereço), Ctrl+Tab passa para a próxima, o "x", o Ctrl+W e o
+  botão do meio fecham. Cada aba guarda a sua página viva e trabalha em
+  corrotina: a janela atende durante a carga, trocar de aba leva 10 a 30 ms
+  e a página de trás continua carregando. A aba que sai da frente parada
+  devolve a memória do JavaScript, e as animações seguem o ritmo que a
+  máquina aguenta, sem tomar o processador inteiro.
+
 - **Segurança (Cipó):** uma fonte WOFF2 malformada, vinda de uma página, podia
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
+
+- **Cipó:** as imagens e o CSS vêm pela mesma conexão da página e várias
+  de uma vez (keep-alive e pipelining), endereços de CSS longos (o da
+  Wikipédia) chegam inteiros e os nomes do DNS ficam guardados. A página do
+  Gato da Wikipédia passou de mais de 1 minuto para uns 10 s.
+
+- **Cipó:** rolar ou clicar enquanto as imagens chegam não as deixa mais
+  faltando: a carga continua depois, e a barra de baixo volta a "Pronto".
+
+- **Cipó:** visual novo. Em cima, a aba com o ícone e o título da página (o
+  "+" abre outra janela, o "x" fecha esta); embaixo, os botões com ícones
+  desenhados, o endereço arredondado com o cadeado do HTTPS e a estrela que
+  guarda ou tira a página dos favoritos, e o menu dos três pontos. Os
+  favoritos ficam numa barra própria, a linha azul mostra a carga e o status
+  virou um balão no canto, por cima da página. Ctrl+D, Ctrl+N, F5 e Ctrl+R.
 
 ## Versões lançadas
 

@@ -63,4 +63,10 @@ void mont_potencia(const Montgomery *m, u32 *r, const u32 *base, const u32 *expo
 void mont_somar(const Montgomery *m, u32 *r, const u32 *a, const u32 *b);
 void mont_subtrair(const Montgomery *m, u32 *r, const u32 *a, const u32 *b);
 
+/* Contas longas (potência, curvas) chamam CEDER_VEZ() a cada passo: um
+ * programa que reveza trabalhos (o Cipó, com abas) passa a vez ali. Sem o
+ * ponteiro (testes no computador), nada acontece. */
+extern void (*ceder_vez)(void) __attribute__((weak));
+#define CEDER_VEZ() do { if (&ceder_vez && ceder_vez) ceder_vez(); } while (0)
+
 #endif

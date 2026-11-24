@@ -233,14 +233,14 @@ static bool passada(jpeg_t *j, const uint8_t *s, uint32_t tam)
         /* Uma componente só: os blocos vêm na ordem da imagem dela, sem MCU. */
         comp_t *c = usados[0];
         int bl = (j->larg * c->h / j->hmax + 7) / 8, ba = (j->alt * c->v / j->vmax + 7) / 8;
-        for (int by = 0; by < ba; by++)
+        for (int by = 0; by < ba; by++, CIPO_CEDER())
             for (int bx = 0; bx < bl; bx++) {
                 if (j->intervalo && contador == j->intervalo) { reiniciar_passada(j); contador = 0; }
                 if (!decodificar_bloco(j, c, bloco(c, bx, by), ss, se, ah, al)) return false;
                 contador++;
             }
     } else {
-        for (int my = 0; my < j->mcu_a; my++)
+        for (int my = 0; my < j->mcu_a; my++, CIPO_CEDER())
             for (int mx = 0; mx < j->mcu_l; mx++) {
                 if (j->intervalo && contador == j->intervalo) { reiniciar_passada(j); contador = 0; }
                 for (int i = 0; i < n; i++) {
@@ -414,7 +414,7 @@ imagem_t *jpeg_ler(const uint8_t *d, uint32_t n, char *erro, int max_erro)
         int pl = c->blocos_l * 8;
         planos[i] = aloca((size_t)pl * (size_t)c->blocos_a * 8);
         if (!planos[i]) FALHA("memória insuficiente para o JPEG");
-        for (int by = 0; by < c->blocos_a; by++)
+        for (int by = 0; by < c->blocos_a; by++, CIPO_CEDER())
             for (int bx = 0; bx < c->blocos_l; bx++)
                 idct(bloco(c, bx, by), j->quant[c->tq], planos[i] + (by * 8) * pl + bx * 8, pl);
     }

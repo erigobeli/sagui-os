@@ -38,11 +38,12 @@ static int amb_enviar(void *ctx, const u8 *dados, u32 n)
 static int amb_receber(void *ctx, u8 *dados, u32 max)
 {
     struct tls_sessao *s = ctx;
+    if (rede_desistiu) return -1;
     int r = rede_receber(s->socket, dados, max, NULL);
     return r < 0 ? -1 : r;
 }
 
-static void amb_esperar(void *ctx, u32 ms) { (void)ctx; dormir(ms ? ms : 1); }
+static void amb_esperar(void *ctx, u32 ms) { (void)ctx; rede_esperar(ms ? ms : 1); }
 static u32  amb_agora(void *ctx) { (void)ctx; return tempo_ms(); }
 static void amb_aleatorio(void *ctx, u8 *dados, u32 n)
 {

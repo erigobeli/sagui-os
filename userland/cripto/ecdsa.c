@@ -265,6 +265,7 @@ int ecdsa_verificar(int curva, const u8 *ponto, u32 nponto, const u8 *resumo, u3
     for (u32 i = 32 * k; i-- > 0; ) {
         u32 b1 = (u1[i >> 5] >> (i & 31)) & 1;
         u32 b2 = (u2[i >> 5] >> (i & 31)) & 1;
+        if (!(i & 7)) CEDER_VEZ();
         ponto_dobrar(&f, &acum, &acum);
         if (b1 && b2) ponto_somar(&f, &acum, &acum, &gq);
         else if (b1) ponto_somar(&f, &acum, &acum, &g);

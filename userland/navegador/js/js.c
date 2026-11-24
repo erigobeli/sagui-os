@@ -1404,6 +1404,8 @@ static no *var_decl(int tipo, int sem_in)
 }
 static no *stmt(void)
 {
+    static unsigned vez;
+    if (!(++vez & 127)) CIPO_CEDER();
     no *x;
     int t = L.tk;
     if (t == '{') { prox(); return bloco_corpo(); }
@@ -1675,6 +1677,12 @@ static void chk(void)
     if (t_suave && !(passos & 1023) && tempo_ms() > t_suave) limite_suave();
     if (&c < lim_pilha) estouro_pilha();
     if (!(++passos & 8191) && tempo_ms() > t_limite) lancar_fatal("tempo");
+    if (!(passos & 1023)) CIPO_CEDER();
+}
+void js_descontar(unsigned ms)
+{
+    if (t_limite) t_limite += ms;
+    if (t_suave) t_suave += ms;
 }
 static val novo_gerador(obj *o, val este, val *a, int n);
 static val executar_fn_(obj *o, val este, val *a, int n, val novo_t);
@@ -2149,6 +2157,7 @@ static int laco(int c, str *meu)
     if (!(++passos & 1023)) {   /* laço sem chamadas também respeita os limites de tempo */
         if (t_suave && tempo_ms() > t_suave) limite_suave();
         if (tempo_ms() > t_limite) lancar_fatal("tempo");
+        CIPO_CEDER();
     }
     /* 0 segue, 1 sai normal, 2 propaga */
     if (c == C_BRK) { if (!rot || rot == meu) { rot = NULL; return 1; } return 2; }
