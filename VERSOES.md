@@ -23,6 +23,12 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
+- **Cipó:** cada diagramação devolve a memória da anterior (eram uns 5 MB a
+  mais a cada vez; com algumas abas o sistema ficava sem memória), e o
+  estilo de uma página grande sai mais barato. WebP sem perdas (os ícones
+  da Google Play), `justify-self`, `max-width` e `grid-auto-flow: column` no
+  grid, `border-radius` em %, `filter: blur()` e `font-size` com `clamp()`.
+
 - **Segurança (Cipó):** uma fonte WOFF2 malformada, vinda de uma página, podia
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
