@@ -38,11 +38,12 @@ static int amb_enviar(void *ctx, const u8 *dados, u32 n)
 static int amb_receber(void *ctx, u8 *dados, u32 max)
 {
     struct tls_sessao *s = ctx;
+    if (rede_desistiu) return -1;
     int r = rede_receber(s->socket, dados, max, NULL);
     return r < 0 ? -1 : r;
 }
 
-static void amb_esperar(void *ctx, u32 ms) { (void)ctx; dormir(ms ? ms : 1); }
+static void amb_esperar(void *ctx, u32 ms) { (void)ctx; rede_esperar(ms ? ms : 1); }
 static u32  amb_agora(void *ctx) { (void)ctx; return tempo_ms(); }
 static void amb_aleatorio(void *ctx, u8 *dados, u32 n)
 {
@@ -78,8 +79,12 @@ static void amb_data(void *ctx, int *ano, int *mes, int *dia, int *hora, int *mi
 
 /* ------------------------------------------------------------ raízes */
 
+/* Lidas do disco na primeira conexão segura do programa; as seguintes
+ * (o Cipó abre dezenas por página) usam as mesmas. */
+static int qtd_raizes;
 static int carregar_raizes(void)
 {
+    if (qtd_raizes > 0) return qtd_raizes;
     int n = 0;
     unsigned usado = 0;
     entrada_pasta_t e;
@@ -97,6 +102,7 @@ static int carregar_raizes(void)
         usado += e.tamanho;
         n++;
     }
+    qtd_raizes = n;
     return n;
 }
 

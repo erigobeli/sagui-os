@@ -1507,7 +1507,9 @@ static void html_ler(const char *h, int n, dn *base)
 {
     dn *cur = base;
     int i = 0;
+    unsigned vez = 0;
     while (i < n) {
+        if (!(++vez & 255)) CIPO_CEDER();
         if (h[i] != '<' || i + 1 >= n || !(id_ini((uint8_t)h[i + 1]) || h[i + 1] == '/' || h[i + 1] == '!' || h[i + 1] == '?')) {
             int j = i + 1;
             while (j < n && h[j] != '<') j++;
@@ -1677,6 +1679,8 @@ static void serial_css_sombra(buf *b, dn *st)
 }
 static void serial(buf *b, dn *d, int final)
 {
+    static unsigned vez;
+    if (!(++vez & 255)) CIPO_CEDER();
     if (d->tipo == 3) { b_por(b, d->txt->s, d->txt->n); return; }
     if (d->tipo == 9 || d->tipo == 11) { serial_filhos(b, d, final); return; }
     if (final && host_atual && d->tag == I("slot")) { serial_slot(b, d, final); return; }
@@ -2606,6 +2610,19 @@ char *js_tique(int ms, int *saida_tam)
     na_pilha(tique_seguro);
     *saida_tam = saida_n;
     return saida;
+}
+/* Coleta o lixo do JavaScript fora da execução (a aba saiu da frente e
+ * está parada): o que sobrou da página volta para as outras abas. Roda na
+ * pilha grande, que o coletor conhece; sem JS ativo, as raízes são os
+ * globais e as corrotinas paradas. */
+void js_coletar(void)
+{
+    if (!global || gc_proibido) return;
+    em_pilha_grande(gc_coletar);
+    /* As pilhas do interpretador (4 MB) e a grande (2 MB) só servem com um
+     * script rodando: voltam ao sistema e são pedidas de novo na próxima vez. */
+    if (pilha_js) { libera(pilha_js); pilha_js = NULL; lim_pilha = NULL; }
+    if (pilha_ext) { libera(pilha_ext); pilha_ext = NULL; }
 }
 int js_vivo(void) { return global && (vivo || quadros_vivos); }
 int js_animando(void) { return global && vivo == 2; }   /* há requestAnimationFrame pendente */

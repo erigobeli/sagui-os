@@ -40,7 +40,7 @@ REDE = ["-netdev", "user,id=n0", "-device", "e1000,netdev=n0,mac=52:54:00:12:34:
 PASTA = os.path.join(SAIDA, "h62-paginas")
 PAGINAS = os.path.join(RAIZ, "tests", "navegador", "paginas")
 RENDER = os.path.join(SAIDA, "h62-teste_pagina")
-VISTA_L, VISTA_A, BARRA = 946, 606, 34
+VISTA_L, VISTA_A, BARRA = 946, 554, 106   # BARRA: a aba (36), os botões e o endereço (40), os favoritos (30)
 LINK = (0x0B, 0x57, 0xD0)          # a:link do motor do Cipó (H82)
 BORDA_CAMPO = (0x76, 0x76, 0x76)   # borda dos <input> do motor
 pedidos = []
@@ -151,7 +151,7 @@ def referencia(nome):
 
 
 def comparar(m, ref, j, rolagem, nome):
-    m.mouse_para(j["x"] + 300, j["y"] + BARRA + VISTA_A + 10)   # o ponteiro fica na barra de status, fora da vista
+    m.mouse_para(j["x"] + 300, j["y"] + BARRA + VISTA_A + 10)   # o ponteiro fica embaixo da janela, fora da vista
     time.sleep(0.5)
     png = m.captura(nome)
     tela = Image.open(png).convert("RGB")
@@ -219,11 +219,11 @@ def main():
             esperar(m, f"navegador: pronto {base}/pagina2.html", 60, antes)
             verificar(True, "clicar no link abriu a página 2")
             antes = len(m.serial())
-            m.clique(j["x"] + 6 + 13, j["y"] + 5 + 12)          # voltar
+            m.clique(*botao(j, "voltar"))
             esperar(m, f"navegador: pronto {base}/teste1.html", 60, antes)
             verificar(True, "o botão voltar trouxe a primeira página")
             antes = len(m.serial())
-            m.clique(j["x"] + 34 + 13, j["y"] + 5 + 12)         # avançar
+            m.clique(*botao(j, "avancar"))
             esperar(m, f"navegador: pronto {base}/pagina2.html", 60, antes)
             verificar(True, "o botão avançar foi de novo para a página 2")
             m.captura("H62-3-pagina2")
@@ -270,7 +270,13 @@ def main():
             antes = len(m.serial())
             m.clique(*botao(j, "fav"))
             esperar(m, "navegador: favorito", 20, antes)
-            m.clique(*botao(j, "favoritos"))
+            time.sleep(1)
+            m.captura("H62-6-estrela")
+            # O favorito aparece na barra de baixo do endereço e abre com um clique.
+            m.clique(*botao(j, "barra_favoritos"))
+            esperar(m, "navegador: favorito aberto", 20, antes)
+            esperar(m, "navegador: pronto", 60, antes)
+            digitar_endereco(m, j, "sagui:favoritos")
             esperar(m, "navegador: pronto sagui:favoritos", 30, antes)
             verificar("6 links" in m.serial()[antes:] or "links" in m.serial()[antes:], "página de favoritos aberta")
             m.captura("H62-6-favoritos")
@@ -337,16 +343,26 @@ def achar_campo(png, j, bordas=None):
 
 
 def botao(j, qual):
+    """O centro de um botão da barra (janela de 960 de largura)."""
     larg = 960
-    ende_l = larg - 94 - 6 - 34 - 50 - 88 - 18
-    x_ir = 94 + ende_l + 6
-    x_fav = x_ir + 34 + 6
-    x_favs = x_fav + 50 + 6
-    return (j["x"] + (x_fav + 25 if qual == "fav" else x_favs + 44), j["y"] + 17)
+    ende_x = 4 * 34 + 14
+    ende_l = larg - ende_x - 48
+    y = 36 + 4 + 16
+    if qual == "voltar":
+        return (j["x"] + 8 + 16, j["y"] + y)
+    if qual == "avancar":
+        return (j["x"] + 8 + 34 + 16, j["y"] + y)
+    if qual == "fav":   # a estrela, no fim do endereço
+        return (j["x"] + ende_x + ende_l - 34 + 15, j["y"] + y)
+    if qual == "menu":
+        return (j["x"] + larg - 40 + 16, j["y"] + y)
+    if qual == "barra_favoritos":   # o primeiro favorito da barra
+        return (j["x"] + 8 + 30, j["y"] + 36 + 40 + 15)
+    raise ValueError(qual)
 
 
 def digitar_endereco(m, j, texto):
-    m.clique(j["x"] + 300, j["y"] + 17)       # o primeiro clique seleciona o endereço todo
+    m.clique(j["x"] + 300, j["y"] + 36 + 20)  # o primeiro clique seleciona o endereço todo
     m.digitar(texto + "\n", 0.03)             # e digitar troca
 
 

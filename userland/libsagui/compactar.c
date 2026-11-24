@@ -93,9 +93,13 @@ typedef struct {
     int erro;                    /* 0, ou um COMP_ERRO_* */
 } leitor_t;
 
+#define RAPIDO_BITS 9
 typedef struct {
     uint16_t quantos[16];        /* quantos códigos de cada tamanho */
     uint16_t simbolos[320];      /* símbolos em ordem de código */
+    /* Os códigos de até RAPIDO_BITS bits, pelos próximos bits da entrada
+     * (na ordem em que chegam): símbolo << 4 | tamanho; 0 = código mais longo. */
+    uint16_t rapido[1 << RAPIDO_BITS];
 } huffman_t;
 
 static uint32_t ler_bits(leitor_t *l, int n)
@@ -132,6 +136,21 @@ static bool montar_huffman(huffman_t *h, const uint8_t *tamanhos, int n)
     for (int t = 1; t < 15; t++) inicio[t + 1] = (uint16_t)(inicio[t] + h->quantos[t]);
     for (int i = 0; i < n; i++)
         if (tamanhos[i]) h->simbolos[inicio[tamanhos[i]]++] = (uint16_t)i;
+    /* A tabela rápida: os códigos canônicos, com os bits invertidos (o
+     * primeiro bit do código é o primeiro a chegar, o de baixo). */
+    memset(h->rapido, 0, sizeof h->rapido);
+    uint32_t codigo = 0;
+    int indice = 0;
+    for (int t = 1; t < 16; t++) {
+        for (int j = 0; j < h->quantos[t]; j++, codigo++, indice++) {
+            if (t > RAPIDO_BITS) continue;
+            uint32_t inv = 0;
+            for (int b = 0; b < t; b++) if (codigo & (1u << b)) inv |= 1u << (t - 1 - b);
+            for (uint32_t k = inv; k < (1u << RAPIDO_BITS); k += 1u << t)
+                h->rapido[k] = (uint16_t)(h->simbolos[indice] << 4 | t);
+        }
+        codigo <<= 1;
+    }
     return true;
 }
 
@@ -140,6 +159,17 @@ static bool montar_huffman(huffman_t *h, const uint8_t *tamanhos, int n)
  * consecutivos, então basta ver se o valor caiu na faixa daquele tamanho. */
 static int decodificar(leitor_t *l, const huffman_t *h)
 {
+    /* Caminho rápido: os próximos bits apontam direto o símbolo. */
+    while (l->qtd < RAPIDO_BITS && l->pos < l->n) {
+        l->bits |= (uint32_t)l->d[l->pos++] << l->qtd;
+        l->qtd += 8;
+    }
+    uint16_t r = h->rapido[l->bits & ((1u << RAPIDO_BITS) - 1)];
+    if (r && (uint32_t)(r & 15) <= l->qtd) {
+        l->bits >>= r & 15;
+        l->qtd -= r & 15;
+        return r >> 4;
+    }
     int codigo = 0, primeiro = 0, indice = 0;
     for (int t = 1; t < 16; t++) {
         codigo |= (int)ler_bits(l, 1);
@@ -171,9 +201,15 @@ static bool garantir(leitor_t *l, uint32_t extra)
     return true;
 }
 
+/* Os trabalhos longos passam a vez (sagui.h); fraca porque este arquivo
+ * também é compilado nos testes no computador, onde ela não existe. */
+extern void (*ceder_vez)(void) __attribute__((weak));
+
 static void bloco_codificado(leitor_t *l, const huffman_t *lit, const huffman_t *dist)
 {
+    unsigned vez = 0;
     for (;;) {
+        if (!(++vez & 8191) && &ceder_vez && ceder_vez) ceder_vez();
         int s = decodificar(l, lit);
         if (s < 0) return;
         if (s < 256) {
@@ -253,6 +289,8 @@ static int inflar_leitor(leitor_t *l, uint32_t *usados)
         int tipo = (int)ler_bits(l, 2);
         if (l->erro) break;
         if (tipo == 0) {   /* guardado: alinha no byte, LEN, NLEN e os bytes */
+            /* o resto do byte atual some; bytes inteiros já lidos à frente voltam */
+            l->pos -= l->qtd / 8;
             l->bits = 0; l->qtd = 0;
             if (l->pos + 4 > l->n) { l->erro = COMP_ERRO_TRUNCADO; break; }
             uint32_t tam = (uint32_t)(l->d[l->pos] | (l->d[l->pos + 1] << 8));
@@ -272,7 +310,7 @@ static int inflar_leitor(leitor_t *l, uint32_t *usados)
     if (l->erro) return l->erro;
     /* Os bits que sobraram no último byte não são de mais ninguém: o
      * próximo dado (rodapé do gzip, por exemplo) começa no byte seguinte. */
-    if (usados) *usados = l->pos;
+    if (usados) *usados = l->pos - l->qtd / 8;   /* bytes lidos à frente não foram usados */
     return (int)l->feito;
 }
 

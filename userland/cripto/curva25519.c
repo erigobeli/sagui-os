@@ -291,6 +291,7 @@ int x25519(u8 saida[32], const u8 escalar[32], const u8 ponto[32])
 
     u32 troca = 0;
     for (int i = 254; i >= 0; i--) {
+        if (!(i & 15)) CEDER_VEZ();
         u32 bit = (k[i >> 3] >> (i & 7)) & 1;
         troca ^= bit;
         campo_trocar(x2, x3, troca);
@@ -448,6 +449,7 @@ static void ponto_multiplicar(Ponto *r, const u8 escalar[32], const Ponto *p)
     Ponto acum, soma;
     ponto_neutro(&acum);
     for (int i = 255; i >= 0; i--) {
+        if (!(i & 15)) CEDER_VEZ();
         u32 bit = (escalar[i >> 3] >> (i & 7)) & 1;
         ponto_dobrar(&acum, &acum);
         ponto_somar(&soma, &acum, p);
