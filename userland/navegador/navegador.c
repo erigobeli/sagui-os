@@ -165,6 +165,8 @@ static void desenhar_tudo(void)
     jan_mostrar(j);
 }
 
+static char status_pronto[sizeof status];   /* "Pronto: ..." da página atual, para voltar depois das imagens */
+
 static void definir_status(const char *t)
 {
     copia_texto(status, t, sizeof status);
@@ -259,6 +261,9 @@ static uint8_t *copia_bloco(const uint8_t *d, unsigned n)
     return c;
 }
 
+/* Para onde vai o tempo de uma página (registrado em "navegador: tempos"). */
+static struct { unsigned rede, n_rede, decod, n_decod, diag, n_diag, desenho; } perf;
+
 /* Evento que chegou enquanto a página carregava (tratado depois, no laço). */
 static evento_t evento_guardado;
 static bool tem_evento_guardado;
@@ -272,7 +277,9 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
     formatar_texto(msg, sizeof msg, "Baixando %s", end);
     definir_status(msg);
     rede_resposta_t r;
+    unsigned t0 = tempo_ms();
     int s = rede_buscar(end, &r, MAX_RECURSO, cab, cmax);
+    perf.rede += tempo_ms() - t0; perf.n_rede++;
     if (codigo) *codigo = s < 0 ? 0 : s;
     if (final) copia_texto(final, r.final, (size_t)fmax);
     if (s < 0 || !r.d) { registrar("navegador: recurso %s: %s", end, r.erro[0] ? r.erro : "veio vazio"); libera(r.d); return NULL; }
@@ -280,11 +287,141 @@ static uint8_t *baixar_sem_cache(const char *u, unsigned *n, int *codigo, char *
     return r.d;
 }
 
+/* Imagens que chegaram juntas (pipelining, H129), esperando o motor pedir. */
+#define ADIANTADAS 64   /* imagens (16 por vez) ou as folhas de estilo da página */
+#define LOTE 16         /* o máximo de um rede_lote */
+static bool lendo_folhas;   /* o motor está lendo a página (o que chega são folhas de estilo) */
+static struct { char *url; uint8_t *d; unsigned n; } adiantadas[ADIANTADAS];
+
+static void soltar_adiantadas(void)
+{
+    for (int i = 0; i < ADIANTADAS; i++) {
+        libera(adiantadas[i].url);
+        libera(adiantadas[i].d);
+        adiantadas[i].url = NULL;
+        adiantadas[i].d = NULL;
+    }
+}
+
+/* Busca juntas as próximas imagens do mesmo servidor, se nenhuma está
+ * esperando: uma ida e volta pela rede para até 16, em vez de uma para cada. */
+static void adiantar_imagens(void)
+{
+    for (int i = 0; i < ADIANTADAS; i++) if (adiantadas[i].url) return;
+    const char *pedidas[LOTE];
+    int q = motor_imagens_proximas(motor, pedidas, LOTE);
+    static char ends[LOTE][MAX_URL];
+    const char *urls[LOTE];
+    int k = 0;
+    for (int i = 0; i < q; i++) {
+        endereco_resolver(url_atual, pedidas[i], ends[k], MAX_URL);
+        if (!comeca_com(ends[k], "http://") && !comeca_com(ends[k], "https://")) continue;
+        bool repetida = false;
+        for (int c = 0; c < qtd_cache && !repetida; c++) if (compara_texto(cache[c].url, ends[k]) == 0) repetida = true;
+        for (int c = 0; c < k && !repetida; c++) if (compara_texto(ends[c], ends[k]) == 0) repetida = true;
+        if (repetida) continue;
+        /* um servidor por vez: o da primeira; os outros ficam para a próxima leva */
+        if (k > 0) {
+            const char *a = acha_char(ends[0] + 8, '/'), *b = acha_char(ends[k] + 8, '/');
+            int la = a ? (int)(a - ends[0]) : (int)tam_texto(ends[0]), lb = b ? (int)(b - ends[k]) : (int)tam_texto(ends[k]);
+            if (la != lb || compara_texto_n(ends[0], ends[k], (size_t)la) != 0) continue;
+        }
+        urls[k] = ends[k];
+        k++;
+    }
+    if (k < 2) return;   /* uma só: o caminho de sempre */
+    static rede_resposta_t rs[LOTE];
+    unsigned t0 = tempo_ms();
+    int prontas = rede_lote(urls, k, rs, MAX_RECURSO);
+    perf.rede += tempo_ms() - t0; perf.n_rede += (unsigned)prontas;
+    for (int i = 0; i < k; i++) {
+        if (i < prontas && rs[i].d && rs[i].situacao >= 200 && rs[i].situacao < 300) {
+            int t = (int)tam_texto(urls[i]);
+            adiantadas[i].url = aloca((unsigned)t + 1);
+            if (adiantadas[i].url) {
+                memcpy(adiantadas[i].url, urls[i], (unsigned)t + 1);
+                adiantadas[i].d = rs[i].d;
+                adiantadas[i].n = rs[i].n;
+                continue;
+            }
+        }
+        libera(rs[i].d);
+    }
+}
+
+/* mesmo servidor? (o esquema e o host, até a primeira barra depois dele) */
+static bool mesmo_servidor(const char *a, const char *b)
+{
+    const char *pa = acha_char(a + 8, '/'), *pb = acha_char(b + 8, '/');
+    int la = pa ? (int)(pa - a) : (int)tam_texto(a), lb = pb ? (int)(pb - b) : (int)tam_texto(b);
+    return la == lb && compara_texto_n(a, b, (size_t)la) == 0;
+}
+
+/* As folhas de estilo da página, pedidas juntas, servidor por servidor
+ * (gancho do motor, antes de ele pedir uma a uma): o GitHub tem 37. */
+static void adiantar_folhas(const char *const *lista, int n)
+{
+    static bool feita[ADIANTADAS];
+    if (n > ADIANTADAS) n = ADIANTADAS;
+    for (int i = 0; i < n; i++) {
+        feita[i] = !comeca_com(lista[i], "http://") && !comeca_com(lista[i], "https://");
+        /* já no cache (o motor do JavaScript relê a mesma página): nada a buscar */
+        for (int c = 0; c < qtd_cache && !feita[i]; c++) if (compara_texto(cache[c].url, lista[i]) == 0) feita[i] = true;
+    }
+    unsigned t0 = tempo_ms();
+    int pedidas = 0, lotes = 0;
+    for (int i = 0; i < n; i++) {
+        if (feita[i]) continue;
+        const char *urls[LOTE]; int k = 0;
+        for (int j = i; j < n && k < LOTE; j++)
+            if (!feita[j] && mesmo_servidor(lista[i], lista[j])) { urls[k++] = lista[j]; feita[j] = true; }
+        if (k < 2) continue;   /* uma só: o caminho de sempre, quando o motor pedir */
+        static rede_resposta_t rs[LOTE];
+        int prontas = rede_lote(urls, k, rs, MAX_RECURSO);
+        lotes++;
+        for (int x = 0; x < k; x++) {
+            bool ok = x < prontas && rs[x].d && rs[x].situacao >= 200 && rs[x].situacao < 300;
+            int vaga = -1;
+            for (int v = 0; ok && v < ADIANTADAS && vaga < 0; v++) if (!adiantadas[v].url) vaga = v;
+            if (vaga >= 0) {
+                int t = (int)tam_texto(urls[x]);
+                adiantadas[vaga].url = aloca((unsigned)t + 1);
+                if (adiantadas[vaga].url) {
+                    memcpy(adiantadas[vaga].url, urls[x], (unsigned)t + 1);
+                    adiantadas[vaga].d = rs[x].d;
+                    adiantadas[vaga].n = rs[x].n;
+                    pedidas++;
+                    continue;
+                }
+            }
+            libera(rs[x].d);
+        }
+    }
+    registrar("navegador: folhas de estilo juntas: %d de %d em %d lote(s), %u ms", pedidas, n, lotes, tempo_ms() - t0);
+}
+
 /* Recurso da página (CSS, imagem, fonte, script): só os que deram certo. */
 static uint8_t *baixar_recurso(const char *u, unsigned *n)
 {
     char end[MAX_URL];
     endereco_resolver(url_atual, u, end, sizeof end);
+    for (int i = 0; i < ADIANTADAS; i++)
+        if (adiantadas[i].url && compara_texto(adiantadas[i].url, end) == 0) {
+            uint8_t *d = adiantadas[i].d;
+            *n = adiantadas[i].n;
+            libera(adiantadas[i].url);
+            adiantadas[i].url = NULL;
+            adiantadas[i].d = NULL;
+            /* uma folha de estilo fica no cache também: a página viva relê as folhas */
+            if (lendo_folhas && qtd_cache < CACHE_N && cache_total + *n <= CACHE_MAX) {
+                int k = (int)tam_texto(end);
+                char *cu = aloca((unsigned)k + 1);
+                uint8_t *cd = copia_bloco(d, *n);
+                if (cu && cd) { memcpy(cu, end, (unsigned)k + 1); cache[qtd_cache].url = cu; cache[qtd_cache].d = cd; cache[qtd_cache].n = *n; qtd_cache++; cache_total += *n; }
+                else { libera(cu); libera(cd); }
+            }
+            return d;
+        }
     for (int i = 0; i < qtd_cache; i++)
         if (compara_texto(cache[i].url, end) == 0) { *n = cache[i].n; return copia_bloco(cache[i].d, cache[i].n); }
     int codigo = 0;
@@ -348,7 +485,9 @@ static bool decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int
         *px = c; *l = imgc[i].l; *a = imgc[i].a;
         return true;
     }
+    unsigned t0 = tempo_ms();
     bool ok = imagem_decodificar(d, n, px, l, a);
+    perf.decod += tempo_ms() - t0; perf.n_decod++;
     if (ok) registrar("navegador: imagem %dx%d", *l, *a);
     else registrar("navegador: imagem nao decodificou (%u bytes)", n);
     if (qtd_imgc < IMGC_N) {
@@ -360,7 +499,7 @@ static bool decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int
     return ok;
 }
 
-static const motor_ganchos_t ganchos_motor = { baixar_recurso, decodificar, tela2d_pixels };
+static const motor_ganchos_t ganchos_motor = { baixar_recurso, decodificar, tela2d_pixels, adiantar_folhas };
 
 /* Layout pedido por um script (medidas): um motor à parte diagrama o DOM
  * atual com o CSS em cache e devolve as caixas. Fica vivo para o
@@ -577,26 +716,45 @@ static void guardar_rolagem(void)
     if (hist_pos >= 0) hist[hist_pos].rolagem = rolagem;
 }
 
+static unsigned custo_diagramar;   /* ms da última diagramação */
+static bool falta_diagramar;       /* chegaram imagens que ainda não estão na tela */
+
 static void diagramar(void)
 {
     if (!motor) { altura = 0; return; }
+    unsigned t0 = tempo_ms();
     altura = motor_layout(motor, VISTA_L, VISTA_A);
+    custo_diagramar = tempo_ms() - t0;
+    perf.diag += custo_diagramar; perf.n_diag++;
     limitar_rolagem();
 }
 
 /* Lê o HTML (UTF-8) num motor novo e diagrama. */
 static void ler_pagina(const char *h, int n)
 {
+    soltar_adiantadas();
+    falta_diagramar = false;
     if (motor) motor_fim(motor);
     motor = motor_novo(&ganchos_motor);
     if (!motor) { altura = 0; return; }
+    lendo_folhas = true;
     motor_ler(motor, h, n, url_atual);
+    lendo_folhas = false;
+    soltar_adiantadas();   /* sobrou alguma folha? o espaço volta para as imagens */
     diagramar();
 }
 
-/* Fontes da web e imagens, umas poucas por vez. Para se chegar um evento. */
+/* Fontes da web e imagens, umas poucas por vez. Para se chegar um evento.
+ * Diagramar uma página grande custa caro (a do Gato, na Wikipédia, tem 19
+ * mil nós: uns 400 ms), então, enquanto as imagens chegam, a página é
+ * diagramada de novo só depois de REDIAGRAMAR_MS ou de 4 vezes o que a
+ * última diagramação custou (o que for maior), e uma vez no fim, em vez de
+ * depois de cada par de imagens (H129). Assim diagramar fica em no máximo
+ * um quinto do tempo. */
+#define REDIAGRAMAR_MS 300
 static void carregar_imagens(void)
 {
+    unsigned ultimo = tempo_ms();
     while (motor) {
         evento_t e;
         if (!tem_evento_guardado && proximo_evento(j->id, &e, false) == 1) {
@@ -608,7 +766,22 @@ static void carregar_imagens(void)
             }
         }
         if (tem_evento_guardado) break;
+        adiantar_imagens();
         if (!motor_imagens(motor, 2)) break;
+        falta_diagramar = true;
+        unsigned espera = custo_diagramar * 4 > REDIAGRAMAR_MS ? custo_diagramar * 4 : REDIAGRAMAR_MS;
+        if (tempo_ms() - ultimo >= espera) {
+            diagramar();
+            desenhar_pagina();
+            jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
+            ultimo = tempo_ms();
+            falta_diagramar = false;
+        }
+    }
+    /* Interrompida, a diagramação fica para quando as imagens voltarem: o
+     * clique ou a rolagem são tratados antes. */
+    if (motor && falta_diagramar && !tem_evento_guardado) {
+        falta_diagramar = false;
         diagramar();
         desenhar_pagina();
         jan_mostrar_area(j, 0, BARRA, LARG, VISTA_A);
@@ -678,6 +851,8 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     imgc_limpar();
     copia_texto(url_atual, url, sizeof url_atual);
 
+    memset(&perf, 0, sizeof perf);
+    unsigned t_pagina = 0, t_scripts = 0, t_ler = 0;
     texto_t pag = { 0, 0, 0 };
     char tipo[64] = "text/html", final[MAX_URL], erro[160] = "";
     int situacao = 200;
@@ -685,7 +860,9 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     if (comeca_com(url, "sagui:")) { pagina_interna(url, &pag); copia_texto(final, url, sizeof final); }
     else {
         rede_resposta_t r;
+        t_pagina = tempo_ms();
         situacao = rede_buscar(url, &r, MAX_PAGINA, NULL, 0);
+        t_pagina = tempo_ms() - t_pagina;
         copia_texto(tipo, r.tipo[0] ? r.tipo : "text/html", sizeof tipo);
         copia_texto(final, r.final[0] ? r.final : url, sizeof final);
         copia_texto(erro, r.erro, sizeof erro);
@@ -738,8 +915,14 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     if (comeca_com(pag.d, "<html><head><meta charset=\"iso-8859-1\">")) pag.d = para_utf8(pag.d, &pag.n, 0);
     copia_texto(url_atual, final[0] && !comeca_com(url, "sagui:") ? final : url, sizeof url_atual);
     if (acha_char(url, '#') && !acha_char(url_atual, '#')) junta_texto(url_atual, acha_char(url, '#'), sizeof url_atual);
+    t_scripts = tempo_ms();
     pag.d = rodar_scripts(pag.d, &pag.n);
+    t_scripts = tempo_ms() - t_scripts;
+    unsigned rede_antes = perf.rede, diag_antes = perf.diag;
+    t_ler = tempo_ms();
     ler_pagina(pag.d, (int)pag.n);
+    t_ler = tempo_ms() - t_ler;
+    unsigned css_rede = perf.rede - rede_antes, ler_diag = perf.diag - diag_antes;
     libera(pag.d);
     copia_texto(url_atual, url, sizeof url_atual);
     rolagem = rolagem_inicial;
@@ -763,11 +946,20 @@ static void carregar(const char *pedido, bool novo_no_historico, int rolagem_ini
     copia_texto(tit, titulo_js[0] ? titulo_js : motor ? motor_titulo(motor) : "", sizeof tit);
     utf8_para_sistema(tit);
     registrar("navegador: titulo %s", tit);
+    unsigned t_des = tempo_ms();
     desenhar_tudo();
+    t_des = tempo_ms() - t_des;
+    registrar("navegador: tempos da pagina: rede %u ms, scripts %u ms, ler %u ms (css pela rede %u ms, diagramar %u ms), desenhar %u ms",
+              t_pagina, t_scripts, t_ler, css_rede, ler_diag, t_des);
+    memset(&perf, 0, sizeof perf);
+    unsigned t_imgs = tempo_ms();
     carregar_imagens();
+    registrar("navegador: tempos das imagens: %u ms: rede %u ms (%u), decodificar %u ms (%u), diagramar %u ms (%u)",
+              tempo_ms() - t_imgs, perf.rede, perf.n_rede, perf.decod, perf.n_decod, perf.diag, perf.n_diag);
     /* Imagens novas podem ter mudado a altura: a âncora pode ter descido. */
     if (frag && motor) { int y = motor_ancora(motor, frag + 1); if (y >= 0) { rolagem = y - 4; limitar_rolagem(); } }
     formatar_texto(status, sizeof status, "%s%sPronto: %u KB em %u ms", erro[0] ? erro : "", erro[0] ? " | " : "", bytes / 1024, tempo_ms() - inicio);
+    copia_texto(status_pronto, status, sizeof status_pronto);
     desenhar_tudo();
     registrar("navegador: pronto %s", url);
 }
@@ -1127,6 +1319,7 @@ int principal(int argc, char **argv)
     jan_redimensionavel(j, 520, 300);
     posicionar_botoes();
     registrar("navegador: janela %d", j->id);
+    http_guardar_conexoes(true);   /* as imagens e o CSS reaproveitam a conexão da página (H129) */
     carregar(argc > 1 ? argv[1] : "sagui:inicio", true, 0);
     for (;;) {
         /* o script pediu outra página (location.href, assign, replace, reload) */
@@ -1139,6 +1332,14 @@ int principal(int argc, char **argv)
         }
         evento_t e;
         if (tem_evento_guardado) { e = evento_guardado; tem_evento_guardado = false; }
+        else if (motor && motor_imagens_faltam(motor)) {
+            /* Um clique, a rolagem ou o menu interromperam as imagens: tratado o
+             * evento, elas continuam de onde pararam (antes ficavam faltando, H129). */
+            carregar_imagens();
+            /* terminaram: a barra volta a dizer "Pronto", não "Baixando" a última imagem */
+            if (motor && !motor_imagens_faltam(motor) && status_pronto[0]) definir_status(status_pronto);
+            continue;
+        }
         else if (js_vivo() || (js_ativo() && rolagem != js_rol)) {
             /* página viva: timers e animações no ritmo deles, sem travar os eventos */
             if (proximo_evento(j->id, &e, false) != 1) {

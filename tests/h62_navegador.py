@@ -113,7 +113,7 @@ def compilar_referencia(saida, opcoes=("-O2",)):
     nav = os.path.join(RAIZ, "userland", "navegador")
     fontes = [os.path.join(RAIZ, "tests", "navegador", "teste_pagina.c")] + \
         [os.path.join(nav, f) for f in ("motor/motor.c", "motor/quebra.c", "fontes/fonte.c", "fontes/brotli.c",
-                                        "graficos/svg.c", "graficos/canvas2d.c", "imagens.c", "png.c", "jpeg.c")] + \
+                                        "graficos/svg.c", "graficos/canvas2d.c", "imagens.c", "png.c", "jpeg.c", "webp_sem_perda.c")] + \
         [os.path.join(RAIZ, "userland", "libsagui", "compactar.c")] + \
         [os.path.join(RAIZ, "terceiros", f) for f in ("font-rs/acumulador.c", "libwebp-vp8/vp8.c")] + \
         [os.path.join(RAIZ, "build", "gerado", "fonte8x16.c")]

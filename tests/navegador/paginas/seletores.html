@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Seletores</title><style>
+body{margin:0} div{height:10px;background:#ff0000}
+.l1 > p{margin:0;height:10px;background:#ff0000}
+.l1 > p:first-of-type{background:#00ff00}
+.l1 > span{display:block;height:10px;background:#00ff00}
+.l1 > p:last-of-type{background:#0000ff}
+.l1 > p:nth-of-type(2){background:#ffff00}
+.l1 > p:nth-last-child(2){background:#00ffff}
+.so:only-child{background:#00ff00}
+.a:not(.x, .y){background:#00ff00}
+.b:not(.x, .y){background:#00ff00}
+.b:is(.y){background:#0000ff}
+:where(.c){background:#ff00ff}
+.c{background:#00ff00}
+.card:has(> img){background:#00ff00}
+.card:has(.fundo){background:#0000ff}
+.card2:has(+ .vizinho){background:#00ff00}
+.q:is(div.q, section){background:#00ff00}
+</style></head><body>
+<section class="l1"><p></p><span></span><p></p><p></p><span></span></section>
+<div><div class="so"></div></div>
+<div class="a"></div>
+<div class="b y"></div>
+<div class="c"></div>
+<div class="card"><img style="display:none"></div>
+<div class="card"><span><i class="fundo"></i></span></div>
+<div class="card2"></div><div class="vizinho" style="background:#000"></div>
+<div class="q"></div>
+</body></html>

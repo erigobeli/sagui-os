@@ -32,7 +32,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qemu import Maquina, FalhaTeste, verificar, janela, RAIZ, SAIDA  # noqa: E402
 from h62_navegador import compilar_referencia, BARRA, VISTA_L, VISTA_A  # noqa: E402
-from PIL import Image, ImageChops  # noqa: E402
+from PIL import Image, ImageChops, ImageDraw  # noqa: E402
 
 REDE = ["-netdev", "user,id=n0", "-device", "e1000,netdev=n0,mac=52:54:00:12:34:56"]
 PASTA = os.path.join(SAIDA, "h82-paginas")
@@ -93,6 +93,15 @@ def preparar():
         for x in range(96):
             f[x, y] = (x * 255 // 95, 80 + y * 2, 255 - (x + y) * 255 // 158)
     foto.save(os.path.join(PASTA, "imagens", "foto.webp"), quality=90)
+    # WebP sem perdas (VP8L): preditor, cor, cache e "subtrai o verde" (method 6);
+    # sem transformações (method 0); e paleta com transparência.
+    foto.save(os.path.join(PASTA, "imagens", "sem_perda.webp"), lossless=True, method=6, quality=100)
+    foto.convert("RGBA").resize((97, 61)).save(os.path.join(PASTA, "imagens", "sem_perda_rapida.webp"), lossless=True, method=0, quality=0)
+    pal = Image.new("RGBA", (70, 45), (0, 0, 0, 0))
+    dp = ImageDraw.Draw(pal)
+    dp.rectangle((5, 5, 40, 30), fill=(90, 70, 255, 255))
+    dp.ellipse((30, 10, 65, 40), fill=(255, 40, 120, 200))
+    pal.save(os.path.join(PASTA, "imagens", "sem_perda_paleta.webp"), lossless=True, method=4)
     # PNG com transparência parcial sobre um fundo azul da página.
     tr = Image.new("RGBA", (50, 30), (0, 0, 0, 0))
     t = tr.load()
@@ -113,7 +122,7 @@ def testar_decodificadores():
                         "-I", os.path.join(RAIZ, "tests", "navegador", "simulado"), "-I", nav,
                         "-I", os.path.join(RAIZ, "userland", "inc"), "-o", prog,
                         os.path.join(RAIZ, "tests", "navegador", "teste_decodificar.c"),
-                        os.path.join(nav, "imagens.c"), os.path.join(nav, "png.c"), os.path.join(nav, "jpeg.c"),
+                        os.path.join(nav, "imagens.c"), os.path.join(nav, "png.c"), os.path.join(nav, "jpeg.c"), os.path.join(nav, "webp_sem_perda.c"),
                         os.path.join(RAIZ, "userland", "libsagui", "compactar.c"), os.path.join(RAIZ, "terceiros", "libwebp-vp8", "vp8.c")],
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -141,6 +150,14 @@ def testar_decodificadores():
     hist = dif.histogram()
     media = sum(i * hist[c * 256 + i] for c in range(3) for i in range(256)) / (3 * pillow.size[0] * pillow.size[1])
     verificar(nosso.size == pillow.size and media < 3.0, f"WebP parecido com o do Pillow (diferença média {media:.2f} de 255)")
+
+    for nome in ("sem_perda.webp", "sem_perda_rapida.webp", "sem_perda_paleta.webp"):
+        nosso = decodificar(nome)
+        pillow = Image.open(os.path.join(PASTA, "imagens", nome)).convert("RGBA")
+        a, b = nosso.load(), pillow.load()
+        erros = sum(1 for y in range(pillow.size[1]) for x in range(pillow.size[0])
+                    if a[x, y] != b[x, y] and not (a[x, y][3] == 0 and b[x, y][3] == 0))
+        verificar(nosso.size == pillow.size and erros == 0, f"WebP sem perdas {nome} igual ao do Pillow ({erros} pixels diferentes)")
 
 
 def testar_fonte_woff2():

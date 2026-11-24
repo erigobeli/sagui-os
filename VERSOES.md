@@ -23,9 +23,46 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
+- **Cipó:** cada diagramação devolve a memória da anterior (eram uns 5 MB a
+  mais a cada vez; com algumas abas o sistema ficava sem memória), e o
+  estilo de uma página grande sai mais barato. WebP sem perdas (os ícones
+  da Google Play), `justify-self`, `max-width` e `grid-auto-flow: column` no
+  grid, `border-radius` em %, `filter: blur()` e `font-size` com `clamp()`.
+
 - **Segurança (Cipó):** uma fonte WOFF2 malformada, vinda de uma página, podia
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
+
+- **Cipó:** as imagens e o CSS vêm pela mesma conexão da página e várias
+  de uma vez (keep-alive e pipelining), endereços de CSS longos (o da
+  Wikipédia) chegam inteiros e os nomes do DNS ficam guardados. A página do
+  Gato da Wikipédia passou de mais de 1 minuto para uns 10 s.
+
+- **Cipó:** rolar ou clicar enquanto as imagens chegam não as deixa mais
+  faltando: a carga continua depois, e a barra de baixo volta a "Pronto".
+
+- **Cipó:** os estilos de uma página grande são calculados umas 4 vezes mais
+  rápido (filtro dos ancestrais), e o texto que não cabe ao lado de um
+  elemento flutuante desce para baixo dele, em vez de ficar espremido por
+  cima.
+
+- **Cipó:** CSS dos sites grandes. A tabela que acha as regras pela classe
+  agora cresce (com mais de 4096 classes, como no GitHub, as regras de depois
+  nunca casavam), um elemento pode receber mais de 512 declarações (o :root
+  com milhares de variáveis cortava as últimas), as variáveis são achadas por
+  tabela de hash, até 64 folhas de estilo por página (eram 12) e as camadas
+  do @layer valem na cascata. calc(), min(), max() e clamp() são avaliados de
+  verdade (com %, vw, vh, em, *, / e parênteses). E box-shadow e text-shadow.
+
+- **Cipó:** as folhas de estilo da página são pedidas juntas, servidor por
+  servidor (no GitHub, 23 folhas em 2 lotes: 3,5 s em vez de 5,1 s), e as
+  media queries de intervalo funcionam: (width >= 600px), (width > 600px),
+  (400px <= width <= 1000px), com em.
+
+- **Cipó:** seletores novos: :has(), :is() e :where() com listas inteiras,
+  :not() com lista, :first-of-type, :last-of-type, :only-of-type,
+  :only-child, :nth-of-type(), :nth-last-child(), :nth-last-of-type(),
+  :checked e :disabled. E object-fit, object-position e aspect-ratio.
 
 ## Versões lançadas
 

@@ -85,10 +85,24 @@ fim:
     return true;
 }
 
+bool vp8l_ler(const uint8_t *d, unsigned n, uint32_t **saida, int *pl, int *pa);   /* webp_sem_perda.c */
+
+/* WebP: o chunk "VP8L" (sem perdas) vai para webp_sem_perda.c; "VP8 " (com perdas), para o libwebp-vp8. */
+static bool webp(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a)
+{
+    for (unsigned k = 12; k + 8 <= n;) {
+        unsigned t = d[k + 4] | (unsigned)d[k + 5] << 8 | (unsigned)d[k + 6] << 16 | (unsigned)d[k + 7] << 24;
+        if (!memcmp(d + k, "VP8L", 4)) return vp8l_ler(d + k + 8, t < n - k - 8 ? t : n - k - 8, px, l, a);
+        if (t > n) break;
+        k += 8 + t + (t & 1);
+    }
+    return webp_ler(d, n, px, l, a);
+}
+
 bool imagem_decodificar(const uint8_t *d, unsigned n, uint32_t **px, int *l, int *a)
 {
     if (n > 6 && !memcmp(d, "GIF8", 4)) return gif(d, n, px, l, a);
-    if (n > 16 && !memcmp(d, "RIFF", 4) && !memcmp(d + 8, "WEBP", 4)) return webp_ler(d, n, px, l, a);
+    if (n > 16 && !memcmp(d, "RIFF", 4) && !memcmp(d + 8, "WEBP", 4)) return webp(d, n, px, l, a);
     char erro[128];
     imagem_t *im = imagem_ler(d, n, erro, sizeof erro);
     if (!im) return false;
