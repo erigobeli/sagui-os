@@ -411,7 +411,9 @@ static void ler_html_m(motor_t *m, const char *h, int n)
     no_m *pilha[256]; int np = 0;
     pilha[np++] = raiz;
 #define ATUAL pilha[np - 1]
+    unsigned vez = 0;
     for (int i = 0; i < n;) {
+        if (!(++vez & 255)) CIPO_CEDER();
         if (h[i] != '<') {
             int k = i;
             while (k < n && h[k] != '<') k++;
@@ -1097,6 +1099,8 @@ static void ler_folha(motor_t *m, const char *s, int n, int prof);
 
 static void ler_regra(motor_t *m, const char *sel, int ns, const char *d, int nd)
 {
+    static unsigned vez;
+    if (!(++vez & 63)) CIPO_CEDER();
     static decl_t tmp[256];
     int k = ler_decls(m, d, nd, tmp, 256);
     if (!k) return;
@@ -2026,6 +2030,8 @@ static void presentacionais(motor_t *m, no_m *n)
 
 static void estilizar(motor_t *m, no_m *n)
 {
+    static unsigned vez;
+    if (!(++vez & 63)) CIPO_CEDER();
     no_m *pn = n->pai;
     const estilo_t *pe = pn ? &pn->e : NULL;
     estilo_inicial(&n->e, pe);
@@ -2209,6 +2215,8 @@ static void estilizar_tudo(motor_t *m, no_m *n)
  * soltas ganham uma linha. */
 static void normalizar(motor_t *m, no_m *n)
 {
+    static unsigned vez;
+    if (!(++vez & 63)) CIPO_CEDER();
     for (no_m *c = n->filho; c; c = c->prox) if (!c->texto && c->e.display != D_NONE) normalizar(m, c);
     uint8_t d = n->e.display;
     if (d != D_FLEX && d != D_IFLEX && d != D_GRID) return;
@@ -3753,6 +3761,8 @@ static int tabela(no_m *n, int cw, int ch)
 
 static void layout_conteudo(no_m *n, int cw, int ch)
 {
+    static unsigned vez;
+    if (!(++vez & 63)) CIPO_CEDER();
     estilo_t *e = &n->e;
     n->frags = n->frags_fim = NULL;
     n->colapso = 0;
@@ -3776,6 +3786,8 @@ static void layout_conteudo(no_m *n, int cw, int ch)
 
 static int layout_no(no_m *n, int cw, int forca_l, int forca_a)
 {
+    static unsigned vez;
+    if (!(++vez & 63)) CIPO_CEDER();
     estilo_t *e = &n->e;
     caixa_modelo(n, cw);
     int w;
@@ -4691,6 +4703,8 @@ static void tf_aplicar(int i0, int r0, const int32_t M[6], int ox, int oy)
 static void achatar_medir(no_m *n, int x, int y);
 static void achatar(no_m *n, int ox, int oy, int cb_x, int cb_y, int cb_l, int cb_a)
 {
+    static unsigned vez;
+    if (!(++vez & 63)) CIPO_CEDER();
     estilo_t *e = &n->e;
     if (e->display == D_NONE) return;
     int x = ox + n->x, y = oy + n->y;
@@ -4813,6 +4827,7 @@ static void achatar_medir(no_m *n, int x, int y)
 static void achatar_adiados(int ini, int fixo_vira_abs)
 {
     for (int i = ini; i < n_adiados; i++) {
+        if (!(i & 15)) CIPO_CEDER();
         adiado_t a = adiados[i];
         no_m *c = a.n;
         int cb_x = a.cb[0], cb_y = a.cb[1], cb_l = a.cb[2], cb_a = a.cb[3];
@@ -4861,6 +4876,7 @@ static void ordenar_camadas(void)
     cmd_t *t = aloca((size_t)n * sizeof(cmd_t));
     if (!t) return;
     for (int w = 1; w < n; w *= 2) {
+        CIPO_CEDER();
         for (int i = 0; i < n; i += 2 * w) {
             int a = i, m = i + w < n ? i + w : n, b = m, f = i + 2 * w < n ? i + 2 * w : n, k = i;
             while (a < m && b < f) t[k++] = cmp_cmd(&mo->cmds[b], &mo->cmds[a]) < 0 ? mo->cmds[b++] : mo->cmds[a++];
@@ -5078,6 +5094,31 @@ static fonte_t *fonte_da_url(motor_t *m, const char *url, const char *fam)
     return f;
 }
 static bool fonte_em_cache(fonte_t *f) { for (int i = 0; i < n_cache_f; i++) if (cache_f[i].f == f) return true; return false; }
+
+/* As próximas imagens que motor_imagens vai pedir, para o navegador
+ * buscá-las juntas (H129). Enquanto falta uma fonte da web, nenhuma: as
+ * fontes vêm antes, uma a uma. */
+int motor_imagens_proximas(motor_t *m, const char **urls, int max)
+{
+    for (int i = 0; i < m->n_faces; i++)
+        if (!m->faces[i].tentou && m->faces[i].quer && m->g.baixar) return 0;
+    int k = 0;
+    for (int i = 0; i < m->n_imgs && k < max; i++) {
+        imagem_m *im = &m->imgs[i];
+        if (im->tentou || comeca_com(im->url, "data:")) continue;
+        urls[k++] = im->url;
+    }
+    return k;
+}
+
+/* Falta pedir alguma fonte da web ou imagem? */
+bool motor_imagens_faltam(motor_t *m)
+{
+    for (int i = 0; i < m->n_faces; i++)
+        if (!m->faces[i].tentou && m->faces[i].quer && m->g.baixar) return true;
+    for (int i = 0; i < m->n_imgs; i++) if (!m->imgs[i].tentou) return true;
+    return false;
+}
 
 int motor_imagens(motor_t *m, int max)
 {

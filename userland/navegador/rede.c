@@ -283,3 +283,38 @@ int rede_buscar(const char *url, rede_resposta_t *r, unsigned max, char *cab, in
     if (resp.situacao >= 400) formatar_texto(r->erro, sizeof r->erro, "o servidor respondeu %d", resp.situacao);
     return resp.situacao;
 }
+
+/* Vários recursos do mesmo servidor de uma vez (pipelining, H129): o
+ * Cipó pede assim as imagens da página. "urls" são endereços já
+ * resolvidos; rs[i] recebe cada um, como no rede_buscar. Devolve quantos
+ * chegaram (os primeiros, em ordem); o resto vai pelo rede_buscar. Os
+ * Set-Cookie dessas respostas não são guardados. */
+typedef struct { rede_resposta_t *rs; } lote_t;
+static int lote_receber(void *ctx, int i, const char *dados, unsigned n) { return guardar(&((lote_t *)ctx)->rs[i], dados, n); }
+static void lote_fim(void *ctx, int i, const http_resposta_t *resp)
+{
+    rede_resposta_t *r = &((lote_t *)ctx)->rs[i];
+    r->situacao = resp->situacao;
+    copia_texto(r->tipo, resp->tipo, sizeof r->tipo);
+}
+
+int rede_lote(const char *const *urls, int n, rede_resposta_t *rs, unsigned max)
+{
+    if (n > 16) n = 16;
+    static char redes[16][MAX_URL_NAV];
+    static char extras[16][3100];
+    const char *pu[16], *pe[16];
+    for (int i = 0; i < n; i++) {
+        memset(&rs[i], 0, sizeof rs[i]);
+        rs[i].max = max;
+        endereco_para_rede(urls[i], redes[i], sizeof redes[i]);
+        copia_texto(rs[i].final, redes[i], sizeof rs[i].final);
+        static char ck[3000];
+        extras[i][0] = 0;
+        if (cookie_texto(redes[i], ck, sizeof ck, false) > 0) formatar_texto(extras[i], sizeof extras[i], "Cookie: %s\r\n", ck);
+        pu[i] = redes[i];
+        pe[i] = extras[i];
+    }
+    lote_t l = { rs };
+    return http_lote(pu, pe, n, lote_receber, lote_fim, &l);
+}

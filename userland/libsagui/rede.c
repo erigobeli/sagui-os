@@ -24,6 +24,17 @@ int rede_receber(int s, void *d, unsigned max, unsigned *origem) { return chamar
 int rede_fechar(int s)                         { return chamar4(SIS_REDE_FECHAR, (unsigned)s, 0, 0, 0); }
 int rede_estado(int s)                         { return chamar4(SIS_REDE_ESTADO, (unsigned)s, 0, 0, 0); }
 
+bool (*rede_gancho_espera)(void);
+void (*ceder_vez)(void);
+bool rede_desistiu;
+
+bool rede_esperar(unsigned ms)
+{
+    if (rede_gancho_espera) return rede_desistiu = rede_gancho_espera();   /* o gancho espera (passa a vez) */
+    dormir(ms);
+    return false;
+}
+
 /* Abre uma conexão TCP e espera ficar pronta (até "ms" milissegundos). */
 int tcp_conectar(unsigned ip, int porta, unsigned ms)
 {
@@ -36,8 +47,7 @@ int tcp_conectar(unsigned ip, int porta, unsigned ms)
         int e = rede_estado(s);
         if (e == 1) return s;
         if (e < 0) { rede_fechar(s); return ERRO_REDE; }
-        if (tempo_ms() - inicio > ms) { rede_fechar(s); return ERRO_REDE; }
-        dormir(10);
+        if (tempo_ms() - inicio > ms || rede_esperar(10)) { rede_fechar(s); return ERRO_REDE; }
     }
 }
 
@@ -50,8 +60,7 @@ int tcp_enviar_tudo(int s, const void *dados, unsigned n)
         int r = rede_enviar(s, p + feito, n - feito);
         if (r < 0) return r;
         if (r > 0) { feito += (unsigned)r; parado_desde = tempo_ms(); continue; }
-        if (tempo_ms() - parado_desde > 30000) return ERRO_REDE;
-        dormir(5);
+        if (tempo_ms() - parado_desde > 30000 || rede_esperar(5)) return ERRO_REDE;
     }
     return (int)n;
 }
@@ -87,10 +96,35 @@ static int pular_nome(const unsigned char *m, int n, int p)
     return -1;
 }
 
+/* Os nomes já resolvidos, com a validade que o servidor de DNS deu (no
+ * máximo 10 min): uma página com imagens de três servidores perguntava o
+ * nome a cada conexão nova (H129). */
+#define DNS_GUARDADOS 16
+static struct { char nome[64]; unsigned ip, ate; } dns_guardados[DNS_GUARDADOS];
+
+static void dns_guardar(const char *nome, unsigned ip, unsigned ttl_s)
+{
+    if (tam_texto(nome) >= sizeof dns_guardados[0].nome) return;
+    if (ttl_s > 600) ttl_s = 600;
+    int k = 0;
+    for (int i = 0; i < DNS_GUARDADOS; i++) {
+        if (compara_texto(dns_guardados[i].nome, nome) == 0) { k = i; break; }
+        if (dns_guardados[i].ate < dns_guardados[k].ate) k = i;
+    }
+    copia_texto(dns_guardados[k].nome, nome, sizeof dns_guardados[k].nome);
+    dns_guardados[k].ip = ip;
+    dns_guardados[k].ate = tempo_ms() + ttl_s * 1000u;
+}
+
 int dns_resolver(const char *nome, unsigned *ip)
 {
     unsigned direto = texto_para_ip(nome);
     if (direto) { *ip = direto; return 0; }
+    for (int i = 0; i < DNS_GUARDADOS; i++)
+        if (dns_guardados[i].nome[0] && compara_texto(dns_guardados[i].nome, nome) == 0 && (int)(dns_guardados[i].ate - tempo_ms()) > 0) {
+            *ip = dns_guardados[i].ip;
+            return 0;
+        }
     info_rede_t r;
     if (rede_info(&r) < 0) return ERRO_NAO_EXISTE;
     if (!r.configurado || !r.dns) return ERRO_REDE;
@@ -122,7 +156,7 @@ int dns_resolver(const char *nome, unsigned *ip)
         for (int espera = 0; espera < 100; espera++) {   /* até 2 s */
             unsigned char resp[512];
             int n = rede_receber(s, resp, sizeof resp, NULL);
-            if (n <= 0) { dormir(20); continue; }
+            if (n <= 0) { if (rede_esperar(20)) { rede_fechar(s); return ERRO_REDE; } continue; }
             if (n < 12 || resp[0] != m[0] || resp[1] != m[1]) continue;
             if ((resp[3] & 0x0F) == 3) { resultado = ERRO_NAO_EXISTE; break; }   /* o nome não existe */
             int perguntas = (resp[4] << 8) | resp[5], respostas = (resp[6] << 8) | resp[7];
@@ -135,6 +169,8 @@ int dns_resolver(const char *nome, unsigned *ip)
                 p += 10;
                 if (tipo == 1 && tam == 4 && p + 4 <= n) {
                     *ip = (unsigned)resp[p] | ((unsigned)resp[p + 1] << 8) | ((unsigned)resp[p + 2] << 16) | ((unsigned)resp[p + 3] << 24);
+                    unsigned ttl = ((unsigned)resp[p - 6] << 24) | ((unsigned)resp[p - 5] << 16) | ((unsigned)resp[p - 4] << 8) | resp[p - 3];
+                    dns_guardar(nome, *ip, ttl);
                     resultado = 0;
                     break;
                 }

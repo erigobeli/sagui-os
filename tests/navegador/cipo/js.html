@@ -29,6 +29,8 @@ var o = JSON.parse('{"a":[1,{"b":"c"}],"d":null}');
 console.log("t1 " + new B().dobro() + " " + new B().g + " " + A.s() + " " + fs[2]() + " " + r.join("") + " " + q + w + " " + m.get("a") + " " + e1);
 console.log("t2 " + JSON.stringify(o) + " " + `x${1 + 1}y` + " " + "a-b_c".replace(/[-_](.)/g, (t, c) => c.toUpperCase()) + " " + /(\d+)-(\d+)/.exec("ab 12-34")[2] + " " + "a,b;c".split(/[,;]/).length);
 console.log("t3 " + (0.1 + 0.2).toFixed(2) + " " + 7 / 2 + " " + (5 >>> 1) + " " + Math.floor(-1.5) + " " + [3, 1, 2].sort().join("") + " " + typeof undefinedVar + " " + (o?.z?.y ?? "nn") + " " + [..."ab"].length);
+var nada = null, conta = 0;
+console.log("t13 " + nada?.a.b.c + " " + nada?.f(conta++).g + " " + typeof nada?.x.y + " " + ({ a: { b: 1 } })?.a.b + " " + nada?.[0].x + " " + conta);
 async function af() { const v = await Promise.resolve(4); return v + 1; }
 af().then(v => console.log("t4 " + v));
 setTimeout(() => { document.getElementById("app").innerHTML += "<p class=t>timer ok</p>"; console.log("t12 timer"); }, 50);
