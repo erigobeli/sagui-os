@@ -23,6 +23,11 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
+- **Cipó:** páginas grandes aparecem antes: o HTML vem compactado (gzip),
+  a primeira tela é diagramada e pintada antes do resto, a descompactação
+  usa tabela e os certificados raiz são lidos uma vez. Na Wikipédia (Gato),
+  sem aceleração, a primeira tela passou de 5,9 s para uns 1,2 s.
+
 - **Cipó:** abas na mesma janela: o "+" e o Ctrl+T abrem outra (já com o
   cursor no endereço), Ctrl+Tab passa para a próxima, o "x", o Ctrl+W e o
   botão do meio fecham. Cada aba guarda a sua página viva e trabalha em
