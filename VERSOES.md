@@ -23,6 +23,14 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
+- **Cipó:** abas na mesma janela: o "+" e o Ctrl+T abrem outra (já com o
+  cursor no endereço), Ctrl+Tab passa para a próxima, o "x", o Ctrl+W e o
+  botão do meio fecham. Cada aba guarda a sua página viva e trabalha em
+  corrotina: a janela atende durante a carga, trocar de aba leva 10 a 30 ms
+  e a página de trás continua carregando. A aba que sai da frente parada
+  devolve a memória do JavaScript, e as animações seguem o ritmo que a
+  máquina aguenta, sem tomar o processador inteiro.
+
 - **Segurança (Cipó):** uma fonte WOFF2 malformada, vinda de uma página, podia
   fazer o navegador ler memória fora da fonte (os tamanhos das partes somavam
   mais de 4 GB e a conta "dava a volta"). Agora a fonte é recusada.
