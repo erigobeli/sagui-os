@@ -28,10 +28,12 @@ def main():
         out = m.comando("config sistema.persistente")
         verificar("= sim" in out, "config diz que há onde guardar")
         m.captura("H37-config")
+        antes = len(m.serial())
         m.digitar("reiniciar")
         m.tecla("ret")
+        # o prompt do shell novo, depois de reiniciar (os de antes não contam)
         for _ in range(600):
-            if m.serial().count("sagui:/$") >= 2:
+            if "sagui:/$" in m.serial()[antes:].split("[SAGUI] boot ok", 1)[-1] and "[SAGUI] boot ok" in m.serial()[antes:]:
                 break
             time.sleep(0.2)
         m.esperar_serial("montado sozinho", 30)
