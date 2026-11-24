@@ -23,6 +23,10 @@ versão é lançada, o que estava lá vira a seção dessa versão.
 
 ## Em desenvolvimento
 
+- **Cipó (JavaScript):** `a?.b.c()` com `a` nulo encerra a cadeia
+  inteira, sem avaliar o resto. Os cards do quanticbit.qzz.io, revelados
+  assim, ficavam invisíveis.
+
 - **Cipó:** abas na mesma janela: o "+" e o Ctrl+T abrem outra (já com o
   cursor no endereço), Ctrl+Tab passa para a próxima, o "x", o Ctrl+W e o
   botão do meio fecham. Cada aba guarda a sua página viva e trabalha em
