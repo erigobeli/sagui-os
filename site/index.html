@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SaguiOS — um sistema operacional escrito do zero por IA</title>
+  <meta name="description" content="SaguiOS é um sistema operacional completo para PCs x86 de 64 bits, escrito do zero por inteligência artificial: boot, kernel, drivers, janelas, navegador e jogos. Grátis e de código aberto.">
+  <meta property="og:title" content="SaguiOS — um sistema operacional escrito do zero por IA">
+  <meta property="og:description" content="Do carregador de boot ao jogo em 3D, em cerca de 8 MB. Baixe, grave num pendrive e dê boot.">
+  <meta property="og:image" content="https://saguios.com/img/desktop.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#inicio"><span class="brand-icon">🐒</span> SaguiOS</a>
+  <button class="nav-toggle" aria-label="Abrir menu" aria-expanded="false">☰</button>
+  <nav id="menu">
+    <a href="#o-que-e">O que é</a>
+    <a href="#telas">Telas</a>
+    <a href="#video">Vídeo</a>
+    <a href="#download">Download</a>
+    <a href="#gravar">Como gravar</a>
+    <a href="#historia">História</a>
+    <a class="gh" href="https://github.com/erigobeli/sagui-os" target="_blank" rel="noopener" aria-label="Repositório no GitHub" title="Repositório no GitHub">
+      <svg viewBox="0 0 16 16" width="26" height="26" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero" id="inicio">
+  <div class="wrap hero-grid">
+    <div class="hero-text">
+      <span class="badge">Criado 100% por IA</span>
+      <h1>Um sistema operacional escrito <em>do zero</em> por inteligência artificial</h1>
+      <p class="lead">Do carregador de boot ao jogo em 3D. Sem GRUB, sem libc, sem Linux por baixo. Dá boot num pendrive, em PCs x86 de 64 bits, e cabe em cerca de 8 MB.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#download">⬇ Baixar o SaguiOS 3.0</a>
+        <a class="btn btn-ghost" href="https://github.com/erigobeli/sagui-os" target="_blank" rel="noopener">Ver o código no GitHub</a>
+      </div>
+      <ul class="facts">
+        <li>versão 3.0</li><li>64 bits</li><li>sem GRUB</li><li>sem libc</li><li>+120 testes automáticos</li>
+      </ul>
+    </div>
+    <figure class="hero-shot">
+      <img src="img/desktop.png" alt="Área de trabalho do SaguiOS com o Terminal aberto, ícones à esquerda, doca embaixo e o sagui no canto" width="1024" height="768">
+    </figure>
+  </div>
+</section>
+
+<section id="o-que-e" class="section">
+  <div class="wrap">
+    <h2>O que é o SaguiOS</h2>
+    <p class="section-lead">Tudo o que vai dentro da imagem foi escrito neste projeto: nada de peças prontas no núcleo.</p>
+    <div class="cards">
+      <article class="card"><h3>🧱 Do zero</h3><p>Carregador de boot em dois estágios, kernel, drivers (teclado ABNT2, touchpad, vídeo VESA, USB 2.0, rede, som), sistema de arquivos FAT32, gerenciador de janelas e a fonte de letras.</p></article>
+      <article class="card"><h3>🖥️ Desktop completo</h3><p>Menu Iniciar, doca, janelas, Arquivos com Lixeira, Terminal, Editor, Calculadora, Visualizador de fotos, Tocador de música e vídeo, Configurações e temas claro e escuro.</p></article>
+      <article class="card"><h3>🌐 Navegador próprio</h3><p>O Cipó abre páginas da web com HTTPS, favoritos e busca, direto no sistema, sem depender de nenhum navegador de fora.</p></article>
+      <article class="card"><h3>🤖 Sagui Code</h3><p>Um assistente de IA que roda no próprio SaguiOS, no terminal, e conversa com você para ler arquivos e programar.</p></article>
+      <article class="card"><h3>🎮 Jogos</h3><p>Sagui 3D, Sagui Pega Banana, Caça-Bananas, Paciência Banana, CHIP-8 e atividades JClic para a sala de aula.</p></article>
+      <article class="card"><h3>🔒 Seguro por padrão</h3><p>O instalador só apaga um disco depois de um resumo e de você digitar o nome dele numa caixa do kernel. Fora isso, o SaguiOS nunca grava no disco interno.</p></article>
+    </div>
+    <p class="note">🌎 O sistema fala português, espanhol e inglês (primeira parte da tradução).</p>
+  </div>
+</section>
+
+<section id="telas" class="section alt">
+  <div class="wrap">
+    <h2>Conheça as telas</h2>
+    <p class="section-lead">Capturas reais do SaguiOS rodando. Clique para ampliar.</p>
+    <div class="gallery">
+      <figure><button type="button" data-full="img/navegador.png"><img loading="lazy" src="img/navegador.png" alt="O navegador Cipó mostrando a Wikipédia"></button><figcaption>Cipó, o navegador</figcaption></figure>
+      <figure><button type="button" data-full="img/terminal.png"><img loading="lazy" src="img/terminal.png" alt="Terminal com os comandos fetch, grep e uname"></button><figcaption>Terminal com comandos ao estilo Unix</figcaption></figure>
+      <figure><button type="button" data-full="img/tocador.png"><img loading="lazy" src="img/tocador.png" alt="Tocador de músicas WAV e MP3"></button><figcaption>Tocador de música e vídeo</figcaption></figure>
+      <figure><button type="button" data-full="img/sagui-code.png"><img loading="lazy" src="img/sagui-code.png" alt="Sagui Code, o assistente de IA no terminal"></button><figcaption>Sagui Code, a IA dentro do sistema</figcaption></figure>
+      <figure><button type="button" data-full="img/instalador.png"><img loading="lazy" src="img/instalador.png" alt="Instalador em disco com resumo antes de apagar"></button><figcaption>Instalador com proteções</figcaption></figure>
+      <figure><button type="button" data-full="img/jogos.png"><img loading="lazy" src="img/jogos.png" alt="Jogo Caça-Bananas"></button><figcaption>Jogos: Caça-Bananas e mais</figcaption></figure>
+      <figure><button type="button" data-full="img/sagui-3d.png"><img loading="lazy" src="img/sagui-3d.png" alt="Sagui 3D, labirinto na Mata Atlântica"></button><figcaption>Sagui 3D, um labirinto na Mata Atlântica</figcaption></figure>
+      <figure><button type="button" data-full="img/tema-escuro.png"><img loading="lazy" src="img/tema-escuro.png" alt="Tema escuro do SaguiOS"></button><figcaption>Tema escuro</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="video" class="section">
+  <div class="wrap narrow">
+    <h2>Veja como foi criado</h2>
+    <p class="section-lead">No canal do Eli no YouTube, o processo de criação do SaguiOS passo a passo.</p>
+    <div class="video" id="video-box" data-video-id="v70uhJ8Qrn8">
+      <div class="video-fallback">
+        <p>🎬 O vídeo da criação do SaguiOS está no canal.</p>
+        <a class="btn btn-primary" href="https://www.youtube.com/@EliRigobeliAI" target="_blank" rel="noopener">Assistir no YouTube</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="section alt">
+  <div class="wrap">
+    <h2>Baixe o SaguiOS</h2>
+    <p class="section-lead">Grátis. Escolha o arquivo conforme o que você vai usar.</p>
+    <div class="dl-grid">
+      <article class="dl-card featured">
+        <span class="tag">Recomendado · 3.0.0 · 64 bits</span>
+        <h3>Pendrive (PC de verdade)</h3>
+        <p>Imagem <code>saguios.img</code> (~8 MB). Grave com balenaEtcher ou Rufus em modo DD e dê boot pela BIOS tradicional.</p>
+        <a class="btn btn-primary" href="https://github.com/erigobeli/sagui-os/releases/latest/download/saguios.img">⬇ Baixar saguios.img</a>
+      </article>
+      <article class="dl-card">
+        <span class="tag">3.0.0 · 64 bits</span>
+        <h3>Máquina virtual (VirtualBox)</h3>
+        <p>Disco <code>saguios.vdi</code> (~8 MB), numa máquina <strong>Other/Unknown (64-bit)</strong> com EFI desligado.</p>
+        <a class="btn btn-secondary" href="https://github.com/erigobeli/sagui-os/releases/latest/download/saguios.vdi">⬇ Baixar saguios.vdi</a>
+      </article>
+      <article class="dl-card">
+        <span class="tag">2.2.0 · 32 bits</span>
+        <h3>PC antigo, sem 64 bits</h3>
+        <p>A última versão de 32 bits, para processadores que não têm x86-64. Mesmos formatos de imagem e disco.</p>
+        <a class="btn btn-secondary" href="https://github.com/erigobeli/sagui-os/releases/tag/v2.2.0">Ver a versão 2.2.0</a>
+      </article>
+    </div>
+    <p class="note">🔐 Confira o arquivo <a href="https://github.com/erigobeli/sagui-os/releases/latest/download/SHA256SUMS.txt">SHA256SUMS.txt</a> depois de baixar. Todas as versões estão em <a href="https://github.com/erigobeli/sagui-os/releases" target="_blank" rel="noopener">Releases</a>.</p>
+    <div class="warn">
+      <strong>⚠ Atenção:</strong> o SaguiOS é um projeto experimental, sem garantia. Ele roda direto do pendrive e não mexe no disco do computador, a menos que você use o instalador e confirme. Se o processador não tiver 64 bits, o sistema avisa na tela.
+    </div>
+  </div>
+</section>
+
+<section id="gravar" class="section">
+  <div class="wrap narrow">
+    <h2>Como gravar e dar boot</h2>
+    <ol class="steps">
+      <li><strong>Baixe</strong> o <code>saguios.img</code> acima.</li>
+      <li><strong>Grave</strong> no pendrive com o <a href="https://etcher.balena.io/" target="_blank" rel="noopener">balenaEtcher</a> ou com o <a href="https://rufus.ie/" target="_blank" rel="noopener">Rufus</a> (escolha o modo <em>DD</em>). Atenção: isso apaga o pendrive.</li>
+      <li><strong>Reinicie</strong> o computador e abra o menu de boot (geralmente F12, F9 ou Esc). Escolha o pendrive em modo <em>BIOS/Legacy</em> (no Lenovo G470: F12 &gt; USB HDD).</li>
+      <li><strong>Pronto:</strong> o SaguiOS abre direto na área de trabalho.</li>
+    </ol>
+    <p class="note">Prefere testar sem risco? Use o <code>saguios.vdi</code> no VirtualBox. Passo a passo completo em <a href="https://github.com/erigobeli/sagui-os/blob/main/docs/como-gravar.md" target="_blank" rel="noopener">docs/como-gravar.md</a>.</p>
+  </div>
+</section>
+
+<section id="historia" class="section alt">
+  <div class="wrap narrow">
+    <h2>A história do SaguiOS</h2>
+    <p>Tudo começou com uma pergunta do <strong>Eli Rigobeli</strong>: uma IA é capaz de escrever um sistema operacional de verdade, a partir de um kernel zerado? Não uma distribuição montada com peças prontas, mas o carregador de boot, o kernel, os drivers e os programas, tudo do zero, dando boot num notebook comum.</p>
+    <p>O Eli escreveu a especificação, o <strong>Claude</strong> (Anthropic) escreveu o código, e cada fase só avançou depois de o Eli testar no Lenovo G470 dele, um notebook de 2011.</p>
+    <h3 class="milestones-title">Os grandes marcos</h3>
+    <ol class="milestones">
+      <li>
+        <span class="ms-version">1.0</span>
+        <div><strong>Criado inteiramente por IA</strong><span class="ms-date">novembro de 2026</span>
+        <p>Boot, kernel, janelas, USB e o jogo Sagui 3D, tudo escrito do zero e testado a cada fase num notebook de 2011. A imagem tinha só 575 KB.</p></div>
+      </li>
+      <li>
+        <span class="ms-version">2.0</span>
+        <div><strong>O SaguiOS conectado</strong><span class="ms-date">novembro de 2026</span>
+        <p>Rede, internet com HTTPS, som, o primeiro navegador, um compilador de C dentro do sistema e o Sagui Code, a IA que programa com você.</p></div>
+      </li>
+      <li>
+        <span class="ms-version">2.1</span>
+        <div><strong>A comunidade chega</strong><span class="ms-date">novembro de 2026</span>
+        <p>Primeira versão com contribuições de outras pessoas: navegador Cipó com CSS e JavaScript modernos, tocador de MP3, vídeo e visual novo. O núcleo continua do zero.</p></div>
+      </li>
+      <li>
+        <span class="ms-version">3.0</span>
+        <div><strong>64 bits</strong><span class="ms-date">novembro de 2026</span>
+        <p>O kernel passa a rodar em x86-64, com os programas de antes funcionando sem mudança. Chegam também o instalador em HD, jogos e o sistema em espanhol e inglês.</p></div>
+      </li>
+    </ol>
+    <p><a href="https://github.com/erigobeli/sagui-os/blob/main/VERSOES.md" target="_blank" rel="noopener">Ver o histórico completo de versões →</a></p>
+    <p>O SaguiOS cresce com a comunidade. Quer ajudar? Leia o <a href="https://github.com/erigobeli/sagui-os/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">guia de contribuição</a> e abra uma issue ou um pull request.</p>
+  </div>
+</section>
+
+<section class="section cta-final">
+  <div class="wrap center">
+    <h2>Pronto para dar boot num macaquinho?</h2>
+    <div class="cta center-cta">
+      <a class="btn btn-primary" href="#download">⬇ Baixar o SaguiOS</a>
+      <a class="btn btn-ghost" href="https://github.com/erigobeli/sagui-os" target="_blank" rel="noopener">⭐ Repositório no GitHub</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap foot-grid">
+    <div>
+      <strong>🐒 SaguiOS</strong>
+      <p>Criado por Eli Rigobeli, com código escrito pelo Claude (Anthropic). Projeto experimental, sem garantia.</p>
+    </div>
+    <div>
+      <strong>Projeto</strong>
+      <a href="https://github.com/erigobeli/sagui-os" target="_blank" rel="noopener">Código-fonte</a>
+      <a href="https://github.com/erigobeli/sagui-os/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/erigobeli/sagui-os/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://github.com/erigobeli/sagui-os/blob/main/SECURITY.md" target="_blank" rel="noopener">Segurança</a>
+    </div>
+    <div>
+      <strong>Mais</strong>
+      <a href="https://www.youtube.com/@EliRigobeliAI" target="_blank" rel="noopener">Canal no YouTube</a>
+      <a href="https://saguilinux.com.br/" target="_blank" rel="noopener">Sagui Linux</a>
+      <a href="https://github.com/erigobeli/sagui-os/blob/main/CREDITOS.md" target="_blank" rel="noopener">Créditos e licenças</a>
+    </div>
+  </div>
+</footer>
+
+<div class="lightbox" id="lightbox" hidden><img alt=""><button type="button" aria-label="Fechar">✕</button></div>
+
+<script src="script.js"></script>
+</body>
+</html>
